@@ -6,14 +6,16 @@ export function botMethodUrl(env, method) {
   return [TG_HOST, tokenPart, method].join("/");
 }
 
-export async function tgJson(env, method, payload) {
+export async function tgJson(env, method, payload = {}) {
   const res = await fetch(botMethodUrl(env, method), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   const json = await res.json().catch(() => null);
-  if (!res.ok || !json?.ok) throw new Error(method + " failed");
+  if (!res.ok || !json?.ok) {
+    throw new Error(method + " failed: " + JSON.stringify(json));
+  }
   return json.result;
 }
 
@@ -23,6 +25,8 @@ export async function tgForm(env, method, form) {
     body: form,
   });
   const json = await res.json().catch(() => null);
-  if (!res.ok || !json?.ok) throw new Error(method + " failed");
+  if (!res.ok || !json?.ok) {
+    throw new Error(method + " failed: " + JSON.stringify(json));
+  }
   return json.result;
 }
