@@ -1,6 +1,6 @@
 import { textToSpeech } from "./elevenlabs.js";
 import { getState, saveState } from "./state.js";
-import { answerCallback, editMessage, sendAudio, sendMessage, sendVoice } from "./telegram-actions.js";
+import { answerCallback, editMessage, sendAudio, sendMessage } from "./telegram-actions.js";
 import { startText, mainKeyboard, PRICE_PER_CHARACTER_TON } from "./ui.js";
 import { VOICES } from "./voices.js";
 
@@ -16,12 +16,6 @@ export async function handleMessage(message, env) {
   const state = await getState(env, userId);
 
   if (text === "/start") {
-    await sendMessage(env, chatId, startText(state), mainKeyboard(state));
-    return;
-  }
-
-  if (!state.voice) {
-    await sendMessage(env, chatId, "First select a voice.");
     await sendMessage(env, chatId, startText(state), mainKeyboard(state));
     return;
   }
@@ -67,29 +61,22 @@ export async function handleCallback(query, env) {
   }
 
   if (data === "demo") {
-    if (!state.voice) {
-      await sendMessage(env, chatId, "First select a voice.");
-      return;
-    }
     await makeAndSendAudio(env, chatId, DEMO_TEXT, state, true);
   }
 }
 
 async function makeAndSendAudio(env, chatId, text, state, isDemo) {
-  const voiceId = VOICES[state.voice];
+  const voiceName = state.voice || "Nora";
+  const voiceId = VOICES[voiceName];
   const cost = isDemo ? "0" : (text.length * PRICE_PER_CHARACTER_TON).toFixed(5);
-  const filename = state.voice + ".mp3";
-  const caption = "Voice: " + state.voice + "\nCost: " + cost + " TON";
+  const filename = voiceName + ".mp3";
+  const caption = "Voice: " + voiceName + "\nCost: " + cost + " TON";
 
   await sendMessage(env, chatId, isDemo ? "Generating demo..." : "Generating voice...");
 
   try {
     const audio = await textToSpeech(env, text, voiceId);
-    if (state.output === "Voice") {
-      await sendVoice(env, chatId, audio, filename, caption);
-    } else {
-      await sendAudio(env, chatId, audio, filename, caption);
-    }
+    await sendAudio(env, chatId, audio, filename, caption);
   } catch (error) {
     await sendMessage(env, chatId, "Error: " + error.message);
   }
