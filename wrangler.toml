@@ -1,11 +1,17 @@
 name = "ai-configa"
 main = "src/worker.js"
-compatibility_date = "2025-01-01"
+compatibility_date = "2026-05-28"
+workers_dev = true
+preview_urls = true
 
 # Secrets are not written here. Set them with:
 # npx wrangler secret put BOT_TOKEN
 # npx wrangler secret put ELEVEN_API
 
-[[kv_namespaces]]
-binding = "USER_STATE"
-id = "replace_with_your_kv_namespace_id"
+# Optional persistent state:
+# If you want durable user voice selections, create a KV namespace and uncomment this block.
+# Never leave a placeholder id here, Cloudflare deploy will fail.
+#
+# [[kv_namespaces]]
+# binding = "USER_STATE"
+# id = "your_real_kv_namespace_id"
