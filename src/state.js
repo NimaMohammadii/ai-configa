@@ -1,5 +1,5 @@
 export const DEFAULT_STATE = {
-  voice: null,
+  voice: "Nora",
   output: "MP3",
   page: 0,
 };
@@ -23,7 +23,7 @@ export async function getState(env, userId) {
 
 export async function saveState(env, userId, state) {
   const cleanState = {
-    voice: state.voice || null,
+    voice: state.voice || DEFAULT_STATE.voice,
     output: state.output || "MP3",
     page: Number(state.page || 0),
   };
