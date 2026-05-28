@@ -1,6 +1,6 @@
 import { textToSpeech } from "./elevenlabs.js";
 import { getState, saveState } from "./state.js";
-import { answerCallback, editMessage, sendAudio, sendMessage } from "./telegram-actions.js";
+import { answerCallback, editMessage, sendAudio, sendDocument, sendMessage, sendPlainMessage } from "./telegram-actions.js";
 import { startText, mainKeyboard, PRICE_PER_CHARACTER_TON } from "./ui.js";
 import { VOICES } from "./voices.js";
 
@@ -17,6 +17,11 @@ export async function handleMessage(message, env) {
 
   if (text === "/start") {
     await sendMessage(env, chatId, startText(state), mainKeyboard(state));
+    return;
+  }
+
+  if (text === "/debug") {
+    await sendPlainMessage(env, chatId, buildDebugText(env, state));
     return;
   }
 
@@ -65,19 +70,42 @@ export async function handleCallback(query, env) {
   }
 }
 
+function buildDebugText(env, state) {
+  return [
+    "Debug:",
+    "BOT_TOKEN: " + (env.BOT_TOKEN ? "OK" : "MISSING"),
+    "ELEVEN_API: " + (env.ELEVEN_API ? "OK" : "MISSING"),
+    "USER_STATE: " + (env.USER_STATE ? "OK" : "not connected"),
+    "voice: " + (state.voice || "none"),
+    "output: " + (state.output || "MP3"),
+  ].join("\n");
+}
+
 async function makeAndSendAudio(env, chatId, text, state, isDemo) {
   const voiceName = state.voice || "Nora";
-  const voiceId = VOICES[voiceName];
+  const voiceId = VOICES[voiceName] || VOICES.Nora;
   const cost = isDemo ? "0" : (text.length * PRICE_PER_CHARACTER_TON).toFixed(5);
   const filename = voiceName + ".mp3";
   const caption = "Voice: " + voiceName + "\nCost: " + cost + " TON";
 
-  await sendMessage(env, chatId, isDemo ? "Generating demo..." : "Generating voice...");
-
   try {
+    await sendPlainMessage(env, chatId, isDemo ? "Generating demo..." : "Generating voice...");
+
     const audio = await textToSpeech(env, text, voiceId);
-    await sendAudio(env, chatId, audio, filename, caption);
+    await sendPlainMessage(env, chatId, "Audio created. Size: " + audio.byteLength + " bytes. Sending...");
+
+    try {
+      await sendAudio(env, chatId, audio, filename, caption);
+    } catch (sendAudioError) {
+      await sendPlainMessage(env, chatId, "sendAudio failed, trying document: " + safeError(sendAudioError));
+      await sendDocument(env, chatId, audio, filename, caption);
+    }
   } catch (error) {
-    await sendMessage(env, chatId, "Error: " + error.message);
+    await sendPlainMessage(env, chatId, "TTS Error: " + safeError(error));
   }
+}
+
+function safeError(error) {
+  const message = error && error.message ? error.message : String(error);
+  return message.slice(0, 3000);
 }
