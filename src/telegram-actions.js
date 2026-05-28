@@ -9,6 +9,13 @@ export function sendMessage(env, chatId, text, replyMarkup = null) {
   });
 }
 
+export function sendPlainMessage(env, chatId, text) {
+  return tgJson(env, "sendMessage", {
+    chat_id: chatId,
+    text,
+  });
+}
+
 export function editMessage(env, chatId, messageId, text, replyMarkup = null) {
   return tgJson(env, "editMessageText", {
     chat_id: chatId,
@@ -33,6 +40,14 @@ export function sendAudio(env, chatId, audioBuffer, filename, caption) {
   form.append("title", filename.replace(/\.mp3$/i, ""));
   form.append("audio", new Blob([audioBuffer], { type: "audio/mpeg" }), filename);
   return tgForm(env, "sendAudio", form);
+}
+
+export function sendDocument(env, chatId, audioBuffer, filename, caption) {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("caption", caption);
+  form.append("document", new Blob([audioBuffer], { type: "audio/mpeg" }), filename);
+  return tgForm(env, "sendDocument", form);
 }
 
 export function sendVoice(env, chatId, audioBuffer, filename, caption) {
