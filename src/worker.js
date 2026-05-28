@@ -14,13 +14,17 @@ export default {
     if (!update) return new Response("Bad Request", { status: 400 });
 
     if (update.message) {
-      ctx.waitUntil(handleMessage(update.message, env));
+      ctx.waitUntil(handleMessage(update.message, env).catch(logError));
     }
 
     if (update.callback_query) {
-      ctx.waitUntil(handleCallback(update.callback_query, env));
+      ctx.waitUntil(handleCallback(update.callback_query, env).catch(logError));
     }
 
     return new Response("OK");
   },
 };
+
+function logError(error) {
+  console.error(error && error.stack ? error.stack : error);
+}
