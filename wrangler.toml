@@ -1,0 +1,11 @@
+name = "ai-configa"
+main = "src/worker.js"
+compatibility_date = "2025-01-01"
+
+# Secrets are not written here. Set them with:
+# npx wrangler secret put BOT_TOKEN
+# npx wrangler secret put ELEVEN_API
+
+[[kv_namespaces]]
+binding = "USER_STATE"
+id = "replace_with_your_kv_namespace_id"
