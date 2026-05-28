@@ -4,37 +4,39 @@ export const DEFAULT_STATE = {
   page: 0,
 };
 
-const memoryState = new Map();
-
 export async function getState(env, userId) {
-  const fallback = memoryState.get(stateKey(userId)) || { ...DEFAULT_STATE };
+  requireDb(env);
 
-  if (!env.USER_STATE) return { ...DEFAULT_STATE, ...fallback };
+  const row = await env.DB.prepare(
+    "SELECT voice, output, page FROM user_state WHERE user_id = ?"
+  ).bind(String(userId)).first();
 
-  const raw = await env.USER_STATE.get(stateKey(userId));
-  if (!raw) return { ...DEFAULT_STATE, ...fallback };
+  if (!row) return { ...DEFAULT_STATE };
 
-  try {
-    return { ...DEFAULT_STATE, ...JSON.parse(raw) };
-  } catch {
-    return { ...DEFAULT_STATE, ...fallback };
-  }
+  return {
+    voice: row.voice || DEFAULT_STATE.voice,
+    output: row.output || DEFAULT_STATE.output,
+    page: Number(row.page || 0),
+  };
 }
 
 export async function saveState(env, userId, state) {
+  requireDb(env);
+
   const cleanState = {
     voice: state.voice || DEFAULT_STATE.voice,
-    output: state.output || "MP3",
+    output: state.output || DEFAULT_STATE.output,
     page: Number(state.page || 0),
   };
 
-  memoryState.set(stateKey(userId), cleanState);
-
-  if (!env.USER_STATE) return;
-
-  await env.USER_STATE.put(stateKey(userId), JSON.stringify(cleanState));
+  await env.DB.prepare(
+    "INSERT INTO user_state (user_id, voice, output, page, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET voice = excluded.voice, output = excluded.output, page = excluded.page, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(userId), cleanState.voice, cleanState.output, cleanState.page).run();
 }
 
-function stateKey(userId) {
-  return "telegram-user-" + String(userId);
+export function requireDb(env) {
+  if (!env.DB) {
+    throw new Error("D1 DB binding is missing. Create D1 and add binding DB in wrangler.toml.");
+  }
 }
