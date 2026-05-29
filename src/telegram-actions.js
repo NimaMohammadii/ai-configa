@@ -26,6 +26,13 @@ export function editMessage(env, chatId, messageId, text, replyMarkup = null) {
   });
 }
 
+export function deleteMessage(env, chatId, messageId) {
+  return tgJson(env, "deleteMessage", {
+    chat_id: chatId,
+    message_id: messageId,
+  });
+}
+
 export function answerCallback(env, callbackQueryId, text = "") {
   return tgJson(env, "answerCallbackQuery", {
     callback_query_id: callbackQueryId,
@@ -33,27 +40,24 @@ export function answerCallback(env, callbackQueryId, text = "") {
   });
 }
 
-export function sendAudio(env, chatId, audioBuffer, filename, caption) {
+export function sendAudio(env, chatId, audioBuffer) {
   const form = new FormData();
   form.append("chat_id", String(chatId));
-  form.append("caption", caption);
-  form.append("title", filename.replace(/\.mp3$/i, ""));
-  form.append("audio", new Blob([audioBuffer], { type: "audio/mpeg" }), filename);
+  form.append("title", "Vexa");
+  form.append("audio", new Blob([audioBuffer], { type: "audio/mpeg" }), "Vexa.mp3");
   return tgForm(env, "sendAudio", form);
 }
 
-export function sendDocument(env, chatId, audioBuffer, filename, caption) {
+export function sendDocument(env, chatId, audioBuffer) {
   const form = new FormData();
   form.append("chat_id", String(chatId));
-  form.append("caption", caption);
-  form.append("document", new Blob([audioBuffer], { type: "audio/mpeg" }), filename);
+  form.append("document", new Blob([audioBuffer], { type: "audio/mpeg" }), "Vexa.mp3");
   return tgForm(env, "sendDocument", form);
 }
 
-export function sendVoice(env, chatId, audioBuffer, filename, caption) {
+export function sendVoice(env, chatId, audioBuffer) {
   const form = new FormData();
   form.append("chat_id", String(chatId));
-  form.append("caption", caption);
-  form.append("voice", new Blob([audioBuffer], { type: "audio/mpeg" }), filename);
+  form.append("voice", new Blob([audioBuffer], { type: "audio/mpeg" }), "Vexa.mp3");
   return tgForm(env, "sendVoice", form);
 }
