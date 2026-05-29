@@ -1,3 +1,4 @@
+import { LANGUAGES, t } from "./i18n.js";
 import { VOICE_NAMES, VOICES_PER_PAGE } from "./voices.js";
 
 export const CREDIT_PRICE_PER_1000_USD = 0.24;
@@ -13,20 +14,42 @@ export const TOMAN_PACKAGES = {
   p18500: { credits: 18500, bonus: 3500, amount: "999,000", label: "18,500 + 3,500 🎁 -> 999,000 T" },
 };
 
+export function languageText() {
+  return [
+    "🌐 <b>Choose your language</b>",
+    "",
+    "Please select your language to continue",
+  ].join("\n");
+}
+
+export function languageKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: LANGUAGES.en, callback_data: "lang:en" }, { text: LANGUAGES.ru, callback_data: "lang:ru" }],
+      [{ text: LANGUAGES.de, callback_data: "lang:de" }, { text: LANGUAGES.fa, callback_data: "lang:fa" }],
+      [{ text: LANGUAGES.tr, callback_data: "lang:tr" }, { text: LANGUAGES.ar, callback_data: "lang:ar" }],
+      [{ text: LANGUAGES.zh, callback_data: "lang:zh" }, { text: LANGUAGES.ja, callback_data: "lang:ja" }],
+      [{ text: LANGUAGES.es, callback_data: "lang:es" }, { text: LANGUAGES.id, callback_data: "lang:id" }],
+    ],
+  };
+}
+
 export function startText(state) {
+  const lang = state.language || "en";
   const selectedVoice = state.voice || "none";
 
   return [
-    "🎧 <b>Text to Speech</b>",
+    t(lang, "ttsTitle"),
     "",
-    "Send your text",
-    "Each character uses <b>1 credit</b>",
+    t(lang, "sendText"),
+    t(lang, "creditRule"),
     "",
-    `<b>Selected voice:</b> ${escapeHtml(selectedVoice)}`,
+    `<b>${t(lang, "selectedVoice")}:</b> ${escapeHtml(selectedVoice)}`,
   ].join("\n");
 }
 
 export function mainKeyboard(state) {
+  const lang = state.language || "en";
   const page = Number(state.page || 0);
   const selectedVoice = state.voice || "Nora";
   const start = page * VOICES_PER_PAGE;
@@ -43,80 +66,86 @@ export function mainKeyboard(state) {
   rows.push([
     voiceButton(voices[8], selectedVoice),
     page === 0
-      ? { text: "Next →", callback_data: "page:1" }
-      : { text: "← Previous", callback_data: "page:0" },
+      ? { text: t(lang, "next"), callback_data: "page:1" }
+      : { text: t(lang, "previous"), callback_data: "page:0" },
   ]);
 
-  rows.push([{ text: "▶ Demo", callback_data: "demo" }]);
+  rows.push([{ text: t(lang, "demo"), callback_data: "demo" }]);
 
   rows.push([
-    { text: "💎 Balance", callback_data: "balance" },
-    { text: "⚡ Buy Credits", callback_data: "buy_credits" },
+    { text: t(lang, "balance"), callback_data: "balance" },
+    { text: t(lang, "buyCredits"), callback_data: "buy_credits" },
   ]);
 
   return { inline_keyboard: rows };
 }
 
-export function buyCreditsText() {
+export function buyCreditsText(state = {}) {
+  const lang = state.language || "en";
   return [
-    "💳 <b>Buy Credits</b>",
+    t(lang, "buyTitle"),
     "",
-    `1000 credits = <b>$${CREDIT_PRICE_PER_1000_USD.toFixed(2)}</b>`,
-    "Each character uses <b>1 credit</b>",
+    t(lang, "priceLine"),
+    t(lang, "creditRule"),
     "",
-    "Choose a payment method"
+    t(lang, "choosePayment"),
   ].join("\n");
 }
 
-export function buyCreditsKeyboard() {
+export function buyCreditsKeyboard(state = {}) {
+  const lang = state.language || "en";
   return {
     inline_keyboard: [
-      [{ text: "🇮🇷 Buy with Toman", callback_data: "buy_toman" }],
-      [{ text: "⭐ Telegram Stars", callback_data: "buy_stars" }],
-      [{ text: "← Back", callback_data: "back_main" }],
+      [{ text: t(lang, "buyToman"), callback_data: "buy_toman" }],
+      [{ text: t(lang, "telegramStars"), callback_data: "buy_stars" }],
+      [{ text: t(lang, "back"), callback_data: "back_main" }],
     ],
   };
 }
 
-export function tomanPackagesText() {
+export function tomanPackagesText(state = {}) {
+  const lang = state.language || "en";
   return [
-    "🇮🇷 <b>Buy with Toman</b>",
+    t(lang, "buyTomanTitle"),
     "",
-    "Choose your credit package"
+    t(lang, "choosePackage"),
   ].join("\n");
 }
 
-export function tomanPackagesKeyboard() {
+export function tomanPackagesKeyboard(state = {}) {
+  const lang = state.language || "en";
   return {
     inline_keyboard: [
       ...Object.entries(TOMAN_PACKAGES).map(([id, pack]) => ([
         { text: pack.label, callback_data: "toman_package:" + id },
       ])),
-      [{ text: "← Back", callback_data: "buy_credits" }],
+      [{ text: t(lang, "back"), callback_data: "buy_credits" }],
     ],
   };
 }
 
-export function paymentInstructionText(pack) {
+export function paymentInstructionText(pack, state = {}) {
+  const lang = state.language || "en";
   const totalCredits = pack.credits + pack.bonus;
   return [
-    "🔥 <b>Almost there!</b>",
+    t(lang, "almostThere"),
     "",
-    `Package: <b>${formatNumber(totalCredits)} credits</b>`,
-    `Amount: <b>${pack.amount} T</b>`,
+    `${t(lang, "package")}: <b>${formatNumber(totalCredits)} credits</b>`,
+    `${t(lang, "amount")}: <b>${pack.amount} T</b>`,
     "",
-    "Please transfer the exact amount to this card number:",
+    t(lang, "transfer"),
     `<code>${CARD_NUMBER}</code>`,
     "",
-    "Then send your payment screenshot right here",
-    "Your credits will be added after verification"
+    t(lang, "sendScreenshot"),
+    t(lang, "verification"),
   ].join("\n");
 }
 
-export function paymentCancelKeyboard() {
+export function paymentCancelKeyboard(state = {}) {
+  const lang = state.language || "en";
   return {
     inline_keyboard: [
-      [{ text: "Cancel", callback_data: "cancel_payment" }],
+      [{ text: t(lang, "cancel"), callback_data: "cancel_payment" }],
     ],
   };
 }
