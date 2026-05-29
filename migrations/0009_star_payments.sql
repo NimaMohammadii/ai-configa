@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS star_payments (
+  charge_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  package_id TEXT NOT NULL,
+  stars INTEGER NOT NULL,
+  credits INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
