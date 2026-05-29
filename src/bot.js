@@ -17,16 +17,16 @@ import {
   trackUser,
   tryAdminLogin,
 } from "./admin.js";
-import { addCredits, ensureBalanceRow, getBalance, removeCredits } from "./credits.js";
+import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
-import { getState, saveState } from "./state.js";
+import { getState, saveState, setMenuMessageId } from "./state.js";
 import { answerCallback, deleteMessage, editMessage, sendAudio, sendDocument, sendHtmlMessage, sendMessage, sendPlainMessage } from "./telegram-actions.js";
 import { buyCreditsKeyboard, buyCreditsText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
 
-const DEMO_TEXT = "Hello, this is a free demo voice from Vexa text to speech.";
+const DEMO_TEXT = "Hello, this is a free demo voice from Vexa text to speech";
 
 export async function handleMessage(message, env) {
   const chatId = message.chat && message.chat.id;
@@ -54,7 +54,8 @@ export async function handleMessage(message, env) {
   }
 
   if (text === "/start") {
-    await sendMessage(env, chatId, startText(state), mainKeyboard(state));
+    const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
+    await setMenuMessageId(env, userId, menu?.message_id || null);
     return;
   }
 
@@ -65,14 +66,14 @@ export async function handleMessage(message, env) {
 
   if (text === "/debug") {
     if (!(await isAdmin(env, userId))) {
-      await sendPlainMessage(env, chatId, "Access denied.");
+      await sendPlainMessage(env, chatId, "Access denied");
       return;
     }
     await sendPlainMessage(env, chatId, buildDebugText(env, state));
     return;
   }
 
-  await makeAndSendAudio(env, chatId, text, state, false);
+  await makeAndSendAudio(env, chatId, userId, text, state, false);
 }
 
 export async function handleCallback(query, env) {
@@ -101,7 +102,7 @@ export async function handleCallback(query, env) {
     return;
   }
 
-  if (data.startsWith("admin_users:")) {
+  if (data.startsWith("admin_users:") || data.startsWith("admin_page:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id);
     await clearAdminAction(env, userId);
     const page = Number(data.split(":")[1] || 0);
@@ -154,6 +155,7 @@ export async function handleCallback(query, env) {
   if (data.startsWith("page:")) {
     await answerCallback(env, query.id);
     state.page = Number(data.split(":")[1] || 0);
+    state.menuMessageId = messageId;
     await saveState(env, userId, state);
     await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
     return;
@@ -163,6 +165,7 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id);
     const voice = data.slice(6);
     if (VOICES[voice]) state.voice = voice;
+    state.menuMessageId = messageId;
     await saveState(env, userId, state);
     await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
     return;
@@ -172,6 +175,7 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id);
     const output = data.slice(7);
     state.output = output === "Voice" ? "Voice" : "MP3";
+    state.menuMessageId = messageId;
     await saveState(env, userId, state);
     await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
     return;
@@ -230,7 +234,7 @@ export async function handleCallback(query, env) {
 
   if (data === "demo") {
     await answerCallback(env, query.id);
-    await makeAndSendAudio(env, chatId, DEMO_TEXT, state, true);
+    await makeAndSendAudio(env, chatId, userId, DEMO_TEXT, state, true);
   }
 }
 
@@ -245,7 +249,7 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   if (action.action === "credit") {
     const amount = parseCreditAmount(text);
     if (!amount) {
-      await answerAdminAction(env, chatId, action, "Invalid amount. Use +2500 or -700.");
+      await answerAdminAction(env, chatId, "Invalid amount. Use +2500 or -700");
       return true;
     }
 
@@ -264,7 +268,7 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     await sendPlainMessage(env, action.target_user_id, text).catch(() => null);
     await clearAdminAction(env, adminId);
     await editMessage(env, action.chat_id || chatId, Number(action.message_id), await adminUserText(env, action.target_user_id), adminUserKeyboard(action.target_user_id, action.page || 0));
-    const notice = await sendPlainMessage(env, chatId, "Message sent.");
+    const notice = await sendPlainMessage(env, chatId, "Message sent");
     if (notice?.message_id) await deleteMessage(env, chatId, notice.message_id).catch(() => null);
     return true;
   }
@@ -278,14 +282,12 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
       try {
         await sendPlainMessage(env, id, text);
         sent++;
-      } catch {
-        // ignore failed deliveries
-      }
+      } catch {}
     }
 
     await clearAdminAction(env, adminId);
     await editMessage(env, action.chat_id || chatId, Number(action.message_id), adminMainText(), adminMainKeyboard());
-    const notice = await sendPlainMessage(env, chatId, "Broadcast sent to " + sent + " users.");
+    const notice = await sendPlainMessage(env, chatId, "Broadcast sent to " + sent + " users");
     if (notice?.message_id) await deleteMessage(env, chatId, notice.message_id).catch(() => null);
     return true;
   }
@@ -304,20 +306,20 @@ function parseCreditAmount(text) {
   return match[1] === "+" ? value : -value;
 }
 
-async function answerAdminAction(env, chatId, action, text) {
+async function answerAdminAction(env, chatId, text) {
   const msg = await sendPlainMessage(env, chatId, text);
   if (msg?.message_id) await deleteMessage(env, chatId, msg.message_id).catch(() => null);
 }
 
 async function denyCallback(env, callbackQueryId) {
-  await answerCallback(env, callbackQueryId, "Access denied.", true);
+  await answerCallback(env, callbackQueryId, "Access denied", true);
 }
 
 async function handlePaymentScreenshot(env, chatId, userId, state) {
   const pending = await getPendingPayment(env, userId);
 
   if (!pending || !TOMAN_PACKAGES[pending.package_id]) {
-    await sendPlainMessage(env, chatId, "Screenshot received. If this is for a credit purchase, please choose a package first.");
+    await sendPlainMessage(env, chatId, "Screenshot received. If this is for a credit purchase, please choose a package first");
     return;
   }
 
@@ -328,10 +330,10 @@ async function handlePaymentScreenshot(env, chatId, userId, state) {
     [
       "✅ <b>Payment screenshot received!</b>",
       "",
-      "Your receipt is now waiting for admin verification.",
-      "After approval, your credits will be added to your balance.",
+      "Your receipt is now waiting for admin verification",
+      "After approval, your credits will be added to your balance",
       "",
-      "You can keep using the bot or choose another option below."
+      "You can keep using the bot or choose another option below"
     ].join("\n"),
     mainKeyboard(state)
   );
@@ -348,7 +350,7 @@ async function handleAdminCommand(env, chatId, userId, text, messageId) {
     await deleteMessage(env, chatId, messageId).catch(() => null);
 
     if (!loggedIn) {
-      const msg = await sendPlainMessage(env, chatId, "Invalid admin token.");
+      const msg = await sendPlainMessage(env, chatId, "Invalid admin token");
       if (msg?.message_id) await deleteMessage(env, chatId, msg.message_id).catch(() => null);
       return;
     }
@@ -373,16 +375,32 @@ function buildDebugText(env, state) {
     "DB: " + (env.DB ? "OK" : "MISSING"),
     "voice: " + (state.voice || "none"),
     "output: " + (state.output || "MP3"),
+    "menuMessageId: " + (state.menuMessageId || "none"),
   ].join("\n");
 }
 
-async function makeAndSendAudio(env, chatId, text, state, isDemo) {
+async function makeAndSendAudio(env, chatId, userId, text, state, isDemo) {
   const voiceName = state.voice || "Nora";
   const voiceId = VOICES[voiceName] || VOICES.Nora;
+  const cost = countCredits(text);
   let statusMessage = null;
 
+  if (!isDemo) {
+    const balance = await getBalance(env, userId);
+    if (balance < cost) {
+      await sendPlainMessage(env, chatId, "Not enough credits\nNeeded: " + cost + " credits\nBalance: " + balance + " credits");
+      return;
+    }
+  }
+
+  if (state.menuMessageId) {
+    await deleteMessage(env, chatId, state.menuMessageId).catch(() => null);
+    state.menuMessageId = null;
+    await saveState(env, userId, state);
+  }
+
   try {
-    statusMessage = await sendPlainMessage(env, chatId, isDemo ? "Generating demo..." : "Generating voice...");
+    statusMessage = await sendPlainMessage(env, chatId, isDemo ? "Generating demo" : "Generating voice");
 
     let audio = null;
 
@@ -398,15 +416,35 @@ async function makeAndSendAudio(env, chatId, text, state, isDemo) {
 
     await sendCleanAudio(env, chatId, audio);
 
+    if (!isDemo) {
+      await spendCredits(env, userId, cost);
+    }
+
     if (statusMessage && statusMessage.message_id) {
       await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
     }
+
+    await sendFreshMainMenu(env, chatId, userId);
   } catch (error) {
     if (statusMessage && statusMessage.message_id) {
       await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
     }
     await sendPlainMessage(env, chatId, "TTS Error: " + safeError(error));
+    await sendFreshMainMenu(env, chatId, userId);
   }
+}
+
+async function sendFreshMainMenu(env, chatId, userId) {
+  const state = await getState(env, userId);
+  if (state.menuMessageId) {
+    await deleteMessage(env, chatId, state.menuMessageId).catch(() => null);
+  }
+  const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
+  await setMenuMessageId(env, userId, menu?.message_id || null);
+}
+
+function countCredits(text) {
+  return Array.from(String(text || "")).length;
 }
 
 async function sendCleanAudio(env, chatId, audio) {
