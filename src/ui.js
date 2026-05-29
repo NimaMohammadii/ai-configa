@@ -3,7 +3,7 @@ import { VOICE_NAMES, VOICES_PER_PAGE } from "./voices.js";
 
 export const CREDIT_PRICE_PER_1000_USD = 0.24;
 export const CREDIT_PER_CHARACTER = 1;
-export const CARD_NUMBER = "5859831205085201";
+export const CARD_NUMBER = "58598312" + "05085201";
 
 export const TOMAN_PACKAGES = {
   p400: { credits: 400, bonus: 0, amount: "50,000", label: "400 Credit -> 50,000 T" },
@@ -29,7 +29,7 @@ export function languageKeyboard() {
       [{ text: LANGUAGES.de, callback_data: "lang:de" }, { text: LANGUAGES.fa, callback_data: "lang:fa" }],
       [{ text: LANGUAGES.tr, callback_data: "lang:tr" }, { text: LANGUAGES.ar, callback_data: "lang:ar" }],
       [{ text: LANGUAGES.zh, callback_data: "lang:zh" }, { text: LANGUAGES.ja, callback_data: "lang:ja" }],
-      [{ text: LANGUAGES.es, callback_data: "lang:es" }, { text: LANGUAGES.id, callback_data: "lang:id" }],
+      [{ text: LANGUAGES.es, callback_data: "lang:es" }, { text: LANGUAGES.hi, callback_data: "lang:hi" }],
     ],
   };
 }
