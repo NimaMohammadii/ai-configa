@@ -53,13 +53,16 @@ export async function handleCallback(query, env) {
 
   await trackUser(env, query.from);
   await ensureBalanceRow(env, userId);
-  await answerCallback(env, query.id);
 
   const state = await getState(env, userId);
 
-  if (data === "noop") return;
+  if (data === "noop") {
+    await answerCallback(env, query.id);
+    return;
+  }
 
   if (data.startsWith("page:")) {
+    await answerCallback(env, query.id);
     state.page = Number(data.split(":")[1] || 0);
     await saveState(env, userId, state);
     await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
@@ -67,6 +70,7 @@ export async function handleCallback(query, env) {
   }
 
   if (data.startsWith("voice:")) {
+    await answerCallback(env, query.id);
     const voice = data.slice(6);
     if (VOICES[voice]) state.voice = voice;
     await saveState(env, userId, state);
@@ -75,6 +79,7 @@ export async function handleCallback(query, env) {
   }
 
   if (data.startsWith("output:")) {
+    await answerCallback(env, query.id);
     const output = data.slice(7);
     state.output = output === "Voice" ? "Voice" : "MP3";
     await saveState(env, userId, state);
@@ -84,27 +89,29 @@ export async function handleCallback(query, env) {
 
   if (data === "balance") {
     const balance = await getBalance(env, userId);
-    await answerCallback(env, query.id, "Balance: " + balance + " credits");
-    await sendPlainMessage(env, chatId, "💰 Balance\n\n" + balance + " credits");
+    await answerCallback(env, query.id, "Your balance:\n\n" + balance + " credits", true);
     return;
   }
 
   if (data === "buy_credits") {
+    await answerCallback(env, query.id);
     await editMessage(env, chatId, messageId, buyCreditsText(), buyCreditsKeyboard());
     return;
   }
 
   if (data === "back_main") {
+    await answerCallback(env, query.id);
     await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
     return;
   }
 
   if (data === "buy_toman" || data === "buy_stars") {
-    await answerCallback(env, query.id, "Coming soon");
+    await answerCallback(env, query.id, "Coming soon", true);
     return;
   }
 
   if (data === "demo") {
+    await answerCallback(env, query.id);
     await makeAndSendAudio(env, chatId, DEMO_TEXT, state, true);
   }
 }
