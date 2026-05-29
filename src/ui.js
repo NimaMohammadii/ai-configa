@@ -28,7 +28,6 @@ export function startText(state) {
 
 export function mainKeyboard(state) {
   const page = Number(state.page || 0);
-  const output = state.output || "MP3";
   const selectedVoice = state.voice || "Nora";
   const start = page * VOICES_PER_PAGE;
   const voices = VOICE_NAMES.slice(start, start + VOICES_PER_PAGE);
@@ -49,11 +48,6 @@ export function mainKeyboard(state) {
   ]);
 
   rows.push([{ text: "▶ Demo", callback_data: "demo" }]);
-
-  rows.push([
-    { text: output === "MP3" ? "✔️ MP3 📁" : "MP3 📁", callback_data: "output:MP3" },
-    { text: output === "Voice" ? "✔️ Voice 🎙️" : "Voice 🎙️", callback_data: "output:Voice" },
-  ]);
 
   rows.push([
     { text: "Balance", callback_data: "balance" },
