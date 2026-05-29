@@ -15,18 +15,14 @@ export const TOMAN_PACKAGES = {
 
 export function startText(state) {
   const selectedVoice = state.voice || "none";
-  const output = state.output || "MP3";
 
   return [
     "🎧 <b>Text to Speech</b>",
     "",
-    "Send your text.",
-    "Each character uses <b>1 credit</b>.",
-    `1000 credits = <b>$${CREDIT_PRICE_PER_1000_USD.toFixed(2)}</b>.`,
-    "Demo is free.",
+    "Send your text",
+    "Each character uses <b>1 credit</b>",
     "",
     `<b>Selected voice:</b> ${escapeHtml(selectedVoice)}`,
-    `<b>Output:</b> ${escapeHtml(output)}`,
   ].join("\n");
 }
 
@@ -71,10 +67,10 @@ export function buyCreditsText() {
   return [
     "💳 <b>Buy Credits</b>",
     "",
-    `1000 credits = <b>$${CREDIT_PRICE_PER_1000_USD.toFixed(2)}</b>.`,
-    "Each character uses <b>1 credit</b>.",
+    `1000 credits = <b>$${CREDIT_PRICE_PER_1000_USD.toFixed(2)}</b>`,
+    "Each character uses <b>1 credit</b>",
     "",
-    "Choose a payment method:"
+    "Choose a payment method"
   ].join("\n");
 }
 
@@ -92,7 +88,7 @@ export function tomanPackagesText() {
   return [
     "🇮🇷 <b>Buy with Toman</b>",
     "",
-    "Choose your credit package:"
+    "Choose your credit package"
   ].join("\n");
 }
 
@@ -118,7 +114,8 @@ export function paymentInstructionText(pack) {
     "Please transfer the exact amount to this card number:",
     `<code>${CARD_NUMBER}</code>`,
     "",
-    "Then send your payment screenshot right here. Your credits will be added after verification."
+    "Then send your payment screenshot right here",
+    "Your credits will be added after verification"
   ].join("\n");
 }
 
