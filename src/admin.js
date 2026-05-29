@@ -95,6 +95,20 @@ export async function getAdminUserDetails(env, userId) {
   return { ...user, balance };
 }
 
+export async function resetUser(env, userId) {
+  requireDb(env);
+  const id = String(userId);
+
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM user_state WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM user_credits WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM pending_payments WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM admin_actions WHERE admin_id = ? OR target_user_id = ?").bind(id, id),
+    env.DB.prepare("DELETE FROM admin_users WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM bot_users WHERE user_id = ?").bind(id),
+  ]);
+}
+
 export async function adminUsersText(env, page = 0) {
   const data = await getAdminUsersPage(env, page);
   return [
@@ -147,6 +161,7 @@ export function adminUserKeyboard(userId, page = 0) {
     inline_keyboard: [
       [{ text: "Change Credits", callback_data: "admin_credit_prompt:" + userId + ":" + page }],
       [{ text: "Send Message", callback_data: "admin_msg_prompt:" + userId + ":" + page }],
+      [{ text: "Reset User", callback_data: "admin_reset_user:" + userId + ":" + page }],
       [{ text: "← Back to Users", callback_data: "admin_users:" + page }],
     ],
   };
