@@ -39,3 +39,24 @@ export async function removeCredits(env, userId, amount) {
 
   return getBalance(env, userId);
 }
+
+export async function spendCredits(env, userId, amount) {
+  requireDb(env);
+  await ensureBalanceRow(env, userId);
+
+  const needed = Number(amount || 0);
+  if (!Number.isFinite(needed) || needed <= 0) {
+    return { ok: true, balance: await getBalance(env, userId) };
+  }
+
+  const current = await getBalance(env, userId);
+  if (current < needed) {
+    return { ok: false, balance: current, needed };
+  }
+
+  await env.DB.prepare(
+    "UPDATE user_credits SET credits = credits - ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND credits >= ?"
+  ).bind(needed, String(userId), needed).run();
+
+  return { ok: true, balance: await getBalance(env, userId), spent: needed };
+}
