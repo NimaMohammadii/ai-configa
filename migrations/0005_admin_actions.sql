@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS admin_actions (
+  admin_id TEXT PRIMARY KEY,
+  action TEXT NOT NULL,
+  target_user_id TEXT,
+  page INTEGER NOT NULL DEFAULT 0,
+  chat_id TEXT,
+  message_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
