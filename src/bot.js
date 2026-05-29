@@ -1,3 +1,4 @@
+import { adminPanelText, isAdmin, trackUser, tryAdminLogin } from "./admin.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { getState, saveState } from "./state.js";
@@ -14,6 +15,8 @@ export async function handleMessage(message, env) {
 
   if (!chatId || !userId || !text) return;
 
+  await trackUser(env, message.from);
+
   const state = await getState(env, userId);
 
   if (text === "/start") {
@@ -21,7 +24,16 @@ export async function handleMessage(message, env) {
     return;
   }
 
+  if (text.startsWith("/admin")) {
+    await handleAdminCommand(env, chatId, userId, text);
+    return;
+  }
+
   if (text === "/debug") {
+    if (!(await isAdmin(env, userId))) {
+      await sendPlainMessage(env, chatId, "Access denied.");
+      return;
+    }
     await sendPlainMessage(env, chatId, buildDebugText(env, state));
     return;
   }
@@ -37,6 +49,7 @@ export async function handleCallback(query, env) {
 
   if (!userId || !chatId || !messageId) return;
 
+  await trackUser(env, query.from);
   await answerCallback(env, query.id);
 
   const state = await getState(env, userId);
@@ -71,11 +84,32 @@ export async function handleCallback(query, env) {
   }
 }
 
+async function handleAdminCommand(env, chatId, userId, text) {
+  const parts = text.split(/\s+/).filter(Boolean);
+  const token = parts[1] || "";
+
+  if (token) {
+    const loggedIn = await tryAdminLogin(env, userId, token);
+    if (!loggedIn) {
+      await sendPlainMessage(env, chatId, "Invalid admin token.");
+      return;
+    }
+  }
+
+  if (!(await isAdmin(env, userId))) {
+    await sendPlainMessage(env, chatId, "Admin login required. Use: /admin ADMIN_TOKEN");
+    return;
+  }
+
+  await sendPlainMessage(env, chatId, await adminPanelText(env));
+}
+
 function buildDebugText(env, state) {
   return [
     "Debug:",
     "BOT_TOKEN: " + (env.BOT_TOKEN ? "OK" : "MISSING"),
     "ELEVEN_API: " + (env.ELEVEN_API ? "OK" : "MISSING"),
+    "ADMIN_TOKEN: " + (env.ADMIN_TOKEN ? "OK" : "MISSING"),
     "DB: " + (env.DB ? "OK" : "MISSING"),
     "voice: " + (state.voice || "none"),
     "output: " + (state.output || "MP3"),
