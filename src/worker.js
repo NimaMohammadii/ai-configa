@@ -1,4 +1,5 @@
 import { handleCallback, handleMessage } from "./bot.js";
+import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCallback } from "./stars-flow.js";
 
 export default {
@@ -27,7 +28,9 @@ export default {
     }
 
     if (update.callback_query) {
-      if (isStarsCallback(update.callback_query.data)) {
+      if (isDemoCallback(update.callback_query.data)) {
+        ctx.waitUntil(handleDemoCallback(update.callback_query, env).catch(logError));
+      } else if (isStarsCallback(update.callback_query.data)) {
         ctx.waitUntil(handleStarsCallback(update.callback_query, env).catch(logError));
       } else {
         ctx.waitUntil(handleCallback(update.callback_query, env).catch(logError));
