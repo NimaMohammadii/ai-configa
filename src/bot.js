@@ -2,9 +2,10 @@ import { adminPanelText, isAdmin, trackUser, tryAdminLogin } from "./admin.js";
 import { ensureBalanceRow, getBalance } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { textToSpeech } from "./elevenlabs.js";
+import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState } from "./state.js";
-import { answerCallback, deleteMessage, editMessage, sendAudio, sendDocument, sendMessage, sendPlainMessage } from "./telegram-actions.js";
-import { buyCreditsKeyboard, buyCreditsText, mainKeyboard, startText } from "./ui.js";
+import { answerCallback, deleteMessage, editMessage, sendAudio, sendDocument, sendHtmlMessage, sendMessage, sendPlainMessage } from "./telegram-actions.js";
+import { buyCreditsKeyboard, buyCreditsText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
 
 const DEMO_TEXT = "Hello, this is a free demo voice from Vexa text to speech.";
@@ -13,13 +14,21 @@ export async function handleMessage(message, env) {
   const chatId = message.chat && message.chat.id;
   const userId = message.from && message.from.id;
   const text = message.text ? message.text.trim() : "";
+  const hasPhoto = Array.isArray(message.photo) && message.photo.length > 0;
 
-  if (!chatId || !userId || !text) return;
+  if (!chatId || !userId) return;
 
   await trackUser(env, message.from);
   await ensureBalanceRow(env, userId);
 
   const state = await getState(env, userId);
+
+  if (hasPhoto) {
+    await handlePaymentScreenshot(env, chatId, userId, state);
+    return;
+  }
+
+  if (!text) return;
 
   if (text === "/start") {
     await sendMessage(env, chatId, startText(state), mainKeyboard(state));
@@ -99,13 +108,41 @@ export async function handleCallback(query, env) {
     return;
   }
 
+  if (data === "buy_toman") {
+    await answerCallback(env, query.id);
+    await editMessage(env, chatId, messageId, tomanPackagesText(), tomanPackagesKeyboard());
+    return;
+  }
+
+  if (data.startsWith("toman_package:")) {
+    await answerCallback(env, query.id);
+    const packageId = data.slice("toman_package:".length);
+    const pack = TOMAN_PACKAGES[packageId];
+
+    if (!pack) {
+      await answerCallback(env, query.id, "Invalid package", true);
+      return;
+    }
+
+    await setPendingPayment(env, userId, packageId);
+    await sendHtmlMessage(env, chatId, paymentInstructionText(pack), paymentCancelKeyboard());
+    return;
+  }
+
+  if (data === "cancel_payment") {
+    await answerCallback(env, query.id);
+    await clearPendingPayment(env, userId);
+    await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
+    return;
+  }
+
   if (data === "back_main") {
     await answerCallback(env, query.id);
     await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
     return;
   }
 
-  if (data === "buy_toman" || data === "buy_stars") {
+  if (data === "buy_stars") {
     await answerCallback(env, query.id, "Coming soon", true);
     return;
   }
@@ -114,6 +151,32 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id);
     await makeAndSendAudio(env, chatId, DEMO_TEXT, state, true);
   }
+}
+
+async function handlePaymentScreenshot(env, chatId, userId, state) {
+  const pending = await getPendingPayment(env, userId);
+
+  if (!pending || !TOMAN_PACKAGES[pending.package_id]) {
+    await sendPlainMessage(env, chatId, "Screenshot received. If this is for a credit purchase, please choose a package first.");
+    return;
+  }
+
+  const pack = TOMAN_PACKAGES[pending.package_id];
+  await sendHtmlMessage(
+    env,
+    chatId,
+    [
+      "✅ <b>Payment screenshot received!</b>",
+      "",
+      "Your receipt is now waiting for admin verification.",
+      "After approval, your credits will be added to your balance.",
+      "",
+      "You can keep using the bot or choose another option below."
+    ].join("\n"),
+    mainKeyboard(state)
+  );
+
+  await sendHtmlMessage(env, chatId, paymentInstructionText(pack), paymentCancelKeyboard());
 }
 
 async function handleAdminCommand(env, chatId, userId, text) {
