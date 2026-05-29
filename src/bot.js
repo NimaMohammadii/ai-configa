@@ -1,5 +1,5 @@
-import { adminPanelText, isAdmin, trackUser, tryAdminLogin } from "./admin.js";
-import { ensureBalanceRow, getBalance } from "./credits.js";
+import { adminPanelText, adminUserKeyboard, adminUsersKeyboard, adminUserText, isAdmin, trackUser, tryAdminLogin } from "./admin.js";
+import { addCredits, ensureBalanceRow, getBalance, removeCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
@@ -13,6 +13,7 @@ const DEMO_TEXT = "Hello, this is a free demo voice from Vexa text to speech.";
 export async function handleMessage(message, env) {
   const chatId = message.chat && message.chat.id;
   const userId = message.from && message.from.id;
+  const messageId = message.message_id;
   const text = message.text ? message.text.trim() : "";
   const hasPhoto = Array.isArray(message.photo) && message.photo.length > 0;
 
@@ -36,7 +37,7 @@ export async function handleMessage(message, env) {
   }
 
   if (text.startsWith("/admin")) {
-    await handleAdminCommand(env, chatId, userId, text);
+    await handleAdminCommand(env, chatId, userId, text, messageId);
     return;
   }
 
@@ -67,6 +68,47 @@ export async function handleCallback(query, env) {
 
   if (data === "noop") {
     await answerCallback(env, query.id);
+    return;
+  }
+
+  if (data.startsWith("admin_page:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id);
+    const page = Number(data.split(":")[1] || 0);
+    await answerCallback(env, query.id);
+    await editMessage(env, chatId, messageId, await adminPanelText(env, page), await adminUsersKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_user:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id);
+    const parts = data.split(":");
+    const targetUserId = parts[1];
+    const page = Number(parts[2] || 0);
+    await answerCallback(env, query.id);
+    await editMessage(env, chatId, messageId, await adminUserText(env, targetUserId), adminUserKeyboard(targetUserId, page));
+    return;
+  }
+
+  if (data.startsWith("admin_credit:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id);
+
+    const parts = data.split(":");
+    const action = parts[1];
+    const targetUserId = parts[2];
+    const amount = Number(parts[3] || 0);
+    const page = Number(parts[4] || 0);
+
+    if (!targetUserId || !amount || !["add", "remove"].includes(action)) {
+      await answerCallback(env, query.id, "Invalid action", true);
+      return;
+    }
+
+    const newBalance = action === "add"
+      ? await addCredits(env, targetUserId, amount)
+      : await removeCredits(env, targetUserId, amount);
+
+    await answerCallback(env, query.id, `Done. New balance: ${newBalance} credits`, true);
+    await editMessage(env, chatId, messageId, await adminUserText(env, targetUserId), adminUserKeyboard(targetUserId, page));
     return;
   }
 
@@ -153,6 +195,10 @@ export async function handleCallback(query, env) {
   }
 }
 
+async function denyCallback(env, callbackQueryId) {
+  await answerCallback(env, callbackQueryId, "Access denied.", true);
+}
+
 async function handlePaymentScreenshot(env, chatId, userId, state) {
   const pending = await getPendingPayment(env, userId);
 
@@ -179,24 +225,28 @@ async function handlePaymentScreenshot(env, chatId, userId, state) {
   await sendHtmlMessage(env, chatId, paymentInstructionText(pack), paymentCancelKeyboard());
 }
 
-async function handleAdminCommand(env, chatId, userId, text) {
+async function handleAdminCommand(env, chatId, userId, text, messageId) {
   const parts = text.split(/\s+/).filter(Boolean);
   const token = parts[1] || "";
 
   if (token) {
     const loggedIn = await tryAdminLogin(env, userId, token);
+    await deleteMessage(env, chatId, messageId).catch(() => null);
+
     if (!loggedIn) {
-      await sendPlainMessage(env, chatId, "Invalid admin token.");
+      const msg = await sendPlainMessage(env, chatId, "Invalid admin token.");
+      if (msg?.message_id) await deleteMessage(env, chatId, msg.message_id).catch(() => null);
       return;
     }
   }
 
   if (!(await isAdmin(env, userId))) {
-    await sendPlainMessage(env, chatId, "Admin login required. Use: /admin ADMIN_TOKEN");
+    const msg = await sendPlainMessage(env, chatId, "Admin login required. Use: /admin ADMIN_TOKEN");
+    if (msg?.message_id) await deleteMessage(env, chatId, msg.message_id).catch(() => null);
     return;
   }
 
-  await sendPlainMessage(env, chatId, await adminPanelText(env));
+  await sendMessage(env, chatId, await adminPanelText(env, 0), await adminUsersKeyboard(env, 0));
 }
 
 function buildDebugText(env, state) {
