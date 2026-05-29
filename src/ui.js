@@ -22,19 +22,20 @@ export function startText(state) {
 export function mainKeyboard(state) {
   const page = Number(state.page || 0);
   const output = state.output || "MP3";
+  const selectedVoice = state.voice || "Nora";
   const start = page * VOICES_PER_PAGE;
   const voices = VOICE_NAMES.slice(start, start + VOICES_PER_PAGE);
   const rows = [];
 
   for (let i = 0; i < 8; i += 2) {
     rows.push([
-      voiceButton(voices[i]),
-      voiceButton(voices[i + 1]),
+      voiceButton(voices[i], selectedVoice),
+      voiceButton(voices[i + 1], selectedVoice),
     ]);
   }
 
   rows.push([
-    voiceButton(voices[8]),
+    voiceButton(voices[8], selectedVoice),
     page === 0
       ? { text: "Next →", callback_data: "page:1" }
       : { text: "← Previous", callback_data: "page:0" },
@@ -43,16 +44,17 @@ export function mainKeyboard(state) {
   rows.push([{ text: "▶ Demo", callback_data: "demo" }]);
 
   rows.push([
-    { text: output === "MP3" ? "✅ MP3 📁" : "MP3 📁", callback_data: "output:MP3" },
-    { text: output === "Voice" ? "✅ Voice 🎙️" : "Voice 🎙️", callback_data: "output:Voice" },
+    { text: output === "MP3" ? "✔️ MP3 📁" : "MP3 📁", callback_data: "output:MP3" },
+    { text: output === "Voice" ? "✔️ Voice 🎙️" : "Voice 🎙️", callback_data: "output:Voice" },
   ]);
 
   return { inline_keyboard: rows };
 }
 
-function voiceButton(name) {
+function voiceButton(name, selectedVoice) {
   if (!name) return { text: " ", callback_data: "noop" };
-  return { text: name, callback_data: `voice:${name}` };
+  const label = name === selectedVoice ? "✔️ " + name : name;
+  return { text: label, callback_data: `voice:${name}` };
 }
 
 export function escapeHtml(value) {
