@@ -19,6 +19,11 @@ export async function handleReceiptPhoto(message, env) {
   const state = await getState(env, userId);
   const pending = await getPendingPayment(env, userId);
 
+  if (state.menuMessageId) {
+    await deleteMessage(env, chatId, state.menuMessageId).catch(() => null);
+    await setMenuMessageId(env, userId, null);
+  }
+
   if (!pending || !TOMAN_PACKAGES[pending.package_id]) {
     await deleteMessage(env, chatId, message.message_id).catch(() => null);
     const menu = await sendMessage(env, chatId, "Screenshot received. Please choose a package first\n\n" + startText(state), mainKeyboard(state));
@@ -32,21 +37,24 @@ export async function handleReceiptPhoto(message, env) {
   const caption = receiptCaption({ user, amount: pack.amount, credits: totalCredits });
   const admins = await getAllAdminIds(env);
 
+  let sentToAdmin = 0;
   for (const adminId of admins) {
     try {
       const copied = await copyMessage(env, adminId, chatId, message.message_id, caption, receiptKeyboard(receiptId));
       await saveReceiptAdminMessage(env, receiptId, adminId, copied.message_id, caption);
-    } catch {}
+      sentToAdmin++;
+    } catch (error) {
+      console.error("copy receipt to admin failed", adminId, error && error.message ? error.message : error);
+    }
   }
 
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
 
-  const menu = await sendMessage(
-    env,
-    chatId,
-    "✅ <b>Payment receipt received</b>\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance\n\n" + startText(state),
-    mainKeyboard(state)
-  );
+  const text = sentToAdmin > 0
+    ? "✅ <b>Payment receipt received</b>\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance\n\n"
+    : "⚠️ <b>Payment receipt received</b>\n\nAdmin chat is not configured yet. Please contact support\n\n";
+
+  const menu = await sendMessage(env, chatId, text + startText(state), mainKeyboard(state));
   await setMenuMessageId(env, userId, menu?.message_id || null);
   return true;
 }
