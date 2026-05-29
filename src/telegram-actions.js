@@ -16,6 +16,15 @@ export function sendPlainMessage(env, chatId, text) {
   });
 }
 
+export function sendHtmlMessage(env, chatId, text, replyMarkup = null) {
+  return tgJson(env, "sendMessage", {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+    reply_markup: replyMarkup,
+  });
+}
+
 export function editMessage(env, chatId, messageId, text, replyMarkup = null) {
   return tgJson(env, "editMessageText", {
     chat_id: chatId,
