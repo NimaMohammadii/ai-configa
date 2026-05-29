@@ -423,7 +423,7 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
   if (!isDemo) {
     const balance = await getBalance(env, userId);
     if (balance < cost) {
-      await upsertMenu(env, chatId, userId, state, t(state.language, "notEnough", { needed: cost, balance }) + "\n\n" + startText(state), mainKeyboard(state));
+      await upsertMenu(env, chatId, userId, state, insufficientCreditsText(state, cost, balance), mainKeyboard(state));
       return;
     }
   }
@@ -514,6 +514,16 @@ function localizedBuyCreditsKeyboard(state = {}) {
       [{ text: t(lang, "back"), callback_data: "back_main" }],
     ],
   };
+}
+
+function insufficientCreditsText(state, cost, balance) {
+  const lang = state.language || "en";
+  return [
+    t(lang, "notEnough", { needed: cost, balance }),
+    "",
+    t(lang, "sendText"),
+    t(lang, "creditRule"),
+  ].join("\n");
 }
 
 function countCredits(text) {
