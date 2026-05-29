@@ -76,6 +76,7 @@ export async function handleReceiptCallback(query, env) {
   }
 
   if (receipt.status !== "pending") {
+    await removeButtonsFromClickedReceipt(env, query, receipt.status);
     await answerCallback(env, query.id, "Already reviewed", true);
     return;
   }
@@ -84,7 +85,8 @@ export async function handleReceiptCallback(query, env) {
     const balance = await addCredits(env, receipt.user_id, receipt.credits);
     await markReceipt(env, receiptId, "approved", adminId);
     await clearPendingPayment(env, receipt.user_id);
-    await updateAllReceiptCaptions(env, receiptId, "approved");
+    await updateClickedReceiptCaption(env, query, "approved");
+    await updateAllReceiptCaptions(env, receiptId, "approved", chatId, messageId);
     await sendMessage(
       env,
       receipt.user_id,
@@ -97,7 +99,8 @@ export async function handleReceiptCallback(query, env) {
 
   await markReceipt(env, receiptId, "rejected", adminId);
   await clearPendingPayment(env, receipt.user_id);
-  await updateAllReceiptCaptions(env, receiptId, "rejected");
+  await updateClickedReceiptCaption(env, query, "rejected");
+  await updateAllReceiptCaptions(env, receiptId, "rejected", chatId, messageId);
   await sendMessage(
     env,
     receipt.user_id,
@@ -144,19 +147,58 @@ async function saveReceiptAdminMessage(env, receiptId, adminId, messageId, capti
   ).bind(String(receiptId), String(adminId), Number(messageId), caption).run();
 }
 
-async function updateAllReceiptCaptions(env, receiptId, status) {
+async function updateClickedReceiptCaption(env, query, status) {
+  const chatId = query.message?.chat?.id;
+  const messageId = query.message?.message_id;
+  const currentCaption = query.message?.caption || "";
+  if (!chatId || !messageId || !currentCaption) return;
+
+  const cleanCaption = stripReviewStatus(currentCaption);
+  await editMessageCaption(env, chatId, messageId, cleanCaption + statusSuffix(status), emptyKeyboard()).catch((error) => {
+    console.error("clicked receipt caption update failed", error && error.message ? error.message : error);
+  });
+}
+
+async function removeButtonsFromClickedReceipt(env, query, status) {
+  const chatId = query.message?.chat?.id;
+  const messageId = query.message?.message_id;
+  const currentCaption = query.message?.caption || "";
+  if (!chatId || !messageId || !currentCaption) return;
+
+  const cleanCaption = stripReviewStatus(currentCaption);
+  await editMessageCaption(env, chatId, messageId, cleanCaption + statusSuffix(status), emptyKeyboard()).catch(() => null);
+}
+
+async function updateAllReceiptCaptions(env, receiptId, status, skipChatId = null, skipMessageId = null) {
   requireDb(env);
   const rows = await env.DB.prepare(
     "SELECT admin_id, message_id, caption FROM payment_receipt_messages WHERE receipt_id = ?"
   ).bind(String(receiptId)).all();
 
-  const suffix = status === "approved"
+  for (const row of rows.results || []) {
+    if (String(row.admin_id) === String(skipChatId) && Number(row.message_id) === Number(skipMessageId)) continue;
+    const cleanCaption = stripReviewStatus(row.caption || "");
+    await editMessageCaption(env, row.admin_id, row.message_id, cleanCaption + statusSuffix(status), emptyKeyboard()).catch((error) => {
+      console.error("receipt caption update failed", row.admin_id, row.message_id, error && error.message ? error.message : error);
+    });
+  }
+}
+
+function statusSuffix(status) {
+  return status === "approved"
     ? "\n\n<b>✅ تأیید شده توسط ادمین</b>"
     : "\n\n<b>❌ رد شده توسط ادمین</b>";
+}
 
-  for (const row of rows.results || []) {
-    await editMessageCaption(env, row.admin_id, row.message_id, row.caption + suffix, null).catch(() => null);
-  }
+function stripReviewStatus(caption) {
+  return String(caption || "")
+    .replace(/\n\n✅ تأیید شده توسط ادمین/g, "")
+    .replace(/\n\n❌ رد شده توسط ادمین/g, "")
+    .trim();
+}
+
+function emptyKeyboard() {
+  return { inline_keyboard: [] };
 }
 
 function receiptKeyboard(receiptId) {
