@@ -1,4 +1,3 @@
-import { addCredits } from "./credits.js";
 import { getStarPackage, applySuccessfulStarsPayment } from "./stars.js";
 import { starsPackagesKeyboard, starsPackagesText, buyCreditsTextClean } from "./stars-ui.js";
 import { getState } from "./state.js";
@@ -7,7 +6,7 @@ import { buyCreditsKeyboard, mainKeyboard, startText } from "./ui.js";
 import { t } from "./i18n.js";
 
 export function isStarsCallback(data) {
-  return data === "buy_stars" || String(data || "").startsWith("stars_package:");
+  return data === "buy_credits" || data === "buy_stars" || String(data || "").startsWith("stars_package:");
 }
 
 export async function handleStarsCallback(query, env) {
@@ -18,6 +17,12 @@ export async function handleStarsCallback(query, env) {
   if (!userId || !chatId || !messageId) return;
 
   const state = await getState(env, userId);
+
+  if (data === "buy_credits") {
+    await answerCallback(env, query.id);
+    await editOrSend(env, chatId, messageId, buyCreditsTextClean(state), localizedBuyCreditsKeyboard(state));
+    return;
+  }
 
   if (data === "buy_stars") {
     await answerCallback(env, query.id);
@@ -76,6 +81,18 @@ export async function handleStarsPayment(message, env) {
     mainKeyboard(state)
   );
   return true;
+}
+
+function localizedBuyCreditsKeyboard(state = {}) {
+  const lang = state.language || "en";
+  if (lang === "fa") return buyCreditsKeyboard(state);
+
+  return {
+    inline_keyboard: [
+      [{ text: t(lang, "telegramStars"), callback_data: "buy_stars" }],
+      [{ text: t(lang, "back"), callback_data: "back_main" }],
+    ],
+  };
 }
 
 async function editOrSend(env, chatId, messageId, text, keyboard) {
