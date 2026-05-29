@@ -8,5 +8,7 @@ preview_urls = true
 # npx wrangler secret put BOT_TOKEN
 # npx wrangler secret put ELEVEN_API
 
-# D1 is required for persistent user state and demo cache.
-# See wrangler.toml.example and README.md for the DB binding block.
+[[d1_databases]]
+binding = "DB"
+database_name = "ai-configa-db"
+database_id = "33c8cf30-4daa-498a-8706-d457869f5d25"
