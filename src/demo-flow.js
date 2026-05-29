@@ -3,7 +3,7 @@ import { getDemoText } from "./demo-texts.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
 import { getState, saveState, setMenuMessageId } from "./state.js";
-import { answerCallback, deleteMessage, sendAudio, sendDocument, sendMessage, sendPlainMessage } from "./telegram-actions.js";
+import { answerCallback, deleteMessage, sendDemoAudio, sendDemoDocument, sendMessage, sendPlainMessage } from "./telegram-actions.js";
 import { languageKeyboard, languageText, mainKeyboard, startText } from "./ui.js";
 import { VOICES } from "./voices.js";
 
@@ -53,7 +53,7 @@ async function makeAndSendDemo(env, chatId, userId, state) {
       await saveDemoAudio(env, voiceName, lang, audio);
     }
 
-    await sendCleanAudio(env, chatId, audio);
+    await sendCleanDemoAudio(env, chatId, audio);
 
     if (statusMessage?.message_id) {
       await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
@@ -92,11 +92,11 @@ async function editAsNewMenu(env, chatId, userId, state, text, keyboard) {
   await setMenuMessageId(env, userId, menu?.message_id || null);
 }
 
-async function sendCleanAudio(env, chatId, audio) {
+async function sendCleanDemoAudio(env, chatId, audio) {
   try {
-    await sendAudio(env, chatId, audio);
+    await sendDemoAudio(env, chatId, audio);
   } catch {
-    await sendDocument(env, chatId, audio);
+    await sendDemoDocument(env, chatId, audio);
   }
 }
 
