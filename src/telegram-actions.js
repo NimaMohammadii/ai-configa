@@ -33,10 +33,11 @@ export function deleteMessage(env, chatId, messageId) {
   });
 }
 
-export function answerCallback(env, callbackQueryId, text = "") {
+export function answerCallback(env, callbackQueryId, text = "", showAlert = false) {
   return tgJson(env, "answerCallbackQuery", {
     callback_query_id: callbackQueryId,
     text,
+    show_alert: showAlert,
   });
 }
 
