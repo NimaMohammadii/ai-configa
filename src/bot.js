@@ -1,7 +1,8 @@
+import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { getState, saveState } from "./state.js";
-import { answerCallback, editMessage, sendAudio, sendDocument, sendMessage, sendPlainMessage } from "./telegram-actions.js";
-import { startText, mainKeyboard, PRICE_PER_CHARACTER_TON } from "./ui.js";
+import { answerCallback, deleteMessage, editMessage, sendAudio, sendDocument, sendMessage, sendPlainMessage } from "./telegram-actions.js";
+import { startText, mainKeyboard } from "./ui.js";
 import { VOICES } from "./voices.js";
 
 const DEMO_TEXT = "Hello, this is a free demo voice from Vexa text to speech.";
@@ -75,7 +76,7 @@ function buildDebugText(env, state) {
     "Debug:",
     "BOT_TOKEN: " + (env.BOT_TOKEN ? "OK" : "MISSING"),
     "ELEVEN_API: " + (env.ELEVEN_API ? "OK" : "MISSING"),
-    "USER_STATE: " + (env.USER_STATE ? "OK" : "not connected"),
+    "DB: " + (env.DB ? "OK" : "MISSING"),
     "voice: " + (state.voice || "none"),
     "output: " + (state.output || "MP3"),
   ].join("\n");
@@ -84,24 +85,41 @@ function buildDebugText(env, state) {
 async function makeAndSendAudio(env, chatId, text, state, isDemo) {
   const voiceName = state.voice || "Nora";
   const voiceId = VOICES[voiceName] || VOICES.Nora;
-  const cost = isDemo ? "0" : (text.length * PRICE_PER_CHARACTER_TON).toFixed(5);
-  const filename = voiceName + ".mp3";
-  const caption = "Voice: " + voiceName + "\nCost: " + cost + " TON";
+  let statusMessage = null;
 
   try {
-    await sendPlainMessage(env, chatId, isDemo ? "Generating demo..." : "Generating voice...");
+    statusMessage = await sendPlainMessage(env, chatId, isDemo ? "Generating demo..." : "Generating voice...");
 
-    const audio = await textToSpeech(env, text, voiceId);
-    await sendPlainMessage(env, chatId, "Audio created. Size: " + audio.byteLength + " bytes. Sending...");
+    let audio = null;
 
-    try {
-      await sendAudio(env, chatId, audio, filename, caption);
-    } catch (sendAudioError) {
-      await sendPlainMessage(env, chatId, "sendAudio failed, trying document: " + safeError(sendAudioError));
-      await sendDocument(env, chatId, audio, filename, caption);
+    if (isDemo) {
+      audio = await getDemoAudio(env, voiceName);
+      if (!audio) {
+        audio = await textToSpeech(env, text, voiceId);
+        await saveDemoAudio(env, voiceName, audio);
+      }
+    } else {
+      audio = await textToSpeech(env, text, voiceId);
+    }
+
+    await sendCleanAudio(env, chatId, audio);
+
+    if (statusMessage && statusMessage.message_id) {
+      await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
     }
   } catch (error) {
+    if (statusMessage && statusMessage.message_id) {
+      await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
+    }
     await sendPlainMessage(env, chatId, "TTS Error: " + safeError(error));
+  }
+}
+
+async function sendCleanAudio(env, chatId, audio) {
+  try {
+    await sendAudio(env, chatId, audio);
+  } catch (sendAudioError) {
+    await sendDocument(env, chatId, audio);
   }
 }
 
