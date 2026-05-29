@@ -50,6 +50,31 @@ export function answerCallback(env, callbackQueryId, text = "", showAlert = fals
   });
 }
 
+export function answerPreCheckout(env, preCheckoutQueryId, ok = true, errorMessage = "") {
+  const payload = {
+    pre_checkout_query_id: preCheckoutQueryId,
+    ok,
+  };
+
+  if (!ok && errorMessage) payload.error_message = errorMessage;
+  return tgJson(env, "answerPreCheckoutQuery", payload);
+}
+
+export function sendStarsInvoice(env, chatId, pack) {
+  return tgJson(env, "sendInvoice", {
+    chat_id: chatId,
+    title: "Vexa Credits",
+    description: pack.description,
+    payload: "stars:" + pack.id,
+    provider_token: "",
+    currency: "XTR",
+    prices: [{ label: pack.invoiceLabel, amount: pack.stars }],
+    reply_markup: {
+      inline_keyboard: [[{ text: "Pay " + pack.stars + " ⭐️", pay: true }]],
+    },
+  });
+}
+
 export function sendAudio(env, chatId, audioBuffer) {
   const form = new FormData();
   form.append("chat_id", String(chatId));
