@@ -76,7 +76,7 @@ export function sendStarsInvoice(env, chatId, pack) {
 }
 
 export function sendAudio(env, chatId, audioBuffer) {
-  return sendNamedAudio(env, chatId, audioBuffer, "Vexa", "Vexa.mp3");
+  return sendNamedAudio(env, chatId, audioBuffer, "Vexa.demo", "Vexa.demo.mp3");
 }
 
 export function sendDemoAudio(env, chatId, audioBuffer) {
@@ -94,7 +94,7 @@ function sendNamedAudio(env, chatId, audioBuffer, title, filename) {
 export function sendDocument(env, chatId, audioBuffer) {
   const form = new FormData();
   form.append("chat_id", String(chatId));
-  form.append("document", new Blob([audioBuffer], { type: "audio/mpeg" }), "Vexa.mp3");
+  form.append("document", new Blob([audioBuffer], { type: "audio/mpeg" }), "Vexa.demo.mp3");
   return tgForm(env, "sendDocument", form);
 }
 
@@ -108,6 +108,6 @@ export function sendDemoDocument(env, chatId, audioBuffer) {
 export function sendVoice(env, chatId, audioBuffer) {
   const form = new FormData();
   form.append("chat_id", String(chatId));
-  form.append("voice", new Blob([audioBuffer], { type: "audio/mpeg" }), "Vexa.mp3");
+  form.append("voice", new Blob([audioBuffer], { type: "audio/mpeg" }), "Vexa.demo.mp3");
   return tgForm(env, "sendVoice", form);
 }
