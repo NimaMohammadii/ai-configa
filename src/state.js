@@ -50,7 +50,7 @@ export async function setMenuMessageId(env, userId, messageId) {
 export async function setUserLanguage(env, userId, language) {
   const state = await getState(env, userId);
   state.language = language;
-  await saveState(env, userId);
+  await saveState(env, userId, state);
 }
 
 export function requireDb(env) {
