@@ -19,9 +19,8 @@ export async function handleReceiptPhoto(message, env) {
   const state = await getState(env, userId);
   const pending = await getPendingPayment(env, userId);
 
-  await deleteMessage(env, chatId, message.message_id).catch(() => null);
-
   if (!pending || !TOMAN_PACKAGES[pending.package_id]) {
+    await deleteMessage(env, chatId, message.message_id).catch(() => null);
     const menu = await sendMessage(env, chatId, "Screenshot received. Please choose a package first\n\n" + startText(state), mainKeyboard(state));
     await setMenuMessageId(env, userId, menu?.message_id || null);
     return true;
@@ -39,6 +38,8 @@ export async function handleReceiptPhoto(message, env) {
       await saveReceiptAdminMessage(env, receiptId, adminId, copied.message_id, caption);
     } catch {}
   }
+
+  await deleteMessage(env, chatId, message.message_id).catch(() => null);
 
   const menu = await sendMessage(
     env,
