@@ -35,6 +35,16 @@ export function editMessage(env, chatId, messageId, text, replyMarkup = null) {
   });
 }
 
+export function editMessageCaption(env, chatId, messageId, caption, replyMarkup = null) {
+  return tgJson(env, "editMessageCaption", {
+    chat_id: chatId,
+    message_id: messageId,
+    caption,
+    parse_mode: "HTML",
+    reply_markup: replyMarkup,
+  });
+}
+
 export function deleteMessage(env, chatId, messageId) {
   return tgJson(env, "deleteMessage", {
     chat_id: chatId,
@@ -72,6 +82,17 @@ export function sendStarsInvoice(env, chatId, pack) {
     reply_markup: {
       inline_keyboard: [[{ text: "Pay " + pack.stars + " ⭐️", pay: true }]],
     },
+  });
+}
+
+export function copyMessage(env, chatId, fromChatId, messageId, caption, replyMarkup = null) {
+  return tgJson(env, "copyMessage", {
+    chat_id: chatId,
+    from_chat_id: fromChatId,
+    message_id: messageId,
+    caption,
+    parse_mode: "HTML",
+    reply_markup: replyMarkup,
   });
 }
 
