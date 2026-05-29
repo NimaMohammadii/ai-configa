@@ -1,9 +1,10 @@
 import { adminPanelText, isAdmin, trackUser, tryAdminLogin } from "./admin.js";
+import { ensureBalanceRow, getBalance } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { getState, saveState } from "./state.js";
 import { answerCallback, deleteMessage, editMessage, sendAudio, sendDocument, sendMessage, sendPlainMessage } from "./telegram-actions.js";
-import { startText, mainKeyboard } from "./ui.js";
+import { buyCreditsKeyboard, buyCreditsText, mainKeyboard, startText } from "./ui.js";
 import { VOICES } from "./voices.js";
 
 const DEMO_TEXT = "Hello, this is a free demo voice from Vexa text to speech.";
@@ -16,6 +17,7 @@ export async function handleMessage(message, env) {
   if (!chatId || !userId || !text) return;
 
   await trackUser(env, message.from);
+  await ensureBalanceRow(env, userId);
 
   const state = await getState(env, userId);
 
@@ -50,6 +52,7 @@ export async function handleCallback(query, env) {
   if (!userId || !chatId || !messageId) return;
 
   await trackUser(env, query.from);
+  await ensureBalanceRow(env, userId);
   await answerCallback(env, query.id);
 
   const state = await getState(env, userId);
@@ -76,6 +79,28 @@ export async function handleCallback(query, env) {
     state.output = output === "Voice" ? "Voice" : "MP3";
     await saveState(env, userId, state);
     await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
+    return;
+  }
+
+  if (data === "balance") {
+    const balance = await getBalance(env, userId);
+    await answerCallback(env, query.id, "Balance: " + balance + " credits");
+    await sendPlainMessage(env, chatId, "💰 Balance\n\n" + balance + " credits");
+    return;
+  }
+
+  if (data === "buy_credits") {
+    await editMessage(env, chatId, messageId, buyCreditsText(), buyCreditsKeyboard());
+    return;
+  }
+
+  if (data === "back_main") {
+    await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
+    return;
+  }
+
+  if (data === "buy_toman" || data === "buy_stars") {
+    await answerCallback(env, query.id, "Coming soon");
     return;
   }
 
