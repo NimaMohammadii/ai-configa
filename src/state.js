@@ -3,7 +3,6 @@ export const DEFAULT_STATE = {
   output: "MP3",
   page: 0,
   menuMessageId: null,
-  paymentMessageId: null,
   language: null,
 };
 
@@ -11,7 +10,7 @@ export async function getState(env, userId) {
   requireDb(env);
 
   const row = await env.DB.prepare(
-    "SELECT voice, output, page, menu_message_id, payment_message_id, language FROM user_state WHERE user_id = ?"
+    "SELECT voice, output, page, menu_message_id, language FROM user_state WHERE user_id = ?"
   ).bind(String(userId)).first();
 
   if (!row) return { ...DEFAULT_STATE };
@@ -21,7 +20,6 @@ export async function getState(env, userId) {
     output: row.output || DEFAULT_STATE.output,
     page: Number(row.page || 0),
     menuMessageId: row.menu_message_id ? Number(row.menu_message_id) : null,
-    paymentMessageId: row.payment_message_id ? Number(row.payment_message_id) : null,
     language: row.language || null,
   };
 }
@@ -34,14 +32,13 @@ export async function saveState(env, userId, state) {
     output: state.output || DEFAULT_STATE.output,
     page: Number(state.page || 0),
     menuMessageId: state.menuMessageId ? Number(state.menuMessageId) : null,
-    paymentMessageId: state.paymentMessageId ? Number(state.paymentMessageId) : null,
     language: state.language || null,
   };
 
   await env.DB.prepare(
-    "INSERT INTO user_state (user_id, voice, output, page, menu_message_id, payment_message_id, language, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) " +
-    "ON CONFLICT(user_id) DO UPDATE SET voice = excluded.voice, output = excluded.output, page = excluded.page, menu_message_id = excluded.menu_message_id, payment_message_id = excluded.payment_message_id, language = excluded.language, updated_at = CURRENT_TIMESTAMP"
-  ).bind(String(userId), cleanState.voice, cleanState.output, cleanState.page, cleanState.menuMessageId, cleanState.paymentMessageId, cleanState.language).run();
+    "INSERT INTO user_state (user_id, voice, output, page, menu_message_id, language, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET voice = excluded.voice, output = excluded.output, page = excluded.page, menu_message_id = excluded.menu_message_id, language = excluded.language, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(userId), cleanState.voice, cleanState.output, cleanState.page, cleanState.menuMessageId, cleanState.language).run();
 }
 
 export async function setMenuMessageId(env, userId, messageId) {
@@ -50,16 +47,10 @@ export async function setMenuMessageId(env, userId, messageId) {
   await saveState(env, userId, state);
 }
 
-export async function setPaymentMessageId(env, userId, messageId) {
-  const state = await getState(env, userId);
-  state.paymentMessageId = messageId ? Number(messageId) : null;
-  await saveState(env, userId, state);
-}
-
 export async function setUserLanguage(env, userId, language) {
   const state = await getState(env, userId);
   state.language = language;
-  await saveState(env, userId, state);
+  await saveState(env, userId);
 }
 
 export function requireDb(env) {
