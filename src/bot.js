@@ -28,8 +28,6 @@ import { answerCallback, deleteMessage, editMessage, sendAudio, sendDocument, se
 import { buyCreditsKeyboard, buyCreditsText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
 
-const DEMO_TEXT = "Hello, this is a free demo voice from Vexa text to speech";
-
 export async function handleMessage(message, env) {
   const chatId = message.chat && message.chat.id;
   const userId = message.from && message.from.id;
@@ -271,7 +269,7 @@ export async function handleCallback(query, env) {
 
   if (data === "demo") {
     await answerCallback(env, query.id);
-    await makeAndSendAudio(env, chatId, userId, null, DEMO_TEXT, state, true);
+    await makeAndSendAudio(env, chatId, userId, null, t(state.language, "demoText"), state, true);
   }
 }
 
@@ -406,6 +404,7 @@ function buildDebugText(env, state) {
 async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state, isDemo) {
   const voiceName = state.voice || "Nora";
   const voiceId = VOICES[voiceName] || VOICES.Nora;
+  const lang = normalizeLang(state.language || "en");
   const cost = countCredits(text);
   let statusMessage = null;
 
@@ -433,10 +432,10 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
     let audio = null;
 
     if (isDemo) {
-      audio = await getDemoAudio(env, voiceName);
+      audio = await getDemoAudio(env, voiceName, lang);
       if (!audio) {
         audio = await textToSpeech(env, text, voiceId);
-        await saveDemoAudio(env, voiceName, audio);
+        await saveDemoAudio(env, voiceName, lang, audio);
       }
     } else {
       audio = await textToSpeech(env, text, voiceId);
