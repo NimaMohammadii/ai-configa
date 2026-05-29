@@ -13,6 +13,7 @@ import {
   getAdminAction,
   getAllUserIds,
   isAdmin,
+  resetUser,
   setAdminAction,
   trackUser,
   tryAdminLogin,
@@ -61,6 +62,15 @@ export async function handleMessage(message, env) {
       return;
     }
     const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
+    await setMenuMessageId(env, userId, menu?.message_id || null);
+    return;
+  }
+
+  if (text === "/language" || text === "/lang") {
+    if (state.menuMessageId) {
+      await deleteMessage(env, chatId, state.menuMessageId).catch(() => null);
+    }
+    const menu = await sendMessage(env, chatId, languageText(), languageKeyboard());
     await setMenuMessageId(env, userId, menu?.message_id || null);
     return;
   }
@@ -145,6 +155,17 @@ export async function handleCallback(query, env) {
     return;
   }
 
+  if (data.startsWith("admin_reset_user:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const parts = data.split(":");
+    const targetUserId = parts[1];
+    const page = Number(parts[2] || 0);
+    await resetUser(env, targetUserId);
+    await answerCallback(env, query.id, "User reset and deleted", true);
+    await editMessage(env, chatId, messageId, await adminUsersText(env, page), await adminUsersKeyboard(env, page));
+    return;
+  }
+
   if (data.startsWith("admin_credit_prompt:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     const parts = data.split(":");
@@ -194,16 +215,6 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id);
     const voice = data.slice(6);
     if (VOICES[voice]) state.voice = voice;
-    state.menuMessageId = messageId;
-    await saveState(env, userId, state);
-    await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
-    return;
-  }
-
-  if (data.startsWith("output:")) {
-    await answerCallback(env, query.id);
-    const output = data.slice(7);
-    state.output = output === "Voice" ? "Voice" : "MP3";
     state.menuMessageId = messageId;
     await saveState(env, userId, state);
     await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
