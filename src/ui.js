@@ -50,8 +50,8 @@ export function mainKeyboard(state) {
   rows.push([{ text: "▶ Demo", callback_data: "demo" }]);
 
   rows.push([
-    { text: "Balance", callback_data: "balance" },
-    { text: "Buy Credits", callback_data: "buy_credits" },
+    { text: "💎 Balance", callback_data: "balance" },
+    { text: "⚡ Buy Credits", callback_data: "buy_credits" },
   ]);
 
   return { inline_keyboard: rows };
@@ -71,8 +71,8 @@ export function buyCreditsText() {
 export function buyCreditsKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: "Buy with Toman", callback_data: "buy_toman" }],
-      [{ text: "Telegram Stars", callback_data: "buy_stars" }],
+      [{ text: "🇮🇷 Buy with Toman", callback_data: "buy_toman" }],
+      [{ text: "⭐ Telegram Stars", callback_data: "buy_stars" }],
       [{ text: "← Back", callback_data: "back_main" }],
     ],
   };
