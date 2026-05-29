@@ -24,7 +24,7 @@ import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
-import { answerCallback, deleteMessage, editMessage, sendAudio, sendDocument, sendHtmlMessage, sendMessage, sendPlainMessage } from "./telegram-actions.js";
+import { answerCallback, deleteMessage, editMessage, sendAudio, sendDocument, sendMessage, sendPlainMessage } from "./telegram-actions.js";
 import { buyCreditsKeyboard, buyCreditsText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
 
@@ -45,6 +45,7 @@ export async function handleMessage(message, env) {
   const state = await getState(env, userId);
 
   if (hasPhoto) {
+    await deleteMessage(env, chatId, messageId).catch(() => null);
     await handlePaymentScreenshot(env, chatId, userId, state);
     return;
   }
@@ -56,46 +57,43 @@ export async function handleMessage(message, env) {
   }
 
   if (text === "/start") {
+    await deleteMessage(env, chatId, messageId).catch(() => null);
     if (!state.language) {
-      const menu = await sendMessage(env, chatId, languageText(), languageKeyboard());
-      await setMenuMessageId(env, userId, menu?.message_id || null);
+      await upsertMenu(env, chatId, userId, state, languageText(), languageKeyboard());
       return;
     }
-    const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
-    await setMenuMessageId(env, userId, menu?.message_id || null);
+    await upsertMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
     return;
   }
 
   if (text === "/language" || text === "/lang") {
-    if (state.menuMessageId) {
-      await deleteMessage(env, chatId, state.menuMessageId).catch(() => null);
-    }
-    const menu = await sendMessage(env, chatId, languageText(), languageKeyboard());
-    await setMenuMessageId(env, userId, menu?.message_id || null);
+    await deleteMessage(env, chatId, messageId).catch(() => null);
+    await upsertMenu(env, chatId, userId, state, languageText(), languageKeyboard());
     return;
   }
 
   if (text.startsWith("/admin")) {
-    await handleAdminCommand(env, chatId, userId, text, messageId);
+    await handleAdminCommand(env, chatId, userId, text, messageId, state);
     return;
   }
 
   if (text === "/debug") {
+    await deleteMessage(env, chatId, messageId).catch(() => null);
     if (!(await isAdmin(env, userId))) {
-      await sendPlainMessage(env, chatId, t(state.language, "accessDenied"));
+      await upsertMenu(env, chatId, userId, state, t(state.language, "accessDenied"), mainKeyboard(state));
       return;
     }
-    await sendPlainMessage(env, chatId, buildDebugText(env, state));
+    await upsertMenu(env, chatId, userId, state, buildDebugText(env, state), mainKeyboard(state));
     return;
   }
 
   if (!state.language) {
-    const menu = await sendMessage(env, chatId, languageText(), languageKeyboard());
-    await setMenuMessageId(env, userId, menu?.message_id || null);
+    await deleteMessage(env, chatId, messageId).catch(() => null);
+    await upsertMenu(env, chatId, userId, state, languageText(), languageKeyboard());
     return;
   }
 
-  await makeAndSendAudio(env, chatId, userId, text, state, false);
+  await makeAndSendAudio(env, chatId, userId, messageId, text, state, false);
 }
 
 export async function handleCallback(query, env) {
@@ -110,6 +108,8 @@ export async function handleCallback(query, env) {
   await ensureBalanceRow(env, userId);
 
   const state = await getState(env, userId);
+  state.menuMessageId = messageId;
+  await saveState(env, userId, state);
 
   if (data === "noop") {
     await answerCallback(env, query.id);
@@ -119,11 +119,10 @@ export async function handleCallback(query, env) {
   if (data.startsWith("lang:")) {
     const lang = normalizeLang(data.slice(5));
     state.language = lang;
-    state.menuMessageId = messageId;
     await setUserLanguage(env, userId, lang);
     await answerCallback(env, query.id);
     const fresh = await getState(env, userId);
-    await editMessage(env, chatId, messageId, startText(fresh), mainKeyboard(fresh));
+    await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), mainKeyboard(fresh));
     return;
   }
 
@@ -131,7 +130,7 @@ export async function handleCallback(query, env) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
-    await editMessage(env, chatId, messageId, adminMainText(), adminMainKeyboard());
+    await editCurrentMenu(env, chatId, userId, messageId, adminMainText(), adminMainKeyboard());
     return;
   }
 
@@ -140,7 +139,7 @@ export async function handleCallback(query, env) {
     await clearAdminAction(env, userId);
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
-    await editMessage(env, chatId, messageId, await adminUsersText(env, page), await adminUsersKeyboard(env, page));
+    await editCurrentMenu(env, chatId, userId, messageId, await adminUsersText(env, page), await adminUsersKeyboard(env, page));
     return;
   }
 
@@ -151,7 +150,7 @@ export async function handleCallback(query, env) {
     const targetUserId = parts[1];
     const page = Number(parts[2] || 0);
     await answerCallback(env, query.id);
-    await editMessage(env, chatId, messageId, await adminUserText(env, targetUserId), adminUserKeyboard(targetUserId, page));
+    await editCurrentMenu(env, chatId, userId, messageId, await adminUserText(env, targetUserId), adminUserKeyboard(targetUserId, page));
     return;
   }
 
@@ -162,7 +161,7 @@ export async function handleCallback(query, env) {
     const page = Number(parts[2] || 0);
     await resetUser(env, targetUserId);
     await answerCallback(env, query.id, "User reset and deleted", true);
-    await editMessage(env, chatId, messageId, await adminUsersText(env, page), await adminUsersKeyboard(env, page));
+    await editCurrentMenu(env, chatId, userId, messageId, await adminUsersText(env, page), await adminUsersKeyboard(env, page));
     return;
   }
 
@@ -173,7 +172,7 @@ export async function handleCallback(query, env) {
     const page = Number(parts[2] || 0);
     await answerCallback(env, query.id);
     await setAdminAction(env, userId, "credit", { targetUserId, page, chatId, messageId });
-    await editMessage(env, chatId, messageId, adminCreditPromptText(), adminCancelKeyboard("admin_user:" + targetUserId + ":" + page));
+    await editCurrentMenu(env, chatId, userId, messageId, adminCreditPromptText(), adminCancelKeyboard("admin_user:" + targetUserId + ":" + page));
     return;
   }
 
@@ -184,7 +183,7 @@ export async function handleCallback(query, env) {
     const page = Number(parts[2] || 0);
     await answerCallback(env, query.id);
     await setAdminAction(env, userId, "message", { targetUserId, page, chatId, messageId });
-    await editMessage(env, chatId, messageId, adminMessagePromptText(), adminCancelKeyboard("admin_user:" + targetUserId + ":" + page));
+    await editCurrentMenu(env, chatId, userId, messageId, adminMessagePromptText(), adminCancelKeyboard("admin_user:" + targetUserId + ":" + page));
     return;
   }
 
@@ -192,22 +191,21 @@ export async function handleCallback(query, env) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await answerCallback(env, query.id);
     await setAdminAction(env, userId, "broadcast", { chatId, messageId });
-    await editMessage(env, chatId, messageId, adminBroadcastPromptText(), adminCancelKeyboard("admin_main"));
+    await editCurrentMenu(env, chatId, userId, messageId, adminBroadcastPromptText(), adminCancelKeyboard("admin_main"));
     return;
   }
 
   if (!state.language) {
     await answerCallback(env, query.id);
-    await editMessage(env, chatId, messageId, languageText(), languageKeyboard());
+    await editCurrentMenu(env, chatId, userId, messageId, languageText(), languageKeyboard());
     return;
   }
 
   if (data.startsWith("page:")) {
     await answerCallback(env, query.id);
     state.page = Number(data.split(":")[1] || 0);
-    state.menuMessageId = messageId;
     await saveState(env, userId, state);
-    await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, startText(state), mainKeyboard(state));
     return;
   }
 
@@ -215,9 +213,8 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id);
     const voice = data.slice(6);
     if (VOICES[voice]) state.voice = voice;
-    state.menuMessageId = messageId;
     await saveState(env, userId, state);
-    await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, startText(state), mainKeyboard(state));
     return;
   }
 
@@ -229,13 +226,13 @@ export async function handleCallback(query, env) {
 
   if (data === "buy_credits") {
     await answerCallback(env, query.id);
-    await editMessage(env, chatId, messageId, buyCreditsText(state), buyCreditsKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, buyCreditsText(state), buyCreditsKeyboard(state));
     return;
   }
 
   if (data === "buy_toman") {
     await answerCallback(env, query.id);
-    await editMessage(env, chatId, messageId, tomanPackagesText(state), tomanPackagesKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, tomanPackagesText(state), tomanPackagesKeyboard(state));
     return;
   }
 
@@ -250,20 +247,20 @@ export async function handleCallback(query, env) {
     }
 
     await setPendingPayment(env, userId, packageId);
-    await sendHtmlMessage(env, chatId, paymentInstructionText(pack, state), paymentCancelKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, paymentInstructionText(pack, state), paymentCancelKeyboard(state));
     return;
   }
 
   if (data === "cancel_payment") {
     await answerCallback(env, query.id);
     await clearPendingPayment(env, userId);
-    await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, startText(state), mainKeyboard(state));
     return;
   }
 
   if (data === "back_main") {
     await answerCallback(env, query.id);
-    await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, startText(state), mainKeyboard(state));
     return;
   }
 
@@ -274,7 +271,7 @@ export async function handleCallback(query, env) {
 
   if (data === "demo") {
     await answerCallback(env, query.id);
-    await makeAndSendAudio(env, chatId, userId, DEMO_TEXT, state, true);
+    await makeAndSendAudio(env, chatId, userId, null, DEMO_TEXT, state, true);
   }
 }
 
@@ -289,27 +286,23 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   if (action.action === "credit") {
     const amount = parseCreditAmount(text);
     if (!amount) {
-      await answerAdminAction(env, chatId, "Invalid amount. Use +2500 or -700");
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminCreditPromptText() + "\n\nInvalid amount. Use +2500 or -700", adminCancelKeyboard("admin_user:" + action.target_user_id + ":" + (action.page || 0)));
       return true;
     }
 
-    const newBalance = amount > 0
+    amount > 0
       ? await addCredits(env, action.target_user_id, amount)
       : await removeCredits(env, action.target_user_id, Math.abs(amount));
 
     await clearAdminAction(env, adminId);
-    await editMessage(env, action.chat_id || chatId, Number(action.message_id), await adminUserText(env, action.target_user_id), adminUserKeyboard(action.target_user_id, action.page || 0));
-    const notice = await sendPlainMessage(env, chatId, "Done. New balance: " + newBalance + " credits");
-    if (notice?.message_id) await deleteMessage(env, chatId, notice.message_id).catch(() => null);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), await adminUserText(env, action.target_user_id), adminUserKeyboard(action.target_user_id, action.page || 0));
     return true;
   }
 
   if (action.action === "message") {
     await sendPlainMessage(env, action.target_user_id, text).catch(() => null);
     await clearAdminAction(env, adminId);
-    await editMessage(env, action.chat_id || chatId, Number(action.message_id), await adminUserText(env, action.target_user_id), adminUserKeyboard(action.target_user_id, action.page || 0));
-    const notice = await sendPlainMessage(env, chatId, "Message sent");
-    if (notice?.message_id) await deleteMessage(env, chatId, notice.message_id).catch(() => null);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), await adminUserText(env, action.target_user_id), adminUserKeyboard(action.target_user_id, action.page || 0));
     return true;
   }
 
@@ -326,9 +319,7 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     }
 
     await clearAdminAction(env, adminId);
-    await editMessage(env, action.chat_id || chatId, Number(action.message_id), adminMainText(), adminMainKeyboard());
-    const notice = await sendPlainMessage(env, chatId, "Broadcast sent to " + sent + " users");
-    if (notice?.message_id) await deleteMessage(env, chatId, notice.message_id).catch(() => null);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminMainText() + "\n\nBroadcast sent to " + sent + " users", adminMainKeyboard());
     return true;
   }
 
@@ -346,11 +337,6 @@ function parseCreditAmount(text) {
   return match[1] === "+" ? value : -value;
 }
 
-async function answerAdminAction(env, chatId, text) {
-  const msg = await sendPlainMessage(env, chatId, text);
-  if (msg?.message_id) await deleteMessage(env, chatId, msg.message_id).catch(() => null);
-}
-
 async function denyCallback(env, callbackQueryId, state = {}) {
   await answerCallback(env, callbackQueryId, t(state.language, "accessDenied"), true);
 }
@@ -359,14 +345,15 @@ async function handlePaymentScreenshot(env, chatId, userId, state) {
   const pending = await getPendingPayment(env, userId);
 
   if (!pending || !TOMAN_PACKAGES[pending.package_id]) {
-    await sendPlainMessage(env, chatId, t(state.language, "screenshotNoPackage"));
+    await upsertMenu(env, chatId, userId, state, t(state.language, "screenshotNoPackage"), mainKeyboard(state));
     return;
   }
 
-  const pack = TOMAN_PACKAGES[pending.package_id];
-  await sendHtmlMessage(
+  await upsertMenu(
     env,
     chatId,
+    userId,
+    state,
     [
       t(state.language, "screenshotReceived"),
       "",
@@ -377,33 +364,29 @@ async function handlePaymentScreenshot(env, chatId, userId, state) {
     ].join("\n"),
     mainKeyboard(state)
   );
-
-  await sendHtmlMessage(env, chatId, paymentInstructionText(pack, state), paymentCancelKeyboard(state));
 }
 
-async function handleAdminCommand(env, chatId, userId, text, messageId) {
+async function handleAdminCommand(env, chatId, userId, text, messageId, state) {
   const parts = text.split(/\s+/).filter(Boolean);
   const token = parts[1] || "";
 
+  await deleteMessage(env, chatId, messageId).catch(() => null);
+
   if (token) {
     const loggedIn = await tryAdminLogin(env, userId, token);
-    await deleteMessage(env, chatId, messageId).catch(() => null);
-
     if (!loggedIn) {
-      const msg = await sendPlainMessage(env, chatId, "Invalid admin token");
-      if (msg?.message_id) await deleteMessage(env, chatId, msg.message_id).catch(() => null);
+      await upsertMenu(env, chatId, userId, state, "Invalid admin token", adminMainKeyboard());
       return;
     }
   }
 
   if (!(await isAdmin(env, userId))) {
-    const msg = await sendPlainMessage(env, chatId, "Admin login required. Use: /admin ADMIN_TOKEN");
-    if (msg?.message_id) await deleteMessage(env, chatId, msg.message_id).catch(() => null);
+    await upsertMenu(env, chatId, userId, state, "Admin login required. Use: /admin ADMIN_TOKEN", adminMainKeyboard());
     return;
   }
 
   await clearAdminAction(env, userId);
-  await sendMessage(env, chatId, adminMainText(), adminMainKeyboard());
+  await upsertMenu(env, chatId, userId, state, adminMainText(), adminMainKeyboard());
 }
 
 function buildDebugText(env, state) {
@@ -420,16 +403,20 @@ function buildDebugText(env, state) {
   ].join("\n");
 }
 
-async function makeAndSendAudio(env, chatId, userId, text, state, isDemo) {
+async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state, isDemo) {
   const voiceName = state.voice || "Nora";
   const voiceId = VOICES[voiceName] || VOICES.Nora;
   const cost = countCredits(text);
   let statusMessage = null;
 
+  if (inputMessageId) {
+    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+  }
+
   if (!isDemo) {
     const balance = await getBalance(env, userId);
     if (balance < cost) {
-      await sendPlainMessage(env, chatId, t(state.language, "notEnough", { needed: cost, balance }));
+      await upsertMenu(env, chatId, userId, state, t(state.language, "notEnough", { needed: cost, balance }) + "\n\n" + startText(state), mainKeyboard(state));
       return;
     }
   }
@@ -470,23 +457,44 @@ async function makeAndSendAudio(env, chatId, userId, text, state, isDemo) {
     if (statusMessage && statusMessage.message_id) {
       await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
     }
-    await sendPlainMessage(env, chatId, t(state.language, "ttsError") + ": " + safeError(error));
-    await sendFreshMainMenu(env, chatId, userId);
+    await upsertMenu(env, chatId, userId, state, t(state.language, "ttsError") + ": " + safeError(error) + "\n\n" + startText(state), mainKeyboard(state));
   }
 }
 
 async function sendFreshMainMenu(env, chatId, userId) {
   const state = await getState(env, userId);
   if (!state.language) {
-    const menu = await sendMessage(env, chatId, languageText(), languageKeyboard());
-    await setMenuMessageId(env, userId, menu?.message_id || null);
+    await upsertMenu(env, chatId, userId, state, languageText(), languageKeyboard());
     return;
   }
-  if (state.menuMessageId) {
-    await deleteMessage(env, chatId, state.menuMessageId).catch(() => null);
+  await upsertMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+}
+
+async function upsertMenu(env, chatId, userId, state, text, keyboard) {
+  const targetMessageId = state?.menuMessageId || null;
+  if (targetMessageId) {
+    try {
+      await editMessage(env, chatId, targetMessageId, text, keyboard);
+      await setMenuMessageId(env, userId, targetMessageId);
+      return targetMessageId;
+    } catch {}
   }
-  const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
+
+  const menu = await sendMessage(env, chatId, text, keyboard);
   await setMenuMessageId(env, userId, menu?.message_id || null);
+  return menu?.message_id || null;
+}
+
+async function editCurrentMenu(env, chatId, userId, messageId, text, keyboard) {
+  try {
+    await editMessage(env, chatId, messageId, text, keyboard);
+    await setMenuMessageId(env, userId, messageId);
+    return messageId;
+  } catch {
+    const menu = await sendMessage(env, chatId, text, keyboard);
+    await setMenuMessageId(env, userId, menu?.message_id || null);
+    return menu?.message_id || null;
+  }
 }
 
 function countCredits(text) {
