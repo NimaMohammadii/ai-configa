@@ -224,17 +224,25 @@ export async function handleCallback(query, env) {
 
   if (data === "buy_credits") {
     await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, buyCreditsText(state), buyCreditsKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, buyCreditsText(state), localizedBuyCreditsKeyboard(state));
     return;
   }
 
   if (data === "buy_toman") {
+    if (state.language !== "fa") {
+      await answerCallback(env, query.id, t(state.language, "comingSoon"), true);
+      return;
+    }
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, tomanPackagesText(state), tomanPackagesKeyboard(state));
     return;
   }
 
   if (data.startsWith("toman_package:")) {
+    if (state.language !== "fa") {
+      await answerCallback(env, query.id, t(state.language, "comingSoon"), true);
+      return;
+    }
     await answerCallback(env, query.id);
     const packageId = data.slice("toman_package:".length);
     const pack = TOMAN_PACKAGES[packageId];
@@ -494,6 +502,18 @@ async function editCurrentMenu(env, chatId, userId, messageId, text, keyboard) {
     await setMenuMessageId(env, userId, menu?.message_id || null);
     return menu?.message_id || null;
   }
+}
+
+function localizedBuyCreditsKeyboard(state = {}) {
+  const lang = state.language || "en";
+  if (lang === "fa") return buyCreditsKeyboard(state);
+
+  return {
+    inline_keyboard: [
+      [{ text: t(lang, "telegramStars"), callback_data: "buy_stars" }],
+      [{ text: t(lang, "back"), callback_data: "back_main" }],
+    ],
+  };
 }
 
 function countCredits(text) {
