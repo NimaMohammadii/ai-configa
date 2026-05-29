@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS demo_cache_v2 (
+  cache_key TEXT PRIMARY KEY,
+  voice TEXT NOT NULL,
+  language TEXT NOT NULL,
+  audio_base64 TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
