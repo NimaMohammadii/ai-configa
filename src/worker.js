@@ -1,5 +1,6 @@
 import { handleCallback, handleMessage } from "./bot.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
+import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCallback } from "./stars-flow.js";
 
 export default {
@@ -22,13 +23,17 @@ export default {
     if (update.message) {
       if (update.message.successful_payment) {
         ctx.waitUntil(handleStarsPayment(update.message, env).catch(logError));
+      } else if (Array.isArray(update.message.photo) && update.message.photo.length > 0) {
+        ctx.waitUntil(handleReceiptPhoto(update.message, env).catch(logError));
       } else {
         ctx.waitUntil(handleMessage(update.message, env).catch(logError));
       }
     }
 
     if (update.callback_query) {
-      if (isDemoCallback(update.callback_query.data)) {
+      if (isReceiptCallback(update.callback_query.data)) {
+        ctx.waitUntil(handleReceiptCallback(update.callback_query, env).catch(logError));
+      } else if (isDemoCallback(update.callback_query.data)) {
         ctx.waitUntil(handleDemoCallback(update.callback_query, env).catch(logError));
       } else if (isStarsCallback(update.callback_query.data)) {
         ctx.waitUntil(handleStarsCallback(update.callback_query, env).catch(logError));
