@@ -1,4 +1,22 @@
-import { adminPanelText, adminUserKeyboard, adminUsersKeyboard, adminUserText, isAdmin, trackUser, tryAdminLogin } from "./admin.js";
+import {
+  adminBroadcastPromptText,
+  adminCancelKeyboard,
+  adminCreditPromptText,
+  adminMainKeyboard,
+  adminMainText,
+  adminMessagePromptText,
+  adminUserKeyboard,
+  adminUsersKeyboard,
+  adminUsersText,
+  adminUserText,
+  clearAdminAction,
+  getAdminAction,
+  getAllUserIds,
+  isAdmin,
+  setAdminAction,
+  trackUser,
+  tryAdminLogin,
+} from "./admin.js";
 import { addCredits, ensureBalanceRow, getBalance, removeCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { textToSpeech } from "./elevenlabs.js";
@@ -30,6 +48,10 @@ export async function handleMessage(message, env) {
   }
 
   if (!text) return;
+
+  if (await handleAdminPendingInput(env, chatId, userId, messageId, text)) {
+    return;
+  }
 
   if (text === "/start") {
     await sendMessage(env, chatId, startText(state), mainKeyboard(state));
@@ -71,16 +93,26 @@ export async function handleCallback(query, env) {
     return;
   }
 
-  if (data.startsWith("admin_page:")) {
+  if (data === "admin_main") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editMessage(env, chatId, messageId, adminMainText(), adminMainKeyboard());
+    return;
+  }
+
+  if (data.startsWith("admin_users:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id);
+    await clearAdminAction(env, userId);
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
-    await editMessage(env, chatId, messageId, await adminPanelText(env, page), await adminUsersKeyboard(env, page));
+    await editMessage(env, chatId, messageId, await adminUsersText(env, page), await adminUsersKeyboard(env, page));
     return;
   }
 
   if (data.startsWith("admin_user:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id);
+    await clearAdminAction(env, userId);
     const parts = data.split(":");
     const targetUserId = parts[1];
     const page = Number(parts[2] || 0);
@@ -89,26 +121,33 @@ export async function handleCallback(query, env) {
     return;
   }
 
-  if (data.startsWith("admin_credit:")) {
+  if (data.startsWith("admin_credit_prompt:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id);
-
     const parts = data.split(":");
-    const action = parts[1];
-    const targetUserId = parts[2];
-    const amount = Number(parts[3] || 0);
-    const page = Number(parts[4] || 0);
+    const targetUserId = parts[1];
+    const page = Number(parts[2] || 0);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "credit", { targetUserId, page, chatId, messageId });
+    await editMessage(env, chatId, messageId, adminCreditPromptText(), adminCancelKeyboard("admin_user:" + targetUserId + ":" + page));
+    return;
+  }
 
-    if (!targetUserId || !amount || !["add", "remove"].includes(action)) {
-      await answerCallback(env, query.id, "Invalid action", true);
-      return;
-    }
+  if (data.startsWith("admin_msg_prompt:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id);
+    const parts = data.split(":");
+    const targetUserId = parts[1];
+    const page = Number(parts[2] || 0);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "message", { targetUserId, page, chatId, messageId });
+    await editMessage(env, chatId, messageId, adminMessagePromptText(), adminCancelKeyboard("admin_user:" + targetUserId + ":" + page));
+    return;
+  }
 
-    const newBalance = action === "add"
-      ? await addCredits(env, targetUserId, amount)
-      : await removeCredits(env, targetUserId, amount);
-
-    await answerCallback(env, query.id, `Done. New balance: ${newBalance} credits`, true);
-    await editMessage(env, chatId, messageId, await adminUserText(env, targetUserId), adminUserKeyboard(targetUserId, page));
+  if (data === "admin_broadcast") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "broadcast", { chatId, messageId });
+    await editMessage(env, chatId, messageId, adminBroadcastPromptText(), adminCancelKeyboard("admin_main"));
     return;
   }
 
@@ -195,6 +234,81 @@ export async function handleCallback(query, env) {
   }
 }
 
+async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, text) {
+  if (!(await isAdmin(env, adminId))) return false;
+
+  const action = await getAdminAction(env, adminId);
+  if (!action) return false;
+
+  await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+
+  if (action.action === "credit") {
+    const amount = parseCreditAmount(text);
+    if (!amount) {
+      await answerAdminAction(env, chatId, action, "Invalid amount. Use +2500 or -700.");
+      return true;
+    }
+
+    const newBalance = amount > 0
+      ? await addCredits(env, action.target_user_id, amount)
+      : await removeCredits(env, action.target_user_id, Math.abs(amount));
+
+    await clearAdminAction(env, adminId);
+    await editMessage(env, action.chat_id || chatId, Number(action.message_id), await adminUserText(env, action.target_user_id), adminUserKeyboard(action.target_user_id, action.page || 0));
+    const notice = await sendPlainMessage(env, chatId, "Done. New balance: " + newBalance + " credits");
+    if (notice?.message_id) await deleteMessage(env, chatId, notice.message_id).catch(() => null);
+    return true;
+  }
+
+  if (action.action === "message") {
+    await sendPlainMessage(env, action.target_user_id, text).catch(() => null);
+    await clearAdminAction(env, adminId);
+    await editMessage(env, action.chat_id || chatId, Number(action.message_id), await adminUserText(env, action.target_user_id), adminUserKeyboard(action.target_user_id, action.page || 0));
+    const notice = await sendPlainMessage(env, chatId, "Message sent.");
+    if (notice?.message_id) await deleteMessage(env, chatId, notice.message_id).catch(() => null);
+    return true;
+  }
+
+  if (action.action === "broadcast") {
+    const userIds = await getAllUserIds(env);
+    let sent = 0;
+
+    for (const id of userIds) {
+      if (String(id) === String(adminId)) continue;
+      try {
+        await sendPlainMessage(env, id, text);
+        sent++;
+      } catch {
+        // ignore failed deliveries
+      }
+    }
+
+    await clearAdminAction(env, adminId);
+    await editMessage(env, action.chat_id || chatId, Number(action.message_id), adminMainText(), adminMainKeyboard());
+    const notice = await sendPlainMessage(env, chatId, "Broadcast sent to " + sent + " users.");
+    if (notice?.message_id) await deleteMessage(env, chatId, notice.message_id).catch(() => null);
+    return true;
+  }
+
+  await clearAdminAction(env, adminId);
+  return true;
+}
+
+function parseCreditAmount(text) {
+  const match = String(text).trim().match(/^([+-])(\d+)$/);
+  if (!match) return null;
+
+  const value = Number(match[2]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  return match[1] === "+" ? value : -value;
+}
+
+async function answerAdminAction(env, chatId, action, text) {
+  const msg = await sendPlainMessage(env, chatId, text);
+  if (msg?.message_id) await deleteMessage(env, chatId, msg.message_id).catch(() => null);
+}
+
 async function denyCallback(env, callbackQueryId) {
   await answerCallback(env, callbackQueryId, "Access denied.", true);
 }
@@ -246,7 +360,8 @@ async function handleAdminCommand(env, chatId, userId, text, messageId) {
     return;
   }
 
-  await sendMessage(env, chatId, await adminPanelText(env, 0), await adminUsersKeyboard(env, 0));
+  await clearAdminAction(env, userId);
+  await sendMessage(env, chatId, adminMainText(), adminMainKeyboard());
 }
 
 function buildDebugText(env, state) {
