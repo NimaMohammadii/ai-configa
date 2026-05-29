@@ -1,6 +1,7 @@
 import { VOICE_NAMES, VOICES_PER_PAGE } from "./voices.js";
 
-export const PRICE_PER_CHARACTER_TON = 0.00012;
+export const CREDIT_PRICE_PER_1000_USD = 0.24;
+export const CREDIT_PER_CHARACTER = 1;
 
 export function startText(state) {
   const selectedVoice = state.voice || "none";
@@ -10,8 +11,8 @@ export function startText(state) {
     "🎧 <b>Text to Speech</b>",
     "",
     "Send your text.",
-    `Price: <b>${PRICE_PER_CHARACTER_TON.toFixed(5)} TON</b> per character.`,
-    "1000 characters = <b>0.12 TON</b>.",
+    "Each character uses <b>1 credit</b>.",
+    `1000 credits = <b>$${CREDIT_PRICE_PER_1000_USD.toFixed(2)}</b>.`,
     "Demo is free.",
     "",
     `<b>Selected voice:</b> ${escapeHtml(selectedVoice)}`,
@@ -48,7 +49,33 @@ export function mainKeyboard(state) {
     { text: output === "Voice" ? "✔️ Voice 🎙️" : "Voice 🎙️", callback_data: "output:Voice" },
   ]);
 
+  rows.push([
+    { text: "Balance", callback_data: "balance" },
+    { text: "Buy Credits", callback_data: "buy_credits" },
+  ]);
+
   return { inline_keyboard: rows };
+}
+
+export function buyCreditsText() {
+  return [
+    "💳 <b>Buy Credits</b>",
+    "",
+    `1000 credits = <b>$${CREDIT_PRICE_PER_1000_USD.toFixed(2)}</b>.`,
+    "Each character uses <b>1 credit</b>.",
+    "",
+    "Choose a payment method:"
+  ].join("\n");
+}
+
+export function buyCreditsKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "Buy with Toman", callback_data: "buy_toman" }],
+      [{ text: "Telegram Stars", callback_data: "buy_stars" }],
+      [{ text: "← Back", callback_data: "back_main" }],
+    ],
+  };
 }
 
 function voiceButton(name, selectedVoice) {
