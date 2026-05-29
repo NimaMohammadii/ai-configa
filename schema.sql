@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS user_state (
   voice TEXT NOT NULL DEFAULT 'Nora',
   output TEXT NOT NULL DEFAULT 'MP3',
   page INTEGER NOT NULL DEFAULT 0,
+  menu_message_id INTEGER,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
