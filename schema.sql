@@ -4,11 +4,20 @@ CREATE TABLE IF NOT EXISTS user_state (
   output TEXT NOT NULL DEFAULT 'MP3',
   page INTEGER NOT NULL DEFAULT 0,
   menu_message_id INTEGER,
+  language TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS demo_cache (
   voice TEXT PRIMARY KEY,
+  audio_base64 TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS demo_cache_v2 (
+  cache_key TEXT PRIMARY KEY,
+  voice TEXT NOT NULL,
+  language TEXT NOT NULL,
   audio_base64 TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
