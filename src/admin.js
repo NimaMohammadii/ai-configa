@@ -1,8 +1,6 @@
 import { getBalance } from "./credits.js";
 import { requireDb } from "./state.js";
 
-export const ADMIN_CREDIT_AMOUNTS = [100, 500, 1000, 5000, 10000];
-
 export async function trackUser(env, user) {
   requireDb(env);
   if (!user || !user.id) return;
@@ -35,10 +33,7 @@ export async function isAdmin(env, userId) {
 
 export async function tryAdminLogin(env, userId, token) {
   requireDb(env);
-
-  if (!env.ADMIN_TOKEN) {
-    throw new Error("ADMIN_TOKEN secret is missing");
-  }
+  if (!env.ADMIN_TOKEN) throw new Error("ADMIN_TOKEN secret is missing");
 
   if (String(env.ADMIN_TOKEN) !== String(token) && String(env.ADMIN_TOKEN) !== String(userId)) {
     return false;
@@ -49,6 +44,19 @@ export async function tryAdminLogin(env, userId, token) {
   ).bind(String(userId)).run();
 
   return true;
+}
+
+export function adminMainText() {
+  return ["👑 <b>Admin Panel</b>", "", "Choose an option:"].join("\n");
+}
+
+export function adminMainKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "Users", callback_data: "admin_users:0" }],
+      [{ text: "Broadcast Message", callback_data: "admin_broadcast" }],
+    ],
+  };
 }
 
 export async function getAdminUsersPage(env, page = 0, limit = 8) {
@@ -68,6 +76,12 @@ export async function getAdminUsersPage(env, page = 0, limit = 8) {
   };
 }
 
+export async function getAllUserIds(env) {
+  requireDb(env);
+  const users = await env.DB.prepare("SELECT user_id FROM bot_users").all();
+  return (users.results || []).map((user) => String(user.user_id));
+}
+
 export async function getAdminUserDetails(env, userId) {
   requireDb(env);
 
@@ -81,12 +95,12 @@ export async function getAdminUserDetails(env, userId) {
   return { ...user, balance };
 }
 
-export async function adminPanelText(env, page = 0) {
+export async function adminUsersText(env, page = 0) {
   const data = await getAdminUsersPage(env, page);
   return [
-    "👑 <b>Admin Panel</b>",
+    "👥 <b>Users</b>",
     "",
-    "Users: <b>" + data.total + "</b>",
+    "Total: <b>" + data.total + "</b>",
     "Page: <b>" + (data.page + 1) + "</b>",
     "",
     "Select a user:"
@@ -102,12 +116,11 @@ export async function adminUsersKeyboard(env, page = 0) {
   }
 
   const nav = [];
-  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_page:" + (data.page - 1) });
-  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_page:" + (data.page + 1) });
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_users:" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_users:" + (data.page + 1) });
   if (nav.length) rows.push(nav);
 
-  rows.push([{ text: "Refresh", callback_data: "admin_page:" + data.page }]);
-
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
   return { inline_keyboard: rows };
 }
 
@@ -126,23 +139,80 @@ export async function adminUserText(env, userId) {
     "ID: <code>" + escapeHtml(user.user_id) + "</code>",
     "Balance: <b>" + Number(user.balance || 0) + " credits</b>",
     "Last seen: <b>" + escapeHtml(user.last_seen_at || "-") + "</b>",
-    "",
-    "Adjust credits:"
   ].join("\n");
 }
 
 export function adminUserKeyboard(userId, page = 0) {
-  const rows = [];
+  return {
+    inline_keyboard: [
+      [{ text: "Change Credits", callback_data: "admin_credit_prompt:" + userId + ":" + page }],
+      [{ text: "Send Message", callback_data: "admin_msg_prompt:" + userId + ":" + page }],
+      [{ text: "← Back to Users", callback_data: "admin_users:" + page }],
+    ],
+  };
+}
 
-  for (const amount of ADMIN_CREDIT_AMOUNTS) {
-    rows.push([
-      { text: "+" + amount, callback_data: "admin_credit:add:" + userId + ":" + amount + ":" + page },
-      { text: "-" + amount, callback_data: "admin_credit:remove:" + userId + ":" + amount + ":" + page },
-    ]);
-  }
+export function adminCreditPromptText() {
+  return [
+    "✏️ <b>Change Credits</b>",
+    "",
+    "Send the amount you want:",
+    "",
+    "Examples:",
+    "<code>+2500</code>",
+    "<code>-700</code>",
+    "",
+    "Your message will be deleted after processing."
+  ].join("\n");
+}
 
-  rows.push([{ text: "← Back to users", callback_data: "admin_page:" + page }]);
-  return { inline_keyboard: rows };
+export function adminMessagePromptText() {
+  return [
+    "✉️ <b>Send Message</b>",
+    "",
+    "Send the message text for this user.",
+    "Your message will be deleted after sending."
+  ].join("\n");
+}
+
+export function adminBroadcastPromptText() {
+  return [
+    "📣 <b>Broadcast Message</b>",
+    "",
+    "Send the message text for all users.",
+    "Your message will be deleted after sending."
+  ].join("\n");
+}
+
+export function adminCancelKeyboard(backData = "admin_main") {
+  return { inline_keyboard: [[{ text: "Cancel", callback_data: backData }]] };
+}
+
+export async function setAdminAction(env, adminId, action, options = {}) {
+  requireDb(env);
+  await env.DB.prepare(
+    "INSERT INTO admin_actions (admin_id, action, target_user_id, page, chat_id, message_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(admin_id) DO UPDATE SET action = excluded.action, target_user_id = excluded.target_user_id, page = excluded.page, chat_id = excluded.chat_id, message_id = excluded.message_id, updated_at = CURRENT_TIMESTAMP"
+  ).bind(
+    String(adminId),
+    action,
+    options.targetUserId ? String(options.targetUserId) : null,
+    Number(options.page || 0),
+    options.chatId ? String(options.chatId) : null,
+    options.messageId ? Number(options.messageId) : null
+  ).run();
+}
+
+export async function getAdminAction(env, adminId) {
+  requireDb(env);
+  return await env.DB.prepare(
+    "SELECT action, target_user_id, page, chat_id, message_id FROM admin_actions WHERE admin_id = ?"
+  ).bind(String(adminId)).first();
+}
+
+export async function clearAdminAction(env, adminId) {
+  requireDb(env);
+  await env.DB.prepare("DELETE FROM admin_actions WHERE admin_id = ?").bind(String(adminId)).run();
 }
 
 function userLabel(user) {
