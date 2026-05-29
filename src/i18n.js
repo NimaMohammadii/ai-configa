@@ -8,7 +8,7 @@ export const LANGUAGES = {
   zh: "中文",
   ja: "日本語",
   es: "Español",
-  id: "Bahasa Indonesia",
+  hi: "हिन्दी",
 };
 
 const M = {
@@ -23,7 +23,7 @@ const M = {
   zh: { chooseLanguageTitle: "🌐 <b>选择语言</b>", chooseLanguageSubtitle: "请选择语言继续", ttsTitle: "🎧 <b>文字转语音</b>", sendText: "发送你的文本", creditRule: "每个字符消耗 <b>1 credit</b>", selectedVoice: "已选声音", demo: "▶ 试听", next: "下一页 →", previous: "← 上一页", balance: "💎 余额", buyCredits: "⚡ 购买 Credits", choosePayment: "选择支付方式", buyToman: "🇮🇷 使用 Toman 购买", telegramStars: "⭐ Telegram Stars", back: "← 返回", cancel: "取消", generatingDemo: "正在生成试听", generatingVoice: "正在生成语音", comingSoon: "即将推出", accessDenied: "拒绝访问" },
   ja: { chooseLanguageTitle: "🌐 <b>言語を選択</b>", chooseLanguageSubtitle: "続行する言語を選択してください", ttsTitle: "🎧 <b>テキスト読み上げ</b>", sendText: "テキストを送信", creditRule: "1文字につき <b>1 credit</b> 消費", selectedVoice: "選択中の音声", demo: "▶ デモ", next: "次へ →", previous: "← 戻る", balance: "💎 残高", buyCredits: "⚡ Credits購入", choosePayment: "支払い方法を選択", buyToman: "🇮🇷 Tomanで購入", telegramStars: "⭐ Telegram Stars", back: "← 戻る", cancel: "キャンセル", generatingDemo: "デモ生成中", generatingVoice: "音声生成中", comingSoon: "近日公開", accessDenied: "アクセス拒否" },
   es: { chooseLanguageTitle: "🌐 <b>Elige tu idioma</b>", chooseLanguageSubtitle: "Selecciona tu idioma para continuar", ttsTitle: "🎧 <b>Texto a voz</b>", sendText: "Envía tu texto", creditRule: "Cada carácter usa <b>1 crédito</b>", selectedVoice: "Voz seleccionada", demo: "▶ Demo", next: "Siguiente →", previous: "← Anterior", balance: "💎 Saldo", buyCredits: "⚡ Comprar créditos", choosePayment: "Elige un método de pago", buyToman: "🇮🇷 Comprar con Toman", telegramStars: "⭐ Telegram Stars", back: "← Volver", cancel: "Cancelar", generatingDemo: "Generando demo", generatingVoice: "Generando voz", comingSoon: "Próximamente", accessDenied: "Acceso denegado" },
-  id: { chooseLanguageTitle: "🌐 <b>Pilih bahasa</b>", chooseLanguageSubtitle: "Pilih bahasa untuk melanjutkan", ttsTitle: "🎧 <b>Teks ke suara</b>", sendText: "Kirim teks kamu", creditRule: "Setiap karakter memakai <b>1 kredit</b>", selectedVoice: "Suara terpilih", demo: "▶ Demo", next: "Berikutnya →", previous: "← Sebelumnya", balance: "💎 Saldo", buyCredits: "⚡ Beli Kredit", choosePayment: "Pilih metode pembayaran", buyToman: "🇮🇷 Beli dengan Toman", telegramStars: "⭐ Telegram Stars", back: "← Kembali", cancel: "Batal", generatingDemo: "Membuat demo", generatingVoice: "Membuat suara", comingSoon: "Segera hadir", accessDenied: "Akses ditolak" },
+  hi: { chooseLanguageTitle: "🌐 <b>भाषा चुनें</b>", chooseLanguageSubtitle: "जारी रखने के लिए अपनी भाषा चुनें", ttsTitle: "🎧 <b>टेक्स्ट टू स्पीच</b>", sendText: "अपना टेक्स्ट भेजें", creditRule: "हर अक्षर <b>1 credit</b> इस्तेमाल करता है", selectedVoice: "चुनी गई आवाज़", demo: "▶ डेमो", next: "आगे →", previous: "← पीछे", balance: "💎 बैलेंस", buyCredits: "⚡ Credits खरीदें", choosePayment: "पेमेंट तरीका चुनें", buyToman: "🇮🇷 Toman से खरीदें", telegramStars: "⭐ Telegram Stars", back: "← वापस", cancel: "रद्द करें", generatingDemo: "डेमो बन रहा है", generatingVoice: "आवाज़ बन रही है", comingSoon: "जल्द आ रहा है", accessDenied: "एक्सेस मना है" },
 };
 
 export function normalizeLang(lang) { return LANGUAGES[lang] ? lang : "en"; }
