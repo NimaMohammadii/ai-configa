@@ -2,7 +2,7 @@ import { addCredits } from "./credits.js";
 import { getAllAdminIds } from "./receipt-admins.js";
 import { clearPendingPayment, getPendingPayment } from "./payments.js";
 import { requireDb } from "./state.js";
-import { answerCallback, copyMessage, deleteMessage, editMessageCaption, sendMessage } from "./telegram-actions.js";
+import { answerCallback, copyMessage, deleteMessage, editMessageCaption, sendMessage, sendPlainMessage } from "./telegram-actions.js";
 import { mainKeyboard, startText, TOMAN_PACKAGES } from "./ui.js";
 import { getState, setMenuMessageId } from "./state.js";
 
@@ -25,10 +25,14 @@ export async function handleReceiptPhoto(message, env) {
   }
 
   if (!pending || !TOMAN_PACKAGES[pending.package_id]) {
-    await deleteMessage(env, chatId, message.message_id).catch(() => null);
-    await sendMessage(env, chatId, "⚠️ <b>Screenshot received</b>\n\nPlease choose a credit package first", null);
     const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
     await setMenuMessageId(env, userId, menu?.message_id || null);
+    await notifyUser(
+      env,
+      chatId,
+      "⚠️ <b>Screenshot received</b>\n\nPlease choose a credit package first",
+      "⚠️ Screenshot received\n\nPlease choose a credit package first"
+    );
     return true;
   }
 
@@ -49,26 +53,25 @@ export async function handleReceiptPhoto(message, env) {
     }
   }
 
-  await deleteMessage(env, chatId, message.message_id).catch(() => null);
+  const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
+  await setMenuMessageId(env, userId, menu?.message_id || null);
 
   if (sentToAdmin > 0) {
-    await sendMessage(
+    await notifyUser(
       env,
       chatId,
       "✅ <b>Payment receipt received</b>\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance",
-      null
+      "✅ Payment receipt received\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance"
     );
   } else {
-    await sendMessage(
+    await notifyUser(
       env,
       chatId,
       "⚠️ <b>Payment receipt received</b>\n\nAdmin chat is not configured yet. Please contact support",
-      null
+      "⚠️ Payment receipt received\n\nAdmin chat is not configured yet. Please contact support"
     );
   }
 
-  const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
-  await setMenuMessageId(env, userId, menu?.message_id || null);
   return true;
 }
 
@@ -114,24 +117,32 @@ export async function handleReceiptCallback(query, env) {
 }
 
 async function sendPaymentApprovedMessage(env, userId, credits, balance) {
-  await sendMessage(
+  await notifyUser(
     env,
     userId,
     [
       "✅ <b>Payment approved</b>",
       "",
-      `Your payment was verified successfully`,
+      "Your payment was verified successfully",
       `<b>${Number(credits).toLocaleString("en-US")} credits</b> have been added to your balance`,
       `Current balance: <b>${Number(balance).toLocaleString("en-US")} credits</b>`,
       "",
       "You can now send your text to create voice",
     ].join("\n"),
-    null
-  ).catch(() => null);
+    [
+      "✅ Payment approved",
+      "",
+      "Your payment was verified successfully",
+      `${Number(credits).toLocaleString("en-US")} credits have been added to your balance`,
+      `Current balance: ${Number(balance).toLocaleString("en-US")} credits`,
+      "",
+      "You can now send your text to create voice",
+    ].join("\n")
+  );
 }
 
 async function sendPaymentRejectedMessage(env, userId) {
-  await sendMessage(
+  await notifyUser(
     env,
     userId,
     [
@@ -140,8 +151,27 @@ async function sendPaymentRejectedMessage(env, userId) {
       "Your receipt could not be verified",
       "Please check the payment details and send a valid screenshot again",
     ].join("\n"),
-    null
-  ).catch(() => null);
+    [
+      "❌ Payment rejected",
+      "",
+      "Your receipt could not be verified",
+      "Please check the payment details and send a valid screenshot again",
+    ].join("\n")
+  );
+}
+
+async function notifyUser(env, chatId, htmlText, plainText) {
+  try {
+    return await sendMessage(env, chatId, htmlText, null);
+  } catch (htmlError) {
+    console.error("send html notification failed", chatId, htmlError && htmlError.message ? htmlError.message : htmlError);
+    try {
+      return await sendPlainMessage(env, chatId, plainText || stripHtml(htmlText));
+    } catch (plainError) {
+      console.error("send plain notification failed", chatId, plainError && plainError.message ? plainError.message : plainError);
+      return null;
+    }
+  }
 }
 
 async function createReceipt(env, user, packageId, amount, credits) {
@@ -229,6 +259,10 @@ function stripReviewStatus(caption) {
     .replace(/\n\n✅ تأیید شده توسط ادمین/g, "")
     .replace(/\n\n❌ رد شده توسط ادمین/g, "")
     .trim();
+}
+
+function stripHtml(value) {
+  return String(value || "").replace(/<[^>]*>/g, "");
 }
 
 function emptyKeyboard() {
