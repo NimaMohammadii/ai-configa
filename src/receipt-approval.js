@@ -123,11 +123,11 @@ async function sendPaymentApprovedMessage(env, userId, credits, balance) {
     [
       "✅ <b>Payment approved</b>",
       "",
-      "Your payment was verified successfully",
+      "Your payment was <b>verified successfully</b>",
       `<b>${Number(credits).toLocaleString("en-US")} credits</b> have been added to your balance`,
       `Current balance: <b>${Number(balance).toLocaleString("en-US")} credits</b>`,
       "",
-      "You can now send your text to create voice",
+      "You can now <b>send your text</b> to create voice",
     ].join("\n"),
     [
       "✅ Payment approved",
