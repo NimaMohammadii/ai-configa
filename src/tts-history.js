@@ -1,31 +1,69 @@
 import { requireDb } from "./state.js";
 
-export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage) {
+const HISTORY_LIMIT = 8;
+
+export async function ensureTtsHistoryTable(env) {
   requireDb(env);
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS tts_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, text TEXT NOT NULL, voice TEXT, language TEXT, credits INTEGER NOT NULL DEFAULT 0, file_id TEXT, file_type TEXT, telegram_message_id INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+  ).run();
+
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_tts_history_user_created ON tts_history (user_id, created_at DESC)"
+  ).run();
+
+  await tryAlter(env, "ALTER TABLE tts_history ADD COLUMN file_id TEXT");
+  await tryAlter(env, "ALTER TABLE tts_history ADD COLUMN file_type TEXT");
+  await tryAlter(env, "ALTER TABLE tts_history ADD COLUMN telegram_message_id INTEGER");
+}
+
+async function tryAlter(env, sql) {
+  try {
+    await env.DB.prepare(sql).run();
+  } catch {}
+}
+
+export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage) {
+  await ensureTtsHistoryTable(env);
 
   const audio = sentMessage?.audio || null;
   const document = sentMessage?.document || null;
   const fileId = audio?.file_id || document?.file_id || null;
   const fileType = audio?.file_id ? "audio" : document?.file_id ? "document" : null;
-  const id = crypto.randomUUID();
 
-  await env.DB.prepare(
-    "INSERT INTO tts_history (id, user_id, text, voice, language, credits, audio_base64, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)"
-  ).bind(
-    id,
-    String(userId),
-    String(text || ""),
-    String(voice || ""),
-    String(language || ""),
-    Number(credits || 0),
-    fileId,
-    fileType,
-    sentMessage?.message_id ? Number(sentMessage.message_id) : null
-  ).run();
+  try {
+    await env.DB.prepare(
+      "INSERT INTO tts_history (user_id, text, voice, language, credits, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+    ).bind(
+      String(userId),
+      String(text || ""),
+      String(voice || ""),
+      String(language || ""),
+      Number(credits || 0),
+      fileId,
+      fileType,
+      sentMessage?.message_id ? Number(sentMessage.message_id) : null
+    ).run();
+  } catch (firstError) {
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+    ).bind(
+      id,
+      String(userId),
+      String(text || ""),
+      String(voice || ""),
+      String(language || ""),
+      Number(credits || 0),
+      fileId,
+      fileType,
+      sentMessage?.message_id ? Number(sentMessage.message_id) : null
+    ).run();
+  }
 }
 
-export async function getTtsHistoryPage(env, userId, page = 0, limit = 8) {
-  requireDb(env);
+export async function getTtsHistoryPage(env, userId, page = 0, limit = HISTORY_LIMIT) {
+  await ensureTtsHistoryTable(env);
   const offset = Number(page) * Number(limit);
   const count = await env.DB.prepare(
     "SELECT COUNT(*) AS total FROM tts_history WHERE user_id = ?"
@@ -44,10 +82,15 @@ export async function getTtsHistoryPage(env, userId, page = 0, limit = 8) {
 }
 
 export async function getTtsHistoryItem(env, id) {
-  requireDb(env);
+  await ensureTtsHistoryTable(env);
   return await env.DB.prepare(
     "SELECT id, user_id, text, voice, language, credits, file_id, file_type, created_at FROM tts_history WHERE id = ?"
   ).bind(String(id)).first();
+}
+
+export async function getTtsHistoryItemByIndex(env, userId, page = 0, index = 0, limit = HISTORY_LIMIT) {
+  const data = await getTtsHistoryPage(env, userId, page, limit);
+  return data.rows[Number(index)] || null;
 }
 
 export function ttsHistoryText(data, userId) {
@@ -65,9 +108,9 @@ export function ttsHistoryText(data, userId) {
 export function ttsHistoryKeyboard(data, userId, backPage = 0) {
   const rows = [];
 
-  for (const item of data.rows) {
-    rows.push([{ text: historyLabel(item), callback_data: "admin_tts_item:" + item.id + ":" + userId + ":" + data.page + ":" + backPage }]);
-  }
+  data.rows.forEach((item, index) => {
+    rows.push([{ text: historyLabel(item), callback_data: "ath:" + userId + ":" + data.page + ":" + backPage + ":" + index }]);
+  });
 
   const nav = [];
   if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_tts:" + userId + ":" + (data.page - 1) + ":" + backPage });
@@ -96,10 +139,10 @@ export function ttsHistoryItemText(item) {
   ].join("\n");
 }
 
-export function ttsHistoryItemKeyboard(item, userId, historyPage = 0, backPage = 0) {
+export function ttsHistoryItemKeyboard(item, userId, historyPage = 0, backPage = 0, index = 0) {
   const rows = [];
   if (item?.file_id) {
-    rows.push([{ text: "Get Audio File", callback_data: "admin_tts_file:" + item.id + ":" + userId + ":" + historyPage + ":" + backPage }]);
+    rows.push([{ text: "Get Audio File", callback_data: "atf:" + userId + ":" + historyPage + ":" + backPage + ":" + index }]);
   }
   rows.push([{ text: "← Back to History", callback_data: "admin_tts:" + userId + ":" + historyPage + ":" + backPage }]);
   return { inline_keyboard: rows };
