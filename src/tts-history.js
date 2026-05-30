@@ -7,10 +7,12 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
   const document = sentMessage?.document || null;
   const fileId = audio?.file_id || document?.file_id || null;
   const fileType = audio?.file_id ? "audio" : document?.file_id ? "document" : null;
+  const id = crypto.randomUUID();
 
   await env.DB.prepare(
-    "INSERT INTO tts_history (user_id, text, voice, language, credits, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+    "INSERT INTO tts_history (id, user_id, text, voice, language, credits, audio_base64, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)"
   ).bind(
+    id,
     String(userId),
     String(text || ""),
     String(voice || ""),
@@ -30,7 +32,7 @@ export async function getTtsHistoryPage(env, userId, page = 0, limit = 8) {
   ).bind(String(userId)).first();
 
   const rows = await env.DB.prepare(
-    "SELECT id, text, voice, language, credits, file_id, file_type, created_at FROM tts_history WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?"
+    "SELECT id, text, voice, language, credits, file_id, file_type, created_at FROM tts_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?"
   ).bind(String(userId), Number(limit), Number(offset)).all();
 
   return {
@@ -45,7 +47,7 @@ export async function getTtsHistoryItem(env, id) {
   requireDb(env);
   return await env.DB.prepare(
     "SELECT id, user_id, text, voice, language, credits, file_id, file_type, created_at FROM tts_history WHERE id = ?"
-  ).bind(Number(id)).first();
+  ).bind(String(id)).first();
 }
 
 export function ttsHistoryText(data, userId) {
@@ -87,6 +89,7 @@ export function ttsHistoryItemText(item) {
     "Language: <b>" + escapeHtml(item.language || "-") + "</b>",
     "Credits: <b>" + Number(item.credits || 0).toLocaleString("en-US") + "</b>",
     "Date: <b>" + escapeHtml(item.created_at || "-") + "</b>",
+    "Audio: <b>" + (item.file_id ? "Available" : "Not stored") + "</b>",
     "",
     "<b>Text:</b>",
     escapeHtml(item.text || ""),
@@ -100,6 +103,16 @@ export function ttsHistoryItemKeyboard(item, userId, historyPage = 0, backPage =
   }
   rows.push([{ text: "← Back to History", callback_data: "admin_tts:" + userId + ":" + historyPage + ":" + backPage }]);
   return { inline_keyboard: rows };
+}
+
+export function ttsAudioCaption(item) {
+  return [
+    "🎧 <b>TTS Audio</b>",
+    "",
+    "User ID: <code>" + escapeHtml(item.user_id) + "</code>",
+    "Voice: <b>" + escapeHtml(item.voice || "-") + "</b>",
+    "Credits: <b>" + Number(item.credits || 0).toLocaleString("en-US") + "</b>",
+  ].join("\n");
 }
 
 function historyLabel(item) {
