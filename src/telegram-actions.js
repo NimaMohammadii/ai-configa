@@ -104,6 +104,25 @@ export function sendDemoAudio(env, chatId, audioBuffer) {
   return sendNamedAudio(env, chatId, audioBuffer, "Vexa.demo", "Vexa.demo.mp3");
 }
 
+export function sendAudioFileId(env, chatId, fileId, caption = "") {
+  return tgJson(env, "sendAudio", {
+    chat_id: chatId,
+    audio: fileId,
+    title: "Vexa.demo",
+    caption,
+    parse_mode: "HTML",
+  });
+}
+
+export function sendDocumentFileId(env, chatId, fileId, caption = "") {
+  return tgJson(env, "sendDocument", {
+    chat_id: chatId,
+    document: fileId,
+    caption,
+    parse_mode: "HTML",
+  });
+}
+
 function sendNamedAudio(env, chatId, audioBuffer, title, filename) {
   const form = new FormData();
   form.append("chat_id", String(chatId));
