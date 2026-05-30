@@ -103,6 +103,7 @@ export async function resetUser(env, userId) {
     env.DB.prepare("DELETE FROM user_state WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM user_credits WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM pending_payments WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM tts_history WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM admin_actions WHERE admin_id = ? OR target_user_id = ?").bind(id, id),
     env.DB.prepare("DELETE FROM admin_users WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM bot_users WHERE user_id = ?").bind(id),
@@ -159,6 +160,7 @@ export async function adminUserText(env, userId) {
 export function adminUserKeyboard(userId, page = 0) {
   return {
     inline_keyboard: [
+      [{ text: "TTS History", callback_data: "admin_tts:" + userId + ":0:" + page }],
       [{ text: "Change Credits", callback_data: "admin_credit_prompt:" + userId + ":" + page }],
       [{ text: "Send Message", callback_data: "admin_msg_prompt:" + userId + ":" + page }],
       [{ text: "Reset User", callback_data: "admin_reset_user:" + userId + ":" + page }],
