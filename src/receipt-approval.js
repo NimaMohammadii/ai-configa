@@ -87,12 +87,7 @@ export async function handleReceiptCallback(query, env) {
     await clearPendingPayment(env, receipt.user_id);
     await updateClickedReceiptCaption(env, query, "approved");
     await updateAllReceiptCaptions(env, receiptId, "approved", chatId, messageId);
-    await sendMessage(
-      env,
-      receipt.user_id,
-      `✅ <b>Payment approved</b>\n\n<b>${Number(receipt.credits).toLocaleString("en-US")} credits</b> were added to your balance\nCurrent balance: <b>${Number(balance).toLocaleString("en-US")} credits</b>\n\nYou can now send your text and generate voice`,
-      null
-    ).catch(() => null);
+    await sendPaymentApprovedMessage(env, receipt.user_id, receipt.credits, balance);
     await answerCallback(env, query.id, "Approved", true);
     return;
   }
@@ -101,13 +96,39 @@ export async function handleReceiptCallback(query, env) {
   await clearPendingPayment(env, receipt.user_id);
   await updateClickedReceiptCaption(env, query, "rejected");
   await updateAllReceiptCaptions(env, receiptId, "rejected", chatId, messageId);
+  await sendPaymentRejectedMessage(env, receipt.user_id);
+  await answerCallback(env, query.id, "Rejected", true);
+}
+
+async function sendPaymentApprovedMessage(env, userId, credits, balance) {
   await sendMessage(
     env,
-    receipt.user_id,
-    "❌ <b>Payment rejected</b>\n\nYour receipt could not be verified. Please check the payment details and send a valid screenshot again",
+    userId,
+    [
+      "✅ <b>Payment approved</b>",
+      "",
+      `Your payment was verified successfully`,
+      `<b>${Number(credits).toLocaleString("en-US")} credits</b> have been added to your balance`,
+      `Current balance: <b>${Number(balance).toLocaleString("en-US")} credits</b>`,
+      "",
+      "You can now send your text to create voice",
+    ].join("\n"),
     null
   ).catch(() => null);
-  await answerCallback(env, query.id, "Rejected", true);
+}
+
+async function sendPaymentRejectedMessage(env, userId) {
+  await sendMessage(
+    env,
+    userId,
+    [
+      "❌ <b>Payment rejected</b>",
+      "",
+      "Your receipt could not be verified",
+      "Please check the payment details and send a valid screenshot again",
+    ].join("\n"),
+    null
+  ).catch(() => null);
 }
 
 async function createReceipt(env, user, packageId, amount, credits) {
