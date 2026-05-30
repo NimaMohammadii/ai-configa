@@ -26,7 +26,8 @@ export async function handleReceiptPhoto(message, env) {
 
   if (!pending || !TOMAN_PACKAGES[pending.package_id]) {
     await deleteMessage(env, chatId, message.message_id).catch(() => null);
-    const menu = await sendMessage(env, chatId, "Screenshot received. Please choose a package first\n\n" + startText(state), mainKeyboard(state));
+    await sendMessage(env, chatId, "⚠️ <b>Screenshot received</b>\n\nPlease choose a credit package first", null);
+    const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
     await setMenuMessageId(env, userId, menu?.message_id || null);
     return true;
   }
@@ -50,11 +51,23 @@ export async function handleReceiptPhoto(message, env) {
 
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
 
-  const text = sentToAdmin > 0
-    ? "✅ <b>Payment receipt received</b>\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance\n\n"
-    : "⚠️ <b>Payment receipt received</b>\n\nAdmin chat is not configured yet. Please contact support\n\n";
+  if (sentToAdmin > 0) {
+    await sendMessage(
+      env,
+      chatId,
+      "✅ <b>Payment receipt received</b>\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance",
+      null
+    );
+  } else {
+    await sendMessage(
+      env,
+      chatId,
+      "⚠️ <b>Payment receipt received</b>\n\nAdmin chat is not configured yet. Please contact support",
+      null
+    );
+  }
 
-  const menu = await sendMessage(env, chatId, text + startText(state), mainKeyboard(state));
+  const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
   await setMenuMessageId(env, userId, menu?.message_id || null);
   return true;
 }
