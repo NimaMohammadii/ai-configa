@@ -14,7 +14,7 @@ export const VOICES = {
   priyanka: "BpjGufoPiobT79j2vtj4",
   horatius: "qXpMhyvQqiRxWQs4qSSB",
   anika: "Sm1seazb4gs7RSlUVw7c",
-  brock: "DGzg6RaUqxGRTHSBjfgF",
+  James: "6OzrBCQf8cjERkYgzSg8",
   Xavier: "YOq2y2Up4RgXP2HyXjE5",
   Lucas: "NNl6r8mD7vthiJatiJt1",
 };
