@@ -25,7 +25,7 @@ import { normalizeLang, t } from "./i18n.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
 import { answerCallback, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPlainMessage } from "./telegram-actions.js";
-import { getTtsHistoryItem, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
+import { getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
 import { buyCreditsKeyboard, buyCreditsText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
 
@@ -166,25 +166,27 @@ export async function handleCallback(query, env) {
     return;
   }
 
-  if (data.startsWith("admin_tts_item:")) {
+  if (data.startsWith("ath:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
     const parts = data.split(":");
-    const itemId = parts[1];
-    const targetUserId = parts[2];
-    const historyPage = Number(parts[3] || 0);
-    const backPage = Number(parts[4] || 0);
-    const item = await getTtsHistoryItem(env, itemId);
+    const targetUserId = parts[1];
+    const historyPage = Number(parts[2] || 0);
+    const backPage = Number(parts[3] || 0);
+    const index = Number(parts[4] || 0);
+    const item = await getTtsHistoryItemByIndex(env, targetUserId, historyPage, index);
     await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, ttsHistoryItemText(item), ttsHistoryItemKeyboard(item, targetUserId, historyPage, backPage));
+    await editCurrentMenu(env, chatId, userId, messageId, ttsHistoryItemText(item), ttsHistoryItemKeyboard(item, targetUserId, historyPage, backPage, index));
     return;
   }
 
-  if (data.startsWith("admin_tts_file:")) {
+  if (data.startsWith("atf:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     const parts = data.split(":");
-    const itemId = parts[1];
-    const item = await getTtsHistoryItem(env, itemId);
+    const targetUserId = parts[1];
+    const historyPage = Number(parts[2] || 0);
+    const index = Number(parts[4] || 0);
+    const item = await getTtsHistoryItemByIndex(env, targetUserId, historyPage, index);
     if (!item || !item.file_id) {
       await answerCallback(env, query.id, "Audio file is not stored", true);
       return;
@@ -196,6 +198,18 @@ export async function handleCallback(query, env) {
     } else {
       await sendAudioFileId(env, chatId, item.file_id, caption);
     }
+    return;
+  }
+
+  if (data.startsWith("admin_tts_item:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id, "Please reopen TTS History", true);
+    return;
+  }
+
+  if (data.startsWith("admin_tts_file:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id, "Please reopen TTS History", true);
     return;
   }
 
