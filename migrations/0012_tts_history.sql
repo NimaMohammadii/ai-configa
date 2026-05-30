@@ -5,7 +5,10 @@ CREATE TABLE IF NOT EXISTS tts_history (
   voice TEXT NOT NULL,
   language TEXT NOT NULL,
   credits INTEGER NOT NULL,
-  audio_base64 TEXT NOT NULL,
+  audio_base64 TEXT NOT NULL DEFAULT '',
+  file_id TEXT,
+  file_type TEXT,
+  telegram_message_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
