@@ -24,7 +24,8 @@ import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
-import { answerCallback, deleteMessage, editMessage, sendAudio, sendDocument, sendMessage, sendPlainMessage } from "./telegram-actions.js";
+import { answerCallback, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPlainMessage } from "./telegram-actions.js";
+import { getTtsHistoryItem, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
 import { buyCreditsKeyboard, buyCreditsText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
 
@@ -149,6 +150,52 @@ export async function handleCallback(query, env) {
     const page = Number(parts[2] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminUserText(env, targetUserId), adminUserKeyboard(targetUserId, page));
+    return;
+  }
+
+  if (data.startsWith("admin_tts:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const parts = data.split(":");
+    const targetUserId = parts[1];
+    const historyPage = Number(parts[2] || 0);
+    const backPage = Number(parts[3] || 0);
+    const history = await getTtsHistoryPage(env, targetUserId, historyPage);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, ttsHistoryText(history, targetUserId), ttsHistoryKeyboard(history, targetUserId, backPage));
+    return;
+  }
+
+  if (data.startsWith("admin_tts_item:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const parts = data.split(":");
+    const itemId = parts[1];
+    const targetUserId = parts[2];
+    const historyPage = Number(parts[3] || 0);
+    const backPage = Number(parts[4] || 0);
+    const item = await getTtsHistoryItem(env, itemId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, ttsHistoryItemText(item), ttsHistoryItemKeyboard(item, targetUserId, historyPage, backPage));
+    return;
+  }
+
+  if (data.startsWith("admin_tts_file:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const parts = data.split(":");
+    const itemId = parts[1];
+    const item = await getTtsHistoryItem(env, itemId);
+    if (!item || !item.file_id) {
+      await answerCallback(env, query.id, "Audio file is not stored", true);
+      return;
+    }
+    await answerCallback(env, query.id, "Sending audio file...", false);
+    const caption = ttsAudioCaption(item);
+    if (item.file_type === "document") {
+      await sendDocumentFileId(env, chatId, item.file_id, caption);
+    } else {
+      await sendAudioFileId(env, chatId, item.file_id, caption);
+    }
     return;
   }
 
@@ -449,9 +496,12 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
       audio = await textToSpeech(env, text, voiceId);
     }
 
-    await sendCleanAudio(env, chatId, audio);
+    const sentAudioMessage = await sendCleanAudio(env, chatId, audio);
 
     if (!isDemo) {
+      await saveTtsHistory(env, userId, text, voiceName, lang, cost, sentAudioMessage).catch((error) => {
+        console.error("save tts history failed", error && error.message ? error.message : error);
+      });
       await spendCredits(env, userId, cost);
     }
 
@@ -532,9 +582,9 @@ function countCredits(text) {
 
 async function sendCleanAudio(env, chatId, audio) {
   try {
-    await sendAudio(env, chatId, audio);
+    return await sendAudio(env, chatId, audio);
   } catch (sendAudioError) {
-    await sendDocument(env, chatId, audio);
+    return await sendDocument(env, chatId, audio);
   }
 }
 
