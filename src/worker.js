@@ -1,5 +1,6 @@
 import { handleCallback, handleMessage } from "./bot.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
+import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCallback } from "./stars-flow.js";
 
@@ -26,7 +27,7 @@ export default {
       } else if (Array.isArray(update.message.photo) && update.message.photo.length > 0) {
         ctx.waitUntil(handleReceiptPhoto(update.message, env).catch(logError));
       } else {
-        ctx.waitUntil(handleMessage(update.message, env).catch(logError));
+        ctx.waitUntil(handleMessageAndPin(update.message, env).catch(logError));
       }
     }
 
@@ -38,13 +39,35 @@ export default {
       } else if (isStarsCallback(update.callback_query.data)) {
         ctx.waitUntil(handleStarsCallback(update.callback_query, env).catch(logError));
       } else {
-        ctx.waitUntil(handleCallback(update.callback_query, env).catch(logError));
+        ctx.waitUntil(handleCallbackAndPin(update.callback_query, env).catch(logError));
       }
     }
 
     return new Response("OK");
   },
 };
+
+async function handleMessageAndPin(message, env) {
+  await handleMessage(message, env);
+
+  const text = message.text ? message.text.trim() : "";
+  if (text !== "/start") return;
+
+  const chatId = message.chat && message.chat.id;
+  const userId = message.from && message.from.id;
+  await ensurePinnedFromState(env, chatId, userId).catch(logError);
+}
+
+async function handleCallbackAndPin(query, env) {
+  await handleCallback(query, env);
+
+  const data = query.data || "";
+  if (!data.startsWith("lang:")) return;
+
+  const chatId = query.message && query.message.chat && query.message.chat.id;
+  const userId = query.from && query.from.id;
+  await ensurePinnedFromState(env, chatId, userId).catch(logError);
+}
 
 function logError(error) {
   console.error(error && error.stack ? error.stack : error);
