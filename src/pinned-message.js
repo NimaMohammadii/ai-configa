@@ -13,6 +13,29 @@ const PIN_TEXTS = {
   hi: "यहाँ टेक्स्ट भेजो, मैं आवाज़ बना दूँगा",
 };
 
+export async function pinForAllUsers(env, limit = 500) {
+  if (!env.DB) return { total: 0, pinned: 0, failed: 0 };
+
+  await ensurePinnedTable(env);
+  const rows = await env.DB.prepare(
+    "SELECT b.user_id, COALESCE(p.chat_id, b.user_id) AS chat_id, s.language FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id LEFT JOIN user_pins p ON p.user_id = b.user_id WHERE s.language IS NOT NULL ORDER BY b.last_seen_at DESC LIMIT ?"
+  ).bind(Number(limit)).all();
+
+  let pinned = 0;
+  let failed = 0;
+
+  for (const row of rows.results || []) {
+    try {
+      const result = await ensurePinnedMessage(env, row.chat_id || row.user_id, row.user_id, row.language);
+      result ? pinned++ : failed++;
+    } catch (error) {
+      failed++;
+    }
+  }
+
+  return { total: (rows.results || []).length, pinned, failed };
+}
+
 export async function ensurePinnedFromState(env, chatId, userId) {
   if (!chatId || !userId || !env.DB) return null;
 
