@@ -55,6 +55,7 @@ export function adminMainKeyboard() {
     inline_keyboard: [
       [{ text: "Users", callback_data: "admin_users:0" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }],
+      [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
   };
 }
