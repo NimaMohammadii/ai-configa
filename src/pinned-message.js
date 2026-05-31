@@ -13,6 +13,18 @@ const PIN_TEXTS = {
   hi: "यहाँ टेक्स्ट भेजो, मैं आवाज़ बना दूँगा",
 };
 
+export async function ensurePinnedFromState(env, chatId, userId) {
+  if (!chatId || !userId || !env.DB) return null;
+
+  const state = await env.DB.prepare("SELECT language FROM user_state WHERE user_id = ?")
+    .bind(String(userId))
+    .first()
+    .catch(() => null);
+
+  if (!state?.language) return null;
+  return ensurePinnedMessage(env, chatId, userId, state.language);
+}
+
 export async function ensurePinnedMessage(env, chatId, userId, language) {
   if (!chatId || !userId || !env.DB) return null;
 
