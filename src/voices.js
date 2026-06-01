@@ -17,6 +17,12 @@ export const VOICES = {
   James: "6OzrBCQf8cjERkYgzSg8",
   Xavier: "YOq2y2Up4RgXP2HyXjE5",
   Lucas: "NNl6r8mD7vthiJatiJt1",
+  Lana: "bD9maNcCuQQS75DGuteM",
+  Amanda: "oi8rgjIfLgJRsQ6rbZh3",
+  Scarlett: "nTkjq09AuYgsNR8E4sDe",
+  Aurora: "eUdJpUEN3EslrgE24PKx",
+  Allison: "1wGbFxmAM3Fgw63G1zZJ",
+  Mason: "fXhoW006nc5Wf8xkGVSy",
 };
 
 export const VOICE_NAMES = Object.keys(VOICES);
