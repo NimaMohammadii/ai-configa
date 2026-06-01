@@ -47,10 +47,10 @@ async function makeAndSendDemo(env, chatId, userId, state) {
   try {
     statusMessage = await sendPlainMessage(env, chatId, t(lang, "generatingDemo"));
 
-    let audio = await getDemoAudio(env, voiceName, lang);
+    let audio = await getDemoAudio(env, voiceName, lang, text);
     if (!audio) {
       audio = await textToSpeech(env, text, voiceId);
-      await saveDemoAudio(env, voiceName, lang, audio);
+      await saveDemoAudio(env, voiceName, lang, audio, text);
     }
 
     await sendCleanDemoAudio(env, chatId, audio);
