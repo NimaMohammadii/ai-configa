@@ -1,9 +1,9 @@
 import { requireDb } from "./state.js";
 
-export async function getDemoAudio(env, voice, language) {
+export async function getDemoAudio(env, voice, language, text) {
   requireDb(env);
 
-  const key = demoKey(voice, language);
+  const key = demoKey(voice, language, text);
   const row = await env.DB.prepare(
     "SELECT audio_base64 FROM demo_cache_v2 WHERE cache_key = ?"
   ).bind(key).first();
@@ -12,10 +12,10 @@ export async function getDemoAudio(env, voice, language) {
   return base64ToArrayBuffer(row.audio_base64);
 }
 
-export async function saveDemoAudio(env, voice, language, audioBuffer) {
+export async function saveDemoAudio(env, voice, language, audioBuffer, text) {
   requireDb(env);
 
-  const key = demoKey(voice, language);
+  const key = demoKey(voice, language, text);
   const audioBase64 = arrayBufferToBase64(audioBuffer);
 
   await env.DB.prepare(
@@ -24,8 +24,20 @@ export async function saveDemoAudio(env, voice, language, audioBuffer) {
   ).bind(key, voice, normalizeLanguage(language), audioBase64).run();
 }
 
-function demoKey(voice, language) {
-  return String(voice || "Nora") + ":" + normalizeLanguage(language);
+function demoKey(voice, language, text) {
+  const baseKey = String(voice || "Nora") + ":" + normalizeLanguage(language);
+  return text ? baseKey + ":" + hashText(text) : baseKey;
+}
+
+function hashText(text) {
+  let hash = 5381;
+  const value = String(text);
+
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) + hash) ^ value.charCodeAt(i);
+  }
+
+  return (hash >>> 0).toString(36);
 }
 
 function normalizeLanguage(language) {

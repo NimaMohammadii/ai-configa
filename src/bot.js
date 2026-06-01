@@ -20,6 +20,7 @@ import {
 } from "./admin.js";
 import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
+import { getDemoText } from "./demo-texts.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
@@ -338,7 +339,7 @@ export async function handleCallback(query, env) {
 
   if (data === "demo") {
     await answerCallback(env, query.id);
-    await makeAndSendAudio(env, chatId, userId, null, t(state.language, "demoText"), state, true);
+    await makeAndSendAudio(env, chatId, userId, null, getDemoText(state.language, state.voice || "Nora"), state, true);
   }
 }
 
@@ -501,10 +502,10 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
     let audio = null;
 
     if (isDemo) {
-      audio = await getDemoAudio(env, voiceName, lang);
+      audio = await getDemoAudio(env, voiceName, lang, text);
       if (!audio) {
         audio = await textToSpeech(env, text, voiceId);
-        await saveDemoAudio(env, voiceName, lang, audio);
+        await saveDemoAudio(env, voiceName, lang, audio, text);
       }
     } else {
       audio = await textToSpeech(env, text, voiceId);
