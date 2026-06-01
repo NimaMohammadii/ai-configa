@@ -50,25 +50,23 @@ export function startText(state) {
 
 export function mainKeyboard(state) {
   const lang = state.language || "en";
-  const page = Number(state.page || 0);
+  const totalPages = Math.ceil(VOICE_NAMES.length / VOICES_PER_PAGE);
+  const page = Math.min(Math.max(Number(state.page || 0), 0), totalPages - 1);
   const selectedVoice = state.voice || "Nora";
   const start = page * VOICES_PER_PAGE;
   const voices = VOICE_NAMES.slice(start, start + VOICES_PER_PAGE);
   const rows = [];
 
-  for (let i = 0; i < 8; i += 2) {
-    rows.push([
-      voiceButton(voices[i], selectedVoice),
-      voiceButton(voices[i + 1], selectedVoice),
-    ]);
+  for (let i = 0; i < voices.length; i += 2) {
+    const row = [voiceButton(voices[i], selectedVoice)];
+    if (voices[i + 1]) row.push(voiceButton(voices[i + 1], selectedVoice));
+    rows.push(row);
   }
 
-  rows.push([
-    voiceButton(voices[8], selectedVoice),
-    page === 0
-      ? { text: t(lang, "next"), callback_data: "page:1" }
-      : { text: t(lang, "previous"), callback_data: "page:0" },
-  ]);
+  const paginationButtons = [];
+  if (page > 0) paginationButtons.push({ text: t(lang, "previous"), callback_data: `page:${page - 1}` });
+  if (page < totalPages - 1) paginationButtons.push({ text: t(lang, "next"), callback_data: `page:${page + 1}` });
+  if (paginationButtons.length) rows.push(paginationButtons);
 
   rows.push([{ text: t(lang, "demo"), callback_data: "demo" }]);
 
