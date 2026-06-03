@@ -27,12 +27,7 @@ export async function handleReceiptPhoto(message, env) {
   if (!pending || !TOMAN_PACKAGES[pending.package_id]) {
     const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
     await setMenuMessageId(env, userId, menu?.message_id || null);
-    await notifyUser(
-      env,
-      chatId,
-      "⚠️ <b>Screenshot received</b>\n\nPlease choose a credit package first",
-      "⚠️ Screenshot received\n\nPlease choose a credit package first"
-    );
+    await notifyUser(env, chatId, "⚠️ <b>Screenshot received</b>\n\nPlease choose a credit package first", "⚠️ Screenshot received\n\nPlease choose a credit package first");
     return true;
   }
 
@@ -57,19 +52,9 @@ export async function handleReceiptPhoto(message, env) {
   await setMenuMessageId(env, userId, menu?.message_id || null);
 
   if (sentToAdmin > 0) {
-    await notifyUser(
-      env,
-      chatId,
-      "✅ <b>Payment receipt received</b>\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance",
-      "✅ Payment receipt received\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance"
-    );
+    await notifyUser(env, chatId, "✅ <b>Payment receipt received</b>\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance", "✅ Payment receipt received\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance");
   } else {
-    await notifyUser(
-      env,
-      chatId,
-      "⚠️ <b>Payment receipt received</b>\n\nAdmin chat is not configured yet. Please contact support",
-      "⚠️ Payment receipt received\n\nAdmin chat is not configured yet. Please contact support"
-    );
+    await notifyUser(env, chatId, "⚠️ <b>Payment receipt received</b>\n\nAdmin chat is not configured yet. Please contact support", "⚠️ Payment receipt received\n\nAdmin chat is not configured yet. Please contact support");
   }
 
   return true;
@@ -117,48 +102,165 @@ export async function handleReceiptCallback(query, env) {
 }
 
 async function sendPaymentApprovedMessage(env, userId, credits, balance) {
-  await notifyUser(
-    env,
-    userId,
-    [
-      "✅ <b>Payment approved</b>",
-      "",
-      "Your payment was <b>verified successfully</b>",
-      `<b>${Number(credits).toLocaleString("en-US")} credits</b> have been added to your balance`,
-      `Current balance: <b>${Number(balance).toLocaleString("en-US")} credits</b>`,
-      "",
-      "You can now <b>send your text</b> to create voice",
-    ].join("\n"),
-    [
-      "✅ Payment approved",
-      "",
-      "Your payment was verified successfully",
-      `${Number(credits).toLocaleString("en-US")} credits have been added to your balance`,
-      `Current balance: ${Number(balance).toLocaleString("en-US")} credits`,
-      "",
-      "You can now send your text to create voice",
-    ].join("\n")
-  );
+  const state = await getState(env, userId).catch(() => ({ language: "en" }));
+  const message = paymentApprovedMessage(state.language, credits, balance);
+  await notifyUser(env, userId, message.html, message.plain);
 }
 
 async function sendPaymentRejectedMessage(env, userId) {
-  await notifyUser(
-    env,
-    userId,
-    [
-      "❌ <b>Payment rejected</b>",
-      "",
-      "Your receipt could not be verified",
-      "Please check the payment details and send a valid screenshot again",
-    ].join("\n"),
-    [
-      "❌ Payment rejected",
-      "",
-      "Your receipt could not be verified",
-      "Please check the payment details and send a valid screenshot again",
-    ].join("\n")
-  );
+  const state = await getState(env, userId).catch(() => ({ language: "en" }));
+  const message = paymentRejectedMessage(state.language);
+  await notifyUser(env, userId, message.html, message.plain);
 }
+
+function paymentApprovedMessage(language, credits, balance) {
+  const lang = normalizeReceiptLanguage(language);
+  const text = PAYMENT_TEXTS[lang] || PAYMENT_TEXTS.en;
+  const creditText = Number(credits).toLocaleString("en-US");
+  const balanceText = Number(balance).toLocaleString("en-US");
+
+  const html = [
+    "✅ <b>" + text.approvedTitle + "</b>",
+    "",
+    text.approvedVerifiedHtml,
+    "<b>" + creditText + " " + text.credits + "</b> " + text.addedToBalance,
+    text.currentBalance + ": <b>" + balanceText + " " + text.credits + "</b>",
+    "",
+    text.readyHtml,
+  ].join("\n");
+
+  return { html, plain: stripHtml(html) };
+}
+
+function paymentRejectedMessage(language) {
+  const lang = normalizeReceiptLanguage(language);
+  const text = PAYMENT_TEXTS[lang] || PAYMENT_TEXTS.en;
+  const html = [
+    "❌ <b>" + text.rejectedTitle + "</b>",
+    "",
+    text.rejectedBody1,
+    text.rejectedBody2,
+  ].join("\n");
+
+  return { html, plain: stripHtml(html) };
+}
+
+function normalizeReceiptLanguage(language) {
+  return PAYMENT_TEXTS[language] ? language : "en";
+}
+
+const PAYMENT_TEXTS = {
+  en: {
+    credits: "credits",
+    approvedTitle: "Payment approved",
+    approvedVerifiedHtml: "Your payment was <b>verified successfully</b>",
+    addedToBalance: "have been added to your balance",
+    currentBalance: "Current balance",
+    readyHtml: "You can now <b>send your text</b> to create voice",
+    rejectedTitle: "Payment rejected",
+    rejectedBody1: "Your receipt could not be verified",
+    rejectedBody2: "Please check the payment details and send a valid screenshot again",
+  },
+  fa: {
+    credits: "کردیت",
+    approvedTitle: "پرداخت تایید شد",
+    approvedVerifiedHtml: "پرداخت شما <b>با موفقیت تایید شد</b>",
+    addedToBalance: "به موجودی شما اضافه شد",
+    currentBalance: "موجودی فعلی",
+    readyHtml: "حالا می‌توانی <b>متن خودت را بفرستی</b> تا صدا ساخته شود",
+    rejectedTitle: "پرداخت رد شد",
+    rejectedBody1: "رسید پرداخت شما قابل تایید نبود",
+    rejectedBody2: "لطفاً اطلاعات پرداخت را بررسی کن و اسکرین‌شات معتبر دوباره بفرست",
+  },
+  ru: {
+    credits: "кредитов",
+    approvedTitle: "Платеж подтвержден",
+    approvedVerifiedHtml: "Ваш платеж <b>успешно подтвержден</b>",
+    addedToBalance: "добавлено на ваш баланс",
+    currentBalance: "Текущий баланс",
+    readyHtml: "Теперь вы можете <b>отправить текст</b>, чтобы создать голос",
+    rejectedTitle: "Платеж отклонен",
+    rejectedBody1: "Ваш чек не удалось подтвердить",
+    rejectedBody2: "Проверьте данные платежа и отправьте корректный скриншот еще раз",
+  },
+  de: {
+    credits: "Credits",
+    approvedTitle: "Zahlung bestätigt",
+    approvedVerifiedHtml: "Deine Zahlung wurde <b>erfolgreich bestätigt</b>",
+    addedToBalance: "wurden deinem Guthaben hinzugefügt",
+    currentBalance: "Aktuelles Guthaben",
+    readyHtml: "Du kannst jetzt <b>deinen Text senden</b>, um eine Stimme zu erstellen",
+    rejectedTitle: "Zahlung abgelehnt",
+    rejectedBody1: "Dein Beleg konnte nicht verifiziert werden",
+    rejectedBody2: "Bitte prüfe die Zahlungsdetails und sende erneut einen gültigen Screenshot",
+  },
+  tr: {
+    credits: "kredi",
+    approvedTitle: "Ödeme onaylandı",
+    approvedVerifiedHtml: "Ödemeniz <b>başarıyla doğrulandı</b>",
+    addedToBalance: "bakiyenize eklendi",
+    currentBalance: "Güncel bakiye",
+    readyHtml: "Artık ses oluşturmak için <b>metninizi gönderebilirsiniz</b>",
+    rejectedTitle: "Ödeme reddedildi",
+    rejectedBody1: "Dekontunuz doğrulanamadı",
+    rejectedBody2: "Lütfen ödeme bilgilerini kontrol edip geçerli bir ekran görüntüsü tekrar gönderin",
+  },
+  ar: {
+    credits: "رصيد",
+    approvedTitle: "تم تأكيد الدفع",
+    approvedVerifiedHtml: "تم <b>التحقق من الدفع بنجاح</b>",
+    addedToBalance: "تمت إضافتها إلى رصيدك",
+    currentBalance: "الرصيد الحالي",
+    readyHtml: "يمكنك الآن <b>إرسال النص</b> لإنشاء الصوت",
+    rejectedTitle: "تم رفض الدفع",
+    rejectedBody1: "تعذر التحقق من إيصال الدفع",
+    rejectedBody2: "يرجى التحقق من تفاصيل الدفع وإرسال لقطة شاشة صالحة مرة أخرى",
+  },
+  zh: {
+    credits: "credits",
+    approvedTitle: "付款已通过",
+    approvedVerifiedHtml: "你的付款已<b>成功验证</b>",
+    addedToBalance: "已添加到你的余额",
+    currentBalance: "当前余额",
+    readyHtml: "现在你可以<b>发送文本</b>来生成语音",
+    rejectedTitle: "付款被拒绝",
+    rejectedBody1: "你的付款截图无法验证",
+    rejectedBody2: "请检查付款信息并重新发送有效截图",
+  },
+  ja: {
+    credits: "credits",
+    approvedTitle: "支払いが承認されました",
+    approvedVerifiedHtml: "支払いは<b>正常に確認されました</b>",
+    addedToBalance: "が残高に追加されました",
+    currentBalance: "現在の残高",
+    readyHtml: "これで<b>テキストを送信</b>して音声を作成できます",
+    rejectedTitle: "支払いが拒否されました",
+    rejectedBody1: "領収書を確認できませんでした",
+    rejectedBody2: "支払い情報を確認し、有効なスクリーンショットをもう一度送信してください",
+  },
+  es: {
+    credits: "créditos",
+    approvedTitle: "Pago aprobado",
+    approvedVerifiedHtml: "Tu pago fue <b>verificado correctamente</b>",
+    addedToBalance: "se han añadido a tu saldo",
+    currentBalance: "Saldo actual",
+    readyHtml: "Ahora puedes <b>enviar tu texto</b> para crear voz",
+    rejectedTitle: "Pago rechazado",
+    rejectedBody1: "No se pudo verificar tu recibo",
+    rejectedBody2: "Revisa los detalles del pago y envía otra captura válida",
+  },
+  hi: {
+    credits: "credits",
+    approvedTitle: "पेमेंट अप्रूव हो गया",
+    approvedVerifiedHtml: "आपका पेमेंट <b>सफलतापूर्वक वेरिफाई हो गया</b>",
+    addedToBalance: "आपके बैलेंस में जोड़ दिए गए हैं",
+    currentBalance: "मौजूदा बैलेंस",
+    readyHtml: "अब आप आवाज़ बनाने के लिए <b>अपना टेक्स्ट भेज सकते हैं</b>",
+    rejectedTitle: "पेमेंट रिजेक्ट हो गया",
+    rejectedBody1: "आपकी रसीद वेरिफाई नहीं हो सकी",
+    rejectedBody2: "कृपया पेमेंट डिटेल्स चेक करें और सही स्क्रीनशॉट फिर से भेजें",
+  },
+};
 
 async function notifyUser(env, chatId, htmlText, plainText) {
   try {
@@ -179,16 +281,7 @@ async function createReceipt(env, user, packageId, amount, credits) {
   const id = crypto.randomUUID();
   await env.DB.prepare(
     "INSERT INTO payment_receipts (id, user_id, username, first_name, last_name, package_id, amount, credits, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)"
-  ).bind(
-    id,
-    String(user.id),
-    user.username || null,
-    user.first_name || null,
-    user.last_name || null,
-    packageId,
-    String(amount),
-    Number(credits)
-  ).run();
+  ).bind(id, String(user.id), user.username || null, user.first_name || null, user.last_name || null, packageId, String(amount), Number(credits)).run();
   return id;
 }
 
@@ -249,16 +342,11 @@ async function updateAllReceiptCaptions(env, receiptId, status, skipChatId = nul
 }
 
 function statusSuffix(status) {
-  return status === "approved"
-    ? "\n\n<b>✅ تأیید شده توسط ادمین</b>"
-    : "\n\n<b>❌ رد شده توسط ادمین</b>";
+  return status === "approved" ? "\n\n<b>✅ تأیید شده توسط ادمین</b>" : "\n\n<b>❌ رد شده توسط ادمین</b>";
 }
 
 function stripReviewStatus(caption) {
-  return String(caption || "")
-    .replace(/\n\n✅ تأیید شده توسط ادمین/g, "")
-    .replace(/\n\n❌ رد شده توسط ادمین/g, "")
-    .trim();
+  return String(caption || "").replace(/\n\n✅ تأیید شده توسط ادمین/g, "").replace(/\n\n❌ رد شده توسط ادمین/g, "").trim();
 }
 
 function stripHtml(value) {
@@ -293,9 +381,5 @@ function receiptCaption({ user, amount, credits }) {
 }
 
 function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
