@@ -87,13 +87,54 @@ export async function getAdminUserDetails(env, userId) {
   requireDb(env);
 
   const user = await env.DB.prepare(
-    "SELECT user_id, username, first_name, last_name, last_seen_at, created_at FROM bot_users WHERE user_id = ?"
+    "SELECT b.user_id, b.username, b.first_name, b.last_name, b.last_seen_at, b.created_at, s.language " +
+    "FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id WHERE b.user_id = ?"
   ).bind(String(userId)).first();
 
   if (!user) return null;
 
   const balance = await getBalance(env, userId);
-  return { ...user, balance };
+  const purchases = await getUserPurchaseSummary(env, userId);
+  return { ...user, balance, purchases };
+}
+
+async function getUserPurchaseSummary(env, userId) {
+  const receipts = await env.DB.prepare(
+    "SELECT amount, credits FROM payment_receipts WHERE user_id = ? AND status = 'approved'"
+  ).bind(String(userId)).all();
+
+  let totalPaidToman = 0;
+  let totalBoughtCredits = 0;
+  let approvedReceipts = 0;
+
+  for (const receipt of receipts.results || []) {
+    approvedReceipts++;
+    totalPaidToman += parseMoneyAmount(receipt.amount);
+    totalBoughtCredits += Number(receipt.credits || 0);
+  }
+
+  const stars = await env.DB.prepare(
+    "SELECT stars, credits FROM star_payments WHERE user_id = ?"
+  ).bind(String(userId)).all().catch(() => ({ results: [] }));
+
+  let totalPaidStars = 0;
+  let totalStarCredits = 0;
+  let starPayments = 0;
+
+  for (const payment of stars.results || []) {
+    starPayments++;
+    totalPaidStars += Number(payment.stars || 0);
+    totalStarCredits += Number(payment.credits || 0);
+  }
+
+  return {
+    approvedReceipts,
+    totalPaidToman,
+    totalBoughtCredits,
+    starPayments,
+    totalPaidStars,
+    totalStarCredits,
+  };
 }
 
 export async function resetUser(env, userId) {
@@ -146,6 +187,7 @@ export async function adminUserText(env, userId) {
 
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || "No name";
   const username = user.username ? "@" + user.username : "No username";
+  const purchases = user.purchases || {};
 
   return [
     "👤 <b>User</b>",
@@ -153,8 +195,19 @@ export async function adminUserText(env, userId) {
     "Name: <b>" + escapeHtml(name) + "</b>",
     "Username: <b>" + escapeHtml(username) + "</b>",
     "ID: <code>" + escapeHtml(user.user_id) + "</code>",
-    "Balance: <b>" + Number(user.balance || 0) + " credits</b>",
-    "Last seen: <b>" + escapeHtml(user.last_seen_at || "-") + "</b>",
+    "Language: <b>" + escapeHtml(formatLanguage(user.language)) + "</b>",
+    "Balance: <b>" + Number(user.balance || 0).toLocaleString("en-US") + " credits</b>",
+    "",
+    "💳 <b>Purchases</b>",
+    "Approved receipts: <b>" + Number(purchases.approvedReceipts || 0).toLocaleString("en-US") + "</b>",
+    "Total paid: <b>" + formatToman(purchases.totalPaidToman || 0) + "</b>",
+    "Bought credits: <b>" + Number(purchases.totalBoughtCredits || 0).toLocaleString("en-US") + " credits</b>",
+    "Stars payments: <b>" + Number(purchases.starPayments || 0).toLocaleString("en-US") + "</b>",
+    "Stars paid: <b>" + Number(purchases.totalPaidStars || 0).toLocaleString("en-US") + " XTR</b>",
+    "Stars credits: <b>" + Number(purchases.totalStarCredits || 0).toLocaleString("en-US") + " credits</b>",
+    "",
+    "Last seen: <b>" + escapeHtml(formatTehranTime(user.last_seen_at)) + "</b>",
+    "Created: <b>" + escapeHtml(formatTehranTime(user.created_at)) + "</b>",
   ].join("\n");
 }
 
@@ -238,6 +291,50 @@ function userLabel(user) {
   const username = user.username ? "@" + user.username : "";
   const label = name || username || user.user_id;
   return label + " • " + user.user_id;
+}
+
+function parseMoneyAmount(value) {
+  const normalized = String(value || "").replace(/[^0-9.-]/g, "");
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function formatToman(value) {
+  return Number(value || 0).toLocaleString("en-US") + " Toman";
+}
+
+function formatLanguage(language) {
+  const labels = {
+    en: "English",
+    fa: "Persian",
+    ru: "Russian",
+    de: "German",
+    tr: "Turkish",
+    ar: "Arabic",
+    zh: "Chinese",
+    ja: "Japanese",
+    es: "Spanish",
+    hi: "Hindi",
+  };
+  return labels[language] || language || "Not selected";
+}
+
+function formatTehranTime(value) {
+  if (!value) return "-";
+  const normalized = String(value).includes("T") ? String(value) : String(value).replace(" ", "T") + "Z";
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Tehran",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date) + " Tehran";
 }
 
 function escapeHtml(value) {
