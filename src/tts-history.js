@@ -5,16 +5,17 @@ const HISTORY_LIMIT = 8;
 export async function ensureTtsHistoryTable(env) {
   requireDb(env);
   await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS tts_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, text TEXT NOT NULL, voice TEXT, language TEXT, credits INTEGER NOT NULL DEFAULT 0, file_id TEXT, file_type TEXT, telegram_message_id INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    "CREATE TABLE IF NOT EXISTS tts_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, text TEXT NOT NULL, voice TEXT, language TEXT, credits INTEGER NOT NULL DEFAULT 0, audio_base64 TEXT NOT NULL DEFAULT '', file_id TEXT, file_type TEXT, telegram_message_id INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
   ).run();
+
+  await tryAlter(env, "ALTER TABLE tts_history ADD COLUMN audio_base64 TEXT NOT NULL DEFAULT ''");
+  await tryAlter(env, "ALTER TABLE tts_history ADD COLUMN file_id TEXT");
+  await tryAlter(env, "ALTER TABLE tts_history ADD COLUMN file_type TEXT");
+  await tryAlter(env, "ALTER TABLE tts_history ADD COLUMN telegram_message_id INTEGER");
 
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS idx_tts_history_user_created ON tts_history (user_id, created_at DESC)"
   ).run();
-
-  await tryAlter(env, "ALTER TABLE tts_history ADD COLUMN file_id TEXT");
-  await tryAlter(env, "ALTER TABLE tts_history ADD COLUMN file_type TEXT");
-  await tryAlter(env, "ALTER TABLE tts_history ADD COLUMN telegram_message_id INTEGER");
 }
 
 async function tryAlter(env, sql) {
@@ -28,12 +29,13 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
 
   const audio = sentMessage?.audio || null;
   const document = sentMessage?.document || null;
-  const fileId = audio?.file_id || document?.file_id || null;
-  const fileType = audio?.file_id ? "audio" : document?.file_id ? "document" : null;
+  const voiceMsg = sentMessage?.voice || null;
+  const fileId = audio?.file_id || document?.file_id || voiceMsg?.file_id || null;
+  const fileType = audio?.file_id ? "audio" : document?.file_id ? "document" : voiceMsg?.file_id ? "voice" : null;
 
   try {
     await env.DB.prepare(
-      "INSERT INTO tts_history (user_id, text, voice, language, credits, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+      "INSERT INTO tts_history (user_id, text, voice, language, credits, audio_base64, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)"
     ).bind(
       String(userId),
       String(text || ""),
@@ -47,7 +49,7 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
   } catch (firstError) {
     const id = crypto.randomUUID();
     await env.DB.prepare(
-      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, audio_base64, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)"
     ).bind(
       id,
       String(userId),
@@ -64,19 +66,22 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
 
 export async function getTtsHistoryPage(env, userId, page = 0, limit = HISTORY_LIMIT) {
   await ensureTtsHistoryTable(env);
-  const offset = Number(page) * Number(limit);
+  const safePage = Math.max(0, Number(page || 0));
+  const safeLimit = Math.max(1, Number(limit || HISTORY_LIMIT));
+  const offset = safePage * safeLimit;
+
   const count = await env.DB.prepare(
     "SELECT COUNT(*) AS total FROM tts_history WHERE user_id = ?"
   ).bind(String(userId)).first();
 
   const rows = await env.DB.prepare(
-    "SELECT id, text, voice, language, credits, file_id, file_type, created_at FROM tts_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?"
-  ).bind(String(userId), Number(limit), Number(offset)).all();
+    "SELECT id, text, voice, language, credits, file_id, file_type, created_at FROM tts_history WHERE user_id = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ? OFFSET ?"
+  ).bind(String(userId), safeLimit, offset).all();
 
   return {
     total: Number(count?.total || 0),
-    page: Number(page),
-    limit: Number(limit),
+    page: safePage,
+    limit: safeLimit,
     rows: rows.results || [],
   };
 }
@@ -98,10 +103,10 @@ export function ttsHistoryText(data, userId) {
     "🎧 <b>TTS History</b>",
     "",
     "User ID: <code>" + escapeHtml(userId) + "</code>",
-    "Total: <b>" + data.total + "</b>",
-    "Page: <b>" + (data.page + 1) + "</b>",
+    "Total: <b>" + Number(data.total || 0).toLocaleString("en-US") + "</b>",
+    "Page: <b>" + (Number(data.page || 0) + 1) + "</b>",
     "",
-    data.total ? "Select a conversion:" : "No conversions yet."
+    data.total ? "Select a conversion:" : "No conversions yet. Send a new text with this user first."
   ].join("\n");
 }
 
