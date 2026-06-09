@@ -6,7 +6,7 @@ const STAR_USD_PER_50 = 0.76;
 export const STAR_PACKAGES = {
   s400: createStarPackage("s400", 400, 0, 0.12),
   s1000: createStarPackage("s1000", 1000, 0, 0.19),
-  s29000: createStarPackage("s29000", 29000, 15000, 6.1),
+  s33000: createStarPackage("s33000", 33000, 11000, 7.4, 498),
 };
 
 export function getStarPackage(id) {
@@ -49,9 +49,9 @@ export async function applySuccessfulStarsPayment(env, userId, successfulPayment
   return { ok: true, duplicate: false, pack, balance };
 }
 
-function createStarPackage(id, credits, bonus, usd) {
+function createStarPackage(id, credits, bonus, usd, starsOverride = null) {
   const totalCredits = credits + bonus;
-  const stars = Math.ceil((usd / STAR_USD_PER_50) * 50);
+  const stars = starsOverride ?? Math.ceil((usd / STAR_USD_PER_50) * 50);
   const creditLabel = bonus > 0 ? `${formatNumber(credits)} + ${formatNumber(bonus)}🎁` : formatNumber(credits);
 
   return {
