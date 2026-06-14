@@ -40,9 +40,14 @@ export async function handleSupportMessage(message, env) {
   await ensureSupportTables(env);
   await trackUser(env, message.from);
 
+  const text = message.text ? message.text.trim() : "";
+
+  if (await activateSupportAdmin(env, userId, text)) {
+    return false;
+  }
+
   if (await handleAdminSupportReply(env, message)) return true;
 
-  const text = message.text ? message.text.trim() : "";
   const state = await getState(env, userId);
   const lang = state.language || "en";
   const endLabel = supportEndLabel(lang);
@@ -67,6 +72,23 @@ export async function handleSupportMessage(message, env) {
   }
 
   return false;
+}
+
+async function activateSupportAdmin(env, userId, text) {
+  const parts = String(text || "").split(/\s+/).filter(Boolean);
+  if (parts[0] !== "/admin") return false;
+
+  const token = parts[1] || "";
+  const validByToken = env.ADMIN_TOKEN && String(env.ADMIN_TOKEN) === String(token);
+  const validById = env.ADMIN_TOKEN && String(env.ADMIN_TOKEN) === String(userId);
+
+  if (!validByToken && !validById) return false;
+
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO admin_users (user_id, created_at) VALUES (?, CURRENT_TIMESTAMP)"
+  ).bind(String(userId)).run();
+
+  return true;
 }
 
 async function handleAdminSupportReply(env, message) {
@@ -153,20 +175,11 @@ async function getSupportAdminIds(env) {
   const rows = await env.DB.prepare("SELECT user_id FROM admin_users").all().catch(() => ({ results: [] }));
   const ids = new Set((rows.results || []).map((row) => String(row.user_id)).filter(Boolean));
 
-  addAdminIds(ids, env.ADMIN_TOKEN);
-  addAdminIds(ids, env.Admin_TOKEN);
+  if (env.ADMIN_TOKEN && /^\d+$/.test(String(env.ADMIN_TOKEN))) {
+    ids.add(String(env.ADMIN_TOKEN));
+  }
 
   return Array.from(ids);
-}
-
-function addAdminIds(ids, value) {
-  if (!value) return;
-
-  String(value)
-    .split(/[,\s]+/)
-    .map((part) => part.trim())
-    .filter((part) => /^\d+$/.test(part))
-    .forEach((part) => ids.add(part));
 }
 
 async function isSupportAdmin(env, userId) {
