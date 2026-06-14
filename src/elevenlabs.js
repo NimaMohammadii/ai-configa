@@ -1,5 +1,5 @@
 const ELEVEN_TIMEOUT_MS = 80000;
-const MAX_TTS_CHARS = 2400;
+const MAX_TTS_CHARS = 5000;
 
 export async function textToSpeech(env, text, voiceId) {
   if (!env.ELEVEN_API) {
