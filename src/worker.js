@@ -3,6 +3,7 @@ import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCallback } from "./stars-flow.js";
+import { handleSupportMessage } from "./support-flow.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -24,10 +25,8 @@ export default {
     if (update.message) {
       if (update.message.successful_payment) {
         ctx.waitUntil(handleStarsPayment(update.message, env).catch(logError));
-      } else if (Array.isArray(update.message.photo) && update.message.photo.length > 0) {
-        ctx.waitUntil(handleReceiptPhoto(update.message, env).catch(logError));
       } else {
-        ctx.waitUntil(handleMessageAndPin(update.message, env).catch(logError));
+        ctx.waitUntil(handleMessageWithSupport(update.message, env).catch(logError));
       }
     }
 
@@ -46,6 +45,17 @@ export default {
     return new Response("OK");
   },
 };
+
+async function handleMessageWithSupport(message, env) {
+  if (await handleSupportMessage(message, env)) return;
+
+  if (Array.isArray(message.photo) && message.photo.length > 0) {
+    await handleReceiptPhoto(message, env);
+    return;
+  }
+
+  await handleMessageAndPin(message, env);
+}
 
 async function handleMessageAndPin(message, env) {
   await handleMessage(message, env);
