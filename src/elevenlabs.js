@@ -1,5 +1,4 @@
-const ELEVEN_TIMEOUT_MS = 35000;
-const LONG_TEXT_CHUNK_SIZE = 600;
+const ELEVEN_TIMEOUT_MS = 80000;
 const MAX_TTS_CHARS = 2400;
 
 export async function textToSpeech(env, text, voiceId) {
@@ -16,16 +15,6 @@ export async function textToSpeech(env, text, voiceId) {
     throw new Error("متن خیلی طولانی است. لطفاً متن کوتاه‌تری بفرستید.");
   }
 
-  const chunks = splitText(cleanText, LONG_TEXT_CHUNK_SIZE);
-  if (chunks.length === 1) {
-    return await synthesizeChunk(env, chunks[0], voiceId);
-  }
-
-  const parts = await Promise.all(chunks.map((chunk) => synthesizeChunk(env, chunk, voiceId)));
-  return concatArrayBuffers(parts);
-}
-
-async function synthesizeChunk(env, text, voiceId) {
   const response = await fetchWithTimeout(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: "POST",
     headers: {
@@ -34,7 +23,7 @@ async function synthesizeChunk(env, text, voiceId) {
       "xi-api-key": env.ELEVEN_API,
     },
     body: JSON.stringify({
-      text,
+      text: cleanText,
       model_id: "eleven_v3",
       voice_settings: {
         stability: 0.45,
@@ -67,47 +56,6 @@ async function fetchWithTimeout(url, options) {
   } finally {
     clearTimeout(timer);
   }
-}
-
-function splitText(text, maxChars) {
-  const chars = Array.from(text);
-  if (chars.length <= maxChars) return [text];
-
-  const chunks = [];
-  let remaining = text.trim();
-
-  while (Array.from(remaining).length > maxChars) {
-    const slice = Array.from(remaining).slice(0, maxChars).join("");
-    const breakAt = Math.max(
-      slice.lastIndexOf("\n"),
-      slice.lastIndexOf("."),
-      slice.lastIndexOf("!"),
-      slice.lastIndexOf("?"),
-      slice.lastIndexOf("،"),
-      slice.lastIndexOf(" ")
-    );
-
-    const cut = breakAt > Math.floor(maxChars * 0.55) ? breakAt + 1 : maxChars;
-    const chunk = Array.from(remaining).slice(0, cut).join("").trim();
-    if (chunk) chunks.push(chunk);
-    remaining = Array.from(remaining).slice(cut).join("").trim();
-  }
-
-  if (remaining) chunks.push(remaining);
-  return chunks;
-}
-
-function concatArrayBuffers(buffers) {
-  const totalLength = buffers.reduce((total, buffer) => total + buffer.byteLength, 0);
-  const merged = new Uint8Array(totalLength);
-  let offset = 0;
-
-  for (const buffer of buffers) {
-    merged.set(new Uint8Array(buffer), offset);
-    offset += buffer.byteLength;
-  }
-
-  return merged.buffer;
 }
 
 function toFriendlyElevenLabsError(status, errorBody) {
