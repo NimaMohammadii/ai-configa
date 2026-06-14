@@ -1,5 +1,5 @@
 name = "ai-configa"
-main = "src/worker.js"
+main = "src/worker-direct.js"
 compatibility_date = "2026-05-28"
 workers_dev = true
 preview_urls = true
