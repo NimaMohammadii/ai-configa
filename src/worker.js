@@ -3,7 +3,7 @@ import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCallback } from "./stars-flow.js";
-import { handleSupportMessage } from "./support-flow.js";
+import { handleSupportMessage } from "./support-flow-v2.js";
 
 export default {
   async fetch(request, env, ctx) {
