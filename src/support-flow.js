@@ -61,8 +61,8 @@ export async function handleSupportMessage(message, env) {
   }
 
   if (session?.is_open) {
-    await sendUserMessageToAdmins(env, message, lang);
-    await sendPlainMessage(env, chatId, supportText(lang, "sent"));
+    const delivered = await sendUserMessageToAdmins(env, message, lang);
+    if (delivered) await sendPlainMessage(env, chatId, supportText(lang, "sent"));
     return true;
   }
 
@@ -104,11 +104,13 @@ async function sendUserMessageToAdmins(env, message, lang) {
   const user = message.from || {};
 
   if (!admins.length) {
+    console.error("support has no admin target. Set SUPPORT_ADMIN_ID secret or login with /admin TOKEN first.");
     await sendPlainMessage(env, chatId, supportText(lang, "noAdmin"));
-    return;
+    return false;
   }
 
   const header = buildAdminHeader(user, message);
+  let delivered = 0;
 
   for (const adminId of admins) {
     try {
@@ -121,10 +123,18 @@ async function sendUserMessageToAdmins(env, message, lang) {
         const copied = await copyMessage(env, adminId, chatId, message.message_id, "Reply to this message to answer the user.");
         await rememberAdminSupportMessage(env, adminId, copied?.message_id, user.id);
       }
+      delivered++;
     } catch (error) {
       console.error("support message to admin failed", adminId, error && error.message ? error.message : error);
     }
   }
+
+  if (!delivered) {
+    await sendPlainMessage(env, chatId, supportText(lang, "noAdmin"));
+    return false;
+  }
+
+  return true;
 }
 
 function buildAdminHeader(user, message) {
@@ -142,12 +152,28 @@ function buildAdminHeader(user, message) {
 
 async function getSupportAdminIds(env) {
   const rows = await env.DB.prepare("SELECT user_id FROM admin_users").all().catch(() => ({ results: [] }));
-  const ids = new Set((rows.results || []).map((row) => String(row.user_id)));
+  const ids = new Set((rows.results || []).map((row) => String(row.user_id)).filter(Boolean));
 
-  if (env.SUPPORT_ADMIN_ID) ids.add(String(env.SUPPORT_ADMIN_ID));
+  addAdminIds(ids, env.SUPPORT_ADMIN_ID);
+  addAdminIds(ids, env.SUPPORT_ADMIN_IDS);
+  addAdminIds(ids, env.ADMIN_ID);
+  addAdminIds(ids, env.ADMIN_IDS);
+  addAdminIds(ids, env.OWNER_ID);
+  addAdminIds(ids, env.OWNER_IDS);
+
   if (env.ADMIN_TOKEN && /^\d+$/.test(String(env.ADMIN_TOKEN))) ids.add(String(env.ADMIN_TOKEN));
 
   return Array.from(ids);
+}
+
+function addAdminIds(ids, value) {
+  if (!value) return;
+
+  String(value)
+    .split(/[,:\s]+/)
+    .map((part) => part.trim())
+    .filter((part) => /^\d+$/.test(part))
+    .forEach((part) => ids.add(part));
 }
 
 async function isSupportAdmin(env, userId) {
