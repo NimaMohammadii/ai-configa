@@ -1,4 +1,4 @@
-import { handleCallback, handleMessage } from "./bot.js";
+import { handleCallback, handleMessage } from "./bot-secure.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
