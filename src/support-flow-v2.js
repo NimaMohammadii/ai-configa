@@ -90,9 +90,10 @@ async function sendToAdmin(env, message, lang) {
       const sent = await sendPlainMessage(env, adminId, info + "\n\nMessage:\n" + message.text);
       await remember(env, adminId, sent?.message_id, user.id);
     } else {
-      const sent = await sendPlainMessage(env, adminId, info + "\n\nMessage:");
+      const caption = message.caption ? "\n\nCaption:\n" + message.caption : "";
+      const sent = await sendPlainMessage(env, adminId, info + "\n\nMessage: image/media" + caption);
       await remember(env, adminId, sent?.message_id, user.id);
-      const copied = await copyMessage(env, adminId, chatId, message.message_id, "Reply to this message to answer the user.");
+      const copied = await copyMessage(env, adminId, chatId, message.message_id);
       await remember(env, adminId, copied?.message_id, user.id);
     }
     return true;
@@ -117,9 +118,9 @@ async function handleAdminReply(env, message) {
   if (!row?.user_id) return false;
 
   if (message.text) {
-    await sendPlainMessage(env, row.user_id, "💬 Support\n\n" + message.text);
+    await sendMessage(env, row.user_id, "<b>Support 💬</b>\n\n" + escapeHtml(message.text));
   } else {
-    await copyMessage(env, row.user_id, message.chat.id, message.message_id, "💬 Support");
+    await copyMessage(env, row.user_id, message.chat.id, message.message_id, "<b>Support 💬</b>");
   }
 
   const state = await getState(env, row.user_id);
@@ -175,4 +176,12 @@ function endLabel(lang) {
 function getText(lang, key) {
   const pack = TEXT[lang] || TEXT.en;
   return pack[key] || TEXT.en[key] || "";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;");
 }
