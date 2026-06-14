@@ -1,28 +1,36 @@
 import { tgForm, tgJson } from "./telegram-api.js";
 
-export function sendMessage(env, chatId, text, replyMarkup = null) {
-  return tgJson(env, "sendMessage", {
+const botMessageIdsByChat = new Map();
+
+export async function sendMessage(env, chatId, text, replyMarkup = null) {
+  const result = await tgJson(env, "sendMessage", {
     chat_id: chatId,
     text,
     parse_mode: "HTML",
     reply_markup: replyMarkup,
   });
+  rememberBotMessage(chatId, result?.message_id);
+  return result;
 }
 
-export function sendPlainMessage(env, chatId, text) {
-  return tgJson(env, "sendMessage", {
+export async function sendPlainMessage(env, chatId, text) {
+  const result = await tgJson(env, "sendMessage", {
     chat_id: chatId,
     text,
   });
+  rememberBotMessage(chatId, result?.message_id);
+  return result;
 }
 
-export function sendHtmlMessage(env, chatId, text, replyMarkup = null) {
-  return tgJson(env, "sendMessage", {
+export async function sendHtmlMessage(env, chatId, text, replyMarkup = null) {
+  const result = await tgJson(env, "sendMessage", {
     chat_id: chatId,
     text,
     parse_mode: "HTML",
     reply_markup: replyMarkup,
   });
+  rememberBotMessage(chatId, result?.message_id);
+  return result;
 }
 
 export function editMessage(env, chatId, messageId, text, replyMarkup = null) {
@@ -46,6 +54,8 @@ export function editMessageCaption(env, chatId, messageId, caption, replyMarkup 
 }
 
 export function deleteMessage(env, chatId, messageId) {
+  if (!isKnownBotMessage(chatId, messageId)) return Promise.resolve(null);
+
   return tgJson(env, "deleteMessage", {
     chat_id: chatId,
     message_id: messageId,
@@ -150,4 +160,24 @@ export function sendVoice(env, chatId, audioBuffer) {
   form.append("chat_id", String(chatId));
   form.append("voice", new Blob([audioBuffer], { type: "audio/mpeg" }), "vexa-voice.mp3");
   return tgForm(env, "sendVoice", form);
+}
+
+function rememberBotMessage(chatId, messageId) {
+  if (!messageId) return;
+
+  const key = String(chatId);
+  const ids = botMessageIdsByChat.get(key) || new Set();
+  ids.add(Number(messageId));
+
+  if (ids.size > 50) {
+    const first = ids.values().next().value;
+    ids.delete(first);
+  }
+
+  botMessageIdsByChat.set(key, ids);
+}
+
+function isKnownBotMessage(chatId, messageId) {
+  const ids = botMessageIdsByChat.get(String(chatId));
+  return Boolean(ids && ids.has(Number(messageId)));
 }
