@@ -104,7 +104,6 @@ async function sendUserMessageToAdmins(env, message, lang) {
   const user = message.from || {};
 
   if (!admins.length) {
-    console.error("support has no admin target. Set SUPPORT_ADMIN_ID secret or login with /admin TOKEN first.");
     await sendPlainMessage(env, chatId, supportText(lang, "noAdmin"));
     return false;
   }
@@ -154,14 +153,8 @@ async function getSupportAdminIds(env) {
   const rows = await env.DB.prepare("SELECT user_id FROM admin_users").all().catch(() => ({ results: [] }));
   const ids = new Set((rows.results || []).map((row) => String(row.user_id)).filter(Boolean));
 
-  addAdminIds(ids, env.SUPPORT_ADMIN_ID);
-  addAdminIds(ids, env.SUPPORT_ADMIN_IDS);
-  addAdminIds(ids, env.ADMIN_ID);
-  addAdminIds(ids, env.ADMIN_IDS);
-  addAdminIds(ids, env.OWNER_ID);
-  addAdminIds(ids, env.OWNER_IDS);
-
-  if (env.ADMIN_TOKEN && /^\d+$/.test(String(env.ADMIN_TOKEN))) ids.add(String(env.ADMIN_TOKEN));
+  addAdminIds(ids, env.ADMIN_TOKEN);
+  addAdminIds(ids, env.Admin_TOKEN);
 
   return Array.from(ids);
 }
@@ -170,7 +163,7 @@ function addAdminIds(ids, value) {
   if (!value) return;
 
   String(value)
-    .split(/[,:\s]+/)
+    .split(/[,\s]+/)
     .map((part) => part.trim())
     .filter((part) => /^\d+$/.test(part))
     .forEach((part) => ids.add(part));
