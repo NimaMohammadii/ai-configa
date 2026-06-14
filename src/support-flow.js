@@ -80,7 +80,7 @@ async function activateSupportAdmin(env, userId, text) {
 
   const token = parts[1] || "";
   const validByToken = env.ADMIN_TOKEN && String(env.ADMIN_TOKEN) === String(token);
-  const validById = env.ADMIN_TOKEN && String(env.ADMIN_TOKEN) === String(userId);
+  const validById = env.ADMIN_TOKEN && extractAdminIds(env.ADMIN_TOKEN).includes(String(userId));
 
   if (!validByToken && !validById) return false;
 
@@ -175,11 +175,17 @@ async function getSupportAdminIds(env) {
   const rows = await env.DB.prepare("SELECT user_id FROM admin_users").all().catch(() => ({ results: [] }));
   const ids = new Set((rows.results || []).map((row) => String(row.user_id)).filter(Boolean));
 
-  if (env.ADMIN_TOKEN && /^\d+$/.test(String(env.ADMIN_TOKEN))) {
-    ids.add(String(env.ADMIN_TOKEN));
+  for (const id of extractAdminIds(env.ADMIN_TOKEN)) {
+    ids.add(id);
   }
 
   return Array.from(ids);
+}
+
+function extractAdminIds(value) {
+  if (!value) return [];
+  const matches = String(value).match(/\d{5,}/g) || [];
+  return matches.map((id) => String(id));
 }
 
 async function isSupportAdmin(env, userId) {
