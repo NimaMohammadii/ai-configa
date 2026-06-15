@@ -1,5 +1,6 @@
 import { getBalance } from "./credits.js";
 import { requireDb } from "./state.js";
+import { ensureTtsHistoryTable } from "./tts-history.js";
 
 export async function trackUser(env, user) {
   requireDb(env);
@@ -268,7 +269,31 @@ export async function getAdminUserDetails(env, userId) {
 
   const balance = await getBalance(env, userId);
   const purchases = await getUserPurchaseSummary(env, userId);
-  return { ...user, balance, purchases };
+  const usage = await getUserUsageSummary(env, userId);
+  return { ...user, balance, purchases, usage };
+}
+
+async function getUserUsageSummary(env, userId) {
+  await ensureUsageStatsStorage(env);
+
+  const row = await env.DB.prepare(
+    "SELECT COALESCE(SUM(credits), 0) AS total_credits, COUNT(*) AS total_requests, MAX(created_at) AS last_tts_at, " +
+      "COALESCE(SUM(CASE WHEN datetime(created_at) >= datetime('now', '-1 day') THEN credits ELSE 0 END), 0) AS credits_24h, " +
+      "COALESCE(SUM(CASE WHEN datetime(created_at) >= datetime('now', '-7 days') THEN credits ELSE 0 END), 0) AS credits_7d " +
+    "FROM tts_history WHERE user_id = ?"
+  ).bind(String(userId)).first();
+
+  return {
+    totalCredits: Number(row?.total_credits || 0),
+    totalRequests: Number(row?.total_requests || 0),
+    credits24h: Number(row?.credits_24h || 0),
+    credits7d: Number(row?.credits_7d || 0),
+    lastTtsAt: row?.last_tts_at || null,
+  };
+}
+
+async function ensureUsageStatsStorage(env) {
+  await ensureTtsHistoryTable(env);
 }
 
 async function getUserPurchaseSummary(env, userId) {
@@ -361,6 +386,7 @@ export async function adminUserText(env, userId) {
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || "No name";
   const username = user.username ? "@" + user.username : "No username";
   const purchases = user.purchases || {};
+  const usage = user.usage || {};
 
   return [
     "👤 <b>User</b>",
@@ -378,6 +404,13 @@ export async function adminUserText(env, userId) {
     "Stars payments: <b>" + Number(purchases.starPayments || 0).toLocaleString("en-US") + "</b>",
     "Stars paid: <b>" + Number(purchases.totalPaidStars || 0).toLocaleString("en-US") + " XTR</b>",
     "Stars credits: <b>" + Number(purchases.totalStarCredits || 0).toLocaleString("en-US") + " credits</b>",
+    "",
+    "📊 <b>Usage</b>",
+    "Total used: <b>" + Number(usage.totalCredits || 0).toLocaleString("en-US") + " credits</b>",
+    "Requests: <b>" + Number(usage.totalRequests || 0).toLocaleString("en-US") + "</b>",
+    "24h: <b>" + Number(usage.credits24h || 0).toLocaleString("en-US") + " credits</b>",
+    "7 days: <b>" + Number(usage.credits7d || 0).toLocaleString("en-US") + " credits</b>",
+    "Last TTS: <b>" + escapeHtml(formatTehranTime(usage.lastTtsAt)) + "</b>",
     "",
     "Last seen: <b>" + escapeHtml(formatTehranTime(user.last_seen_at)) + "</b>",
     "Created: <b>" + escapeHtml(formatTehranTime(user.created_at)) + "</b>",
@@ -461,6 +494,7 @@ export async function clearAdminAction(env, adminId) {
 }
 
 async function sumCreditsSince(env, modifier) {
+  await ensureUsageStatsStorage(env);
   const row = await env.DB.prepare("SELECT COALESCE(SUM(credits), 0) AS total FROM tts_history WHERE datetime(created_at) >= datetime('now', ?)").bind(modifier).first();
   return Number(row?.total || 0);
 }
@@ -471,6 +505,7 @@ async function countUsersSeenSince(env, modifier) {
 }
 
 async function getHeavyUsageUsers(env, modifier, limit) {
+  await ensureUsageStatsStorage(env);
   const rows = await env.DB.prepare(
     "SELECT h.user_id, SUM(h.credits) AS credits, COUNT(*) AS requests, b.username, b.first_name, b.last_name " +
     "FROM tts_history h LEFT JOIN bot_users b ON b.user_id = h.user_id " +
