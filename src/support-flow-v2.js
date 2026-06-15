@@ -110,12 +110,17 @@ async function handleAdminReply(env, message) {
   const adminTarget = adminChatId(env);
   const adminFrom = String(message.from?.id || "");
   const adminChat = String(message.chat?.id || "");
+  const text = message.text?.trim() || "";
 
   if (!adminTarget) return false;
   if (adminFrom !== adminTarget && adminChat !== adminTarget) return false;
 
+  if (!message.reply_to_message?.message_id) {
+    return !text.startsWith("/");
+  }
+
   const targetUserId = await resolveReplyUserId(env, adminTarget, adminChat, message);
-  if (!targetUserId) return false;
+  if (!targetUserId) return true;
 
   if (message.text) {
     await sendPlainMessage(env, targetUserId, "💬 Support\n\n" + message.text);
@@ -146,13 +151,6 @@ async function resolveReplyUserId(env, adminTarget, adminChat, message) {
   const repliedText = [reply?.text, reply?.caption].filter(Boolean).join("\n");
   const fromText = extractUserId(repliedText);
   if (fromText) return fromText;
-
-  for (const key of keys) {
-    const last = await env.DB.prepare(
-      "SELECT user_id FROM support_admin_last WHERE admin_chat_id = ?"
-    ).bind(key).first();
-    if (last?.user_id) return String(last.user_id);
-  }
 
   return "";
 }
