@@ -54,9 +54,9 @@ export async function adminMainText(env = null) {
   if (stats) {
     lines.push(
       "📊 <b>Usage</b>",
-      "24h: <b>" + formatNumber(stats.credits24h) + " credits</b>",
-      "3 days: <b>" + formatNumber(stats.credits3d) + " credits</b>",
-      "7 days: <b>" + formatNumber(stats.credits7d) + " credits</b>",
+      "24h: <b>" + formatNumber(stats.credits24h) + " credits</b> / " + formatNumber(stats.requests24h) + " requests",
+      "3 days: <b>" + formatNumber(stats.credits3d) + " credits</b> / " + formatNumber(stats.requests3d) + " requests",
+      "7 days: <b>" + formatNumber(stats.credits7d) + " credits</b> / " + formatNumber(stats.requests7d) + " requests",
       "",
       "🟢 <b>Online users</b>",
       "24h: <b>" + formatNumber(stats.online24h) + "</b>",
@@ -85,15 +85,18 @@ export function adminMainKeyboard() {
 export async function getAdminDashboardStats(env) {
   requireDb(env);
 
-  const [credits24h, credits3d, credits7d, online24h, online7d] = await Promise.all([
+  const [credits24h, credits3d, credits7d, requests24h, requests3d, requests7d, online24h, online7d] = await Promise.all([
     sumCreditsSince(env, "-1 day"),
     sumCreditsSince(env, "-3 days"),
     sumCreditsSince(env, "-7 days"),
+    countTtsRequestsSince(env, "-1 day"),
+    countTtsRequestsSince(env, "-3 days"),
+    countTtsRequestsSince(env, "-7 days"),
     countUsersSeenSince(env, "-1 day"),
     countUsersSeenSince(env, "-7 days"),
   ]);
 
-  return { credits24h, credits3d, credits7d, online24h, online7d };
+  return { credits24h, credits3d, credits7d, requests24h, requests3d, requests7d, online24h, online7d };
 }
 
 export async function adminStatsText(env) {
@@ -107,6 +110,9 @@ export async function adminStatsText(env) {
     "Credits used in 24h: <b>" + formatNumber(stats.credits24h) + "</b>",
     "Credits used in 3 days: <b>" + formatNumber(stats.credits3d) + "</b>",
     "Credits used in 7 days: <b>" + formatNumber(stats.credits7d) + "</b>",
+    "TTS requests in 24h: <b>" + formatNumber(stats.requests24h) + "</b>",
+    "TTS requests in 3 days: <b>" + formatNumber(stats.requests3d) + "</b>",
+    "TTS requests in 7 days: <b>" + formatNumber(stats.requests7d) + "</b>",
     "",
     "Online users in 24h: <b>" + formatNumber(stats.online24h) + "</b>",
     "Online users in 7 days: <b>" + formatNumber(stats.online7d) + "</b>",
@@ -496,6 +502,12 @@ export async function clearAdminAction(env, adminId) {
 async function sumCreditsSince(env, modifier) {
   await ensureUsageStatsStorage(env);
   const row = await env.DB.prepare("SELECT COALESCE(SUM(credits), 0) AS total FROM tts_history WHERE datetime(created_at) >= datetime('now', ?)").bind(modifier).first();
+  return Number(row?.total || 0);
+}
+
+async function countTtsRequestsSince(env, modifier) {
+  await ensureUsageStatsStorage(env);
+  const row = await env.DB.prepare("SELECT COUNT(*) AS total FROM tts_history WHERE datetime(created_at) >= datetime('now', ?)").bind(modifier).first();
   return Number(row?.total || 0);
 }
 
