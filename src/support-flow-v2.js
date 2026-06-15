@@ -67,11 +67,11 @@ export async function handleSupportMessage(message, env) {
 }
 
 async function sendToAdmin(env, message, lang) {
-  const adminId = adminChatId(env);
+  const adminTarget = adminChatId(env);
   const chatId = message.chat?.id;
   const user = message.from || {};
 
-  if (!adminId) {
+  if (!adminTarget) {
     await sendPlainMessage(env, chatId, getText(lang, "noAdmin"));
     return false;
   }
@@ -86,31 +86,35 @@ async function sendToAdmin(env, message, lang) {
   ].join("\n");
 
   try {
-    await rememberLastUser(env, adminId, user.id);
+    await rememberLastUser(env, adminTarget, user.id);
 
     if (message.text) {
-      const sent = await sendPlainMessage(env, adminId, info + "\n\nMessage:\n" + message.text);
-      await remember(env, adminId, sent?.message_id, user.id);
+      const sent = await sendPlainMessage(env, adminTarget, info + "\n\nMessage:\n" + message.text);
+      await remember(env, adminTarget, sent?.message_id, user.id);
     } else {
       const caption = message.caption ? "\n\nCaption:\n" + message.caption : "";
-      const sent = await sendPlainMessage(env, adminId, info + "\n\nMessage: image/media" + caption);
-      await remember(env, adminId, sent?.message_id, user.id);
-      const copied = await copyMessage(env, adminId, chatId, message.message_id);
-      await remember(env, adminId, copied?.message_id, user.id);
+      const sent = await sendPlainMessage(env, adminTarget, info + "\n\nMessage: image/media" + caption);
+      await remember(env, adminTarget, sent?.message_id, user.id);
+      const copied = await copyMessage(env, adminTarget, chatId, message.message_id);
+      await remember(env, adminTarget, copied?.message_id, user.id);
     }
     return true;
   } catch (error) {
-    console.error("support admin send failed", adminId, error?.message || error);
+    console.error("support admin send failed", adminTarget, error?.message || error);
     await sendPlainMessage(env, chatId, getText(lang, "noAdmin"));
     return false;
   }
 }
 
 async function handleAdminReply(env, message) {
-  const adminId = String(message.from?.id || "");
-  if (adminId !== adminChatId(env)) return false;
+  const adminTarget = adminChatId(env);
+  const adminFrom = String(message.from?.id || "");
+  const adminChat = String(message.chat?.id || "");
 
-  const targetUserId = await resolveReplyUserId(env, adminId, message);
+  if (!adminTarget) return false;
+  if (adminFrom !== adminTarget && adminChat !== adminTarget) return false;
+
+  const targetUserId = await resolveReplyUserId(env, adminTarget, adminChat, message);
   if (!targetUserId) return false;
 
   if (message.text) {
@@ -121,31 +125,36 @@ async function handleAdminReply(env, message) {
 
   const state = await getState(env, targetUserId);
   await openSession(env, targetUserId, state.language || "en");
-  await sendPlainMessage(env, adminId, getText("en", "adminSent"));
+  await sendPlainMessage(env, adminChat || adminTarget, getText("en", "adminSent"));
   return true;
 }
 
-async function resolveReplyUserId(env, adminId, message) {
+async function resolveReplyUserId(env, adminTarget, adminChat, message) {
   const reply = message.reply_to_message;
   const replyId = reply?.message_id;
+  const keys = Array.from(new Set([adminChat, adminTarget].filter(Boolean).map(String)));
 
   if (replyId) {
-    const row = await env.DB.prepare(
-      "SELECT user_id FROM support_admin_messages WHERE admin_chat_id = ? AND admin_message_id = ?"
-    ).bind(adminId, Number(replyId)).first();
-
-    if (row?.user_id) return String(row.user_id);
+    for (const key of keys) {
+      const row = await env.DB.prepare(
+        "SELECT user_id FROM support_admin_messages WHERE admin_chat_id = ? AND admin_message_id = ?"
+      ).bind(key, Number(replyId)).first();
+      if (row?.user_id) return String(row.user_id);
+    }
   }
 
   const repliedText = [reply?.text, reply?.caption].filter(Boolean).join("\n");
   const fromText = extractUserId(repliedText);
   if (fromText) return fromText;
 
-  const last = await env.DB.prepare(
-    "SELECT user_id FROM support_admin_last WHERE admin_chat_id = ?"
-  ).bind(adminId).first();
+  for (const key of keys) {
+    const last = await env.DB.prepare(
+      "SELECT user_id FROM support_admin_last WHERE admin_chat_id = ?"
+    ).bind(key).first();
+    if (last?.user_id) return String(last.user_id);
+  }
 
-  return last?.user_id ? String(last.user_id) : "";
+  return "";
 }
 
 function extractUserId(text) {
@@ -155,7 +164,7 @@ function extractUserId(text) {
 
 function adminChatId(env) {
   const value = String(env.ADMIN_TOKEN || "");
-  const match = value.match(/\d{5,}/);
+  const match = value.match(/-?\d{5,}/);
   return match ? match[0] : "";
 }
 
