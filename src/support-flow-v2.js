@@ -110,31 +110,47 @@ async function handleAdminReply(env, message) {
   const adminId = String(message.from?.id || "");
   if (adminId !== adminChatId(env)) return false;
 
-  const replyId = message.reply_to_message?.message_id;
-  if (!replyId) return false;
-
-  let row = await env.DB.prepare(
-    "SELECT user_id FROM support_admin_messages WHERE admin_chat_id = ? AND admin_message_id = ?"
-  ).bind(adminId, Number(replyId)).first();
-
-  if (!row?.user_id) {
-    row = await env.DB.prepare(
-      "SELECT user_id FROM support_admin_last WHERE admin_chat_id = ?"
-    ).bind(adminId).first();
-  }
-
-  if (!row?.user_id) return false;
+  const targetUserId = await resolveReplyUserId(env, adminId, message);
+  if (!targetUserId) return false;
 
   if (message.text) {
-    await sendMessage(env, row.user_id, "<b>Support 💬</b>\n\n" + escapeHtml(message.text));
+    await sendMessage(env, targetUserId, "<b>Support 💬</b>\n\n" + escapeHtml(message.text));
   } else {
-    await copyMessage(env, row.user_id, message.chat.id, message.message_id, "<b>Support 💬</b>");
+    await copyMessage(env, targetUserId, message.chat.id, message.message_id, "<b>Support 💬</b>");
   }
 
-  const state = await getState(env, row.user_id);
-  await openSession(env, row.user_id, state.language || "en");
+  const state = await getState(env, targetUserId);
+  await openSession(env, targetUserId, state.language || "en");
   await sendPlainMessage(env, adminId, getText("en", "adminSent"));
   return true;
+}
+
+async function resolveReplyUserId(env, adminId, message) {
+  const reply = message.reply_to_message;
+  const replyId = reply?.message_id;
+
+  if (replyId) {
+    const row = await env.DB.prepare(
+      "SELECT user_id FROM support_admin_messages WHERE admin_chat_id = ? AND admin_message_id = ?"
+    ).bind(adminId, Number(replyId)).first();
+
+    if (row?.user_id) return String(row.user_id);
+  }
+
+  const repliedText = [reply?.text, reply?.caption].filter(Boolean).join("\n");
+  const fromText = extractUserId(repliedText);
+  if (fromText) return fromText;
+
+  const last = await env.DB.prepare(
+    "SELECT user_id FROM support_admin_last WHERE admin_chat_id = ?"
+  ).bind(adminId).first();
+
+  return last?.user_id ? String(last.user_id) : "";
+}
+
+function extractUserId(text) {
+  const match = String(text || "").match(/User ID:\s*(\d{5,})/i);
+  return match ? match[1] : "";
 }
 
 function adminChatId(env) {
