@@ -215,6 +215,7 @@ export function adminUserKeyboard(userId, page = 0) {
   return {
     inline_keyboard: [
       [{ text: "TTS History", callback_data: "admin_tts:" + userId + ":0:" + page }],
+      [{ text: "📥 Download Text History", callback_data: "admin_tts_download:" + userId + ":" + page }],
       [{ text: "Change Credits", callback_data: "admin_credit_prompt:" + userId + ":" + page }],
       [{ text: "Send Message", callback_data: "admin_msg_prompt:" + userId + ":" + page }],
       [{ text: "Reset User", callback_data: "admin_reset_user:" + userId + ":" + page }],

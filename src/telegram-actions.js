@@ -106,6 +106,17 @@ export function copyMessage(env, chatId, fromChatId, messageId, caption, replyMa
   });
 }
 
+export function sendTextDocument(env, chatId, content, filename, caption = "") {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("document", new Blob([content], { type: "text/plain;charset=utf-8" }), filename);
+  if (caption) {
+    form.append("caption", caption);
+    form.append("parse_mode", "HTML");
+  }
+  return tgForm(env, "sendDocument", form);
+}
+
 export function sendAudio(env, chatId, audioBuffer) {
   return sendNamedAudio(env, chatId, audioBuffer, "Vexa Voice", "vexa-voice.mp3");
 }
