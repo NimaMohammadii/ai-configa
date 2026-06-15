@@ -4,7 +4,7 @@ import { shouldProcessMessageOnce } from "./message-dedupe.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCallback } from "./stars-flow.js";
-import { handleSupportMessage } from "./support-flow-safe.js";
+import { handleSupportMessage } from "./support-flow-strict.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -76,7 +76,7 @@ async function handleCallbackAndPin(query, env) {
   const data = query.data || "";
   if (!data.startsWith("lang:")) return;
 
-  const chatId = query.message && query.message.chat && query.message.id;
+  const chatId = query.message && query.message.chat && query.message.chat.id;
   const userId = query.from && query.from.id;
   await ensurePinnedFromState(env, chatId, userId).catch(logError);
 }
