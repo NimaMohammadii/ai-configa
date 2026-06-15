@@ -13,7 +13,7 @@ export async function handleSupportMessage(message, env) {
   }
 
   const reply = message.reply_to_message;
-  if (!reply?.message_id) return true;
+  if (!reply?.message_id) return false;
 
   await requireTables(env);
 
