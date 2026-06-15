@@ -86,6 +86,8 @@ async function sendToAdmin(env, message, lang) {
   ].join("\n");
 
   try {
+    await rememberLastUser(env, adminId, user.id);
+
     if (message.text) {
       const sent = await sendPlainMessage(env, adminId, info + "\n\nMessage:\n" + message.text);
       await remember(env, adminId, sent?.message_id, user.id);
@@ -111,9 +113,15 @@ async function handleAdminReply(env, message) {
   const replyId = message.reply_to_message?.message_id;
   if (!replyId) return false;
 
-  const row = await env.DB.prepare(
+  let row = await env.DB.prepare(
     "SELECT user_id FROM support_admin_messages WHERE admin_chat_id = ? AND admin_message_id = ?"
   ).bind(adminId, Number(replyId)).first();
+
+  if (!row?.user_id) {
+    row = await env.DB.prepare(
+      "SELECT user_id FROM support_admin_last WHERE admin_chat_id = ?"
+    ).bind(adminId).first();
+  }
 
   if (!row?.user_id) return false;
 
@@ -157,11 +165,19 @@ async function remember(env, adminChatId, adminMessageId, userId) {
   ).bind(String(adminChatId), Number(adminMessageId), String(userId)).run();
 }
 
+async function rememberLastUser(env, adminChatId, userId) {
+  if (!adminChatId || !userId) return;
+  await env.DB.prepare(
+    "INSERT INTO support_admin_last (admin_chat_id, user_id, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(admin_chat_id) DO UPDATE SET user_id = excluded.user_id, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(adminChatId), String(userId)).run();
+}
+
 async function ensureTables(env) {
   requireDb(env);
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS support_sessions (user_id TEXT PRIMARY KEY, is_open INTEGER NOT NULL DEFAULT 0, language TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS support_admin_messages (admin_chat_id TEXT NOT NULL, admin_message_id INTEGER NOT NULL, user_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (admin_chat_id, admin_message_id))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS support_admin_last (admin_chat_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
   ]);
 }
 
