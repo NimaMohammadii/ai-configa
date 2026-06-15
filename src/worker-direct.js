@@ -1,5 +1,6 @@
 import { handleCallback, handleMessage } from "./bot-secure.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
+import { shouldProcessMessageOnce } from "./message-dedupe.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCallback } from "./stars-flow.js";
@@ -21,7 +22,13 @@ export default {
       if (update.message.successful_payment) {
         ctx.waitUntil(handleStarsPayment(update.message, env).catch(logError));
       } else {
-        await handleMessageWithSupport(update.message, env).catch(logError);
+        const firstTime = await shouldProcessMessageOnce(env, update.message).catch((error) => {
+          logError(error);
+          return true;
+        });
+        if (firstTime) {
+          await handleMessageWithSupport(update.message, env).catch(logError);
+        }
       }
     }
 
@@ -69,7 +76,7 @@ async function handleCallbackAndPin(query, env) {
   const data = query.data || "";
   if (!data.startsWith("lang:")) return;
 
-  const chatId = query.message && query.message.chat && query.message.chat.id;
+  const chatId = query.message && query.message.chat && query.message.id;
   const userId = query.from && query.from.id;
   await ensurePinnedFromState(env, chatId, userId).catch(logError);
 }
