@@ -1,4 +1,5 @@
 import { trackUser } from "./admin.js";
+import { sendFreshMainMenu } from "./bot.js";
 import { getState, requireDb } from "./state.js";
 import { copyMessage, sendMessage, sendPlainMessage } from "./telegram-actions.js";
 
@@ -55,9 +56,15 @@ export async function handleSupportMessage(message, env) {
   const session = await getSession(env, userId);
   if (!session) return false;
 
+  if (text.startsWith("/")) {
+    await closeSession(env, userId);
+    return false;
+  }
+
   if (text === endLabel(lang)) {
     await closeSession(env, userId);
     await sendMessage(env, chatId, getText(lang, "end"), { remove_keyboard: true });
+    await sendFreshMainMenu(env, chatId, userId);
     return true;
   }
 

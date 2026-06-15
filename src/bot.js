@@ -59,16 +59,16 @@ export async function handleMessage(message, env) {
   if (text === "/start") {
     await deleteMessage(env, chatId, messageId).catch(() => null);
     if (!state.language) {
-      await upsertMenu(env, chatId, userId, state, languageText(), languageKeyboard());
+      await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
       return;
     }
-    await upsertMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+    await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
     return;
   }
 
   if (text === "/language" || text === "/lang") {
     await deleteMessage(env, chatId, messageId).catch(() => null);
-    await upsertMenu(env, chatId, userId, state, languageText(), languageKeyboard());
+    await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
     return;
   }
 
@@ -80,16 +80,22 @@ export async function handleMessage(message, env) {
   if (text === "/debug") {
     await deleteMessage(env, chatId, messageId).catch(() => null);
     if (!(await isAdmin(env, userId))) {
-      await upsertMenu(env, chatId, userId, state, t(state.language, "accessDenied"), mainKeyboard(state));
+      await replaceMenu(env, chatId, userId, state, t(state.language, "accessDenied"), mainKeyboard(state));
       return;
     }
-    await upsertMenu(env, chatId, userId, state, buildDebugText(env, state), mainKeyboard(state));
+    await replaceMenu(env, chatId, userId, state, buildDebugText(env, state), mainKeyboard(state));
     return;
   }
 
   if (!state.language) {
     await deleteMessage(env, chatId, messageId).catch(() => null);
-    await upsertMenu(env, chatId, userId, state, languageText(), languageKeyboard());
+    await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
+    return;
+  }
+
+  if (text.startsWith("/")) {
+    await deleteMessage(env, chatId, messageId).catch(() => null);
+    await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
     return;
   }
 
@@ -546,13 +552,23 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
   }
 }
 
-async function sendFreshMainMenu(env, chatId, userId) {
+export async function sendFreshMainMenu(env, chatId, userId) {
   const state = await getState(env, userId);
   if (!state.language) {
-    await upsertMenu(env, chatId, userId, state, languageText(), languageKeyboard());
+    await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
     return;
   }
-  await upsertMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+  await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+}
+
+async function replaceMenu(env, chatId, userId, state, text, keyboard) {
+  if (state?.menuMessageId) {
+    await deleteMessage(env, chatId, state.menuMessageId).catch(() => null);
+  }
+
+  const menu = await sendMessage(env, chatId, text, keyboard);
+  await setMenuMessageId(env, userId, menu?.message_id || null);
+  return menu?.message_id || null;
 }
 
 async function upsertMenu(env, chatId, userId, state, text, keyboard) {
