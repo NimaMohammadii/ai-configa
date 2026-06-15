@@ -564,10 +564,11 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
 
     const sentAudioMessage = await sendCleanAudio(env, chatId, audio);
 
+    await saveTtsHistory(env, userId, text, voiceName, lang, isDemo ? 0 : cost, sentAudioMessage).catch((error) => {
+      console.error("save tts history failed", error && error.message ? error.message : error);
+    });
+
     if (!isDemo) {
-      await saveTtsHistory(env, userId, text, voiceName, lang, cost, sentAudioMessage).catch((error) => {
-        console.error("save tts history failed", error && error.message ? error.message : error);
-      });
       await spendCredits(env, userId, cost);
     }
 
