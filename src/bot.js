@@ -8,6 +8,8 @@ import {
   adminMainText,
   adminStatsKeyboard,
   adminStatsText,
+  adminOnlineKeyboard,
+  adminOnlineText,
   adminMessagePromptText,
   adminUserKeyboard,
   adminUsersKeyboard,
@@ -159,6 +161,15 @@ export async function handleCallback(query, env) {
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminBuyersText(env, page), await adminBuyersKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_online:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const page = Number(data.split(":")[1] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminOnlineText(env, page), await adminOnlineKeyboard(env, page));
     return;
   }
 
