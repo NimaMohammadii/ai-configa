@@ -2,8 +2,12 @@ import {
   adminBroadcastPromptText,
   adminCancelKeyboard,
   adminCreditPromptText,
+  adminBuyersKeyboard,
+  adminBuyersText,
   adminMainKeyboard,
   adminMainText,
+  adminStatsKeyboard,
+  adminStatsText,
   adminMessagePromptText,
   adminUserKeyboard,
   adminUsersKeyboard,
@@ -136,7 +140,7 @@ export async function handleCallback(query, env) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, adminMainText(), adminMainKeyboard());
+    await editCurrentMenu(env, chatId, userId, messageId, await adminMainText(env), adminMainKeyboard());
     return;
   }
 
@@ -146,6 +150,23 @@ export async function handleCallback(query, env) {
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminUsersText(env, page), await adminUsersKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_buyers:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const page = Number(data.split(":")[1] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminBuyersText(env, page), await adminBuyersKeyboard(env, page));
+    return;
+  }
+
+  if (data === "admin_stats") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminStatsText(env), adminStatsKeyboard());
     return;
   }
 
@@ -406,7 +427,7 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     }
 
     await clearAdminAction(env, adminId);
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminMainText() + "\n\nBroadcast sent to " + sent + " users", adminMainKeyboard());
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminMainText(env)) + "\n\nBroadcast sent to " + sent + " users", adminMainKeyboard());
     return true;
   }
 
@@ -473,7 +494,7 @@ async function handleAdminCommand(env, chatId, userId, text, messageId, state) {
   }
 
   await clearAdminAction(env, userId);
-  await upsertMenu(env, chatId, userId, state, adminMainText(), adminMainKeyboard());
+  await upsertMenu(env, chatId, userId, state, await adminMainText(env), adminMainKeyboard());
 }
 
 function buildDebugText(env, state) {

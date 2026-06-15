@@ -46,18 +46,79 @@ export async function tryAdminLogin(env, userId, token) {
   return true;
 }
 
-export function adminMainText() {
-  return ["👑 <b>Admin Panel</b>", "", "Choose an option:"].join("\n");
+export async function adminMainText(env = null) {
+  const stats = env ? await getAdminDashboardStats(env).catch(() => null) : null;
+  const lines = ["👑 <b>Admin Panel</b>", ""];
+
+  if (stats) {
+    lines.push(
+      "📊 <b>Usage</b>",
+      "24h: <b>" + formatNumber(stats.credits24h) + " credits</b>",
+      "3 days: <b>" + formatNumber(stats.credits3d) + " credits</b>",
+      "7 days: <b>" + formatNumber(stats.credits7d) + " credits</b>",
+      "",
+      "🟢 <b>Online users</b>",
+      "24h: <b>" + formatNumber(stats.online24h) + "</b>",
+      "7 days: <b>" + formatNumber(stats.online7d) + "</b>",
+      ""
+    );
+  }
+
+  lines.push("Choose an option:");
+  return lines.join("\n");
 }
 
 export function adminMainKeyboard() {
   return {
     inline_keyboard: [
       [{ text: "Users", callback_data: "admin_users:0" }],
+      [{ text: "💳 Buyers", callback_data: "admin_buyers:0" }],
+      [{ text: "📊 Usage Stats", callback_data: "admin_stats" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
   };
+}
+
+export async function getAdminDashboardStats(env) {
+  requireDb(env);
+
+  const [credits24h, credits3d, credits7d, online24h, online7d] = await Promise.all([
+    sumCreditsSince(env, "-1 day"),
+    sumCreditsSince(env, "-3 days"),
+    sumCreditsSince(env, "-7 days"),
+    countUsersSeenSince(env, "-1 day"),
+    countUsersSeenSince(env, "-7 days"),
+  ]);
+
+  return { credits24h, credits3d, credits7d, online24h, online7d };
+}
+
+export async function adminStatsText(env) {
+  const stats = await getAdminDashboardStats(env);
+  const heavy24h = await getHeavyUsageUsers(env, "-1 day", 10);
+  const heavy7d = await getHeavyUsageUsers(env, "-7 days", 10);
+
+  return [
+    "📊 <b>Usage Stats</b>",
+    "",
+    "Credits used in 24h: <b>" + formatNumber(stats.credits24h) + "</b>",
+    "Credits used in 3 days: <b>" + formatNumber(stats.credits3d) + "</b>",
+    "Credits used in 7 days: <b>" + formatNumber(stats.credits7d) + "</b>",
+    "",
+    "Online users in 24h: <b>" + formatNumber(stats.online24h) + "</b>",
+    "Online users in 7 days: <b>" + formatNumber(stats.online7d) + "</b>",
+    "",
+    "🔥 <b>Heavy users - 24h</b>",
+    formatHeavyUsers(heavy24h),
+    "",
+    "🔥 <b>Heavy users - 7 days</b>",
+    formatHeavyUsers(heavy7d),
+  ].join("\n");
+}
+
+export function adminStatsKeyboard() {
+  return { inline_keyboard: [[{ text: "← Back", callback_data: "admin_main" }]] };
 }
 
 export async function getAdminUsersPage(env, page = 0, limit = 8) {
@@ -75,6 +136,55 @@ export async function getAdminUsersPage(env, page = 0, limit = 8) {
     limit: Number(limit),
     users: users.results || [],
   };
+}
+
+
+export async function getAdminBuyersPage(env, page = 0, limit = 8) {
+  requireDb(env);
+
+  const offset = Number(page) * Number(limit);
+  const countRow = await env.DB.prepare(
+    "SELECT COUNT(*) AS total FROM (" +
+      "SELECT user_id FROM payment_receipts WHERE status = 'approved' " +
+      "UNION SELECT user_id FROM star_payments" +
+    ") buyers"
+  ).first();
+
+  const rows = await env.DB.prepare(
+    "SELECT b.user_id, u.username, u.first_name, u.last_name, u.last_seen_at, " +
+      "COALESCE(r.approved_receipts, 0) AS approved_receipts, COALESCE(r.total_receipt_credits, 0) AS total_receipt_credits, COALESCE(r.total_paid_toman, 0) AS total_paid_toman, " +
+      "COALESCE(s.star_payments, 0) AS star_payments, COALESCE(s.total_star_credits, 0) AS total_star_credits, COALESCE(s.total_paid_stars, 0) AS total_paid_stars " +
+    "FROM (SELECT user_id FROM payment_receipts WHERE status = 'approved' UNION SELECT user_id FROM star_payments) b " +
+    "LEFT JOIN bot_users u ON u.user_id = b.user_id " +
+    "LEFT JOIN (SELECT user_id, COUNT(*) AS approved_receipts, SUM(credits) AS total_receipt_credits, SUM(CAST(REPLACE(REPLACE(amount, ',', ''), ' ', '') AS INTEGER)) AS total_paid_toman FROM payment_receipts WHERE status = 'approved' GROUP BY user_id) r ON r.user_id = b.user_id " +
+    "LEFT JOIN (SELECT user_id, COUNT(*) AS star_payments, SUM(credits) AS total_star_credits, SUM(stars) AS total_paid_stars FROM star_payments GROUP BY user_id) s ON s.user_id = b.user_id " +
+    "ORDER BY (COALESCE(r.total_receipt_credits, 0) + COALESCE(s.total_star_credits, 0)) DESC, b.user_id LIMIT ? OFFSET ?"
+  ).bind(Number(limit), Number(offset)).all();
+
+  return { total: Number(countRow?.total || 0), page: Number(page), limit: Number(limit), users: rows.results || [] };
+}
+
+export async function adminBuyersText(env, page = 0) {
+  const data = await getAdminBuyersPage(env, page);
+  return [
+    "💳 <b>Buyers</b>",
+    "",
+    "Total buyers: <b>" + formatNumber(data.total) + "</b>",
+    "Page: <b>" + (data.page + 1) + "</b>",
+    "",
+    data.users.length ? "Select a buyer:" : "No buyers yet."
+  ].join("\n");
+}
+
+export async function adminBuyersKeyboard(env, page = 0) {
+  const data = await getAdminBuyersPage(env, page);
+  const rows = data.users.map((user) => [{ text: buyerLabel(user), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_buyers:" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_buyers:" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
 }
 
 export async function getAllUserIds(env) {
@@ -285,6 +395,46 @@ export async function getAdminAction(env, adminId) {
 export async function clearAdminAction(env, adminId) {
   requireDb(env);
   await env.DB.prepare("DELETE FROM admin_actions WHERE admin_id = ?").bind(String(adminId)).run();
+}
+
+async function sumCreditsSince(env, modifier) {
+  const row = await env.DB.prepare("SELECT COALESCE(SUM(credits), 0) AS total FROM tts_history WHERE datetime(created_at) >= datetime('now', ?)").bind(modifier).first();
+  return Number(row?.total || 0);
+}
+
+async function countUsersSeenSince(env, modifier) {
+  const row = await env.DB.prepare("SELECT COUNT(*) AS total FROM bot_users WHERE datetime(last_seen_at) >= datetime('now', ?)").bind(modifier).first();
+  return Number(row?.total || 0);
+}
+
+async function getHeavyUsageUsers(env, modifier, limit) {
+  const rows = await env.DB.prepare(
+    "SELECT h.user_id, SUM(h.credits) AS credits, COUNT(*) AS requests, b.username, b.first_name, b.last_name " +
+    "FROM tts_history h LEFT JOIN bot_users b ON b.user_id = h.user_id " +
+    "WHERE datetime(h.created_at) >= datetime('now', ?) " +
+    "GROUP BY h.user_id ORDER BY credits DESC, requests DESC LIMIT ?"
+  ).bind(modifier, Number(limit)).all();
+  return rows.results || [];
+}
+
+function formatHeavyUsers(users) {
+  if (!users.length) return "No usage yet.";
+  return users.map((user, index) => (index + 1) + ". " + escapeHtml(compactUserName(user)) + " — <b>" + formatNumber(user.credits) + "</b> credits / " + formatNumber(user.requests) + " requests").join("\n");
+}
+
+function buyerLabel(user) {
+  const totalCredits = Number(user.total_receipt_credits || 0) + Number(user.total_star_credits || 0);
+  return userLabel(user) + " • " + formatNumber(totalCredits) + " bought";
+}
+
+function compactUserName(user) {
+  const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+  const username = user.username ? "@" + user.username : "";
+  return name || username || user.user_id;
+}
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString("en-US");
 }
 
 function userLabel(user) {
