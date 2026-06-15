@@ -118,9 +118,9 @@ async function handleAdminReply(env, message) {
   if (!targetUserId) return false;
 
   if (message.text) {
-    await sendMessage(env, targetUserId, "<b>Support 💬</b>\n\n" + escapeHtml(message.text));
+    await sendPlainMessage(env, targetUserId, "💬 Support\n\n" + message.text);
   } else {
-    await copyMessage(env, targetUserId, message.chat.id, message.message_id, "<b>Support 💬</b>");
+    await copyMessage(env, targetUserId, message.chat.id, message.message_id, "💬 Support");
   }
 
   const state = await getState(env, targetUserId);
@@ -217,12 +217,4 @@ function endLabel(lang) {
 function getText(lang, key) {
   const pack = TEXT[lang] || TEXT.en;
   return pack[key] || TEXT.en[key] || "";
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;");
 }
