@@ -73,6 +73,7 @@ export function adminMainKeyboard() {
     inline_keyboard: [
       [{ text: "Users", callback_data: "admin_users:0" }],
       [{ text: "💳 Buyers", callback_data: "admin_buyers:0" }],
+      [{ text: "🟢 Online Users", callback_data: "admin_online:0" }],
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
@@ -121,6 +122,59 @@ export function adminStatsKeyboard() {
   return { inline_keyboard: [[{ text: "← Back", callback_data: "admin_main" }]] };
 }
 
+export async function getAdminOnlineUsersPage(env, page = 0, limit = 8) {
+  requireDb(env);
+
+  const offset = Number(page) * Number(limit);
+  const countRow = await env.DB.prepare(
+    "SELECT COUNT(*) AS total FROM bot_users WHERE datetime(last_seen_at) >= datetime('now', '-1 day')"
+  ).first();
+  const users = await env.DB.prepare(
+    "SELECT user_id, username, first_name, last_name, last_seen_at FROM bot_users " +
+    "WHERE datetime(last_seen_at) >= datetime('now', '-1 day') ORDER BY datetime(last_seen_at) DESC LIMIT ? OFFSET ?"
+  ).bind(Number(limit), Number(offset)).all();
+
+  return {
+    total: Number(countRow?.total || 0),
+    page: Number(page),
+    limit: Number(limit),
+    users: users.results || [],
+  };
+}
+
+export async function adminOnlineText(env, page = 0) {
+  const data = await getAdminOnlineUsersPage(env, page);
+  const lines = [
+    "🟢 <b>Online Users</b>",
+    "",
+    "Seen in last 24h: <b>" + formatNumber(data.total) + "</b>",
+    "Page: <b>" + (data.page + 1) + "</b>",
+    "",
+  ];
+
+  if (!data.users.length) {
+    lines.push("No users seen in the last 24 hours.");
+  } else {
+    lines.push(...data.users.map((user, index) => {
+      const number = data.page * data.limit + index + 1;
+      return number + ". " + escapeHtml(userLabel(user)) + "\nLast seen: <b>" + escapeHtml(formatTehranTime(user.last_seen_at)) + "</b>";
+    }));
+  }
+
+  return lines.join("\n");
+}
+
+export async function adminOnlineKeyboard(env, page = 0) {
+  const data = await getAdminOnlineUsersPage(env, page);
+  const rows = data.users.map((user) => [{ text: userLabel(user), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_online:" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_online:" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
 export async function getAdminUsersPage(env, page = 0, limit = 8) {
   requireDb(env);
 
@@ -166,13 +220,22 @@ export async function getAdminBuyersPage(env, page = 0, limit = 8) {
 
 export async function adminBuyersText(env, page = 0) {
   const data = await getAdminBuyersPage(env, page);
+  const totals = data.users.reduce((acc, user) => {
+    acc.toman += Number(user.total_paid_toman || 0);
+    acc.stars += Number(user.total_paid_stars || 0);
+    acc.credits += Number(user.total_receipt_credits || 0) + Number(user.total_star_credits || 0);
+    return acc;
+  }, { toman: 0, stars: 0, credits: 0 });
+
   return [
     "💳 <b>Buyers</b>",
     "",
     "Total buyers: <b>" + formatNumber(data.total) + "</b>",
     "Page: <b>" + (data.page + 1) + "</b>",
+    "This page bought: <b>" + formatNumber(totals.credits) + " credits</b>",
+    "This page paid: <b>" + formatToman(totals.toman) + "</b> / <b>" + formatStars(totals.stars) + "</b>",
     "",
-    data.users.length ? "Select a buyer:" : "No buyers yet."
+    data.users.length ? "Select a buyer (Toman / Stars shown on each row):" : "No buyers yet."
   ].join("\n");
 }
 
@@ -424,7 +487,7 @@ function formatHeavyUsers(users) {
 
 function buyerLabel(user) {
   const totalCredits = Number(user.total_receipt_credits || 0) + Number(user.total_star_credits || 0);
-  return userLabel(user) + " • " + formatNumber(totalCredits) + " bought";
+  return userLabel(user) + " • " + formatNumber(totalCredits) + " cr • " + formatToman(user.total_paid_toman) + " • " + formatStars(user.total_paid_stars);
 }
 
 function compactUserName(user) {
@@ -452,6 +515,10 @@ function parseMoneyAmount(value) {
 
 function formatToman(value) {
   return Number(value || 0).toLocaleString("en-US") + " Toman";
+}
+
+function formatStars(value) {
+  return Number(value || 0).toLocaleString("en-US") + " Stars";
 }
 
 function formatLanguage(language) {
