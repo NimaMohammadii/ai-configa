@@ -1,10 +1,25 @@
 import { isAdmin, tryAdminLogin } from "./admin.js";
-import { handleCallback, handleMessage as handleBotMessage } from "./bot.js";
-import { isEmotionActive } from "./emotion-flow.js";
+import { handleCallback as handleBotCallback, handleMessage as handleBotMessage } from "./bot.js";
 import { enhanceTextWithEmotion } from "./gpt.js";
-import { getState } from "./state.js";
+import { getState, isEmotionActive } from "./state.js";
+import { editMessage } from "./telegram-actions.js";
+import { mainKeyboard, startText } from "./ui-status.js";
 
-export { handleCallback };
+export async function handleCallback(query, env) {
+  await handleBotCallback(query, env);
+
+  const data = query.data || "";
+  if (!shouldRefreshMainMenu(data)) return;
+
+  const userId = query.from && query.from.id;
+  const chatId = query.message && query.message.chat && query.message.chat.id;
+  const messageId = query.message && query.message.message_id;
+  if (!userId || !chatId || !messageId) return;
+
+  const state = await getState(env, userId).catch(() => null);
+  if (!state || !state.language) return;
+  await editMessage(env, chatId, messageId, startText(state), mainKeyboard(state)).catch(() => null);
+}
 
 export async function handleMessage(message, env) {
   const userId = message.from && message.from.id;
@@ -46,4 +61,8 @@ export async function handleMessage(message, env) {
   }
 
   return handleBotMessage(message, env);
+}
+
+function shouldRefreshMainMenu(data) {
+  return data.startsWith("page:") || data.startsWith("voice:") || data === "back_main" || data === "cancel_payment" || data.startsWith("lang:");
 }
