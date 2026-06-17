@@ -26,4 +26,4 @@ export const VOICES = {
 };
 
 export const VOICE_NAMES = Object.keys(VOICES);
-export const VOICES_PER_PAGE = 9;
+export const VOICES_PER_PAGE = 10;
