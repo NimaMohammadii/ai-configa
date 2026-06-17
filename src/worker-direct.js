@@ -1,5 +1,6 @@
 import { handleCallback, handleMessage } from "./bot-secure.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
+import { normalizeMainMenu } from "./menu-normalizer.js";
 import { shouldProcessMessageOnce } from "./message-dedupe.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
@@ -61,6 +62,9 @@ async function handleMessageWithSupport(message, env) {
   }
 
   await handleMessageAndPin(message, env);
+  const chatId = message.chat && message.chat.id;
+  const userId = message.from && message.from.id;
+  await normalizeMainMenu(env, chatId, userId).catch(logError);
 }
 
 async function handleMessageAndPin(message, env) {
