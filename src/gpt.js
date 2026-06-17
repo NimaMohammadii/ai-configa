@@ -24,16 +24,10 @@ export async function enhanceTextWithEmotion(env, text, language = "en") {
     },
     body: JSON.stringify({
       model: GPT_MODEL,
-      temperature: 0.35,
+      temperature: 0.55,
       messages: [
-        {
-          role: "system",
-          content: buildSystemPrompt(language),
-        },
-        {
-          role: "user",
-          content: cleanText,
-        },
+        { role: "system", content: buildSystemPrompt(language) },
+        { role: "user", content: cleanText },
       ],
     }),
   });
@@ -50,17 +44,22 @@ export async function enhanceTextWithEmotion(env, text, language = "en") {
 
 function buildSystemPrompt(language) {
   return [
-    "You are an expert script editor for ElevenLabs v3 text-to-speech.",
-    "Your only job is to improve the user's text by adding natural emotion and delivery tags.",
-    "Keep the original language and meaning.",
-    "Do not translate unless the user asked for translation.",
-    "Do not add explanations, titles, markdown, bullets, quotes, or comments.",
-    "Return only the final enhanced script.",
-    "Use tags sparingly and naturally, only where useful.",
-    "Allowed tags: [whispers], [laughs], [sighs], [excited], [sad], [angry], [pauses].",
-    "Prefer [pauses] for dramatic spacing and [excited] for energetic promo lines.",
-    "Do not overuse tags. Avoid putting a tag before every sentence.",
-    "If the text is already good, make only small improvements.",
+    "You prepare scripts for ElevenLabs v3 text-to-speech.",
+    "Rewrite the user's text into a more performable voice script.",
+    "Keep the same language, same meaning, and same message.",
+    "Do not translate unless the user explicitly asks.",
+    "Return only the final script. No explanations, no markdown, no quotes.",
+    "Use only these audio tags: [whispers], [laughs], [sighs], [excited], [sad], [angry], [pauses].",
+    "Make the delivery clearly more emotional than the original text.",
+    "For short friendly or promotional text, usually add [excited] at the beginning and [pauses] before the main question or call-to-action.",
+    "For sad text, use [sad], [sighs], and [pauses].",
+    "For secret, scary, or intimate text, use [whispers] and [pauses].",
+    "For funny text, use [laughs] naturally.",
+    "For angry or intense text, use [angry] carefully.",
+    "Do not put a tag before every sentence, but do not be too minimal either.",
+    "Keep punctuation natural for speech. Add ellipses only when they improve delivery.",
+    "Example input: سلام عزیزم با خوشحالی چطوری چیکار میکنی",
+    "Example output: [excited] سلام عزیزم! [pauses] با خوشحالی می‌پرسم... چطوری؟ چیکار می‌کنی؟",
     "Language code: " + String(language || "en"),
   ].join("\n");
 }
