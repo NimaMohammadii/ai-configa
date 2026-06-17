@@ -1,5 +1,6 @@
 import { handleCallback, handleMessage } from "./bot.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
+import { handleEmotionCallback, handleEmotionMessage, isEmotionCallback } from "./emotion-flow.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCallback } from "./stars-flow.js";
@@ -37,6 +38,8 @@ export default {
         ctx.waitUntil(handleDemoCallback(update.callback_query, env).catch(logError));
       } else if (isStarsCallback(update.callback_query.data)) {
         ctx.waitUntil(handleStarsCallback(update.callback_query, env).catch(logError));
+      } else if (isEmotionCallback(update.callback_query.data)) {
+        ctx.waitUntil(handleEmotionCallback(update.callback_query, env).catch(logError));
       } else {
         ctx.waitUntil(handleCallbackAndPin(update.callback_query, env).catch(logError));
       }
@@ -48,6 +51,7 @@ export default {
 
 async function handleMessageWithSupport(message, env) {
   if (await handleSupportMessage(message, env)) return;
+  if (await handleEmotionMessage(message, env)) return;
 
   if (Array.isArray(message.photo) && message.photo.length > 0) {
     await handleReceiptPhoto(message, env);
