@@ -80,7 +80,7 @@ async function handleCallbackAndPin(query, env) {
   const data = query.data || "";
   if (!data.startsWith("lang:")) return;
 
-  const chatId = query.message && query.message.chat && query.message.id;
+  const chatId = query.message && query.message.chat && query.message.chat.id;
   const userId = query.from && query.from.id;
   await ensurePinnedFromState(env, chatId, userId).catch(logError);
 }
