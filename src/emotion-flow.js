@@ -32,24 +32,8 @@ export async function isEmotionActive(env, userId) {
 
 function decorateKeyboard(keyboard, state) {
   const rows = keyboard.inline_keyboard || [];
-  moveSinglePageButton(rows);
   setEmotionButtonLabel(rows, state);
   return { inline_keyboard: rows };
-}
-
-function moveSinglePageButton(rows) {
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (!Array.isArray(row) || row.length !== 1) continue;
-    const data = row[0] && row[0].callback_data ? row[0].callback_data : "";
-    if (!data.startsWith("page:")) continue;
-    const prev = rows[i - 1];
-    if (Array.isArray(prev) && prev.length === 1) {
-      prev.push(row[0]);
-      rows.splice(i, 1);
-    }
-    return;
-  }
 }
 
 function setEmotionButtonLabel(rows, state) {
