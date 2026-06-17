@@ -4,6 +4,7 @@ export const DEFAULT_STATE = {
   page: 0,
   menuMessageId: null,
   language: null,
+  emotionActive: false,
 };
 
 export async function getState(env, userId) {
@@ -13,7 +14,9 @@ export async function getState(env, userId) {
     "SELECT voice, output, page, menu_message_id, language FROM user_state WHERE user_id = ?"
   ).bind(String(userId)).first();
 
-  if (!row) return { ...DEFAULT_STATE };
+  const emotionActive = await getEmotionActive(env, userId).catch(() => false);
+
+  if (!row) return { ...DEFAULT_STATE, emotionActive };
 
   return {
     voice: row.voice || DEFAULT_STATE.voice,
@@ -21,6 +24,7 @@ export async function getState(env, userId) {
     page: Number(row.page || 0),
     menuMessageId: row.menu_message_id ? Number(row.menu_message_id) : null,
     language: row.language || null,
+    emotionActive,
   };
 }
 
@@ -51,6 +55,20 @@ export async function setUserLanguage(env, userId, language) {
   const state = await getState(env, userId);
   state.language = language;
   await saveState(env, userId, state);
+}
+
+async function getEmotionActive(env, userId) {
+  await ensureEmotionSessionTable(env);
+  const row = await env.DB.prepare(
+    "SELECT is_active FROM emotion_sessions WHERE user_id = ?"
+  ).bind(String(userId)).first();
+  return Number(row && row.is_active ? row.is_active : 0) === 1;
+}
+
+async function ensureEmotionSessionTable(env) {
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS emotion_sessions (user_id TEXT PRIMARY KEY, is_active INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+  ).run();
 }
 
 export function requireDb(env) {
