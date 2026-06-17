@@ -1,5 +1,6 @@
 import { handleCallback, handleMessage } from "./bot-secure.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
+import { handleEmotionCallback, handleEmotionMessage, isEmotionCallback } from "./emotion-flow.js";
 import { shouldProcessMessageOnce } from "./message-dedupe.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
@@ -39,6 +40,8 @@ export default {
         ctx.waitUntil(handleDemoCallback(update.callback_query, env).catch(logError));
       } else if (isStarsCallback(update.callback_query.data)) {
         ctx.waitUntil(handleStarsCallback(update.callback_query, env).catch(logError));
+      } else if (isEmotionCallback(update.callback_query.data)) {
+        ctx.waitUntil(handleEmotionCallback(update.callback_query, env).catch(logError));
       } else {
         ctx.waitUntil(handleCallbackAndPin(update.callback_query, env).catch(logError));
       }
@@ -50,6 +53,7 @@ export default {
 
 async function handleMessageWithSupport(message, env) {
   if (await handleSupportMessage(message, env)) return;
+  if (await handleEmotionMessage(message, env)) return;
 
   if (Array.isArray(message.photo) && message.photo.length > 0) {
     await handleReceiptPhoto(message, env);
@@ -76,7 +80,7 @@ async function handleCallbackAndPin(query, env) {
   const data = query.data || "";
   if (!data.startsWith("lang:")) return;
 
-  const chatId = query.message && query.message.chat && query.message.chat.id;
+  const chatId = query.message && query.message.chat && query.message.id;
   const userId = query.from && query.from.id;
   await ensurePinnedFromState(env, chatId, userId).catch(logError);
 }
