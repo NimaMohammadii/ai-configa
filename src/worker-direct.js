@@ -1,12 +1,12 @@
-import { handleCallback, handleMessage } from "./bot-secure.js";
+import { handleMessage } from "./bot-secure.js";
+import { handleCallback } from "./bot.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
-import { normalizeMainMenu } from "./menu-normalizer.js";
+import { handleEmotionCallback, handleEmotionMessage, isEmotionCallback } from "./emotion-flow.js";
 import { shouldProcessMessageOnce } from "./message-dedupe.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCallback } from "./stars-flow.js";
 import { handleSupportMessage } from "./support-flow-strict.js";
-import { handleToneCallback, handleToneMessage, isToneCallback } from "./tone-flow.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -41,8 +41,8 @@ export default {
         ctx.waitUntil(handleDemoCallback(update.callback_query, env).catch(logError));
       } else if (isStarsCallback(update.callback_query.data)) {
         ctx.waitUntil(handleStarsCallback(update.callback_query, env).catch(logError));
-      } else if (isToneCallback(update.callback_query.data)) {
-        ctx.waitUntil(handleToneCallback(update.callback_query, env).catch(logError));
+      } else if (isEmotionCallback(update.callback_query.data)) {
+        ctx.waitUntil(handleEmotionCallback(update.callback_query, env).catch(logError));
       } else {
         ctx.waitUntil(handleCallbackAndPin(update.callback_query, env).catch(logError));
       }
@@ -54,7 +54,7 @@ export default {
 
 async function handleMessageWithSupport(message, env) {
   if (await handleSupportMessage(message, env)) return;
-  if (await handleToneMessage(message, env)) return;
+  if (await handleEmotionMessage(message, env)) return;
 
   if (Array.isArray(message.photo) && message.photo.length > 0) {
     await handleReceiptPhoto(message, env);
@@ -62,9 +62,6 @@ async function handleMessageWithSupport(message, env) {
   }
 
   await handleMessageAndPin(message, env);
-  const chatId = message.chat && message.chat.id;
-  const userId = message.from && message.from.id;
-  await normalizeMainMenu(env, chatId, userId).catch(logError);
 }
 
 async function handleMessageAndPin(message, env) {
