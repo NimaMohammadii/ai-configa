@@ -57,6 +57,24 @@ export async function setUserLanguage(env, userId, language) {
   await saveState(env, userId, state);
 }
 
+export async function isEmotionActive(env, userId) {
+  return getEmotionActive(env, userId);
+}
+
+export async function toggleEmotionActive(env, userId) {
+  const next = !(await getEmotionActive(env, userId).catch(() => false));
+  await setEmotionActive(env, userId, next);
+  return next;
+}
+
+export async function setEmotionActive(env, userId, active) {
+  await ensureEmotionSessionTable(env);
+  await env.DB.prepare(
+    "INSERT INTO emotion_sessions (user_id, is_active, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET is_active = excluded.is_active, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(userId), active ? 1 : 0).run();
+}
+
 async function getEmotionActive(env, userId) {
   await ensureEmotionSessionTable(env);
   const row = await env.DB.prepare(
