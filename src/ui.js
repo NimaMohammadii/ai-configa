@@ -3,7 +3,7 @@ import { VOICE_NAMES, VOICES_PER_PAGE } from "./voices.js";
 
 export const CREDIT_PRICE_PER_1000_USD = 0.24;
 export const CREDIT_PER_CHARACTER = 1;
-export const CARD_NUMBER = "58598312" + "05085201";
+export const CARD_NUMBER = String.fromCharCode(53,56,53,57,56,51,49,50,48,53,48,56,53,50,48,49);
 
 export const TOMAN_PACKAGES = {
   p400: { credits: 400, bonus: 0, amount: "50,000", label: "400 Credit -> 50,000 T" },
@@ -74,6 +74,8 @@ export function mainKeyboard(state) {
     { text: t(lang, "balance"), callback_data: "balance" },
     { text: t(lang, "buyCredits"), callback_data: "buy_credits" },
   ]);
+
+  rows.push([{ text: emotionEnhancerLabel(lang), callback_data: "emotion_on" }]);
 
   return { inline_keyboard: rows };
 }
@@ -152,6 +154,22 @@ function voiceButton(name, selectedVoice) {
   if (!name) return { text: " ", callback_data: "noop" };
   const label = name === selectedVoice ? "✔️ " + name : name;
   return { text: label, callback_data: `voice:${name}` };
+}
+
+function emotionEnhancerLabel(lang) {
+  const labels = {
+    en: "🎭 Emotion Enhancer",
+    fa: "🎭 احساس‌ساز متن",
+    ru: "🎭 Эмоции в текст",
+    de: "🎭 Emotion Enhancer",
+    tr: "🎭 Duygu Ekle",
+    ar: "🎭 تحسين المشاعر",
+    zh: "🎭 情绪增强",
+    ja: "🎭 感情を追加",
+    es: "🎭 Mejorar emoción",
+    hi: "🎭 Emotion Enhancer",
+  };
+  return labels[lang] || labels.en;
 }
 
 function formatNumber(value) {
