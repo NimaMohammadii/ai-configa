@@ -167,7 +167,7 @@ export const DEMO_TEXTS = {
     es: "Una voz profunda y serena hace el mensaje más especial",
     hi: "गहरी स्थिर आवाज़ संदेश को गंभीर और खास बनाती है",
   },
-  anika: {
+  Nova: {
     en: "Simple writing can sound elegant when the voice flows naturally",
     ru: "Простой текст звучит изящно когда голос течет естественно",
     de: "Einfacher Text klingt elegant wenn die Stimme natürlich fließt",
