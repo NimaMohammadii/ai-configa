@@ -1,5 +1,7 @@
 import { isAdmin, tryAdminLogin } from "./admin.js";
 import { handleCallback, handleMessage as handleBotMessage } from "./bot.js";
+import { isEmotionActive } from "./emotion-flow.js";
+import { enhanceTextWithEmotion } from "./gpt.js";
 
 export { handleCallback };
 
@@ -30,6 +32,16 @@ export async function handleMessage(message, env) {
     if (!loggedIn) return;
 
     return handleBotMessage(message, env);
+  }
+
+  if (text.startsWith("/")) {
+    return handleBotMessage(message, env);
+  }
+
+  if (await isEmotionActive(env, userId).catch(() => false)) {
+    const stateLang = "fa";
+    const enhanced = await enhanceTextWithEmotion(env, text, stateLang).catch(() => text);
+    return handleBotMessage({ ...message, text: enhanced }, env);
   }
 
   return handleBotMessage(message, env);
