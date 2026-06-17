@@ -1,4 +1,5 @@
-import { handleCallback, handleMessage } from "./bot.js";
+import { handleCallback } from "./bot.js";
+import { handleMessage } from "./bot-secure.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { handleEmotionCallback, handleEmotionMessage, isEmotionCallback } from "./emotion-flow.js";
 import { shouldProcessMessageOnce } from "./message-dedupe.js";
