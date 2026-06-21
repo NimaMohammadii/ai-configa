@@ -28,6 +28,7 @@ import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits }
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { getDemoText } from "./demo-texts.js";
 import { textToSpeech } from "./elevenlabs.js";
+import { enhanceTextWithEmotion } from "./gpt.js";
 import { normalizeLang, t } from "./i18n.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
@@ -526,7 +527,9 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
   const voiceName = state.voice || "Nora";
   const voiceId = VOICES[voiceName] || VOICES.Nora;
   const lang = normalizeLang(state.language || "en");
-  const cost = countCredits(text);
+  const originalCost = countCredits(text);
+  let finalText = text;
+  let finalCost = originalCost;
   let statusMessage = null;
 
   if (inputMessageId) {
@@ -535,8 +538,8 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
 
   if (!isDemo) {
     const balance = await getBalance(env, userId);
-    if (balance < cost) {
-      await upsertMenu(env, chatId, userId, state, insufficientCreditsText(state, cost, balance), mainKeyboard(state));
+    if (balance < originalCost) {
+      await upsertMenu(env, chatId, userId, state, insufficientCreditsText(state, originalCost, balance), mainKeyboard(state));
       return;
     }
   }
@@ -550,26 +553,40 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
   try {
     statusMessage = await sendPlainMessage(env, chatId, isDemo ? t(state.language, "generatingDemo") : t(state.language, "generatingVoice"));
 
+    if (!isDemo && state.emotionActive) {
+      finalText = await enhanceTextWithEmotion(env, text, lang);
+      finalCost = countCredits(finalText);
+
+      const balance = await getBalance(env, userId);
+      if (balance < finalCost) {
+        if (statusMessage && statusMessage.message_id) {
+          await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
+        }
+        await upsertMenu(env, chatId, userId, state, insufficientCreditsText(state, finalCost, balance), mainKeyboard(state));
+        return;
+      }
+    }
+
     let audio = null;
 
     if (isDemo) {
-      audio = await getDemoAudio(env, voiceName, lang, text);
+      audio = await getDemoAudio(env, voiceName, lang, finalText);
       if (!audio) {
-        audio = await textToSpeech(env, text, voiceId);
-        await saveDemoAudio(env, voiceName, lang, audio, text);
+        audio = await textToSpeech(env, finalText, voiceId);
+        await saveDemoAudio(env, voiceName, lang, audio, finalText);
       }
     } else {
-      audio = await textToSpeech(env, text, voiceId);
+      audio = await textToSpeech(env, finalText, voiceId);
     }
 
     const sentAudioMessage = await sendCleanAudio(env, chatId, audio);
 
-    await saveTtsHistory(env, userId, text, voiceName, lang, isDemo ? 0 : cost, sentAudioMessage).catch((error) => {
+    await saveTtsHistory(env, userId, finalText, voiceName, lang, isDemo ? 0 : finalCost, sentAudioMessage).catch((error) => {
       console.error("save tts history failed", error && error.message ? error.message : error);
     });
 
     if (!isDemo) {
-      await spendCredits(env, userId, cost);
+      await spendCredits(env, userId, finalCost);
     }
 
     if (statusMessage && statusMessage.message_id) {
