@@ -28,7 +28,6 @@ import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits }
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { getDemoText } from "./demo-texts.js";
 import { textToSpeech } from "./elevenlabs.js";
-import { enhanceTextWithEmotion } from "./gpt.js";
 import { normalizeLang, t } from "./i18n.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
@@ -552,20 +551,6 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
 
   try {
     statusMessage = await sendPlainMessage(env, chatId, isDemo ? t(state.language, "generatingDemo") : t(state.language, "generatingVoice"));
-
-    if (!isDemo && state.emotionActive) {
-      finalText = await enhanceTextWithEmotion(env, text, lang);
-      finalCost = countCredits(finalText);
-
-      const balance = await getBalance(env, userId);
-      if (balance < finalCost) {
-        if (statusMessage && statusMessage.message_id) {
-          await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
-        }
-        await upsertMenu(env, chatId, userId, state, insufficientCreditsText(state, finalCost, balance), mainKeyboard(state));
-        return;
-      }
-    }
 
     let audio = null;
 

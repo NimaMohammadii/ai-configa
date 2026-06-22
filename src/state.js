@@ -14,9 +14,7 @@ export async function getState(env, userId) {
     "SELECT voice, output, page, menu_message_id, language FROM user_state WHERE user_id = ?"
   ).bind(String(userId)).first();
 
-  const emotionActive = await getEmotionActive(env, userId).catch(() => false);
-
-  if (!row) return { ...DEFAULT_STATE, emotionActive };
+  if (!row) return { ...DEFAULT_STATE };
 
   return {
     voice: row.voice || DEFAULT_STATE.voice,
@@ -24,7 +22,7 @@ export async function getState(env, userId) {
     page: Number(row.page || 0),
     menuMessageId: row.menu_message_id ? Number(row.menu_message_id) : null,
     language: row.language || null,
-    emotionActive,
+    emotionActive: false,
   };
 }
 
@@ -57,36 +55,16 @@ export async function setUserLanguage(env, userId, language) {
   await saveState(env, userId, state);
 }
 
-export async function isEmotionActive(env, userId) {
-  return getEmotionActive(env, userId);
+export async function isEmotionActive() {
+  return false;
 }
 
-export async function toggleEmotionActive(env, userId) {
-  const next = !(await getEmotionActive(env, userId).catch(() => false));
-  await setEmotionActive(env, userId, next);
-  return next;
+export async function toggleEmotionActive() {
+  return false;
 }
 
-export async function setEmotionActive(env, userId, active) {
-  await ensureEmotionSessionTable(env);
-  await env.DB.prepare(
-    "INSERT INTO emotion_sessions (user_id, is_active, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
-    "ON CONFLICT(user_id) DO UPDATE SET is_active = excluded.is_active, updated_at = CURRENT_TIMESTAMP"
-  ).bind(String(userId), active ? 1 : 0).run();
-}
-
-async function getEmotionActive(env, userId) {
-  await ensureEmotionSessionTable(env);
-  const row = await env.DB.prepare(
-    "SELECT is_active FROM emotion_sessions WHERE user_id = ?"
-  ).bind(String(userId)).first();
-  return Number(row && row.is_active ? row.is_active : 0) === 1;
-}
-
-async function ensureEmotionSessionTable(env) {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS emotion_sessions (user_id TEXT PRIMARY KEY, is_active INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
-  ).run();
+export async function setEmotionActive() {
+  return false;
 }
 
 export function requireDb(env) {
