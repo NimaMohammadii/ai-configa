@@ -75,7 +75,6 @@ export function mainKeyboard(state) {
     { text: t(lang, "balance"), callback_data: "balance" },
     { text: t(lang, "buyCredits"), callback_data: "buy_credits" },
   ]);
-  rows.push([{ text: emotionEnhancerLabel(lang, state.emotionActive), callback_data: "emotion_on" }]);
   return { inline_keyboard: rows };
 }
 
@@ -125,12 +124,6 @@ function voiceButton(name, selectedVoice) {
   if (!name) return { text: " ", callback_data: "noop" };
   const label = name === selectedVoice ? "✔️ " + name : name;
   return { text: label, callback_data: `voice:${name}` };
-}
-
-function emotionEnhancerLabel(lang, active) {
-  const status = active ? "ON" : "OFF";
-  if (lang === "fa") return `🎭 احساس‌ساز: ${active ? "روشن" : "خاموش"}`;
-  return `🎭 Emotion: ${status}`;
 }
 
 function formatNumber(value) {
