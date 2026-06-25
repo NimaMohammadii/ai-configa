@@ -31,6 +31,7 @@ import {
 } from "./admin.js";
 import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
+import { claimDailyReward, dailyRewardMessage } from "./daily-reward.js";
 import { getDemoText } from "./demo-texts.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
@@ -423,6 +424,12 @@ export async function handleCallback(query, env) {
   if (data === "balance") {
     const balance = await getBalance(env, userId);
     await answerCallback(env, query.id, t(state.language, "balancePopup", { balance }), true);
+    return;
+  }
+
+  if (data === "daily_reward") {
+    const result = await claimDailyReward(env, userId);
+    await answerCallback(env, query.id, dailyRewardMessage(state.language, result), true);
     return;
   }
 

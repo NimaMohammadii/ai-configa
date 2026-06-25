@@ -12,3 +12,6 @@ preview_urls = true
 binding = "DB"
 database_name = "ai-configa-db"
 database_id = "33c8cf30-4daa-498a-8706-d457869f5d25"
+
+[triggers]
+crons = ["*/30 * * * *"]
