@@ -1,5 +1,6 @@
 import { handleCallback } from "./bot.js";
 import { handleMessage } from "./bot-secure.js";
+import { notifyDueDailyRewards } from "./daily-reward.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { shouldProcessMessageOnce } from "./message-dedupe.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
@@ -8,6 +9,10 @@ import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCall
 import { handleSupportMessage } from "./support-flow-strict.js";
 
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(notifyDueDailyRewards(env).catch(logError));
+  },
+
   async fetch(request, env, ctx) {
     if (request.method === "GET") return new Response("ai-configa worker is running");
     if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
