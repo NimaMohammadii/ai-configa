@@ -6,6 +6,8 @@ import {
   adminBuyersText,
   adminMainKeyboard,
   adminMainText,
+  adminLanguageSettingsKeyboard,
+  adminLanguageSettingsText,
   adminStatsKeyboard,
   adminStatsText,
   adminOnlineKeyboard,
@@ -20,7 +22,10 @@ import {
   getAllUserIds,
   isAdmin,
   resetUser,
+  resolveStartLanguage,
   setAdminAction,
+  setLanguageSetting,
+  getLanguageSettings,
   trackUser,
   tryAdminLogin,
 } from "./admin.js";
@@ -64,9 +69,14 @@ export async function handleMessage(message, env) {
 
   if (text === "/start") {
     await deleteMessage(env, chatId, messageId).catch(() => null);
-    if (!state.language) {
+    const startLanguage = await resolveStartLanguage(env, state.language);
+    if (!startLanguage) {
       await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
       return;
+    }
+    if (startLanguage !== state.language) {
+      state.language = startLanguage;
+      await setUserLanguage(env, userId, startLanguage);
     }
     await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
     return;
@@ -74,6 +84,16 @@ export async function handleMessage(message, env) {
 
   if (text === "/language" || text === "/lang") {
     await deleteMessage(env, chatId, messageId).catch(() => null);
+    const settings = await getLanguageSettings(env);
+    if (!settings.languageCommandEnabled) {
+      const startLanguage = await resolveStartLanguage(env, state.language);
+      if (startLanguage && startLanguage !== state.language) {
+        state.language = startLanguage;
+        await setUserLanguage(env, userId, startLanguage);
+      }
+      await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+      return;
+    }
     await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
     return;
   }
@@ -94,7 +114,14 @@ export async function handleMessage(message, env) {
   }
 
   if (!state.language) {
+    const startLanguage = await resolveStartLanguage(env, state.language);
     await deleteMessage(env, chatId, messageId).catch(() => null);
+    if (startLanguage) {
+      state.language = startLanguage;
+      await setUserLanguage(env, userId, startLanguage);
+      await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+      return;
+    }
     await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
     return;
   }
@@ -178,6 +205,34 @@ export async function handleCallback(query, env) {
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminStatsText(env), adminStatsKeyboard());
+    return;
+  }
+
+  if (data === "admin_lang_settings") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminLanguageSettingsText(env), await adminLanguageSettingsKeyboard(env));
+    return;
+  }
+
+  if (data === "admin_lang_toggle_prompt" || data === "admin_lang_toggle_command") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const settings = await getLanguageSettings(env);
+    const key = data === "admin_lang_toggle_prompt" ? "language_prompt_enabled" : "language_command_enabled";
+    const current = data === "admin_lang_toggle_prompt" ? settings.languagePromptEnabled : settings.languageCommandEnabled;
+    await setLanguageSetting(env, key, current ? "0" : "1");
+    await answerCallback(env, query.id, current ? "Disabled" : "Enabled", false);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminLanguageSettingsText(env), await adminLanguageSettingsKeyboard(env));
+    return;
+  }
+
+  if (data.startsWith("admin_lang_default:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const lang = data.slice("admin_lang_default:".length);
+    await setLanguageSetting(env, "default_language", lang === "none" ? null : normalizeLang(lang));
+    await answerCallback(env, query.id, "Default language updated", false);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminLanguageSettingsText(env), await adminLanguageSettingsKeyboard(env));
     return;
   }
 
@@ -307,7 +362,14 @@ export async function handleCallback(query, env) {
   }
 
   if (!state.language) {
+    const startLanguage = await resolveStartLanguage(env, state.language);
     await answerCallback(env, query.id);
+    if (startLanguage) {
+      state.language = startLanguage;
+      await setUserLanguage(env, userId, startLanguage);
+      await editCurrentMenu(env, chatId, userId, messageId, startText(state), mainKeyboard(state));
+      return;
+    }
     await editCurrentMenu(env, chatId, userId, messageId, languageText(), languageKeyboard());
     return;
   }
