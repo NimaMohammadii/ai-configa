@@ -1,4 +1,5 @@
 import { getBalance } from "./credits.js";
+import { LANGUAGES, normalizeLang } from "./i18n.js";
 import { requireDb } from "./state.js";
 import { ensureTtsHistoryTable } from "./tts-history.js";
 
@@ -76,10 +77,88 @@ export function adminMainKeyboard() {
       [{ text: "💳 Buyers", callback_data: "admin_buyers:0" }],
       [{ text: "🟢 Online Users", callback_data: "admin_online:0" }],
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }],
+      [{ text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
   };
+}
+
+
+export async function getLanguageSettings(env) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+
+  const rows = await env.DB.prepare(
+    "SELECT key, value FROM app_settings WHERE key IN ('language_prompt_enabled', 'default_language', 'language_command_enabled')"
+  ).all();
+
+  const values = Object.fromEntries((rows.results || []).map((row) => [row.key, row.value]));
+  return {
+    languagePromptEnabled: values.language_prompt_enabled !== "0",
+    defaultLanguage: values.default_language ? normalizeLang(values.default_language) : null,
+    languageCommandEnabled: values.language_command_enabled !== "0",
+  };
+}
+
+export async function setLanguageSetting(env, key, value) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+
+  const allowed = new Set(["language_prompt_enabled", "default_language", "language_command_enabled"]);
+  if (!allowed.has(key)) throw new Error("Invalid language setting key");
+
+  await env.DB.prepare(
+    "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP"
+  ).bind(key, value == null ? null : String(value)).run();
+}
+
+export async function resolveStartLanguage(env, currentLanguage) {
+  if (currentLanguage) return currentLanguage;
+  const settings = await getLanguageSettings(env);
+  if (!settings.languagePromptEnabled && settings.defaultLanguage) return settings.defaultLanguage;
+  return null;
+}
+
+export async function adminLanguageSettingsText(env) {
+  const settings = await getLanguageSettings(env);
+  return [
+    "🌐 <b>Language Settings</b>",
+    "",
+    "Start language prompt: <b>" + (settings.languagePromptEnabled ? "Enabled" : "Disabled") + "</b>",
+    "Default direct language: <b>" + escapeHtml(formatLanguage(settings.defaultLanguage)) + "</b>",
+    "/language command: <b>" + (settings.languageCommandEnabled ? "Enabled" : "Disabled") + "</b>",
+    "",
+    "If the prompt is disabled and a default language is selected, new users go directly to the bot menu in that language."
+  ].join("\n");
+}
+
+export async function adminLanguageSettingsKeyboard(env) {
+  const settings = await getLanguageSettings(env);
+  const rows = [
+    [{ text: (settings.languagePromptEnabled ? "✅" : "❌") + " Show language prompt on /start", callback_data: "admin_lang_toggle_prompt" }],
+    [{ text: (settings.languageCommandEnabled ? "✅" : "❌") + " /language command", callback_data: "admin_lang_toggle_command" }],
+    [{ text: "Default: " + formatLanguage(settings.defaultLanguage), callback_data: "noop" }],
+  ];
+
+  const entries = Object.entries(LANGUAGES);
+  for (let i = 0; i < entries.length; i += 2) {
+    rows.push(entries.slice(i, i + 2).map(([code, label]) => ({
+      text: (settings.defaultLanguage === code ? "✔️ " : "") + label,
+      callback_data: "admin_lang_default:" + code,
+    })));
+  }
+
+  rows.push([{ text: "Clear default language", callback_data: "admin_lang_default:none" }]);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+async function ensureAppSettingsTable(env) {
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+  ).run();
 }
 
 export async function getAdminDashboardStats(env) {
