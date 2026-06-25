@@ -54,8 +54,6 @@ export function editMessageCaption(env, chatId, messageId, caption, replyMarkup 
 }
 
 export function deleteMessage(env, chatId, messageId) {
-  if (!isKnownBotMessage(chatId, messageId)) return Promise.resolve(null);
-
   return tgJson(env, "deleteMessage", {
     chat_id: chatId,
     message_id: messageId,

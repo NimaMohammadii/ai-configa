@@ -34,6 +34,7 @@ import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { getDemoText } from "./demo-texts.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
+import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember } from "./mandatory-channel.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
 import { answerCallback, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPlainMessage, sendTextDocument } from "./telegram-actions.js";
@@ -54,6 +55,10 @@ export async function handleMessage(message, env) {
   await ensureBalanceRow(env, userId);
 
   const state = await getState(env, userId);
+
+  if (hasPhoto && await requireFaMembership(env, chatId, userId, messageId, state, false)) {
+    return;
+  }
 
   if (hasPhoto) {
     await deleteMessage(env, chatId, messageId).catch(() => null);
@@ -126,6 +131,10 @@ export async function handleMessage(message, env) {
     return;
   }
 
+  if (await requireFaMembership(env, chatId, userId, messageId, state, false)) {
+    return;
+  }
+
   if (text.startsWith("/")) {
     await deleteMessage(env, chatId, messageId).catch(() => null);
     await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
@@ -161,7 +170,27 @@ export async function handleCallback(query, env) {
     await setUserLanguage(env, userId, lang);
     await answerCallback(env, query.id);
     const fresh = await getState(env, userId);
+    if (await requireFaMembership(env, chatId, userId, null, fresh, false, null, messageId)) {
+      return;
+    }
     await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), mainKeyboard(fresh));
+    return;
+  }
+
+  if (data === "check_fa_join") {
+    const member = await isFaChannelMember(env, userId);
+    if (!member) {
+      await answerCallback(env, query.id, "هنوز عضو کانال نیستی", true);
+      await editCurrentMenu(env, chatId, userId, messageId, faJoinText(), faJoinKeyboard());
+      return;
+    }
+    await grantFaJoinBonusOnce(env, userId);
+    const fresh = await getState(env, userId);
+    await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), mainKeyboard(fresh));
+    return;
+  }
+
+  if (await requireFaMembership(env, chatId, userId, null, state, true, query.id, messageId)) {
     return;
   }
 
@@ -518,6 +547,31 @@ function parseCreditAmount(text) {
   return match[1] === "+" ? value : -value;
 }
 
+async function requireFaMembership(env, chatId, userId, inputMessageId, state, isCallback = false, callbackQueryId = null, callbackMessageId = null) {
+  if (state?.language !== "fa") return false;
+  if (await isAdmin(env, userId)) return false;
+  if (await isFaChannelMember(env, userId)) {
+    await grantFaJoinBonusOnce(env, userId);
+    return false;
+  }
+
+  if (inputMessageId) {
+    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+  }
+
+  if (isCallback && callbackQueryId) {
+    await answerCallback(env, callbackQueryId, "اول باید عضو کانال بشی", true);
+  }
+
+  if (callbackMessageId) {
+    await editCurrentMenu(env, chatId, userId, callbackMessageId, faJoinText(), faJoinKeyboard());
+  } else {
+    await upsertMenu(env, chatId, userId, state, faJoinText(), faJoinKeyboard());
+  }
+
+  return true;
+}
+
 async function denyCallback(env, callbackQueryId, state = {}) {
   await answerCallback(env, callbackQueryId, t(state.language, "accessDenied"), true);
 }
@@ -605,12 +659,6 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
     }
   }
 
-  if (state.menuMessageId) {
-    await deleteMessage(env, chatId, state.menuMessageId).catch(() => null);
-    state.menuMessageId = null;
-    await saveState(env, userId, state);
-  }
-
   try {
     statusMessage = await sendPlainMessage(env, chatId, isDemo ? t(state.language, "generatingDemo") : t(state.language, "generatingVoice"));
 
@@ -626,6 +674,13 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
       audio = await textToSpeech(env, finalText, voiceId);
     }
 
+    if (statusMessage && statusMessage.message_id) {
+      await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
+      statusMessage = null;
+    }
+
+    await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+
     const sentAudioMessage = await sendCleanAudio(env, chatId, audio);
 
     await saveTtsHistory(env, userId, finalText, voiceName, lang, isDemo ? 0 : finalCost, sentAudioMessage).catch((error) => {
@@ -639,8 +694,6 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
     if (statusMessage && statusMessage.message_id) {
       await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
     }
-
-    await sendFreshMainMenu(env, chatId, userId);
   } catch (error) {
     if (statusMessage && statusMessage.message_id) {
       await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
