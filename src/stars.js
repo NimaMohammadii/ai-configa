@@ -5,8 +5,8 @@ const STAR_USD_PER_50 = 0.76;
 
 export const STAR_PACKAGES = {
   s400: createStarPackage("s400", 400, 0, 0.08, 6),
-  s1000: createStarPackage("s1000", 1000, 0, 0.15, 11),
-  s33000: createStarPackage("s33000", 33000, 11000, 6.4, 450),
+  s1000: createStarPackage("s1000", 1000, 0, 0.16, 12),
+  s33000: createStarPackage("s33000", 33000, 11000, 6.8, 462),
 };
 
 export function getStarPackage(id) {
