@@ -6,12 +6,10 @@ export const CREDIT_PRICE_PER_1000_USD = 0.24;
 export const CREDIT_PER_CHARACTER = 1;
 
 export const TOMAN_PACKAGES = {
-  p400: { credits: 400, bonus: 0, amount: "50,000", label: "400 Credit -> 50,000 T" },
-  p1000: { credits: 1000, bonus: 0, amount: "95,000", label: "1,000 Credit -> 95,000 T" },
-  p1900: { credits: 1900, bonus: 0, amount: "150,000", label: "1,900 Credit -> 150,000 T" },
-  p4000: { credits: 4000, bonus: 0, amount: "280,000", label: "4,000 Credit -> 280,000 T" },
-  p8000: { credits: 8000, bonus: 0, amount: "510,000", label: "8,000 Credit -> 510,000 T" },
-  p18500: { credits: 18500, bonus: 3500, amount: "999,000", label: "18,500 + 3,500 🎁 -> 999,000 T" },
+  vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: "🧪 Vexa Test — 400 Credit" },
+  starter: { credits: 2000, bonus: 100, amount: "160,000", label: "⚡ Starter — 2,000 + 100 🎁" },
+  pro: { credits: 8000, bonus: 500, amount: "510,000", label: "🚀 Pro — 8,000 + 500 🎁" },
+  ultra: { credits: 22000, bonus: 2000, amount: "999,000", label: "👑 Ultra — 22,000 + 2,000 🎁" },
 };
 
 export function languageText() {
@@ -91,7 +89,52 @@ export function buyCreditsKeyboard(state = {}) {
 
 export function tomanPackagesText(state = {}) {
   const lang = state.language || "en";
-  return [t(lang, "buyTomanTitle"), "", t(lang, "choosePackage")].join("\n");
+  if (lang !== "fa") return [t(lang, "buyTomanTitle"), "", t(lang, "choosePackage")].join("\n");
+
+  return [
+    "🇮🇷 <b>خرید با تومان</b>",
+    "",
+    "پکیج موردنظرت رو انتخاب کن 👇",
+    "",
+    "━━━━━━━━━━━━━━",
+    "",
+    "🧪 <b>پکیج تست Vexa</b>",
+    "",
+    "<b>400 Credit</b>",
+    "قیمت: <b>50,000 تومان</b>",
+    "مناسب برای تست کیفیت صدا",
+    "",
+    "━━━━━━━━━━━━━━",
+    "",
+    "⚡ <b>پکیج Starter</b>",
+    "",
+    "<b>2,000 Credit</b> + <b>100 Credit هدیه</b> 🎁",
+    "قیمت: <b>160,000 تومان</b>",
+    "هر <b>1,000 Credit</b> فقط <b>80,000 تومان</b>",
+    "حدود <b>4 دقیقه</b> محتوای صوتی",
+    "",
+    "━━━━━━━━━━━━━━",
+    "",
+    "🚀 <b>پکیج Pro</b>",
+    "",
+    "<b>8,000 Credit</b> + <b>500 Credit هدیه</b> 🎁",
+    "قیمت: <b>510,000 تومان</b>",
+    "هر <b>1,000 Credit</b> حدود <b>65,000 تومان</b>",
+    "حدود <b>16 دقیقه</b> محتوای صوتی",
+    "",
+    "━━━━━━━━━━━━━━",
+    "",
+    "👑 <b>پکیج Ultra</b>",
+    "",
+    "<b>22,000 Credit</b> + <b>2,000 Credit هدیه</b> 🎁",
+    "قیمت: <b>999,000 تومان</b>",
+    "هر <b>1,000 Credit</b> حدود <b>40,000 تومان</b>",
+    "حدود <b>48 دقیقه</b> محتوای صوتی",
+    "",
+    "━━━━━━━━━━━━━━",
+    "",
+    "✨ بسته‌های بزرگ‌تر به‌صرفه‌ترن و کردیت هدیه بیشتری دارن.",
+  ].join("\n");
 }
 
 export function tomanPackagesKeyboard(state = {}) {
