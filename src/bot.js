@@ -21,6 +21,7 @@ import {
   adminUsersText,
   adminUserText,
   clearAdminAction,
+  deleteWelcomeAudio,
   getAdminAction,
   getAllUserIds,
   isAdmin,
@@ -44,7 +45,7 @@ import { normalizeLang, t } from "./i18n.js";
 import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember } from "./mandatory-channel.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
-import { answerCallback, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPlainMessage, sendTextDocument } from "./telegram-actions.js";
+import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
 import { buildTtsHistoryFile, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
 import { buyCreditsKeyboard, buyCreditsText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
@@ -98,7 +99,7 @@ export async function handleMessage(message, env) {
       await setUserLanguage(env, userId, startLanguage);
     }
     await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
-    await sendWelcomeAudioOnFirstStart(env, chatId, isFirstStart);
+    await sendWelcomeAudioOnFirstStart(env, chatId, isFirstStart, state.language);
     return;
   }
 
@@ -190,7 +191,7 @@ export async function handleCallback(query, env) {
       return;
     }
     await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), mainKeyboard(fresh));
-    await sendWelcomeAudioOnFirstStart(env, chatId, shouldSendWelcomeAudio);
+    await sendWelcomeAudioOnFirstStart(env, chatId, shouldSendWelcomeAudio, fresh.language);
     return;
   }
 
@@ -262,11 +263,21 @@ export async function handleCallback(query, env) {
     return;
   }
 
-  if (data === "admin_welcome_audio_upload") {
+  if (data.startsWith("admin_welcome_audio_upload:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const language = normalizeLang(data.slice("admin_welcome_audio_upload:".length));
     await answerCallback(env, query.id);
-    await setAdminAction(env, userId, "welcome_audio", { chatId, messageId });
-    await editCurrentMenu(env, chatId, userId, messageId, adminWelcomeAudioPromptText(), adminCancelKeyboard("admin_welcome_audio"));
+    await setAdminAction(env, userId, "welcome_audio", { targetUserId: language, chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminWelcomeAudioPromptText(language), adminCancelKeyboard("admin_welcome_audio"));
+    return;
+  }
+
+  if (data.startsWith("admin_welcome_audio_delete:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const language = normalizeLang(data.slice("admin_welcome_audio_delete:".length));
+    await deleteWelcomeAudio(env, language);
+    await answerCallback(env, query.id, "First-start audio deleted for " + language, false);
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminWelcomeAudioText(env)) + "\n\n🗑 Deleted for " + language + ".", adminWelcomeAudioKeyboard());
     return;
   }
 
@@ -528,13 +539,24 @@ async function handleAdminAudioInput(env, chatId, adminId, inputMessageId, audio
   if (!(await isAdmin(env, adminId))) return false;
 
   const action = await getAdminAction(env, adminId);
-  if (!action || action.action !== "welcome_audio") return false;
+  if (!action) return false;
 
-  await setWelcomeAudio(env, audioAttachment.fileId, audioAttachment.fileType);
-  await deleteMessage(env, chatId, inputMessageId).catch(() => null);
-  await clearAdminAction(env, adminId);
-  await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminWelcomeAudioText(env)) + "\n\n✅ Audio updated.", adminWelcomeAudioKeyboard());
-  return true;
+  if (action.action === "welcome_audio") {
+    const language = normalizeLang(action.target_user_id || "en");
+    await setWelcomeAudio(env, language, audioAttachment.fileId, audioAttachment.fileType);
+    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+    await clearAdminAction(env, adminId);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminWelcomeAudioText(env)) + "\n\n✅ Audio updated for " + language + ".", adminWelcomeAudioKeyboard());
+    return true;
+  }
+
+  if (action.action === "broadcast") {
+    await runBroadcast(env, adminId, action, { kind: "copy", fromChatId: chatId, messageId: inputMessageId });
+    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+    return true;
+  }
+
+  return false;
 }
 
 async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, text) {
@@ -546,7 +568,7 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   await deleteMessage(env, chatId, inputMessageId).catch(() => null);
 
   if (action.action === "welcome_audio") {
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminWelcomeAudioPromptText() + "\n\nPlease send an audio file, not text.", adminCancelKeyboard("admin_welcome_audio"));
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminWelcomeAudioPromptText(action.target_user_id || "en") + "\n\nPlease send an audio file, not text.", adminCancelKeyboard("admin_welcome_audio"));
     return true;
   }
 
@@ -574,24 +596,63 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   }
 
   if (action.action === "broadcast") {
-    const userIds = await getAllUserIds(env);
-    let sent = 0;
-
-    for (const id of userIds) {
-      if (String(id) === String(adminId)) continue;
-      try {
-        await sendPlainMessage(env, id, text);
-        sent++;
-      } catch {}
-    }
-
-    await clearAdminAction(env, adminId);
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminMainText(env)) + "\n\nBroadcast sent to " + sent + " users", adminMainKeyboard());
+    await runBroadcast(env, adminId, action, { kind: "text", text });
     return true;
   }
 
   await clearAdminAction(env, adminId);
   return true;
+}
+
+async function runBroadcast(env, adminId, action, payload) {
+  const userIds = await getAllUserIds(env);
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+  const total = userIds.length;
+  const menuChatId = action.chat_id;
+  const menuMessageId = Number(action.message_id);
+
+  await editBroadcastProgress(env, menuChatId, adminId, menuMessageId, total, sent, failed, skipped, false);
+
+  for (let index = 0; index < userIds.length; index++) {
+    const id = userIds[index];
+    if (String(id) === String(adminId)) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      if (payload.kind === "copy") {
+        await copyMessage(env, id, payload.fromChatId, payload.messageId);
+      } else {
+        await sendPlainMessage(env, id, payload.text);
+      }
+      sent++;
+    } catch {
+      failed++;
+    }
+
+    if ((index + 1) % 10 === 0 || index + 1 === userIds.length) {
+      await editBroadcastProgress(env, menuChatId, adminId, menuMessageId, total, sent, failed, skipped, false);
+    }
+  }
+
+  await clearAdminAction(env, adminId);
+  await editBroadcastProgress(env, menuChatId, adminId, menuMessageId, total, sent, failed, skipped, true);
+}
+
+async function editBroadcastProgress(env, chatId, adminId, messageId, total, sent, failed, skipped, done) {
+  const processed = sent + failed + skipped;
+  const text = [
+    done ? "✅ <b>Broadcast completed</b>" : "📣 <b>Broadcast sending…</b>",
+    "",
+    "Processed: <b>" + processed + "/" + total + "</b>",
+    "Sent: <b>" + sent + "</b>",
+    "Failed: <b>" + failed + "</b>",
+    "Skipped: <b>" + skipped + "</b>"
+  ].join("\n");
+  await editCurrentMenu(env, chatId, adminId, messageId, text, done ? adminMainKeyboard() : null).catch(() => null);
 }
 
 function parseCreditAmount(text) {
@@ -827,13 +888,18 @@ function countCredits(text) {
   return Array.from(String(text || "")).length;
 }
 
-async function sendWelcomeAudioOnFirstStart(env, chatId, isFirstStart) {
+async function sendWelcomeAudioOnFirstStart(env, chatId, isFirstStart, language = null) {
   if (!isFirstStart) return;
-  const audio = await getWelcomeAudio(env).catch(() => null);
+  const audio = await getWelcomeAudio(env, language).catch(() => null);
   if (!audio?.fileId) return;
 
   if (audio.fileType === "document") {
     await sendDocumentFileId(env, chatId, audio.fileId).catch(() => null);
+    return;
+  }
+
+  if (audio.fileType === "voice") {
+    await sendVoiceFileId(env, chatId, audio.fileId).catch(() => null);
     return;
   }
 
@@ -842,6 +908,7 @@ async function sendWelcomeAudioOnFirstStart(env, chatId, isFirstStart) {
 
 function getAudioAttachment(message) {
   if (message?.audio?.file_id) return { fileId: message.audio.file_id, fileType: "audio" };
+  if (message?.voice?.file_id) return { fileId: message.voice.file_id, fileType: "voice" };
   if (message?.document?.file_id && String(message.document.mime_type || "").startsWith("audio/")) {
     return { fileId: message.document.file_id, fileType: "document" };
   }

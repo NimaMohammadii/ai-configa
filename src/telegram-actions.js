@@ -133,6 +133,15 @@ export function sendAudioFileId(env, chatId, fileId, caption = "") {
   });
 }
 
+export function sendVoiceFileId(env, chatId, fileId, caption = "") {
+  return tgJson(env, "sendVoice", {
+    chat_id: chatId,
+    voice: fileId,
+    caption,
+    parse_mode: "HTML",
+  });
+}
+
 export function sendDocumentFileId(env, chatId, fileId, caption = "") {
   return tgJson(env, "sendDocument", {
     chat_id: chatId,

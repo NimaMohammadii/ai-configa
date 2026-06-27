@@ -551,57 +551,89 @@ export function adminMessagePromptText() {
 }
 
 export async function adminWelcomeAudioText(env) {
-  const audio = await getWelcomeAudio(env);
-  return [
+  const audios = await getWelcomeAudios(env);
+  const lines = [
     "🎧 <b>First Start Audio</b>",
     "",
-    audio ? "Current audio: <b>Set</b>" : "Current audio: <b>Not set</b>",
+    "Choose a language, upload/replace its audio, or delete it from first-start sending.",
     "",
-    "Send a new audio file to replace the current one.",
-    "This audio is sent under the main menu only when a user starts the bot for the first time."
-  ].join("\n");
+    "Configured languages:"
+  ];
+  for (const [code, label] of Object.entries(LANGUAGES)) {
+    lines.push((audios[code]?.fileId ? "✅ " : "❌ ") + escapeHtml(label) + " (<code>" + code + "</code>)");
+  }
+  return lines.join("\n");
 }
 
 export function adminWelcomeAudioKeyboard() {
-  return { inline_keyboard: [[{ text: "Upload / Replace Audio", callback_data: "admin_welcome_audio_upload" }], [{ text: "← Back", callback_data: "admin_main" }]] };
+  const rows = [];
+  for (const [code, label] of Object.entries(LANGUAGES)) {
+    rows.push([{ text: "Upload " + label, callback_data: "admin_welcome_audio_upload:" + code }, { text: "Delete", callback_data: "admin_welcome_audio_delete:" + code }]);
+  }
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
 }
 
-export function adminWelcomeAudioPromptText() {
+export function adminWelcomeAudioPromptText(language = "en") {
   return [
     "🎧 <b>Upload First Start Audio</b>",
     "",
+    "Target language: <b>" + escapeHtml(formatLanguage(language)) + "</b>",
     "Send one audio file now.",
-    "The new file will replace the old one."
+    "The new file will replace the old one for this language only."
   ].join("\n");
 }
 
-export async function setWelcomeAudio(env, fileId, fileType = "audio") {
+export async function setWelcomeAudio(env, language, fileId, fileType = "audio") {
   requireDb(env);
   await ensureAppSettingsTable(env);
+  const lang = normalizeLang(language);
 
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("welcome_audio_file_id", String(fileId)),
-    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("welcome_audio_file_type", String(fileType)),
+    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("welcome_audio_file_id_" + lang, String(fileId)),
+    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("welcome_audio_file_type_" + lang, String(fileType)),
   ]);
 }
 
-export async function getWelcomeAudio(env) {
+export async function deleteWelcomeAudio(env, language) {
   requireDb(env);
   await ensureAppSettingsTable(env);
+  const lang = normalizeLang(language);
+  await env.DB.prepare("DELETE FROM app_settings WHERE key IN (?, ?)").bind("welcome_audio_file_id_" + lang, "welcome_audio_file_type_" + lang).run();
+}
 
-  const rows = await env.DB.prepare(
-    "SELECT key, value FROM app_settings WHERE key IN ('welcome_audio_file_id', 'welcome_audio_file_type')"
-  ).all();
+export async function getWelcomeAudio(env, language = null) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const lang = language ? normalizeLang(language) : null;
+  const keys = lang
+    ? ["welcome_audio_file_id_" + lang, "welcome_audio_file_type_" + lang]
+    : ["welcome_audio_file_id", "welcome_audio_file_type"];
+  const rows = await env.DB.prepare("SELECT key, value FROM app_settings WHERE key IN (?, ?)").bind(keys[0], keys[1]).all();
   const values = Object.fromEntries((rows.results || []).map((row) => [row.key, row.value]));
-  if (!values.welcome_audio_file_id) return null;
-  return { fileId: values.welcome_audio_file_id, fileType: values.welcome_audio_file_type || "audio" };
+  if (!values[keys[0]]) return null;
+  return { fileId: values[keys[0]], fileType: values[keys[1]] || "audio", language: lang };
+}
+
+export async function getWelcomeAudios(env) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const rows = await env.DB.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'welcome_audio_file_%'").all();
+  const values = Object.fromEntries((rows.results || []).map((row) => [row.key, row.value]));
+  const result = {};
+  for (const code of Object.keys(LANGUAGES)) {
+    const fileId = values["welcome_audio_file_id_" + code];
+    if (fileId) result[code] = { fileId, fileType: values["welcome_audio_file_type_" + code] || "audio", language: code };
+  }
+  return result;
 }
 
 export function adminBroadcastPromptText() {
   return [
     "📣 <b>Broadcast Message</b>",
     "",
-    "Send the message text for all users.",
+    "Send the message text or an audio file for all users.",
+    "Progress is updated live with sent, failed, and skipped counts.",
     "Your message will be deleted after sending."
   ].join("\n");
 }
