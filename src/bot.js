@@ -10,6 +10,9 @@ import {
   adminLanguageSettingsText,
   adminStatsKeyboard,
   adminStatsText,
+  adminWelcomeAudioKeyboard,
+  adminWelcomeAudioPromptText,
+  adminWelcomeAudioText,
   adminOnlineKeyboard,
   adminOnlineText,
   adminMessagePromptText,
@@ -25,7 +28,10 @@ import {
   resolveStartLanguage,
   setAdminAction,
   setLanguageSetting,
+  setWelcomeAudio,
   getLanguageSettings,
+  getWelcomeAudio,
+  hasTrackedUser,
   trackUser,
   tryAdminLogin,
 } from "./admin.js";
@@ -49,13 +55,20 @@ export async function handleMessage(message, env) {
   const messageId = message.message_id;
   const text = message.text ? message.text.trim() : "";
   const hasPhoto = Array.isArray(message.photo) && message.photo.length > 0;
+  const audioAttachment = getAudioAttachment(message);
 
   if (!chatId || !userId) return;
+
+  const isFirstStart = text === "/start" && !(await hasTrackedUser(env, userId));
 
   await trackUser(env, message.from);
   await ensureBalanceRow(env, userId);
 
   const state = await getState(env, userId);
+
+  if (audioAttachment && await handleAdminAudioInput(env, chatId, userId, messageId, audioAttachment)) {
+    return;
+  }
 
   if (hasPhoto && await requireFaMembership(env, chatId, userId, messageId, state, false)) {
     return;
@@ -85,6 +98,7 @@ export async function handleMessage(message, env) {
       await setUserLanguage(env, userId, startLanguage);
     }
     await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+    await sendWelcomeAudioOnFirstStart(env, chatId, isFirstStart);
     return;
   }
 
@@ -167,6 +181,7 @@ export async function handleCallback(query, env) {
 
   if (data.startsWith("lang:")) {
     const lang = normalizeLang(data.slice(5));
+    const shouldSendWelcomeAudio = !state.language;
     state.language = lang;
     await setUserLanguage(env, userId, lang);
     await answerCallback(env, query.id);
@@ -175,6 +190,7 @@ export async function handleCallback(query, env) {
       return;
     }
     await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), mainKeyboard(fresh));
+    await sendWelcomeAudioOnFirstStart(env, chatId, shouldSendWelcomeAudio);
     return;
   }
 
@@ -235,6 +251,22 @@ export async function handleCallback(query, env) {
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminStatsText(env), adminStatsKeyboard());
+    return;
+  }
+
+  if (data === "admin_welcome_audio") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminWelcomeAudioText(env), adminWelcomeAudioKeyboard());
+    return;
+  }
+
+  if (data === "admin_welcome_audio_upload") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "welcome_audio", { chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminWelcomeAudioPromptText(), adminCancelKeyboard("admin_welcome_audio"));
     return;
   }
 
@@ -492,6 +524,19 @@ export async function handleCallback(query, env) {
   }
 }
 
+async function handleAdminAudioInput(env, chatId, adminId, inputMessageId, audioAttachment) {
+  if (!(await isAdmin(env, adminId))) return false;
+
+  const action = await getAdminAction(env, adminId);
+  if (!action || action.action !== "welcome_audio") return false;
+
+  await setWelcomeAudio(env, audioAttachment.fileId, audioAttachment.fileType);
+  await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+  await clearAdminAction(env, adminId);
+  await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminWelcomeAudioText(env)) + "\n\n✅ Audio updated.", adminWelcomeAudioKeyboard());
+  return true;
+}
+
 async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, text) {
   if (!(await isAdmin(env, adminId))) return false;
 
@@ -499,6 +544,11 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   if (!action) return false;
 
   await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+
+  if (action.action === "welcome_audio") {
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminWelcomeAudioPromptText() + "\n\nPlease send an audio file, not text.", adminCancelKeyboard("admin_welcome_audio"));
+    return true;
+  }
 
   if (action.action === "credit") {
     const amount = parseCreditAmount(text);
@@ -654,10 +704,6 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
   let finalCost = originalCost;
   let statusMessage = null;
 
-  if (inputMessageId) {
-    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
-  }
-
   if (!isDemo) {
     const balance = await getBalance(env, userId);
     if (balance < originalCost) {
@@ -779,6 +825,27 @@ function insufficientCreditsText(state, cost, balance) {
 
 function countCredits(text) {
   return Array.from(String(text || "")).length;
+}
+
+async function sendWelcomeAudioOnFirstStart(env, chatId, isFirstStart) {
+  if (!isFirstStart) return;
+  const audio = await getWelcomeAudio(env).catch(() => null);
+  if (!audio?.fileId) return;
+
+  if (audio.fileType === "document") {
+    await sendDocumentFileId(env, chatId, audio.fileId).catch(() => null);
+    return;
+  }
+
+  await sendAudioFileId(env, chatId, audio.fileId).catch(() => null);
+}
+
+function getAudioAttachment(message) {
+  if (message?.audio?.file_id) return { fileId: message.audio.file_id, fileType: "audio" };
+  if (message?.document?.file_id && String(message.document.mime_type || "").startsWith("audio/")) {
+    return { fileId: message.document.file_id, fileType: "document" };
+  }
+  return null;
 }
 
 async function sendCleanAudio(env, chatId, audio) {
