@@ -1,5 +1,5 @@
 import { getStarPackage, applySuccessfulStarsPayment } from "./stars.js";
-import { starsPackagesKeyboard, starsPackagesText, buyCreditsTextClean } from "./stars-ui.js";
+import { starsPackageInvoiceText, starsPackagesKeyboard, starsPackagesText, buyCreditsTextClean } from "./stars-ui.js";
 import { getState } from "./state.js";
 import { answerCallback, answerPreCheckout, editMessage, sendMessage, sendStarsInvoice, deleteMessage } from "./telegram-actions.js";
 import { buyCreditsKeyboard, mainKeyboard, startText } from "./ui.js";
@@ -43,7 +43,7 @@ export async function handleStarsCallback(query, env) {
     env,
     chatId,
     messageId,
-    `⭐ <b>${pack.description}</b>\n\nPay <b>${pack.stars} ⭐️</b> to add credits`,
+    starsPackageInvoiceText(pack, state),
     { inline_keyboard: [[{ text: t(state.language, "back"), callback_data: "buy_stars" }]] }
   );
 }

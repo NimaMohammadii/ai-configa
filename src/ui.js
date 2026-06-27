@@ -79,7 +79,7 @@ export function mainKeyboard(state) {
 
 export function buyCreditsText(state = {}) {
   const lang = state.language || "en";
-  return [t(lang, "buyTitle"), "", t(lang, "priceLine"), t(lang, "creditRule"), "", t(lang, "choosePayment")].join("\n");
+  return [t(lang, "buyTitle"), "", t(lang, "priceLine"), t(lang, "creditRule"), t(lang, "audioCreditRule"), "", t(lang, "choosePayment")].join("\n");
 }
 
 export function buyCreditsKeyboard(state = {}) {
