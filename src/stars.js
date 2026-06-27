@@ -2,11 +2,6 @@ import { addCredits } from "./credits.js";
 import { requireDb } from "./state.js";
 
 const STAR_USD_PER_50 = 0.76;
-export const STAR_CREDITS_STEP = 1000;
-export const STAR_MIN_CREDITS = 1000;
-export const STAR_MAX_CREDITS = 100000;
-export const STAR_USD_PER_1000_CREDITS = 0.16;
-export const STAR_PRICE_PER_1000_CREDITS = 12;
 
 export const STAR_PACKAGES = {
   s400: createStarPackage("s400", 400, 0, 0.08, 6),
@@ -15,30 +10,7 @@ export const STAR_PACKAGES = {
 };
 
 export function getStarPackage(id) {
-  if (String(id || "").startsWith("c")) {
-    const credits = Number(String(id).slice(1));
-    return createCustomStarPackage(credits);
-  }
-
   return STAR_PACKAGES[id] || null;
-}
-
-export function normalizeStarCredits(credits) {
-  const requested = Number(credits || STAR_MIN_CREDITS);
-  const stepped = Math.round(requested / STAR_CREDITS_STEP) * STAR_CREDITS_STEP;
-  return Math.min(Math.max(stepped, STAR_MIN_CREDITS), STAR_MAX_CREDITS);
-}
-
-export function createCustomStarPackage(credits) {
-  const normalizedCredits = normalizeStarCredits(credits);
-  const units = normalizedCredits / STAR_CREDITS_STEP;
-  return createStarPackage(
-    "c" + normalizedCredits,
-    normalizedCredits,
-    0,
-    units * STAR_USD_PER_1000_CREDITS,
-    units * STAR_PRICE_PER_1000_CREDITS
-  );
 }
 
 export async function applySuccessfulStarsPayment(env, userId, successfulPayment) {
