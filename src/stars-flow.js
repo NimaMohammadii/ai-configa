@@ -1,12 +1,17 @@
-import { getStarPackage, applySuccessfulStarsPayment } from "./stars.js";
-import { starsPackageInvoiceText, starsPackagesKeyboard, starsPackagesText, buyCreditsTextClean } from "./stars-ui.js";
+import { createCustomStarPackage, getStarPackage, applySuccessfulStarsPayment, normalizeStarCredits } from "./stars.js";
+import { starsCreditPickerText, starsPackageInvoiceText, starsPackagesKeyboard, starsPackagesText, buyCreditsTextClean } from "./stars-ui.js";
 import { getState } from "./state.js";
 import { answerCallback, answerPreCheckout, editMessage, sendMessage, sendStarsInvoice, deleteMessage } from "./telegram-actions.js";
 import { buyCreditsKeyboard, mainKeyboard, startText } from "./ui.js";
 import { t } from "./i18n.js";
 
 export function isStarsCallback(data) {
-  return data === "buy_credits" || data === "buy_stars" || String(data || "").startsWith("stars_package:");
+  return data === "buy_credits"
+    || data === "buy_stars"
+    || data === "stars_noop"
+    || String(data || "").startsWith("stars_select:")
+    || String(data || "").startsWith("stars_buy:")
+    || String(data || "").startsWith("stars_package:");
 }
 
 export async function handleStarsCallback(query, env) {
@@ -27,6 +32,33 @@ export async function handleStarsCallback(query, env) {
   if (data === "buy_stars") {
     await answerCallback(env, query.id);
     await editOrSend(env, chatId, messageId, starsPackagesText(state), starsPackagesKeyboard(state));
+    return;
+  }
+
+  if (data === "stars_noop") {
+    await answerCallback(env, query.id);
+    return;
+  }
+
+  if (data.startsWith("stars_select:")) {
+    const credits = normalizeStarCredits(data.slice("stars_select:".length));
+    await answerCallback(env, query.id);
+    await editOrSend(env, chatId, messageId, starsCreditPickerText(credits, state), starsPackagesKeyboard(state, credits));
+    return;
+  }
+
+  if (data.startsWith("stars_buy:")) {
+    const credits = normalizeStarCredits(data.slice("stars_buy:".length));
+    const pack = createCustomStarPackage(credits);
+    await answerCallback(env, query.id);
+    await sendStarsInvoice(env, chatId, pack);
+    await editOrSend(
+      env,
+      chatId,
+      messageId,
+      starsPackageInvoiceText(pack, state),
+      { inline_keyboard: [[{ text: t(state.language, "back"), callback_data: "buy_stars" }]] }
+    );
     return;
   }
 
