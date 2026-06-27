@@ -842,7 +842,12 @@ async function upsertMenu(env, chatId, userId, state, text, keyboard) {
       await editMessage(env, chatId, targetMessageId, text, keyboard);
       await setMenuMessageId(env, userId, targetMessageId);
       return targetMessageId;
-    } catch {}
+    } catch (error) {
+      if (isMessageNotModifiedError(error)) {
+        await setMenuMessageId(env, userId, targetMessageId);
+        return targetMessageId;
+      }
+    }
   }
 
   const menu = await sendMessage(env, chatId, text, keyboard);
@@ -855,11 +860,20 @@ async function editCurrentMenu(env, chatId, userId, messageId, text, keyboard) {
     await editMessage(env, chatId, messageId, text, keyboard);
     await setMenuMessageId(env, userId, messageId);
     return messageId;
-  } catch {
+  } catch (error) {
+    if (isMessageNotModifiedError(error)) {
+      await setMenuMessageId(env, userId, messageId);
+      return messageId;
+    }
+
     const menu = await sendMessage(env, chatId, text, keyboard);
     await setMenuMessageId(env, userId, menu?.message_id || null);
     return menu?.message_id || null;
   }
+}
+
+function isMessageNotModifiedError(error) {
+  return String(error?.message || error).toLowerCase().includes("message is not modified");
 }
 
 function localizedBuyCreditsKeyboard(state = {}) {
