@@ -1,6 +1,7 @@
 import { getBalance } from "./credits.js";
 import { LANGUAGES, normalizeLang } from "./i18n.js";
 import { requireDb } from "./state.js";
+import { getDailyRewardCredits } from "./daily-reward.js";
 import { ensureTtsHistoryTable } from "./tts-history.js";
 
 export async function hasTrackedUser(env, userId) {
@@ -90,12 +91,57 @@ export function adminMainKeyboard() {
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }],
       [{ text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }],
+      [{ text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
   };
 }
 
+
+
+export async function adminDailyRewardText(env) {
+  const credits = await getDailyRewardCredits(env);
+  const due = await countDueDailyRewards(env);
+  return [
+    "🎁 <b>Daily Reward Settings</b>",
+    "",
+    "Current gift: <b>" + formatNumber(credits) + " credits</b>",
+    "Users ready to claim now: <b>" + formatNumber(due) + "</b>",
+    "",
+    "Use <b>Change Gift Credits</b> to set the daily gift amount.",
+    "Use <b>Notify Ready Users</b> to send the Persian reminder only to users whose 24h wait is finished."
+  ].join("\n");
+}
+
+export function adminDailyRewardKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "✏️ Change Gift Credits", callback_data: "admin_daily_reward_prompt" }],
+      [{ text: "📣 Notify Ready Users", callback_data: "admin_daily_reward_notify" }],
+      [{ text: "← Back", callback_data: "admin_main" }],
+    ],
+  };
+}
+
+export function adminDailyRewardPromptText() {
+  return [
+    "🎁 <b>Change Daily Gift Credits</b>",
+    "",
+    "Send the new positive credit amount.",
+    "Example: <code>120</code>",
+    "",
+    "Your message will be deleted after processing."
+  ].join("\n");
+}
+
+export async function countDueDailyRewards(env) {
+  requireDb(env);
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS total FROM daily_rewards WHERE last_claimed_at IS NOT NULL AND datetime(last_claimed_at, '+24 hours') <= CURRENT_TIMESTAMP"
+  ).first();
+  return Number(row?.total || 0);
+}
 
 export async function getLanguageSettings(env) {
   requireDb(env);
