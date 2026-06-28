@@ -2,6 +2,9 @@ import {
   adminBroadcastPromptText,
   adminCancelKeyboard,
   adminCreditPromptText,
+  adminDailyRewardKeyboard,
+  adminDailyRewardPromptText,
+  adminDailyRewardText,
   adminBuyersKeyboard,
   adminBuyersText,
   adminMainKeyboard,
@@ -38,7 +41,7 @@ import {
 } from "./admin.js";
 import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
-import { claimDailyReward, dailyRewardMessage } from "./daily-reward.js";
+import { claimDailyReward, dailyRewardMessage, notifyDueDailyRewards, setDailyRewardCredits } from "./daily-reward.js";
 import { getDemoText } from "./demo-texts.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
@@ -426,6 +429,39 @@ export async function handleCallback(query, env) {
     return;
   }
 
+
+  if (data === "admin_daily_reward") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminDailyRewardText(env), adminDailyRewardKeyboard());
+    return;
+  }
+
+  if (data === "admin_daily_reward_prompt") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "daily_reward_credits", { chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminDailyRewardPromptText(), adminCancelKeyboard("admin_daily_reward"));
+    return;
+  }
+
+  if (data === "admin_daily_reward_notify") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, "📣 <b>Sending daily reward notifications…</b>", null);
+    const result = await notifyDueDailyRewards(env, 10000, { includeAlreadyNotified: true });
+    await editCurrentMenu(env, chatId, userId, messageId, [
+      "✅ <b>Daily reward notification completed</b>",
+      "",
+      "Ready users found: <b>" + result.total + "</b>",
+      "Sent: <b>" + result.sent + "</b>",
+      "Failed: <b>" + result.failed + "</b>",
+      "Gift amount: <b>" + result.credits + " credits</b>"
+    ].join("\n"), adminDailyRewardKeyboard());
+    return;
+  }
+
   if (data === "admin_broadcast") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await answerCallback(env, query.id);
@@ -569,6 +605,20 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
 
   if (action.action === "welcome_audio") {
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminWelcomeAudioPromptText(action.target_user_id || "en") + "\n\nPlease send an audio file, not text.", adminCancelKeyboard("admin_welcome_audio"));
+    return true;
+  }
+
+
+  if (action.action === "daily_reward_credits") {
+    const credits = Number.parseInt(String(text).trim(), 10);
+    if (!Number.isFinite(credits) || credits <= 0) {
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminDailyRewardPromptText() + "\n\nInvalid amount. Send a positive number like <code>120</code>.", adminCancelKeyboard("admin_daily_reward"));
+      return true;
+    }
+
+    await setDailyRewardCredits(env, credits);
+    await clearAdminAction(env, adminId);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminDailyRewardText(env)) + "\n\n✅ Daily gift updated.", adminDailyRewardKeyboard());
     return true;
   }
 
