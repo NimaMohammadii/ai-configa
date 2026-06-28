@@ -518,6 +518,14 @@ export async function handleCallback(query, env) {
     return;
   }
 
+  if (data === "insufficient_buy_credits") {
+    await answerCallback(env, query.id);
+    await deleteMessage(env, chatId, messageId).catch(() => null);
+    state.menuMessageId = null;
+    await replaceMenu(env, chatId, userId, state, buyCreditsText(state), localizedBuyCreditsKeyboard(state));
+    return;
+  }
+
   if (data === "buy_toman") {
     if (state.language !== "fa") {
       await answerCallback(env, query.id, t(state.language, "comingSoon"), true);
@@ -818,7 +826,7 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
   if (!isDemo) {
     const balance = await getBalance(env, userId);
     if (balance < originalCost) {
-      await upsertMenu(env, chatId, userId, state, insufficientCreditsText(state, originalCost, balance), mainKeyboard(state));
+      await replaceMenu(env, chatId, userId, state, insufficientCreditsText(state, originalCost, balance), insufficientCreditsKeyboard(state));
       return;
     }
   }
@@ -943,9 +951,13 @@ function insufficientCreditsText(state, cost, balance) {
   return [
     t(lang, "notEnough", { needed: cost, balance }),
     "",
-    t(lang, "sendText"),
     t(lang, "creditRule"),
   ].join("\n");
+}
+
+function insufficientCreditsKeyboard(state = {}) {
+  const lang = state.language || "en";
+  return { inline_keyboard: [[{ text: t(lang, "buyCredits"), callback_data: "insufficient_buy_credits" }]] };
 }
 
 function countCredits(text) {

@@ -5,9 +5,6 @@ import { mainKeyboard, startText } from "./ui-main.js";
 
 export async function handleMessage(message, env) {
   await baseHandleMessage(message, env);
-  const text = message.text ? message.text.trim() : "";
-  if (!text || text === "/admin") return;
-  await refreshMainMenu(message.chat && message.chat.id, message.from && message.from.id, env);
 }
 
 export async function handleCallback(query, env) {
