@@ -9,6 +9,9 @@ import {
   adminBuyersText,
   adminMainKeyboard,
   adminMainText,
+  adminInitialStartKeyboard,
+  adminInitialStartPromptText,
+  adminInitialStartText,
   adminLanguageSettingsKeyboard,
   adminLanguageSettingsText,
   adminStatsKeyboard,
@@ -42,6 +45,7 @@ import {
 import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { claimDailyReward, dailyRewardMessage, notifyDueDailyRewards, setDailyRewardCredits } from "./daily-reward.js";
+import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
 import { getDemoText } from "./demo-texts.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
@@ -102,6 +106,7 @@ export async function handleMessage(message, env) {
       await setUserLanguage(env, userId, startLanguage);
     }
     await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+    await sendInitialStartBonusOnFirstStart(env, chatId, userId, isFirstStart, state.language);
     await sendWelcomeAudioOnFirstStart(env, chatId, isFirstStart, state.language);
     return;
   }
@@ -194,6 +199,7 @@ export async function handleCallback(query, env) {
       return;
     }
     await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), mainKeyboard(fresh));
+    await sendInitialStartBonusOnFirstStart(env, chatId, userId, shouldSendWelcomeAudio, fresh.language);
     await sendWelcomeAudioOnFirstStart(env, chatId, shouldSendWelcomeAudio, fresh.language);
     return;
   }
@@ -446,6 +452,22 @@ export async function handleCallback(query, env) {
     return;
   }
 
+  if (data === "admin_initial_start") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminInitialStartText(env), adminInitialStartKeyboard());
+    return;
+  }
+
+  if (data === "admin_initial_start_prompt") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "initial_start_credits", { chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminInitialStartPromptText(), adminCancelKeyboard("admin_initial_start"));
+    return;
+  }
+
   if (data === "admin_daily_reward_notify") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await answerCallback(env, query.id);
@@ -616,6 +638,19 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     return true;
   }
 
+
+  if (action.action === "initial_start_credits") {
+    const credits = Number.parseInt(String(text).trim(), 10);
+    if (!Number.isFinite(credits) || credits <= 0) {
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminInitialStartPromptText() + "\n\nInvalid amount. Send a positive number like <code>100</code>.", adminCancelKeyboard("admin_initial_start"));
+      return true;
+    }
+
+    await setInitialStartCredits(env, credits);
+    await clearAdminAction(env, adminId);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminInitialStartText(env)) + "\n\n✅ Initial start credits updated.", adminInitialStartKeyboard());
+    return true;
+  }
 
   if (action.action === "daily_reward_credits") {
     const credits = Number.parseInt(String(text).trim(), 10);
@@ -962,6 +997,14 @@ function insufficientCreditsKeyboard(state = {}) {
 
 function countCredits(text) {
   return Array.from(String(text || "")).length;
+}
+
+async function sendInitialStartBonusOnFirstStart(env, chatId, userId, isFirstStart, language) {
+  if (!isFirstStart || language === "fa") return;
+  const result = await grantInitialStartBonusOnce(env, userId, language);
+  if (result.granted) {
+    await sendMessage(env, chatId, initialStartBonusText(language, result.credits)).catch(() => null);
+  }
 }
 
 async function sendWelcomeAudioOnFirstStart(env, chatId, isFirstStart, language = null) {

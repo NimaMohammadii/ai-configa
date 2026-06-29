@@ -2,6 +2,7 @@ import { getBalance } from "./credits.js";
 import { LANGUAGES, normalizeLang } from "./i18n.js";
 import { requireDb } from "./state.js";
 import { getDailyRewardCredits } from "./daily-reward.js";
+import { getInitialStartCredits } from "./start-bonus.js";
 import { ensureTtsHistoryTable } from "./tts-history.js";
 
 export async function hasTrackedUser(env, userId) {
@@ -92,6 +93,7 @@ export function adminMainKeyboard() {
       [{ text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }],
       [{ text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
+      [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
@@ -110,7 +112,7 @@ export async function adminDailyRewardText(env) {
     "Users ready to claim now: <b>" + formatNumber(due) + "</b>",
     "",
     "Use <b>Change Gift Credits</b> to set the daily gift amount.",
-    "Use <b>Notify Ready Users</b> to send the Persian reminder only to users whose 24h wait is finished."
+    "Use <b>Notify Ready Users</b> to send localized reminders to all ready users in their own language."
   ].join("\n");
 }
 
@@ -130,6 +132,40 @@ export function adminDailyRewardPromptText() {
     "",
     "Send the new positive credit amount.",
     "Example: <code>120</code>",
+    "",
+    "Your message will be deleted after processing."
+  ].join("\n");
+}
+
+export async function adminInitialStartText(env) {
+  const credits = await getInitialStartCredits(env);
+  return [
+    "🆕 <b>Initial Start Credits</b>",
+    "",
+    "Current new-user gift: <b>" + formatNumber(credits) + " credits</b>",
+    "",
+    "This gift is sent once to new non-Persian users after their menu is shown.",
+    "Persian users still receive their onboarding credit through the channel-join flow.",
+    "",
+    "Use <b>Change Initial Credits</b> to set the amount for all languages, including the Persian channel-join amount shown in admin settings."
+  ].join("\n");
+}
+
+export function adminInitialStartKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "✏️ Change Initial Credits", callback_data: "admin_initial_start_prompt" }],
+      [{ text: "← Back", callback_data: "admin_main" }],
+    ],
+  };
+}
+
+export function adminInitialStartPromptText() {
+  return [
+    "🆕 <b>Change Initial Start Credits</b>",
+    "",
+    "Send the new positive credit amount.",
+    "Example: <code>100</code>",
     "",
     "Your message will be deleted after processing."
   ].join("\n");

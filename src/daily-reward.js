@@ -1,4 +1,5 @@
 import { addCredits } from "./credits.js";
+import { normalizeLang } from "./i18n.js";
 import { requireDb } from "./state.js";
 import { sendMessage } from "./telegram-actions.js";
 
@@ -72,15 +73,16 @@ export async function notifyDueDailyRewards(env, limit = 50, options = {}) {
     ? "last_claimed_at IS NOT NULL AND datetime(last_claimed_at, '+24 hours') <= CURRENT_TIMESTAMP"
     : "last_claimed_at IS NOT NULL AND datetime(last_claimed_at, '+24 hours') <= CURRENT_TIMESTAMP AND (last_notified_at IS NULL OR datetime(last_notified_at) < datetime(last_claimed_at, '+24 hours'))";
   const rows = await env.DB.prepare(
-    "SELECT user_id FROM daily_rewards WHERE " + condition + " LIMIT ?"
-  ).bind(Number(limit)).all();
+    "SELECT d.user_id, COALESCE(s.language, ?) AS language FROM daily_rewards d LEFT JOIN user_state s ON s.user_id = d.user_id WHERE " + condition.replaceAll("last_claimed_at", "d.last_claimed_at").replaceAll("last_notified_at", "d.last_notified_at") + " LIMIT ?"
+  ).bind("en", Number(limit)).all();
 
   let sent = 0;
   let failed = 0;
   for (const row of rows.results || []) {
     const userId = row.user_id;
     try {
-      await sendMessage(env, userId, dailyRewardNotificationText(rewardCredits), dailyRewardNotificationKeyboard());
+      const lang = normalizeLang(row.language || "en");
+      await sendMessage(env, userId, dailyRewardNotificationText(rewardCredits, lang), dailyRewardNotificationKeyboard(lang));
       sent++;
       await env.DB.prepare(
         "UPDATE daily_rewards SET last_notified_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
@@ -122,17 +124,28 @@ export async function setDailyRewardCredits(env, credits) {
   return value;
 }
 
-export function dailyRewardNotificationText(credits) {
-  return [
-    "🎁 <b>هدیه روزانه‌ات آماده‌ست!</b>",
-    "",
-    "امروز <b>" + Number(credits || DEFAULT_DAILY_REWARD_CREDITS).toLocaleString("en-US") + " کردیت رایگان</b> منتظرته ✨",
-    "بزن روش و همین الان با Vexa صدای خفن بساز 🚀🎧"
-  ].join("\n");
+export function dailyRewardNotificationText(credits, lang = "en") {
+  const amount = Number(credits || DEFAULT_DAILY_REWARD_CREDITS).toLocaleString("en-US");
+  const messages = {
+    en: ["<b>Your daily free credits are ready.</b>", "", "Claim <b>" + amount + " free credits</b> and create a voice now."],
+    ru: ["<b>Ежедневные бесплатные кредиты готовы.</b>", "", "Заберите <b>" + amount + " бесплатных кредитов</b> и создайте голос сейчас."],
+    de: ["<b>Deine täglichen Gratis-Credits sind bereit.</b>", "", "Hol dir <b>" + amount + " Gratis-Credits</b> und erstelle jetzt eine Stimme."],
+    fa: ["<b>کردیت رایگان روزانه‌ات آماده است.</b>", "", "<b>" + amount + " کردیت رایگان</b> بگیر و همین الان صدا بساز."],
+    tr: ["<b>Günlük ücretsiz kredilerin hazır.</b>", "", "<b>" + amount + " ücretsiz kredi</b> al ve şimdi ses oluştur."],
+    ar: ["<b>رصيدك المجاني اليومي جاهز.</b>", "", "احصل على <b>" + amount + " رصيداً مجانياً</b> وأنشئ صوتاً الآن."],
+    zh: ["<b>你的每日免费 credits 已准备好。</b>", "", "领取 <b>" + amount + " 免费 credits</b>，现在就创建语音。"],
+    ja: ["<b>毎日の無料 credits の準備ができました。</b>", "", "<b>" + amount + " 無料 credits</b> を受け取って、今すぐ音声を作成しましょう。"],
+    es: ["<b>Tus créditos gratis diarios están listos.</b>", "", "Reclama <b>" + amount + " créditos gratis</b> y crea una voz ahora."],
+    hi: ["<b>आपके दैनिक मुफ्त credits तैयार हैं।</b>", "", "<b>" + amount + " मुफ्त credits</b> लें और अभी आवाज़ बनाएं।"],
+  };
+  return (messages[normalizeLang(lang)] || messages.en).join("\n");
 }
 
-export function dailyRewardNotificationKeyboard() {
-  return { inline_keyboard: [[{ text: "🎁 گرفتن کردیت رایگان امروز", callback_data: "daily_reward" }]] };
+export function dailyRewardNotificationKeyboard(lang = "en") {
+  const labels = {
+    en: "Claim free credits", ru: "Забрать кредиты", de: "Gratis-Credits holen", fa: "گرفتن کردیت رایگان", tr: "Ücretsiz kredi al", ar: "احصل على الرصيد المجاني", zh: "领取免费 credits", ja: "無料 credits を受け取る", es: "Reclamar créditos gratis", hi: "मुफ्त credits लें",
+  };
+  return { inline_keyboard: [[{ text: labels[normalizeLang(lang)] || labels.en, callback_data: "daily_reward" }]] };
 }
 
 async function ensureAppSettingsTable(env) {
