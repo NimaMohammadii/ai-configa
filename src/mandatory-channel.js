@@ -1,4 +1,5 @@
 import { addCredits } from "./credits.js";
+import { getInitialStartCredits } from "./start-bonus.js";
 import { requireDb } from "./state.js";
 import { tgJson } from "./telegram-api.js";
 
@@ -13,7 +14,7 @@ export function faJoinText() {
     "🔒 <b>عضویت در کانال وکسا الزامی است</b>",
     "",
     "برای استفاده از ربات اول عضو کانال زیر شو.",
-    "اگر عضو بشی <b>۱۰۰ کردیت رایگان</b> هم بهت داده میشه 🎁",
+    "اگر عضو بشی <b>کردیت رایگان</b> هم بهت داده میشه",
     "",
     "بعد از عضویت، دکمه «عضو شدم» را بزن."
   ].join("\n");
@@ -44,12 +45,13 @@ export async function isFaChannelMember(env, userId) {
 export async function grantFaJoinBonusOnce(env, userId) {
   requireDb(env);
 
+  const credits = await getInitialStartCredits(env);
   const inserted = await env.DB.prepare(
     "INSERT OR IGNORE INTO fa_join_bonuses (user_id, credits, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)"
-  ).bind(String(userId), FA_JOIN_BONUS_CREDITS).run();
+  ).bind(String(userId), credits).run();
 
   if (Number(inserted?.meta?.changes || 0) > 0) {
-    await addCredits(env, userId, FA_JOIN_BONUS_CREDITS);
+    await addCredits(env, userId, credits);
     return true;
   }
 
