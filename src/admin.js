@@ -519,10 +519,17 @@ export async function resetUser(env, userId) {
   const id = String(userId);
 
   await env.DB.batch([
-    env.DB.prepare("DELETE FROM user_state WHERE user_id = ?").bind(id),
-    env.DB.prepare("DELETE FROM user_credits WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM payment_receipt_messages WHERE receipt_id IN (SELECT id FROM payment_receipts WHERE user_id = ?)").bind(id),
+    env.DB.prepare("DELETE FROM payment_receipts WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM star_payments WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM pending_star_credit_inputs WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM pending_payments WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM tts_history WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM daily_rewards WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM fa_join_bonuses WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM initial_start_bonuses WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM user_credits WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM user_state WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM admin_actions WHERE admin_id = ? OR target_user_id = ?").bind(id, id),
     env.DB.prepare("DELETE FROM admin_users WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM bot_users WHERE user_id = ?").bind(id),
