@@ -2,7 +2,7 @@ import { handleCallback, handleMessage } from "./bot.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
-import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCallback } from "./stars-flow.js";
+import { handlePreCheckout, handleStarsCallback, handleStarsPayment, handleStarsTextInput, isStarsCallback } from "./stars-flow.js";
 import { handleSupportMessage } from "./support-flow-v2.js";
 
 export default {
@@ -26,7 +26,7 @@ export default {
       if (update.message.successful_payment) {
         ctx.waitUntil(handleStarsPayment(update.message, env).catch(logError));
       } else {
-        ctx.waitUntil(handleMessageWithSupport(update.message, env).catch(logError));
+        ctx.waitUntil(handleMessageAfterStarsInput(update.message, env).catch(logError));
       }
     }
 
@@ -45,6 +45,15 @@ export default {
     return new Response("OK");
   },
 };
+
+async function handleMessageAfterStarsInput(message, env) {
+  const handledStarsInput = await handleStarsTextInput(message, env).catch((error) => {
+    logError(error);
+    return false;
+  });
+  if (handledStarsInput) return;
+  await handleMessageWithSupport(message, env);
+}
 
 async function handleMessageWithSupport(message, env) {
   if (await handleSupportMessage(message, env)) return;

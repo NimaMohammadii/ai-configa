@@ -2,6 +2,8 @@ import { addCredits } from "./credits.js";
 import { requireDb } from "./state.js";
 
 const STAR_USD_PER_50 = 0.76;
+export const CUSTOM_STARS_CREDITS_PER_STAR = 85;
+export const CUSTOM_STARS_USD_PER_1000_CREDITS = 0.16;
 
 export const STAR_PACKAGES = {
   s400: createStarPackage("s400", 400, 0, 0.08, 6),
@@ -13,15 +15,49 @@ export function getStarPackage(id) {
   return STAR_PACKAGES[id] || null;
 }
 
+export function createCustomStarPackage(credits) {
+  const cleanCredits = Math.max(1, Math.floor(Number(credits || 0)));
+  const stars = Math.max(1, Math.ceil(cleanCredits / CUSTOM_STARS_CREDITS_PER_STAR));
+  const usd = (cleanCredits / 1000) * CUSTOM_STARS_USD_PER_1000_CREDITS;
+  return {
+    id: `custom_${cleanCredits}_${stars}`,
+    credits: cleanCredits,
+    bonus: 0,
+    totalCredits: cleanCredits,
+    usd,
+    stars,
+    label: `${formatNumber(cleanCredits)} • ${formatUsd(usd)}$ • ${stars} ⭐️`,
+    description: `${formatNumber(cleanCredits)} Vexa credits`,
+    invoiceLabel: `${formatNumber(cleanCredits)} credits`,
+    custom: true,
+  };
+}
+
+export function getStarPackageFromPayload(payload) {
+  if (String(payload || "").startsWith("stars_custom:")) {
+    const [, credits, stars] = String(payload).split(":");
+    const pack = createCustomStarPackage(credits);
+    return Number(stars) === pack.stars ? pack : null;
+  }
+
+  if (String(payload || "").startsWith("stars:")) {
+    return getStarPackage(String(payload).slice("stars:".length));
+  }
+
+  return null;
+}
+
+export function starInvoicePayload(pack) {
+  if (pack?.custom) return `stars_custom:${pack.totalCredits}:${pack.stars}`;
+  return "stars:" + pack.id;
+}
+
 export async function applySuccessfulStarsPayment(env, userId, successfulPayment) {
   requireDb(env);
 
   const payload = successfulPayment?.invoice_payload || "";
-  if (!payload.startsWith("stars:")) return { ok: false, reason: "invalid_payload" };
-
-  const packageId = payload.slice("stars:".length);
-  const pack = getStarPackage(packageId);
-  if (!pack) return { ok: false, reason: "invalid_package" };
+  const pack = getStarPackageFromPayload(payload);
+  if (!pack) return { ok: false, reason: "invalid_payload" };
 
   if (successfulPayment.currency !== "XTR") {
     return { ok: false, reason: "invalid_currency" };
@@ -32,7 +68,7 @@ export async function applySuccessfulStarsPayment(env, userId, successfulPayment
     return { ok: false, reason: "invalid_amount" };
   }
 
-  const chargeId = successfulPayment.telegram_payment_charge_id || `${userId}:${packageId}:${Date.now()}`;
+  const chargeId = successfulPayment.telegram_payment_charge_id || `${userId}:${pack.id}:${Date.now()}`;
   const existing = await env.DB.prepare(
     "SELECT charge_id FROM star_payments WHERE charge_id = ?"
   ).bind(chargeId).first();
@@ -43,7 +79,7 @@ export async function applySuccessfulStarsPayment(env, userId, successfulPayment
 
   await env.DB.prepare(
     "INSERT INTO star_payments (charge_id, user_id, package_id, stars, credits, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
-  ).bind(chargeId, String(userId), packageId, pack.stars, pack.totalCredits).run();
+  ).bind(chargeId, String(userId), pack.id, pack.stars, pack.totalCredits).run();
 
   const balance = await addCredits(env, userId, pack.totalCredits);
   return { ok: true, duplicate: false, pack, balance };

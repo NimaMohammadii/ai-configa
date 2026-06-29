@@ -5,7 +5,7 @@ import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { shouldProcessMessageOnce } from "./message-dedupe.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
-import { handlePreCheckout, handleStarsCallback, handleStarsPayment, isStarsCallback } from "./stars-flow.js";
+import { handlePreCheckout, handleStarsCallback, handleStarsPayment, handleStarsTextInput, isStarsCallback } from "./stars-flow.js";
 import { handleSupportMessage } from "./support-flow-strict.js";
 
 export default {
@@ -33,7 +33,13 @@ export default {
           return true;
         });
         if (firstTime) {
-          await handleMessageWithSupport(update.message, env).catch(logError);
+          const handledStarsInput = await handleStarsTextInput(update.message, env).catch((error) => {
+            logError(error);
+            return false;
+          });
+          if (!handledStarsInput) {
+            await handleMessageWithSupport(update.message, env).catch(logError);
+          }
         }
       }
     }

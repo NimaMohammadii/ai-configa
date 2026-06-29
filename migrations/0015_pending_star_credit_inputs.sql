@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS pending_star_credit_inputs (
+  user_id TEXT PRIMARY KEY,
+  message_id INTEGER NOT NULL,
+  credits INTEGER,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
