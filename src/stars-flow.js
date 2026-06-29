@@ -1,12 +1,12 @@
-import { getStarPackage, applySuccessfulStarsPayment } from "./stars.js";
-import { starsPackageInvoiceText, starsPackagesKeyboard, starsPackagesText, buyCreditsTextClean } from "./stars-ui.js";
+import { getStarPackage, applySuccessfulStarsPayment, createCustomStarPackage, getStarPackageFromPayload, starInvoicePayload } from "./stars.js";
+import { starsPackageInvoiceText, starsPackagesKeyboard, starsPackagesText, buyCreditsTextClean, customStarsPromptText, customStarsCancelKeyboard, customStarsInvoiceText, customStarsInvoiceKeyboard } from "./stars-ui.js";
 import { getState } from "./state.js";
 import { answerCallback, answerPreCheckout, editMessage, sendMessage, sendStarsInvoice, deleteMessage } from "./telegram-actions.js";
 import { buyCreditsKeyboard, mainKeyboard, startText } from "./ui.js";
 import { t } from "./i18n.js";
 
 export function isStarsCallback(data) {
-  return data === "buy_credits" || data === "buy_stars" || String(data || "").startsWith("stars_package:");
+  return data === "buy_credits" || data === "buy_stars" || data === "stars_confirm" || data === "stars_cancel" || String(data || "").startsWith("stars_package:");
 }
 
 export async function handleStarsCallback(query, env) {
@@ -19,6 +19,7 @@ export async function handleStarsCallback(query, env) {
   const state = await getState(env, userId);
 
   if (data === "buy_credits") {
+    await clearPendingCustomStars(env, userId);
     await answerCallback(env, query.id);
     await editOrSend(env, chatId, messageId, buyCreditsTextClean(state), localizedBuyCreditsKeyboard(state));
     return;
@@ -26,7 +27,34 @@ export async function handleStarsCallback(query, env) {
 
   if (data === "buy_stars") {
     await answerCallback(env, query.id);
-    await editOrSend(env, chatId, messageId, starsPackagesText(state), starsPackagesKeyboard(state));
+    if (state.language === "fa") {
+      await editOrSend(env, chatId, messageId, starsPackagesText(state), starsPackagesKeyboard(state));
+      return;
+    }
+
+    await setPendingCustomStars(env, userId, messageId, null);
+    await editOrSend(env, chatId, messageId, customStarsPromptText(state), customStarsCancelKeyboard(state));
+    return;
+  }
+
+  if (data === "stars_cancel") {
+    await clearPendingCustomStars(env, userId);
+    await answerCallback(env, query.id);
+    await editOrSend(env, chatId, messageId, buyCreditsTextClean(state), localizedBuyCreditsKeyboard(state));
+    return;
+  }
+
+  if (data === "stars_confirm") {
+    const pending = await getPendingCustomStars(env, userId);
+    if (!pending?.credits) {
+      await answerCallback(env, query.id, "Send a credit amount first", true);
+      return;
+    }
+    const pack = createCustomStarPackage(pending.credits);
+    await clearPendingCustomStars(env, userId);
+    await answerCallback(env, query.id);
+    await sendStarsInvoice(env, chatId, pack, starInvoicePayload(pack));
+    await editOrSend(env, chatId, messageId, customStarsInvoiceText(pack), { inline_keyboard: [[{ text: t(state.language, "back"), callback_data: "buy_stars" }]] });
     return;
   }
 
@@ -38,7 +66,7 @@ export async function handleStarsCallback(query, env) {
   }
 
   await answerCallback(env, query.id);
-  await sendStarsInvoice(env, chatId, pack);
+  await sendStarsInvoice(env, chatId, pack, starInvoicePayload(pack));
   await editOrSend(
     env,
     chatId,
@@ -48,12 +76,41 @@ export async function handleStarsCallback(query, env) {
   );
 }
 
+export async function handleStarsTextInput(message, env) {
+  const userId = message.from && message.from.id;
+  const chatId = message.chat && message.chat.id;
+  const text = message.text ? message.text.trim() : "";
+  if (!userId || !chatId || !text) return false;
+
+  const pending = await getPendingCustomStars(env, userId);
+  if (!pending) return false;
+
+  const state = await getState(env, userId);
+  if (state.language === "fa") {
+    await clearPendingCustomStars(env, userId);
+    return false;
+  }
+
+  const credits = parseCreditAmount(text);
+  await deleteMessage(env, chatId, message.message_id).catch(() => null);
+
+  if (!credits) {
+    await editOrSend(env, chatId, Number(pending.message_id), customStarsPromptText(state) + "\n\nPlease send a positive number like <code>1000</code>.", customStarsCancelKeyboard(state));
+    return true;
+  }
+
+  const pack = createCustomStarPackage(credits);
+  await setPendingCustomStars(env, userId, pending.message_id, pack.totalCredits);
+  await editOrSend(env, chatId, Number(pending.message_id), customStarsInvoiceText(pack), customStarsInvoiceKeyboard(state));
+  return true;
+}
+
 export async function handlePreCheckout(query, env) {
   const payload = query.invoice_payload || "";
-  if (!payload.startsWith("stars:")) return answerPreCheckout(env, query.id, false, "Invalid payment");
+  const pack = getStarPackageFromPayload(payload);
+  if (!pack) return answerPreCheckout(env, query.id, false, "Invalid payment");
 
-  const pack = getStarPackage(payload.slice("stars:".length));
-  if (!pack || query.currency !== "XTR" || Number(query.total_amount) !== pack.stars) {
+  if (query.currency !== "XTR" || Number(query.total_amount) !== pack.stars) {
     return answerPreCheckout(env, query.id, false, "Invalid package");
   }
 
@@ -101,4 +158,36 @@ async function editOrSend(env, chatId, messageId, text, keyboard) {
   } catch {
     await sendMessage(env, chatId, text, keyboard);
   }
+}
+
+async function setPendingCustomStars(env, userId, messageId, credits) {
+  await ensurePendingCustomStarsTable(env);
+  await env.DB.prepare(
+    "INSERT INTO pending_star_credit_inputs (user_id, message_id, credits, updated_at, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
+      "ON CONFLICT(user_id) DO UPDATE SET message_id = excluded.message_id, credits = excluded.credits, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(userId), Number(messageId), credits ? Number(credits) : null).run();
+}
+
+async function getPendingCustomStars(env, userId) {
+  await ensurePendingCustomStarsTable(env);
+  return env.DB.prepare("SELECT message_id, credits FROM pending_star_credit_inputs WHERE user_id = ?").bind(String(userId)).first();
+}
+
+async function clearPendingCustomStars(env, userId) {
+  await ensurePendingCustomStarsTable(env);
+  await env.DB.prepare("DELETE FROM pending_star_credit_inputs WHERE user_id = ?").bind(String(userId)).run();
+}
+
+async function ensurePendingCustomStarsTable(env) {
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS pending_star_credit_inputs (user_id TEXT PRIMARY KEY, message_id INTEGER NOT NULL, credits INTEGER, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+  ).run();
+}
+
+function parseCreditAmount(text) {
+  const normalized = String(text || "").replace(/[,_\s]/g, "");
+  if (!/^\d+$/.test(normalized)) return null;
+  const value = Number.parseInt(normalized, 10);
+  if (!Number.isSafeInteger(value) || value <= 0) return null;
+  return value;
 }
