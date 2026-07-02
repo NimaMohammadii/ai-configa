@@ -4,7 +4,7 @@ import { VOICE_NAMES, VOICES_PER_PAGE } from "./voices.js";
 
 export const CREDIT_PRICE_PER_1000_USD = 0.24;
 export const CREDIT_PER_CHARACTER = 1;
-export const TOMAN_PRICE_PER_1000 = 32000;
+export const TOMAN_PRICE_PER_1000 = 35000;
 
 export const TOMAN_PACKAGES = {
   vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: "🧪 Vexa Test — 400 Credit" },
@@ -97,7 +97,7 @@ export function tomanPackagesText(state = {}) {
     t(lang, "audioCreditRule"),
     "",
     lang === "fa"
-      ? `هر <b>۱۰۰۰ کردیت</b> برابر <b>${formatNumber(TOMAN_PRICE_PER_1000)} تومان</b> است.`
+      ? `هر <b>1000 کردیت</b> برابر <b>${formatNumber(TOMAN_PRICE_PER_1000)} تومان</b> است.`
       : `Every <b>1,000 credits</b> costs <b>${formatNumber(TOMAN_PRICE_PER_1000)} Toman</b>.`,
     lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست." : "Send your custom credit amount in this chat.",
   ].join("\n");
@@ -105,7 +105,7 @@ export function tomanPackagesText(state = {}) {
 
 export function tomanPackagesKeyboard(state = {}) {
   const lang = state.language || "en";
-  return { inline_keyboard: [[{ text: t(lang, "cancel"), callback_data: "cancel_payment" }], [{ text: t(lang, "back"), callback_data: "buy_credits" }]] };
+  return { inline_keyboard: [[{ text: t(lang, "cancel"), callback_data: "cancel_payment" }]] };
 }
 
 export function createCustomTomanPackage(credits) {
