@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS bot_users (
   first_name TEXT,
   last_name TEXT,
   last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  start_count INTEGER NOT NULL DEFAULT 0,
+  last_started_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS admin_users (

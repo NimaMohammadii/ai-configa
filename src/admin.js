@@ -16,18 +16,22 @@ export async function hasTrackedUser(env, userId) {
   return Boolean(row);
 }
 
-export async function trackUser(env, user) {
+export async function trackUser(env, user, options = {}) {
   requireDb(env);
   if (!user || !user.id) return;
 
+  const isStart = Boolean(options.isStart);
   await env.DB.prepare(
-    "INSERT INTO bot_users (user_id, username, first_name, last_name, last_seen_at, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
-    "ON CONFLICT(user_id) DO UPDATE SET username = excluded.username, first_name = excluded.first_name, last_name = excluded.last_name, last_seen_at = CURRENT_TIMESTAMP"
+    "INSERT INTO bot_users (user_id, username, first_name, last_name, last_seen_at, created_at, start_count, last_started_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?) " +
+    "ON CONFLICT(user_id) DO UPDATE SET username = excluded.username, first_name = excluded.first_name, last_name = excluded.last_name, last_seen_at = CURRENT_TIMESTAMP, " +
+      "start_count = bot_users.start_count + excluded.start_count, last_started_at = COALESCE(excluded.last_started_at, bot_users.last_started_at)"
   ).bind(
     String(user.id),
     user.username || null,
     user.first_name || null,
-    user.last_name || null
+    user.last_name || null,
+    isStart ? 1 : 0,
+    isStart ? new Date().toISOString() : null
   ).run();
 }
 
@@ -89,6 +93,7 @@ export function adminMainKeyboard() {
       [{ text: "Users", callback_data: "admin_users:0" }],
       [{ text: "💳 Buyers", callback_data: "admin_buyers:0" }],
       [{ text: "🟢 Online Users", callback_data: "admin_online:0" }],
+      [{ text: "🔁 Returning Users", callback_data: "admin_returning:3:0" }],
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }],
       [{ text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }],
@@ -350,6 +355,75 @@ export async function adminOnlineKeyboard(env, page = 0) {
   const nav = [];
   if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_online:" + (data.page - 1) });
   if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_online:" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export async function getAdminReturningUsersPage(env, threshold = 3, page = 0, limit = 8) {
+  requireDb(env);
+
+  const safeThreshold = Math.max(1, Number(threshold) || 3);
+  const offset = Number(page) * Number(limit);
+  const countRow = await env.DB.prepare(
+    "SELECT COUNT(*) AS total FROM bot_users WHERE start_count > ?"
+  ).bind(safeThreshold).first();
+  const users = await env.DB.prepare(
+    "SELECT user_id, username, first_name, last_name, last_seen_at, start_count, last_started_at FROM bot_users " +
+    "WHERE start_count > ? ORDER BY start_count DESC, datetime(last_started_at) DESC, datetime(last_seen_at) DESC LIMIT ? OFFSET ?"
+  ).bind(safeThreshold, Number(limit), Number(offset)).all();
+
+  return {
+    total: Number(countRow?.total || 0),
+    threshold: safeThreshold,
+    page: Number(page),
+    limit: Number(limit),
+    users: users.results || [],
+  };
+}
+
+export async function adminReturningText(env, threshold = 3, page = 0) {
+  const data = await getAdminReturningUsersPage(env, threshold, page);
+  const label = data.threshold === 4 ? "More than 4 starts" : "More than 3 starts";
+  const lines = [
+    "🔁 <b>Returning Users</b>",
+    "",
+    "Filter: <b>" + label + "</b>",
+    "Total: <b>" + formatNumber(data.total) + "</b>",
+    "Page: <b>" + (data.page + 1) + "</b>",
+    "",
+  ];
+
+  if (!data.users.length) {
+    lines.push("No returning users for this filter yet.");
+  } else {
+    lines.push(...data.users.map((user, index) => {
+      const number = data.page * data.limit + index + 1;
+      return number + ". " + escapeHtml(userLabel(user)) +
+        "\nStarts: <b>" + formatNumber(user.start_count) + "</b>" +
+        "\nLast start: <b>" + escapeHtml(formatTehranTime(user.last_started_at)) + "</b>";
+    }));
+  }
+
+  return lines.join("\n");
+}
+
+export async function adminReturningKeyboard(env, threshold = 3, page = 0) {
+  const data = await getAdminReturningUsersPage(env, threshold, page);
+  const rows = [
+    [
+      { text: (data.threshold === 3 ? "✅ " : "") + ">3 starts", callback_data: "admin_returning:3:0" },
+      { text: (data.threshold === 4 ? "✅ " : "") + ">4 starts", callback_data: "admin_returning:4:0" },
+    ],
+  ];
+
+  for (const user of data.users) {
+    rows.push([{ text: returningUserLabel(user), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
+  }
+
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_returning:" + data.threshold + ":" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_returning:" + data.threshold + ":" + (data.page + 1) });
   if (nav.length) rows.push(nav);
   rows.push([{ text: "← Back", callback_data: "admin_main" }]);
   return { inline_keyboard: rows };
@@ -789,6 +863,10 @@ async function getHeavyUsageUsers(env, modifier, limit) {
 function formatHeavyUsers(users) {
   if (!users.length) return "No usage yet.";
   return users.map((user, index) => (index + 1) + ". " + escapeHtml(compactUserName(user)) + " — <b>" + formatNumber(user.credits) + "</b> credits / " + formatNumber(user.requests) + " requests").join("\n");
+}
+
+function returningUserLabel(user) {
+  return userLabel(user) + " • " + formatNumber(user.start_count) + " starts";
 }
 
 function buyerLabel(user) {
