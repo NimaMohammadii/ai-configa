@@ -54,7 +54,7 @@ import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./pay
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
 import { buildTtsHistoryFile, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
-import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_PACKAGES } from "./ui.js";
+import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
 
 export async function handleMessage(message, env) {
@@ -823,14 +823,23 @@ async function handleTomanCreditInput(env, chatId, userId, messageId, text, stat
 
 function customTomanPreviewText(pack, state = {}) {
   const lang = state.language || "en";
-  return [
+  const lines = [
     lang === "fa" ? "🇮🇷 <b>پرداخت با تومان</b>" : t(lang, "buyTomanTitle"),
     "",
     `${t(lang, "package")}: <b>${Number(pack.credits).toLocaleString("en-US")} credits</b>`,
     `${t(lang, "amount")}: <b>${pack.amount} تومان</b>`,
-    "",
-    lang === "fa" ? "برای نمایش شماره کارت تایید کن" : "Confirm to show the card number",
-  ].join("\n");
+  ];
+
+  if (pack.minimumApplied) {
+    lines.push(
+      lang === "fa"
+        ? `حداقل خرید <b>${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} تومان</b> است`
+        : `Minimum purchase is <b>${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} Toman</b>`
+    );
+  }
+
+  lines.push("", lang === "fa" ? "برای نمایش شماره کارت تایید کن" : "Confirm to show the card number");
+  return lines.join("\n");
 }
 
 function customTomanPaymentId(pack) {

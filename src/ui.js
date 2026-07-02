@@ -119,6 +119,8 @@ export function createCustomTomanPackage(credits) {
     bonus: 0,
     amount: formatNumber(amountValue),
     amountValue,
+    calculatedAmountValue,
+    minimumApplied: amountValue > calculatedAmountValue,
     label: `${formatNumber(cleanCredits)} • ${formatNumber(amountValue)} تومان`,
     custom: true,
   };
