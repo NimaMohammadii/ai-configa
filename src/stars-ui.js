@@ -19,7 +19,7 @@ export function customStarsPromptText(state = {}) {
     t(lang, "audioCreditRule"),
     "",
     lang === "fa"
-      ? `هر <b>۱۰۰۰ کردیت</b> برابر <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b> است.`
+      ? `هر <b>1000 کردیت</b> برابر <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b> است.`
       : `Every <b>1,000 credits</b> costs <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b>.`,
     lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست." : "Send your custom credit amount in this chat.",
   ].join("\n");
@@ -95,9 +95,9 @@ export function buyCreditsTextClean(state = {}) {
 
 function starPackageAudioLine(pack, lang) {
   if (lang === "fa") {
-    if (pack.id === "s400") return "با <b>۴۰۰ کردیت</b> میشه <b>۱ دقیقه</b> صدا تبدیل کرد";
-    if (pack.id === "s1000") return "هر <b>۱۰۰۰ کردیت</b> میشه <b>۲ دقیقه</b> صدا ساخت";
-    if (pack.id === "s33000") return "حدوداً <b>۸۸ دقیقه</b> محتوای صوتی";
+    if (pack.id === "s400") return "با <b>400 کردیت</b> میشه <b>1 دقیقه</b> صدا تبدیل کرد";
+    if (pack.id === "s1000") return "هر <b>1000 کردیت</b> میشه <b>2 دقیقه</b> صدا ساخت";
+    if (pack.id === "s33000") return "حدوداً <b>88 دقیقه</b> محتوای صوتی";
   }
 
   const audioMinutes = pack.id === "s400" ? "1" : pack.id === "s33000" ? "88" : String(Math.round(Number(pack.totalCredits || 0) / 500));

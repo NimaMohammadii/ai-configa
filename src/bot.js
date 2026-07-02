@@ -803,7 +803,9 @@ async function denyCallback(env, callbackQueryId, state = {}) {
 
 async function handleTomanCreditInput(env, chatId, userId, messageId, text, state) {
   const pending = await getPendingPayment(env, userId);
-  if (!pending || !String(pending.package_id || "").startsWith("input")) return false;
+  const pendingPackageId = String(pending?.package_id || "");
+  const isAwaitingCustomTomanInput = pendingPackageId.startsWith("input") || pendingPackageId.startsWith("custom:");
+  if (!pending || !isAwaitingCustomTomanInput) return false;
 
   const credits = parseTomanCreditAmount(text);
   await deleteMessage(env, chatId, messageId).catch(() => null);
