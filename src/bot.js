@@ -811,7 +811,7 @@ async function handleTomanCreditInput(env, chatId, userId, messageId, text, stat
   await deleteMessage(env, chatId, messageId).catch(() => null);
 
   if (!credits) {
-    await editCurrentMenu(env, chatId, userId, state.menuMessageId, tomanPackagesText(state) + "\n\n" + (state.language === "fa" ? "لطفاً یک عدد مثبت مثل <code>1000</code> بفرست." : "Please send a positive number like <code>1000</code>."), tomanPackagesKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, state.menuMessageId, tomanPackagesText(state) + "\n\n" + (state.language === "fa" ? "لطفاً یک عدد مثبت مثل <code>1000</code> بفرست" : "Please send a positive number like <code>1000</code>"), tomanPackagesKeyboard(state));
     return true;
   }
 
@@ -829,7 +829,7 @@ function customTomanPreviewText(pack, state = {}) {
     `${t(lang, "package")}: <b>${Number(pack.credits).toLocaleString("en-US")} credits</b>`,
     `${t(lang, "amount")}: <b>${pack.amount} تومان</b>`,
     "",
-    lang === "fa" ? "برای نمایش شماره کارت تایید کن." : "Confirm to show the card number.",
+    lang === "fa" ? "برای نمایش شماره کارت تایید کن" : "Confirm to show the card number",
   ].join("\n");
 }
 
