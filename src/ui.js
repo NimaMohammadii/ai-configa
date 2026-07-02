@@ -4,7 +4,8 @@ import { VOICE_NAMES, VOICES_PER_PAGE } from "./voices.js";
 
 export const CREDIT_PRICE_PER_1000_USD = 0.24;
 export const CREDIT_PER_CHARACTER = 1;
-export const TOMAN_PRICE_PER_1000 = 35000;
+export const TOMAN_PRICE_PER_1000 = 42000;
+export const TOMAN_MIN_PURCHASE_AMOUNT = 60000;
 
 export const TOMAN_PACKAGES = {
   vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: "🧪 Vexa Test — 400 Credit" },
@@ -97,9 +98,9 @@ export function tomanPackagesText(state = {}) {
     t(lang, "audioCreditRule"),
     "",
     lang === "fa"
-      ? `هر <b>1000 کردیت</b> برابر <b>${formatNumber(TOMAN_PRICE_PER_1000)} تومان</b> است.`
-      : `Every <b>1,000 credits</b> costs <b>${formatNumber(TOMAN_PRICE_PER_1000)} Toman</b>.`,
-    lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست." : "Send your custom credit amount in this chat.",
+      ? `هر <b>1000 کردیت</b> برابر <b>${formatNumber(TOMAN_PRICE_PER_1000)} تومان</b> است`
+      : `Every <b>1,000 credits</b> costs <b>${formatNumber(TOMAN_PRICE_PER_1000)} Toman</b>`,
+    lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست" : "Send your custom credit amount in this chat",
   ].join("\n");
 }
 
@@ -110,7 +111,8 @@ export function tomanPackagesKeyboard(state = {}) {
 
 export function createCustomTomanPackage(credits) {
   const cleanCredits = Math.max(1, Math.floor(Number(credits || 0)));
-  const amountValue = Math.ceil((cleanCredits / 1000) * TOMAN_PRICE_PER_1000);
+  const calculatedAmountValue = Math.ceil((cleanCredits / 1000) * TOMAN_PRICE_PER_1000);
+  const amountValue = Math.max(TOMAN_MIN_PURCHASE_AMOUNT, calculatedAmountValue);
   return {
     id: `custom_${cleanCredits}_${amountValue}`,
     credits: cleanCredits,

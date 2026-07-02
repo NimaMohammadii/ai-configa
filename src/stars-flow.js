@@ -85,7 +85,7 @@ export async function handleStarsTextInput(message, env) {
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
 
   if (!credits) {
-    await editOrSend(env, chatId, Number(pending.message_id), customStarsPromptText(state) + "\n\nPlease send a positive number like <code>1000</code>.", customStarsCancelKeyboard(state));
+    await editOrSend(env, chatId, Number(pending.message_id), customStarsPromptText(state) + "\n\nPlease send a positive number like <code>1000</code>", customStarsCancelKeyboard(state));
     return true;
   }
 
