@@ -21,6 +21,8 @@ import {
   adminWelcomeAudioText,
   adminOnlineKeyboard,
   adminOnlineText,
+  adminReturningKeyboard,
+  adminReturningText,
   adminMessagePromptText,
   adminUserKeyboard,
   adminUsersKeyboard,
@@ -69,7 +71,7 @@ export async function handleMessage(message, env) {
 
   const isFirstStart = text === "/start" && !(await hasTrackedUser(env, userId));
 
-  await trackUser(env, message.from);
+  await trackUser(env, message.from, { isStart: text === "/start" });
   await ensureBalanceRow(env, userId);
 
   const state = await getState(env, userId);
@@ -253,6 +255,15 @@ export async function handleCallback(query, env) {
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminOnlineText(env, page), await adminOnlineKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_returning:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const [, threshold = "3", page = "0"] = data.split(":");
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminReturningText(env, Number(threshold), Number(page)), await adminReturningKeyboard(env, Number(threshold), Number(page)));
     return;
   }
 
