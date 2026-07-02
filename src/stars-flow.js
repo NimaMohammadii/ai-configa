@@ -27,11 +27,6 @@ export async function handleStarsCallback(query, env) {
 
   if (data === "buy_stars") {
     await answerCallback(env, query.id);
-    if (state.language === "fa") {
-      await editOrSend(env, chatId, messageId, starsPackagesText(state), starsPackagesKeyboard(state));
-      return;
-    }
-
     await setPendingCustomStars(env, userId, messageId, null);
     await editOrSend(env, chatId, messageId, customStarsPromptText(state), customStarsCancelKeyboard(state));
     return;
@@ -54,7 +49,7 @@ export async function handleStarsCallback(query, env) {
     await clearPendingCustomStars(env, userId);
     await answerCallback(env, query.id);
     await sendStarsInvoice(env, chatId, pack, starInvoicePayload(pack));
-    await editOrSend(env, chatId, messageId, customStarsInvoiceText(pack), { inline_keyboard: [[{ text: t(state.language, "back"), callback_data: "buy_stars" }]] });
+    await editOrSend(env, chatId, messageId, customStarsInvoiceText(pack, state), { inline_keyboard: [[{ text: t(state.language, "back"), callback_data: "buy_stars" }]] });
     return;
   }
 
@@ -86,11 +81,6 @@ export async function handleStarsTextInput(message, env) {
   if (!pending) return false;
 
   const state = await getState(env, userId);
-  if (state.language === "fa") {
-    await clearPendingCustomStars(env, userId);
-    return false;
-  }
-
   const credits = parseCreditAmount(text);
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
 
@@ -101,7 +91,7 @@ export async function handleStarsTextInput(message, env) {
 
   const pack = createCustomStarPackage(credits);
   await setPendingCustomStars(env, userId, pending.message_id, pack.totalCredits);
-  await editOrSend(env, chatId, Number(pending.message_id), customStarsInvoiceText(pack), customStarsInvoiceKeyboard(state));
+  await editOrSend(env, chatId, Number(pending.message_id), customStarsInvoiceText(pack, state), customStarsInvoiceKeyboard(state));
   return true;
 }
 
@@ -185,7 +175,10 @@ async function ensurePendingCustomStarsTable(env) {
 }
 
 function parseCreditAmount(text) {
-  const normalized = String(text || "").replace(/[,_\s]/g, "");
+  const normalized = String(text || "")
+    .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+    .replace(/[,_\s]/g, "");
   if (!/^\d+$/.test(normalized)) return null;
   const value = Number.parseInt(normalized, 10);
   if (!Number.isSafeInteger(value) || value <= 0) return null;

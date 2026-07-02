@@ -4,6 +4,7 @@ import { VOICE_NAMES, VOICES_PER_PAGE } from "./voices.js";
 
 export const CREDIT_PRICE_PER_1000_USD = 0.24;
 export const CREDIT_PER_CHARACTER = 1;
+export const TOMAN_PRICE_PER_1000 = 32000;
 
 export const TOMAN_PACKAGES = {
   vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: "🧪 Vexa Test — 400 Credit" },
@@ -89,57 +90,58 @@ export function buyCreditsKeyboard(state = {}) {
 
 export function tomanPackagesText(state = {}) {
   const lang = state.language || "en";
-  if (lang !== "fa") return [t(lang, "buyTomanTitle"), "", t(lang, "choosePackage")].join("\n");
-
   return [
-    "🇮🇷 <b>خرید با تومان</b>",
+    t(lang, "buyTomanTitle"),
     "",
-    "پکیج موردنظرت رو انتخاب کن 👇",
+    t(lang, "creditRule"),
+    t(lang, "audioCreditRule"),
     "",
-    "━━━━━━━━━━━━━━",
-    "",
-    "🧪 <b>پکیج تست Vexa</b>",
-    "",
-    "<b>400 Credit</b>",
-    "قیمت: <b>50,000 تومان</b>",
-    "مناسب برای تست کیفیت صدا",
-    "",
-    "━━━━━━━━━━━━━━",
-    "",
-    "⚡ <b>پکیج Starter</b>",
-    "",
-    "<b>2,000 Credit</b> + <b>100 Credit هدیه</b> 🎁",
-    "قیمت: <b>160,000 تومان</b>",
-    "هر <b>1,000 Credit</b> فقط <b>80,000 تومان</b>",
-    "حدود <b>4 دقیقه</b> محتوای صوتی",
-    "",
-    "━━━━━━━━━━━━━━",
-    "",
-    "🚀 <b>پکیج Pro</b>",
-    "",
-    "<b>8,000 Credit</b> + <b>500 Credit هدیه</b> 🎁",
-    "قیمت: <b>510,000 تومان</b>",
-    "هر <b>1,000 Credit</b> حدود <b>65,000 تومان</b>",
-    "حدود <b>16 دقیقه</b> محتوای صوتی",
-    "",
-    "━━━━━━━━━━━━━━",
-    "",
-    "👑 <b>پکیج Ultra</b>",
-    "",
-    "<b>22,000 Credit</b> + <b>2,000 Credit هدیه</b> 🎁",
-    "قیمت: <b>999,000 تومان</b>",
-    "هر <b>1,000 Credit</b> حدود <b>40,000 تومان</b>",
-    "حدود <b>48 دقیقه</b> محتوای صوتی",
-    "",
-    "━━━━━━━━━━━━━━",
-    "",
-    "✨ بسته‌های بزرگ‌تر به‌صرفه‌ترن و کردیت هدیه بیشتری دارن.",
+    lang === "fa"
+      ? `هر <b>۱۰۰۰ کردیت</b> برابر <b>${formatNumber(TOMAN_PRICE_PER_1000)} تومان</b> است.`
+      : `Every <b>1,000 credits</b> costs <b>${formatNumber(TOMAN_PRICE_PER_1000)} Toman</b>.`,
+    lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست." : "Send your custom credit amount in this chat.",
   ].join("\n");
 }
 
 export function tomanPackagesKeyboard(state = {}) {
   const lang = state.language || "en";
-  return { inline_keyboard: [...Object.entries(TOMAN_PACKAGES).map(([id, pack]) => ([{ text: pack.label, callback_data: "toman_package:" + id }])), [{ text: t(lang, "back"), callback_data: "buy_credits" }]] };
+  return { inline_keyboard: [[{ text: t(lang, "cancel"), callback_data: "cancel_payment" }], [{ text: t(lang, "back"), callback_data: "buy_credits" }]] };
+}
+
+export function createCustomTomanPackage(credits) {
+  const cleanCredits = Math.max(1, Math.floor(Number(credits || 0)));
+  const amountValue = Math.ceil((cleanCredits / 1000) * TOMAN_PRICE_PER_1000);
+  return {
+    id: `custom_${cleanCredits}_${amountValue}`,
+    credits: cleanCredits,
+    bonus: 0,
+    amount: formatNumber(amountValue),
+    amountValue,
+    label: `${formatNumber(cleanCredits)} • ${formatNumber(amountValue)} تومان`,
+    custom: true,
+  };
+}
+
+export function customTomanInstructionText(pack, state = {}) {
+  const lang = state.language || "en";
+  const totalCredits = Number(pack.credits || 0) + Number(pack.bonus || 0);
+  return [
+    lang === "fa" ? "🇮🇷 <b>پرداخت با تومان</b>" : t(lang, "buyTomanTitle"),
+    "",
+    `${t(lang, "package")}: <b>${formatNumber(totalCredits)} credits</b>`,
+    `${t(lang, "amount")}: <b>${pack.amount} تومان</b>`,
+    "",
+    t(lang, "transfer"),
+    `<code>${CARD_NUMBER}</code>`,
+    "",
+    t(lang, "sendScreenshot"),
+    t(lang, "verification"),
+  ].join("\n");
+}
+
+export function customTomanConfirmKeyboard(state = {}) {
+  const lang = state.language || "en";
+  return { inline_keyboard: [[{ text: lang === "fa" ? "تایید و دریافت شماره کارت" : "Confirm", callback_data: "toman_confirm" }], [{ text: t(lang, "cancel"), callback_data: "cancel_payment" }]] };
 }
 
 export function paymentInstructionText(pack, state = {}) {

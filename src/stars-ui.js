@@ -18,21 +18,24 @@ export function customStarsPromptText(state = {}) {
     t(lang, "creditRule"),
     t(lang, "audioCreditRule"),
     "",
-    `Every <b>1,000 credits</b> costs <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b>.`,
-    "Send your custom credit amount in this chat.",
+    lang === "fa"
+      ? `هر <b>۱۰۰۰ کردیت</b> برابر <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b> است.`
+      : `Every <b>1,000 credits</b> costs <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b>.`,
+    lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست." : "Send your custom credit amount in this chat.",
   ].join("\n");
 }
 
-export function customStarsInvoiceText(pack) {
+export function customStarsInvoiceText(pack, state = {}) {
+  const lang = state.language || "en";
   return [
-    "⭐ <b>Telegram Stars invoice</b>",
+    lang === "fa" ? "⭐ <b>فاکتور استارز تلگرام</b>" : "⭐ <b>Telegram Stars invoice</b>",
     "",
     `Credits: <b>${formatNumber(pack.totalCredits)}</b>`,
     `Estimated value: <b>$${formatUsd(pack.usd)}</b>`,
     `Stars to pay: <b>${formatNumber(pack.stars)} ⭐️</b>`,
     "",
     `Rate: <b>${CUSTOM_STARS_CREDITS_PER_STAR} credits = 1 ⭐️</b>`,
-    "Confirm to receive the payment invoice.",
+    lang === "fa" ? "برای دریافت فاکتور پرداخت تایید کن." : "Confirm to receive the payment invoice.",
   ].join("\n");
 }
 
@@ -40,7 +43,7 @@ export function customStarsInvoiceKeyboard(state = {}) {
   const lang = state.language || "en";
   return {
     inline_keyboard: [
-      [{ text: `Confirm and pay`, callback_data: "stars_confirm" }],
+      [{ text: lang === "fa" ? "تایید و پرداخت" : `Confirm and pay`, callback_data: "stars_confirm" }],
       [{ text: t(lang, "cancel"), callback_data: "stars_cancel" }],
     ],
   };

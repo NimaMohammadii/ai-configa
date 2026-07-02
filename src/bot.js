@@ -54,7 +54,7 @@ import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./pay
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
 import { buildTtsHistoryFile, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
-import { buyCreditsKeyboard, buyCreditsText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_PACKAGES } from "./ui.js";
+import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
 
 export async function handleMessage(message, env) {
@@ -91,6 +91,10 @@ export async function handleMessage(message, env) {
   if (!text) return;
 
   if (await handleAdminPendingInput(env, chatId, userId, messageId, text)) {
+    return;
+  }
+
+  if (await handleTomanCreditInput(env, chatId, userId, messageId, text, state)) {
     return;
   }
 
@@ -549,12 +553,21 @@ export async function handleCallback(query, env) {
   }
 
   if (data === "buy_toman") {
-    if (state.language !== "fa") {
-      await answerCallback(env, query.id, t(state.language, "comingSoon"), true);
+    await setPendingPayment(env, userId, "input");
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, tomanPackagesText(state), tomanPackagesKeyboard(state));
+    return;
+  }
+
+  if (data === "toman_confirm") {
+    const pending = await getPendingPayment(env, userId);
+    const pack = pendingPackage(pending);
+    if (!pack) {
+      await answerCallback(env, query.id, state.language === "fa" ? "اول مقدار کردیت را بفرست" : "Send a credit amount first", true);
       return;
     }
     await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, tomanPackagesText(state), tomanPackagesKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, customTomanInstructionText(pack, state), paymentCancelKeyboard(state));
     return;
   }
 
@@ -787,10 +800,65 @@ async function denyCallback(env, callbackQueryId, state = {}) {
   await answerCallback(env, callbackQueryId, t(state.language, "accessDenied"), true);
 }
 
+
+async function handleTomanCreditInput(env, chatId, userId, messageId, text, state) {
+  const pending = await getPendingPayment(env, userId);
+  if (!pending || !String(pending.package_id || "").startsWith("input")) return false;
+
+  const credits = parseTomanCreditAmount(text);
+  await deleteMessage(env, chatId, messageId).catch(() => null);
+
+  if (!credits) {
+    await editCurrentMenu(env, chatId, userId, state.menuMessageId, tomanPackagesText(state) + "\n\n" + (state.language === "fa" ? "لطفاً یک عدد مثبت مثل <code>1000</code> بفرست." : "Please send a positive number like <code>1000</code>."), tomanPackagesKeyboard(state));
+    return true;
+  }
+
+  const pack = createCustomTomanPackage(credits);
+  await setPendingPayment(env, userId, customTomanPaymentId(pack));
+  await editCurrentMenu(env, chatId, userId, state.menuMessageId, customTomanPreviewText(pack, state), customTomanConfirmKeyboard(state));
+  return true;
+}
+
+function customTomanPreviewText(pack, state = {}) {
+  const lang = state.language || "en";
+  return [
+    lang === "fa" ? "🇮🇷 <b>پرداخت با تومان</b>" : t(lang, "buyTomanTitle"),
+    "",
+    `${t(lang, "package")}: <b>${Number(pack.credits).toLocaleString("en-US")} credits</b>`,
+    `${t(lang, "amount")}: <b>${pack.amount} تومان</b>`,
+    "",
+    lang === "fa" ? "برای نمایش شماره کارت تایید کن." : "Confirm to show the card number.",
+  ].join("\n");
+}
+
+function customTomanPaymentId(pack) {
+  return `custom:${Number(pack.credits || 0)}:${Number(pack.amountValue || 0)}`;
+}
+
+function pendingPackage(pending) {
+  const packageId = pending?.package_id || "";
+  if (TOMAN_PACKAGES[packageId]) return TOMAN_PACKAGES[packageId];
+  if (!String(packageId).startsWith("custom:")) return null;
+  const [, credits, amount] = String(packageId).split(":");
+  const pack = createCustomTomanPackage(Number(credits));
+  return Number(amount) === Number(pack.amountValue) ? pack : null;
+}
+
+function parseTomanCreditAmount(text) {
+  const normalized = String(text || "")
+    .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+    .replace(/[,_\s]/g, "");
+  if (!/^\d+$/.test(normalized)) return null;
+  const value = Number.parseInt(normalized, 10);
+  if (!Number.isSafeInteger(value) || value <= 0) return null;
+  return value;
+}
+
 async function handlePaymentScreenshot(env, chatId, userId, state) {
   const pending = await getPendingPayment(env, userId);
 
-  if (!pending || !TOMAN_PACKAGES[pending.package_id]) {
+  if (!pending || !pendingPackage(pending)) {
     await upsertMenu(env, chatId, userId, state, t(state.language, "screenshotNoPackage"), mainKeyboard(state));
     return;
   }
