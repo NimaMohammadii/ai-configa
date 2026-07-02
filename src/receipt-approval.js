@@ -3,7 +3,7 @@ import { getAllAdminIds } from "./receipt-admins.js";
 import { clearPendingPayment, getPendingPayment } from "./payments.js";
 import { requireDb } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessageCaption, sendMessage, sendPlainMessage } from "./telegram-actions.js";
-import { mainKeyboard, startText, TOMAN_PACKAGES } from "./ui.js";
+import { createCustomTomanPackage, mainKeyboard, startText, TOMAN_PACKAGES } from "./ui.js";
 import { getState, setMenuMessageId } from "./state.js";
 
 export function isReceiptCallback(data) {
@@ -24,14 +24,14 @@ export async function handleReceiptPhoto(message, env) {
     await setMenuMessageId(env, userId, null);
   }
 
-  if (!pending || !TOMAN_PACKAGES[pending.package_id]) {
+  if (!pending || !pendingPackage(pending)) {
     const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
     await setMenuMessageId(env, userId, menu?.message_id || null);
     await notifyUser(env, chatId, "⚠️ <b>Screenshot received</b>\n\nPlease choose a credit package first", "⚠️ Screenshot received\n\nPlease choose a credit package first");
     return true;
   }
 
-  const pack = TOMAN_PACKAGES[pending.package_id];
+  const pack = pendingPackage(pending);
   const totalCredits = Number(pack.credits || 0) + Number(pack.bonus || 0);
   const receiptId = await createReceipt(env, user, pending.package_id, pack.amount, totalCredits);
   const caption = receiptCaption({ user, amount: pack.amount, credits: totalCredits });
@@ -58,6 +58,16 @@ export async function handleReceiptPhoto(message, env) {
   }
 
   return true;
+}
+
+
+function pendingPackage(pending) {
+  const packageId = pending?.package_id || "";
+  if (TOMAN_PACKAGES[packageId]) return TOMAN_PACKAGES[packageId];
+  if (!String(packageId).startsWith("custom:")) return null;
+  const [, credits, amount] = String(packageId).split(":");
+  const pack = createCustomTomanPackage(Number(credits));
+  return Number(amount) === Number(pack.amountValue) ? pack : null;
 }
 
 export async function handleReceiptCallback(query, env) {
