@@ -1,4 +1,4 @@
-import { getBalance } from "./credits.js";
+import { ensureCreditUsageLogTable, getBalance } from "./credits.js";
 import { LANGUAGES, normalizeLang } from "./i18n.js";
 import { requireDb } from "./state.js";
 import { getDailyRewardCredits } from "./daily-reward.js";
@@ -454,11 +454,12 @@ export async function getAdminUserDetails(env, userId) {
 async function getUserUsageSummary(env, userId) {
   await ensureUsageStatsStorage(env);
 
+  const sourceTable = (await shouldUseCreditUsageLog(env, userId)) ? "credit_usage_log" : "tts_history";
   const row = await env.DB.prepare(
     "SELECT COALESCE(SUM(credits), 0) AS total_credits, COUNT(*) AS total_requests, MAX(created_at) AS last_tts_at, " +
       "COALESCE(SUM(CASE WHEN datetime(created_at) >= datetime('now', '-1 day') THEN credits ELSE 0 END), 0) AS credits_24h, " +
       "COALESCE(SUM(CASE WHEN datetime(created_at) >= datetime('now', '-7 days') THEN credits ELSE 0 END), 0) AS credits_7d " +
-    "FROM tts_history WHERE user_id = ?"
+    "FROM " + sourceTable + " WHERE user_id = ?"
   ).bind(String(userId)).first();
 
   return {
@@ -472,6 +473,16 @@ async function getUserUsageSummary(env, userId) {
 
 async function ensureUsageStatsStorage(env) {
   await ensureTtsHistoryTable(env);
+  await ensureCreditUsageLogTable(env);
+}
+
+async function shouldUseCreditUsageLog(env, userId = null) {
+  await ensureUsageStatsStorage(env);
+  const query = userId
+    ? env.DB.prepare("SELECT 1 AS exists_flag FROM credit_usage_log WHERE user_id = ? LIMIT 1").bind(String(userId))
+    : env.DB.prepare("SELECT 1 AS exists_flag FROM credit_usage_log LIMIT 1");
+  const row = await query.first();
+  return Boolean(row?.exists_flag);
 }
 
 async function getUserPurchaseSummary(env, userId) {
@@ -524,6 +535,7 @@ export async function resetUser(env, userId) {
     env.DB.prepare("DELETE FROM pending_star_credit_inputs WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM pending_payments WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM tts_history WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM credit_usage_log WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM daily_rewards WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM fa_join_bonuses WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM initial_start_bonuses WHERE user_id = ?").bind(id),
@@ -758,14 +770,14 @@ export async function clearAdminAction(env, adminId) {
 }
 
 async function sumCreditsSince(env, modifier) {
-  await ensureUsageStatsStorage(env);
-  const row = await env.DB.prepare("SELECT COALESCE(SUM(credits), 0) AS total FROM tts_history WHERE datetime(created_at) >= datetime('now', ?)").bind(modifier).first();
+  const sourceTable = (await shouldUseCreditUsageLog(env)) ? "credit_usage_log" : "tts_history";
+  const row = await env.DB.prepare("SELECT COALESCE(SUM(credits), 0) AS total FROM " + sourceTable + " WHERE datetime(created_at) >= datetime('now', ?)").bind(modifier).first();
   return Number(row?.total || 0);
 }
 
 async function countTtsRequestsSince(env, modifier) {
-  await ensureUsageStatsStorage(env);
-  const row = await env.DB.prepare("SELECT COUNT(*) AS total FROM tts_history WHERE datetime(created_at) >= datetime('now', ?)").bind(modifier).first();
+  const sourceTable = (await shouldUseCreditUsageLog(env)) ? "credit_usage_log" : "tts_history";
+  const row = await env.DB.prepare("SELECT COUNT(*) AS total FROM " + sourceTable + " WHERE datetime(created_at) >= datetime('now', ?)").bind(modifier).first();
   return Number(row?.total || 0);
 }
 
@@ -775,10 +787,10 @@ async function countUsersSeenSince(env, modifier) {
 }
 
 async function getHeavyUsageUsers(env, modifier, limit) {
-  await ensureUsageStatsStorage(env);
+  const sourceTable = (await shouldUseCreditUsageLog(env)) ? "credit_usage_log" : "tts_history";
   const rows = await env.DB.prepare(
     "SELECT h.user_id, SUM(h.credits) AS credits, COUNT(*) AS requests, b.username, b.first_name, b.last_name " +
-    "FROM tts_history h LEFT JOIN bot_users b ON b.user_id = h.user_id " +
+    "FROM " + sourceTable + " h LEFT JOIN bot_users b ON b.user_id = h.user_id " +
     "WHERE datetime(h.created_at) >= datetime('now', ?) " +
     "GROUP BY h.user_id ORDER BY credits DESC, requests DESC LIMIT ?"
   ).bind(modifier, Number(limit)).all();
