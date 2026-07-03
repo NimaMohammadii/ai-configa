@@ -25,7 +25,6 @@ export async function setInitialStartCredits(env, credits) {
 
 export async function grantInitialStartBonusOnce(env, userId, language) {
   requireDb(env);
-  if (language === "fa") return { granted: false, credits: 0 };
   await ensureInitialStartStorage(env);
   const credits = await getInitialStartCredits(env);
   const inserted = await env.DB.prepare(
@@ -44,6 +43,7 @@ export function initialStartBonusText(lang, credits) {
   const amount = Number(credits || DEFAULT_INITIAL_START_CREDITS).toLocaleString("en-US");
   const messages = {
     en: "You received <b>" + amount + " free credits</b>. Send text now and test it.",
+    fa: "<b>" + amount + " کردیت رایگان</b> گرفتی. همین حالا متن بفرست و تست کن.",
     ru: "Вы получили <b>" + amount + " бесплатных кредитов</b>. Отправьте текст и протестируйте сейчас.",
     de: "Du hast <b>" + amount + " Gratis-Credits</b> erhalten. Sende jetzt Text und teste es.",
     tr: "<b>" + amount + " ücretsiz kredi</b> aldın. Şimdi metin gönderip test edebilirsin.",

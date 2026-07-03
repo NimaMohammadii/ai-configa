@@ -1064,7 +1064,7 @@ function countCredits(text) {
 }
 
 async function sendInitialStartBonusOnFirstStart(env, chatId, userId, isFirstStart, language) {
-  if (!isFirstStart || language === "fa") return;
+  if (!isFirstStart) return;
   const result = await grantInitialStartBonusOnce(env, userId, language);
   if (result.granted) {
     await sendMessage(env, chatId, initialStartBonusText(language, result.credits)).catch(() => null);
