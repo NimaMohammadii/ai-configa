@@ -366,7 +366,12 @@ export async function handleCallback(query, env) {
     const content = buildTtsHistoryFile(targetUserId, rows);
     const filename = "tts-history-" + String(targetUserId).replace(/[^a-zA-Z0-9_-]/g, "_") + ".txt";
     await answerCallback(env, query.id, rows.length ? "Sending text history..." : "Sending empty history file...", false);
-    await sendTextDocument(env, chatId, content, filename, "📝 Text history for <code>" + targetUserId + "</code>");
+    try {
+      await sendTextDocument(env, chatId, content, filename, "📝 Text history for <code>" + targetUserId + "</code>");
+    } catch (error) {
+      console.error("tts history download failed", targetUserId, error && error.message ? error.message : error);
+      await sendMessage(env, chatId, "❌ TTS history download failed for <code>" + targetUserId + "</code>.\n\n" + escapeHtmlForAdmin(safeError(error)));
+    }
     return;
   }
 
@@ -1114,6 +1119,14 @@ async function sendCleanAudio(env, chatId, audio) {
   } catch (sendAudioError) {
     return await sendDocument(env, chatId, audio);
   }
+}
+
+function escapeHtmlForAdmin(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 function safeError(error) {

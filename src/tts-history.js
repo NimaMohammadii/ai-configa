@@ -137,7 +137,7 @@ export function buildTtsHistoryFile(userId, rows) {
     );
   });
 
-  return lines.join("\n");
+  return "\ufeff" + lines.join("\n");
 }
 
 export function ttsHistoryText(data, userId) {
