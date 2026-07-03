@@ -40,7 +40,40 @@ export async function removeCredits(env, userId, amount) {
   return getBalance(env, userId);
 }
 
-export async function spendCredits(env, userId, amount) {
+export async function ensureCreditUsageLogTable(env) {
+  requireDb(env);
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS credit_usage_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, credits INTEGER NOT NULL, reason TEXT NOT NULL DEFAULT 'tts', metadata TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_credit_usage_log_created ON credit_usage_log (created_at DESC)"
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_credit_usage_log_user_created ON credit_usage_log (user_id, created_at DESC)"
+  ).run();
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO credit_usage_log (id, user_id, credits, reason, metadata, created_at) " +
+    "SELECT 'tts_history:' || rowid, user_id, credits, 'tts_history_backfill', NULL, created_at FROM tts_history WHERE credits > 0"
+  ).run().catch(() => null);
+}
+
+export async function recordCreditUsage(env, userId, amount, reason = "tts", metadata = null) {
+  requireDb(env);
+  const credits = Number(amount || 0);
+  if (!Number.isFinite(credits) || credits <= 0) return;
+  await ensureCreditUsageLogTable(env);
+  await env.DB.prepare(
+    "INSERT INTO credit_usage_log (id, user_id, credits, reason, metadata, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+  ).bind(
+    crypto.randomUUID(),
+    String(userId),
+    credits,
+    String(reason || "tts"),
+    metadata == null ? null : JSON.stringify(metadata)
+  ).run();
+}
+
+export async function spendCredits(env, userId, amount, reason = "tts", metadata = null) {
   requireDb(env);
   await ensureBalanceRow(env, userId);
 
@@ -54,9 +87,17 @@ export async function spendCredits(env, userId, amount) {
     return { ok: false, balance: current, needed };
   }
 
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     "UPDATE user_credits SET credits = credits - ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND credits >= ?"
   ).bind(needed, String(userId), needed).run();
+
+  const changed = Number(result?.meta?.changes ?? result?.changes ?? 0);
+  if (changed <= 0) {
+    const balance = await getBalance(env, userId);
+    return { ok: false, balance, needed };
+  }
+
+  await recordCreditUsage(env, userId, needed, reason, metadata);
 
   return { ok: true, balance: await getBalance(env, userId), spent: needed };
 }

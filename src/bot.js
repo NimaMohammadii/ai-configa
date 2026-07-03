@@ -970,7 +970,7 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
     });
 
     if (!isDemo) {
-      await spendCredits(env, userId, finalCost);
+      await spendCredits(env, userId, finalCost, "tts", { voice: voiceName, language: lang });
     }
 
     if (statusMessage && statusMessage.message_id) {
