@@ -112,7 +112,7 @@ export async function adminDailyRewardText(env) {
     "Users ready to claim now: <b>" + formatNumber(due) + "</b>",
     "",
     "Use <b>Change Gift Credits</b> to set the daily gift amount.",
-    "Use <b>Notify Ready Users</b> to send localized reminders to all ready users in their own language."
+    "Daily reward reminder notifications are currently disabled."
   ].join("\n");
 }
 
@@ -120,7 +120,6 @@ export function adminDailyRewardKeyboard() {
   return {
     inline_keyboard: [
       [{ text: "✏️ Change Gift Credits", callback_data: "admin_daily_reward_prompt" }],
-      [{ text: "📣 Notify Ready Users", callback_data: "admin_daily_reward_notify" }],
       [{ text: "← Back", callback_data: "admin_main" }],
     ],
   };
