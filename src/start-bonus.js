@@ -42,16 +42,16 @@ export async function grantInitialStartBonusOnce(env, userId, language) {
 export function initialStartBonusText(lang, credits) {
   const amount = Number(credits || DEFAULT_INITIAL_START_CREDITS).toLocaleString("en-US");
   const messages = {
-    en: "You received <b>" + amount + " free credits</b>. Send text now and test it.",
-    fa: "<b>" + amount + " کردیت رایگان</b> گرفتی. همین حالا متن بفرست و تست کن.",
-    ru: "Вы получили <b>" + amount + " бесплатных кредитов</b>. Отправьте текст и протестируйте сейчас.",
-    de: "Du hast <b>" + amount + " Gratis-Credits</b> erhalten. Sende jetzt Text und teste es.",
-    tr: "<b>" + amount + " ücretsiz kredi</b> aldın. Şimdi metin gönderip test edebilirsin.",
-    ar: "حصلت على <b>" + amount + " رصيداً مجانياً</b>. أرسل نصاً الآن وجربه.",
-    zh: "你已获得 <b>" + amount + " 免费 credits</b>。现在发送文本即可测试。",
-    ja: "<b>" + amount + " 無料 credits</b> を受け取りました。今すぐテキストを送って試せます。",
-    es: "Recibiste <b>" + amount + " créditos gratis</b>. Envía texto ahora y pruébalo.",
-    hi: "आपको <b>" + amount + " मुफ्त credits</b> मिले। अभी टेक्स्ट भेजकर टेस्ट करें।",
+    en: "🎁 <b>Welcome gift activated!</b>\n\nYou received <b>" + amount + " free credits</b> to test Vexa right away. Send your text now and create your first voice.",
+    fa: "🎁 <b>هدیه شروع فعال شد!</b>\n\nتو <b>" + amount + " کردیت رایگان</b> گرفتی و می‌تونی همین حالا وکسا رو تست کنی.",
+    ru: "🎁 <b>Приветственный подарок активирован!</b>\n\nВы получили <b>" + amount + " бесплатных кредитов</b>, чтобы сразу протестировать Vexa. Отправьте текст и создайте первый голос.",
+    de: "🎁 <b>Willkommensgeschenk aktiviert!</b>\n\nDu hast <b>" + amount + " kostenlose Credits</b> erhalten, um Vexa sofort zu testen. Sende jetzt deinen Text und erstelle deine erste Stimme.",
+    tr: "🎁 <b>Hoş geldin hediyen aktif!</b>\n\nVexa’yı hemen test edebilmen için <b>" + amount + " ücretsiz kredi</b> aldın. Metnini gönder ve ilk sesini oluştur.",
+    ar: "🎁 <b>تم تفعيل هدية الترحيب!</b>\n\nلقد حصلت على <b>" + amount + " رصيداً مجانياً</b> لتجربة Vexa فوراً. أرسل النص الآن وأنشئ أول صوت لك.",
+    zh: "🎁 <b>欢迎礼已激活！</b>\n\n你已获得 <b>" + amount + " 免费 credits</b>，可以立即测试 Vexa。现在发送文本，创建你的第一段语音。",
+    ja: "🎁 <b>ウェルカムギフトが有効になりました！</b>\n\nVexa をすぐに試せるように <b>" + amount + " 無料 credits</b> を受け取りました。テキストを送って最初の音声を作成しましょう。",
+    es: "🎁 <b>¡Regalo de bienvenida activado!</b>\n\nRecibiste <b>" + amount + " créditos gratis</b> para probar Vexa de inmediato. Envía tu texto y crea tu primera voz.",
+    hi: "🎁 <b>वेलकम गिफ्ट सक्रिय हो गया!</b>\n\nVexa को तुरंत टेस्ट करने के लिए आपको <b>" + amount + " मुफ्त credits</b> मिले हैं। अपना टेक्स्ट भेजें और पहली आवाज़ बनाएं।",
   };
   return messages[lang] || messages.en;
 }

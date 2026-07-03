@@ -109,8 +109,11 @@ export async function handleMessage(message, env) {
       state.language = startLanguage;
       await setUserLanguage(env, userId, startLanguage);
     }
+    if (await requireFaMembership(env, chatId, userId, null, state, false)) {
+      return;
+    }
     await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
-    await sendInitialStartBonusOnFirstStart(env, chatId, userId, isFirstStart, state.language);
+    await sendInitialStartBonusOnce(env, chatId, userId, state.language);
     await sendWelcomeAudioOnFirstStart(env, chatId, isFirstStart, state.language);
     return;
   }
@@ -124,7 +127,11 @@ export async function handleMessage(message, env) {
         state.language = startLanguage;
         await setUserLanguage(env, userId, startLanguage);
       }
+      if (await requireFaMembership(env, chatId, userId, null, state, false)) {
+        return;
+      }
       await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+      await sendInitialStartBonusOnce(env, chatId, userId, state.language);
       return;
     }
     await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
@@ -152,7 +159,11 @@ export async function handleMessage(message, env) {
     if (startLanguage) {
       state.language = startLanguage;
       await setUserLanguage(env, userId, startLanguage);
+      if (await requireFaMembership(env, chatId, userId, null, state, false)) {
+        return;
+      }
       await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+      await sendInitialStartBonusOnce(env, chatId, userId, state.language);
       return;
     }
     await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
@@ -203,7 +214,7 @@ export async function handleCallback(query, env) {
       return;
     }
     await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), mainKeyboard(fresh));
-    await sendInitialStartBonusOnFirstStart(env, chatId, userId, shouldSendWelcomeAudio, fresh.language);
+    await sendInitialStartBonusOnce(env, chatId, userId, fresh.language);
     await sendWelcomeAudioOnFirstStart(env, chatId, shouldSendWelcomeAudio, fresh.language);
     return;
   }
@@ -1063,8 +1074,7 @@ function countCredits(text) {
   return Array.from(String(text || "")).length;
 }
 
-async function sendInitialStartBonusOnFirstStart(env, chatId, userId, isFirstStart, language) {
-  if (!isFirstStart) return;
+async function sendInitialStartBonusOnce(env, chatId, userId, language) {
   const result = await grantInitialStartBonusOnce(env, userId, language);
   if (result.granted) {
     await sendMessage(env, chatId, initialStartBonusText(language, result.credits)).catch(() => null);
