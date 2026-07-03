@@ -75,7 +75,6 @@ export function mainKeyboard(state) {
     { text: t(lang, "balance"), callback_data: "balance" },
     { text: t(lang, "buyCredits"), callback_data: "buy_credits" },
   ]);
-  rows.push([{ text: t(lang, "dailyReward"), callback_data: "daily_reward" }]);
   return { inline_keyboard: rows };
 }
 

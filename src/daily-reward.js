@@ -1,7 +1,6 @@
 import { addCredits } from "./credits.js";
 import { normalizeLang } from "./i18n.js";
 import { requireDb } from "./state.js";
-import { sendMessage } from "./telegram-actions.js";
 
 export const DEFAULT_DAILY_REWARD_CREDITS = 80;
 export const DAILY_REWARD_SETTING_KEY = "daily_reward_credits";
@@ -66,35 +65,8 @@ export function formatRemainingTime(totalSeconds, lang = "en") {
 }
 
 export async function notifyDueDailyRewards(env, limit = 50, options = {}) {
-  requireDb(env);
-  const includeAlreadyNotified = Boolean(options.includeAlreadyNotified);
-  const rewardCredits = await getDailyRewardCredits(env);
-  const condition = includeAlreadyNotified
-    ? "last_claimed_at IS NOT NULL AND datetime(last_claimed_at, '+24 hours') <= CURRENT_TIMESTAMP"
-    : "last_claimed_at IS NOT NULL AND datetime(last_claimed_at, '+24 hours') <= CURRENT_TIMESTAMP AND (last_notified_at IS NULL OR datetime(last_notified_at) < datetime(last_claimed_at, '+24 hours'))";
-  const rows = await env.DB.prepare(
-    "SELECT d.user_id, COALESCE(s.language, ?) AS language FROM daily_rewards d LEFT JOIN user_state s ON s.user_id = d.user_id WHERE " + condition.replaceAll("last_claimed_at", "d.last_claimed_at").replaceAll("last_notified_at", "d.last_notified_at") + " LIMIT ?"
-  ).bind("en", Number(limit)).all();
-
-  let sent = 0;
-  let failed = 0;
-  for (const row of rows.results || []) {
-    const userId = row.user_id;
-    try {
-      const lang = normalizeLang(row.language || "en");
-      await sendMessage(env, userId, dailyRewardNotificationText(rewardCredits, lang), dailyRewardNotificationKeyboard(lang));
-      sent++;
-      await env.DB.prepare(
-        "UPDATE daily_rewards SET last_notified_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-      ).bind(String(userId)).run();
-    } catch {
-      failed++;
-    }
-  }
-
-  return { total: (rows.results || []).length, sent, failed, credits: rewardCredits };
+  return { total: 0, sent: 0, failed: 0, credits: await getDailyRewardCredits(env), disabled: true };
 }
-
 async function getDailyReward(env, userId) {
   return env.DB.prepare("SELECT last_claimed_at, last_notified_at FROM daily_rewards WHERE user_id = ?").bind(String(userId)).first();
 }
@@ -105,7 +77,6 @@ function secondsUntilNextClaim(lastClaimedAt) {
   if (!Number.isFinite(last)) return 0;
   return Math.max(0, Math.ceil((last + DAY_SECONDS * 1000 - Date.now()) / 1000));
 }
-
 
 export async function getDailyRewardCredits(env) {
   requireDb(env);

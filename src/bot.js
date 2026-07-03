@@ -44,7 +44,7 @@ import {
 } from "./admin.js";
 import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
-import { claimDailyReward, dailyRewardMessage, notifyDueDailyRewards, setDailyRewardCredits } from "./daily-reward.js";
+import { claimDailyReward, dailyRewardMessage, setDailyRewardCredits } from "./daily-reward.js";
 import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
 import { getDemoText } from "./demo-texts.js";
 import { textToSpeech } from "./elevenlabs.js";
@@ -472,21 +472,6 @@ export async function handleCallback(query, env) {
     return;
   }
 
-  if (data === "admin_daily_reward_notify") {
-    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, "📣 <b>Sending daily reward notifications…</b>", null);
-    const result = await notifyDueDailyRewards(env, 10000, { includeAlreadyNotified: true });
-    await editCurrentMenu(env, chatId, userId, messageId, [
-      "✅ <b>Daily reward notification completed</b>",
-      "",
-      "Ready users found: <b>" + result.total + "</b>",
-      "Sent: <b>" + result.sent + "</b>",
-      "Failed: <b>" + result.failed + "</b>",
-      "Gift amount: <b>" + result.credits + " credits</b>"
-    ].join("\n"), adminDailyRewardKeyboard());
-    return;
-  }
 
   if (data === "admin_broadcast") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
