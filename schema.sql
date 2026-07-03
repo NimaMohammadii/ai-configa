@@ -84,6 +84,19 @@ CREATE TABLE IF NOT EXISTS tts_history (
 
 CREATE INDEX IF NOT EXISTS idx_tts_history_user_created ON tts_history (user_id, created_at DESC);
 
+
+CREATE TABLE IF NOT EXISTS credit_usage_log (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  credits INTEGER NOT NULL,
+  reason TEXT NOT NULL DEFAULT 'tts',
+  metadata TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_credit_usage_log_created ON credit_usage_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_credit_usage_log_user_created ON credit_usage_log (user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS admin_actions (
   admin_id TEXT PRIMARY KEY,
   action TEXT NOT NULL,
