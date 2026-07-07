@@ -10,6 +10,7 @@ export async function ensureTtsHistoryTable(env) {
   ).run();
 
   await addMissingTtsHistoryColumns(env);
+  await repairMissingTtsHistoryIds(env);
 
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS idx_tts_history_user_created ON tts_history (user_id, created_at DESC)"
@@ -29,6 +30,17 @@ async function addMissingTtsHistoryColumns(env) {
   }
 }
 
+async function repairMissingTtsHistoryIds(env) {
+  await env.DB.prepare(
+    "UPDATE tts_history SET id = 'legacy:' || rowid WHERE (id IS NULL OR id = '') AND NOT EXISTS (SELECT 1 FROM tts_history existing WHERE existing.id = 'legacy:' || tts_history.rowid)"
+  ).run().catch(() => null);
+}
+
+function newHistoryId() {
+  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
+  return "tts:" + Date.now().toString(36) + ":" + Math.random().toString(36).slice(2);
+}
+
 export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage = null) {
   await ensureTtsHistoryTable(env);
 
@@ -37,31 +49,32 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
   const fileId = audio?.file_id || null;
   const telegramMessageId = sentMessage?.message_id || null;
 
+  const id = newHistoryId();
+  const values = [
+    id,
+    String(userId),
+    String(text || ""),
+    String(voice || ""),
+    String(language || ""),
+    Number(credits || 0),
+  ];
+
   try {
     await env.DB.prepare(
       "INSERT INTO tts_history (id, user_id, text, voice, language, credits, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
     ).bind(
-      crypto.randomUUID(),
-      String(userId),
-      String(text || ""),
-      String(voice || ""),
-      String(language || ""),
-      Number(credits || 0),
+      ...values,
       fileId,
       fileType,
       telegramMessageId
     ).run();
   } catch (firstError) {
     await env.DB.prepare(
-      "INSERT INTO tts_history (user_id, text, voice, language, credits, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
-    ).bind(
-      String(userId),
-      String(text || ""),
-      String(voice || ""),
-      String(language || ""),
-      Number(credits || 0)
-    ).run();
+      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+    ).bind(...values).run();
   }
+
+  return id;
 }
 
 export async function getTtsHistoryPage(env, userId, page = 0, limit = HISTORY_LIMIT) {
