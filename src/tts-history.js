@@ -32,17 +32,32 @@ async function addMissingTtsHistoryColumns(env) {
 export async function getNextTtsFileSequence(env, userId) {
   await ensureTtsHistoryTable(env);
 
+  const historyCount = await countUserTtsHistory(env, userId);
+  const usageCount = await countUserTtsCreditUsage(env, userId);
+
+  return Math.max(historyCount, usageCount) + 1;
+}
+
+async function countUserTtsHistory(env, userId) {
   const row = await env.DB.prepare(
     "SELECT COUNT(*) AS total FROM tts_history WHERE user_id = ? AND credits > 0"
   ).bind(String(userId)).first();
 
-  return Number(row?.total || 0) + 1;
+  return Number(row?.total || 0);
+}
+
+async function countUserTtsCreditUsage(env, userId) {
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS total FROM credit_usage_log WHERE user_id = ? AND credits > 0"
+  ).bind(String(userId)).first().catch(() => null);
+
+  return Number(row?.total || 0);
 }
 
 export function buildTtsAudioFileName(sequence) {
   const parsedSequence = Number.parseInt(String(sequence || 1), 10);
   const safeSequence = Math.min(9999, Math.max(1, Number.isFinite(parsedSequence) ? parsedSequence : 1));
-  return String(safeSequence).padStart(4, "0") + ".mp3";
+  return "Vexa " + String(safeSequence).padStart(4, "0") + ".mp3";
 }
 
 export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage = null) {
