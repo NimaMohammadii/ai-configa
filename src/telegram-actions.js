@@ -115,8 +115,8 @@ export function sendTextDocument(env, chatId, content, filename, caption = "") {
   return tgForm(env, "sendDocument", form);
 }
 
-export function sendAudio(env, chatId, audioBuffer) {
-  return sendNamedAudio(env, chatId, audioBuffer, "Vexa Voice", "vexa-voice.mp3");
+export function sendAudio(env, chatId, audioBuffer, filename = "vexa-voice.mp3", title = "Vexa Voice") {
+  return sendNamedAudio(env, chatId, audioBuffer, title, filename);
 }
 
 export function sendDemoAudio(env, chatId, audioBuffer) {
@@ -159,10 +159,10 @@ function sendNamedAudio(env, chatId, audioBuffer, title, filename) {
   return tgForm(env, "sendAudio", form);
 }
 
-export function sendDocument(env, chatId, audioBuffer) {
+export function sendDocument(env, chatId, audioBuffer, filename = "vexa-voice.mp3") {
   const form = new FormData();
   form.append("chat_id", String(chatId));
-  form.append("document", new Blob([audioBuffer], { type: "audio/mpeg" }), "vexa-voice.mp3");
+  form.append("document", new Blob([audioBuffer], { type: "audio/mpeg" }), filename);
   return tgForm(env, "sendDocument", form);
 }
 

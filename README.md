@@ -14,7 +14,7 @@ Telegram text-to-speech bot built for Cloudflare Workers, D1, and ElevenLabs.
 - Output selector: MP3 or Voice
 - D1 user state storage
 - D1 permanent demo audio cache, so each voice demo is generated once
-- Clean output file name: `Vexa.mp3`
+- Per-user numbered output file names: `Vexa 0001.mp3`, `Vexa 0002.mp3`, and so on
 - No caption/text on audio files
 
 ## Required secrets
