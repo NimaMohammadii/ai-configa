@@ -29,6 +29,21 @@ async function addMissingTtsHistoryColumns(env) {
   }
 }
 
+export async function getNextTtsFileSequence(env, userId) {
+  await ensureTtsHistoryTable(env);
+
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS total FROM tts_history WHERE user_id = ? AND credits > 0"
+  ).bind(String(userId)).first();
+
+  return Number(row?.total || 0) + 1;
+}
+
+export function buildTtsAudioFileName(sequence) {
+  const safeSequence = Math.max(1, Number(sequence || 1));
+  return "Vexa " + String(safeSequence).padStart(4, "0") + ".mp3";
+}
+
 export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage = null) {
   await ensureTtsHistoryTable(env);
 

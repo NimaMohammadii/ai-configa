@@ -53,7 +53,7 @@ import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember } f
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
-import { buildTtsHistoryFile, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
+import { buildTtsAudioFileName, buildTtsHistoryFile, getNextTtsFileSequence, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
 import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
 
@@ -963,7 +963,8 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
 
     await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
 
-    const sentAudioMessage = await sendCleanAudio(env, chatId, audio);
+    const outputFileName = isDemo ? null : buildTtsAudioFileName(await getNextTtsFileSequence(env, userId));
+    const sentAudioMessage = await sendCleanAudio(env, chatId, audio, outputFileName);
 
     await saveTtsHistory(env, userId, finalText, voiceName, lang, isDemo ? 0 : finalCost, sentAudioMessage).catch((error) => {
       console.error("save tts history failed", error && error.message ? error.message : error);
@@ -1108,11 +1109,14 @@ function getAudioAttachment(message) {
   return null;
 }
 
-async function sendCleanAudio(env, chatId, audio) {
+async function sendCleanAudio(env, chatId, audio, filename = null) {
+  const audioFileName = filename || "vexa-voice.mp3";
+  const title = audioFileName.replace(/\.mp3$/i, "");
+
   try {
-    return await sendAudio(env, chatId, audio);
+    return await sendAudio(env, chatId, audio, audioFileName, title);
   } catch (sendAudioError) {
-    return await sendDocument(env, chatId, audio);
+    return await sendDocument(env, chatId, audio, audioFileName);
   }
 }
 
