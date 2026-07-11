@@ -40,8 +40,9 @@ export async function getNextTtsFileSequence(env, userId) {
 }
 
 export function buildTtsAudioFileName(sequence) {
-  const safeSequence = Math.max(1, Number(sequence || 1));
-  return "Vexa " + String(safeSequence).padStart(4, "0") + ".mp3";
+  const parsedSequence = Number.parseInt(String(sequence || 1), 10);
+  const safeSequence = Math.min(9999, Math.max(1, Number.isFinite(parsedSequence) ? parsedSequence : 1));
+  return String(safeSequence).padStart(4, "0") + ".mp3";
 }
 
 export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage = null) {
