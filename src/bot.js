@@ -14,6 +14,8 @@ import {
   adminInitialStartText,
   adminLanguageSettingsKeyboard,
   adminLanguageSettingsText,
+  adminMandatoryMembershipKeyboard,
+  adminMandatoryMembershipText,
   adminStatsKeyboard,
   adminStatsText,
   adminWelcomeAudioKeyboard,
@@ -49,7 +51,7 @@ import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredi
 import { getDemoText } from "./demo-texts.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
-import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember } from "./mandatory-channel.js";
+import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember, isMandatoryFaMembershipEnabled, setMandatoryFaMembershipEnabled } from "./mandatory-channel.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
@@ -220,6 +222,12 @@ export async function handleCallback(query, env) {
   }
 
   if (data === "check_fa_join") {
+    if (!(await isMandatoryFaMembershipEnabled(env))) {
+      const fresh = await getState(env, userId);
+      await answerCallback(env, query.id, "عضویت اجباری غیرفعال است", false);
+      await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), mainKeyboard(fresh));
+      return;
+    }
     const member = await isFaChannelMember(env, userId);
     if (!member) {
       await answerCallback(env, query.id, "هنوز عضو کانال نیستی", true);
@@ -310,6 +318,23 @@ export async function handleCallback(query, env) {
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminLanguageSettingsText(env), await adminLanguageSettingsKeyboard(env));
+    return;
+  }
+
+  if (data === "admin_mandatory_membership") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminMandatoryMembershipText(env), await adminMandatoryMembershipKeyboard(env));
+    return;
+  }
+
+  if (data === "admin_mandatory_membership_toggle") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const current = await isMandatoryFaMembershipEnabled(env);
+    await setMandatoryFaMembershipEnabled(env, !current);
+    await answerCallback(env, query.id, current ? "Disabled" : "Enabled", false);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminMandatoryMembershipText(env), await adminMandatoryMembershipKeyboard(env));
     return;
   }
 
@@ -769,6 +794,7 @@ function parseCreditAmount(text) {
 
 async function requireFaMembership(env, chatId, userId, inputMessageId, state, isCallback = false, callbackQueryId = null, callbackMessageId = null) {
   if (state?.language !== "fa") return false;
+  if (!(await isMandatoryFaMembershipEnabled(env))) return false;
   if (await isAdmin(env, userId)) return false;
   if (await isFaChannelMember(env, userId)) {
     await grantFaJoinBonusOnce(env, userId);

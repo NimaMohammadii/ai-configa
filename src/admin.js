@@ -3,6 +3,7 @@ import { LANGUAGES, normalizeLang } from "./i18n.js";
 import { requireDb } from "./state.js";
 import { getDailyRewardCredits } from "./daily-reward.js";
 import { getInitialStartCredits } from "./start-bonus.js";
+import { getMandatoryFaMembershipSettings } from "./mandatory-channel.js";
 import { ensureTtsHistoryTable } from "./tts-history.js";
 
 export async function hasTrackedUser(env, userId) {
@@ -94,6 +95,7 @@ export function adminMainKeyboard() {
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }],
       [{ text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }],
+      [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
@@ -168,6 +170,29 @@ export function adminInitialStartPromptText() {
     "",
     "Your message will be deleted after processing."
   ].join("\n");
+}
+
+export async function adminMandatoryMembershipText(env) {
+  const settings = await getMandatoryFaMembershipSettings(env);
+  return [
+    "🔒 <b>Mandatory Membership Settings</b>",
+    "",
+    "Status: <b>" + (settings.enabled ? "Enabled" : "Disabled") + "</b>",
+    "Required channel: <b>" + escapeHtml(settings.channel) + "</b>",
+    "",
+    "When enabled, Persian users must join the configured channel before using the bot.",
+    "Admins are always allowed to bypass this check."
+  ].join("\n");
+}
+
+export async function adminMandatoryMembershipKeyboard(env) {
+  const settings = await getMandatoryFaMembershipSettings(env);
+  return {
+    inline_keyboard: [
+      [{ text: (settings.enabled ? "✅" : "❌") + " Mandatory channel membership", callback_data: "admin_mandatory_membership_toggle" }],
+      [{ text: "← Back", callback_data: "admin_main" }],
+    ],
+  };
 }
 
 export async function countDueDailyRewards(env) {
