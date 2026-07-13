@@ -6,7 +6,7 @@ const EXPORT_LIMIT = 5000;
 export async function ensureTtsHistoryTable(env) {
   requireDb(env);
   await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS tts_history (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, text TEXT NOT NULL, voice TEXT NOT NULL, language TEXT NOT NULL, credits INTEGER NOT NULL, audio_base64 TEXT NOT NULL DEFAULT '', file_id TEXT, file_type TEXT, telegram_message_id INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    "CREATE TABLE IF NOT EXISTS tts_history (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, text TEXT NOT NULL, voice TEXT NOT NULL, language TEXT NOT NULL, credits INTEGER NOT NULL, file_sequence INTEGER, audio_base64 TEXT NOT NULL DEFAULT '', file_id TEXT, file_type TEXT, telegram_message_id INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
   ).run();
 
   await addMissingTtsHistoryColumns(env);
@@ -18,6 +18,7 @@ export async function ensureTtsHistoryTable(env) {
 
 async function addMissingTtsHistoryColumns(env) {
   const columns = [
+    "file_sequence INTEGER",
     "audio_base64 TEXT NOT NULL DEFAULT ''",
     "file_id TEXT",
     "file_type TEXT",
@@ -32,10 +33,16 @@ async function addMissingTtsHistoryColumns(env) {
 export async function getNextTtsFileSequence(env, userId) {
   await ensureTtsHistoryTable(env);
 
-  const historyCount = await countUserTtsHistory(env, userId);
-  const usageCount = await countUserTtsCreditUsage(env, userId);
+  const stored = await env.DB.prepare(
+    "SELECT MAX(file_sequence) AS last_sequence FROM tts_history WHERE user_id = ?"
+  ).bind(String(userId)).first();
+  const lastSequence = Number(stored?.last_sequence || 0);
+  if (lastSequence > 0) return lastSequence + 1;
 
-  return Math.max(historyCount, usageCount) + 1;
+  const historyCount = await countUserTtsHistory(env, userId);
+  const usage = await getUserTtsUsageCounts(env, userId);
+
+  return Math.max(1, historyCount + 1, usage.actual + usage.backfill);
 }
 
 async function countUserTtsHistory(env, userId) {
@@ -46,12 +53,18 @@ async function countUserTtsHistory(env, userId) {
   return Number(row?.total || 0);
 }
 
-async function countUserTtsCreditUsage(env, userId) {
+async function getUserTtsUsageCounts(env, userId) {
   const row = await env.DB.prepare(
-    "SELECT COUNT(*) AS total FROM credit_usage_log WHERE user_id = ? AND credits > 0 AND reason = 'tts'"
+    "SELECT " +
+      "COALESCE(SUM(CASE WHEN reason = 'tts' THEN 1 ELSE 0 END), 0) AS actual_total, " +
+      "COALESCE(SUM(CASE WHEN reason = 'tts_history_backfill' THEN 1 ELSE 0 END), 0) AS backfill_total " +
+    "FROM credit_usage_log WHERE user_id = ? AND credits > 0"
   ).bind(String(userId)).first().catch(() => null);
 
-  return Number(row?.total || 0);
+  return {
+    actual: Number(row?.actual_total || 0),
+    backfill: Number(row?.backfill_total || 0),
+  };
 }
 
 export function buildTtsAudioFileName(sequence) {
@@ -60,7 +73,7 @@ export function buildTtsAudioFileName(sequence) {
   return "Vexa " + String(safeSequence).padStart(4, "0") + ".mp3";
 }
 
-export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage = null) {
+export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage = null, fileSequence = null) {
   await ensureTtsHistoryTable(env);
 
   const audio = sentMessage?.audio || sentMessage?.document || null;
@@ -70,7 +83,7 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
 
   try {
     await env.DB.prepare(
-      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, audio_base64, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)"
+      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, file_sequence, audio_base64, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)"
     ).bind(
       crypto.randomUUID(),
       String(userId),
@@ -78,19 +91,21 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
       String(voice || ""),
       String(language || ""),
       Number(credits || 0),
+      fileSequence == null ? null : Number(fileSequence),
       fileId,
       fileType,
       telegramMessageId
     ).run();
   } catch (firstError) {
     await env.DB.prepare(
-      "INSERT INTO tts_history (user_id, text, voice, language, credits, audio_base64, created_at) VALUES (?, ?, ?, ?, ?, '', CURRENT_TIMESTAMP)"
+      "INSERT INTO tts_history (user_id, text, voice, language, credits, file_sequence, audio_base64, created_at) VALUES (?, ?, ?, ?, ?, ?, '', CURRENT_TIMESTAMP)"
     ).bind(
       String(userId),
       String(text || ""),
       String(voice || ""),
       String(language || ""),
-      Number(credits || 0)
+      Number(credits || 0),
+      fileSequence == null ? null : Number(fileSequence)
     ).run();
   }
 }
