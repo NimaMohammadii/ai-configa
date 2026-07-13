@@ -989,10 +989,11 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
 
     await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
 
-    const outputFileName = isDemo ? null : buildTtsAudioFileName(await getNextTtsFileSequence(env, userId));
+    const outputFileSequence = isDemo ? null : await getNextTtsFileSequence(env, userId);
+    const outputFileName = isDemo ? null : buildTtsAudioFileName(outputFileSequence);
     const sentAudioMessage = await sendCleanAudio(env, chatId, audio, outputFileName);
 
-    await saveTtsHistory(env, userId, finalText, voiceName, lang, isDemo ? 0 : finalCost, sentAudioMessage).catch((error) => {
+    await saveTtsHistory(env, userId, finalText, voiceName, lang, isDemo ? 0 : finalCost, sentAudioMessage, outputFileSequence).catch((error) => {
       console.error("save tts history failed", error && error.message ? error.message : error);
     });
 
