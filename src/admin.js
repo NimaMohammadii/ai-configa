@@ -72,6 +72,7 @@ export async function adminMainText(env = null) {
       "24h: <b>" + formatNumber(stats.credits24h) + " credits</b> / " + formatNumber(stats.requests24h) + " requests",
       "3 days: <b>" + formatNumber(stats.credits3d) + " credits</b> / " + formatNumber(stats.requests3d) + " requests",
       "7 days: <b>" + formatNumber(stats.credits7d) + " credits</b> / " + formatNumber(stats.requests7d) + " requests",
+      "30 days: <b>" + formatNumber(stats.credits30d) + " credits</b> / " + formatNumber(stats.requests30d) + " requests",
       "",
       "🟢 <b>Online users</b>",
       "24h: <b>" + formatNumber(stats.online24h) + "</b>",
@@ -282,24 +283,27 @@ async function ensureAppSettingsTable(env) {
 export async function getAdminDashboardStats(env) {
   requireDb(env);
 
-  const [credits24h, credits3d, credits7d, requests24h, requests3d, requests7d, online24h, online7d] = await Promise.all([
+  const [credits24h, credits3d, credits7d, credits30d, requests24h, requests3d, requests7d, requests30d, online24h, online7d] = await Promise.all([
     sumCreditsSince(env, "-1 day"),
     sumCreditsSince(env, "-3 days"),
     sumCreditsSince(env, "-7 days"),
+    sumCreditsSince(env, "-30 days"),
     countTtsRequestsSince(env, "-1 day"),
     countTtsRequestsSince(env, "-3 days"),
     countTtsRequestsSince(env, "-7 days"),
+    countTtsRequestsSince(env, "-30 days"),
     countUsersSeenSince(env, "-1 day"),
     countUsersSeenSince(env, "-7 days"),
   ]);
 
-  return { credits24h, credits3d, credits7d, requests24h, requests3d, requests7d, online24h, online7d };
+  return { credits24h, credits3d, credits7d, credits30d, requests24h, requests3d, requests7d, requests30d, online24h, online7d };
 }
 
 export async function adminStatsText(env) {
   const stats = await getAdminDashboardStats(env);
   const heavy24h = await getHeavyUsageUsers(env, "-1 day", 10);
   const heavy7d = await getHeavyUsageUsers(env, "-7 days", 10);
+  const heavy30d = await getHeavyUsageUsers(env, "-30 days", 10);
 
   return [
     "📊 <b>Usage Stats</b>",
@@ -307,9 +311,11 @@ export async function adminStatsText(env) {
     "Credits used in 24h: <b>" + formatNumber(stats.credits24h) + "</b>",
     "Credits used in 3 days: <b>" + formatNumber(stats.credits3d) + "</b>",
     "Credits used in 7 days: <b>" + formatNumber(stats.credits7d) + "</b>",
+    "Credits used in 30 days: <b>" + formatNumber(stats.credits30d) + "</b>",
     "TTS requests in 24h: <b>" + formatNumber(stats.requests24h) + "</b>",
     "TTS requests in 3 days: <b>" + formatNumber(stats.requests3d) + "</b>",
     "TTS requests in 7 days: <b>" + formatNumber(stats.requests7d) + "</b>",
+    "TTS requests in 30 days: <b>" + formatNumber(stats.requests30d) + "</b>",
     "",
     "Online users in 24h: <b>" + formatNumber(stats.online24h) + "</b>",
     "Online users in 7 days: <b>" + formatNumber(stats.online7d) + "</b>",
@@ -319,6 +325,9 @@ export async function adminStatsText(env) {
     "",
     "🔥 <b>Heavy users - 7 days</b>",
     formatHeavyUsers(heavy7d),
+    "",
+    "🔥 <b>Heavy users - 30 days</b>",
+    formatHeavyUsers(heavy30d),
   ].join("\n");
 }
 
@@ -483,7 +492,8 @@ async function getUserUsageSummary(env, userId) {
   const row = await env.DB.prepare(
     "SELECT COALESCE(SUM(credits), 0) AS total_credits, COUNT(*) AS total_requests, MAX(created_at) AS last_tts_at, " +
       "COALESCE(SUM(CASE WHEN datetime(created_at) >= datetime('now', '-1 day') THEN credits ELSE 0 END), 0) AS credits_24h, " +
-      "COALESCE(SUM(CASE WHEN datetime(created_at) >= datetime('now', '-7 days') THEN credits ELSE 0 END), 0) AS credits_7d " +
+      "COALESCE(SUM(CASE WHEN datetime(created_at) >= datetime('now', '-7 days') THEN credits ELSE 0 END), 0) AS credits_7d, " +
+      "COALESCE(SUM(CASE WHEN datetime(created_at) >= datetime('now', '-30 days') THEN credits ELSE 0 END), 0) AS credits_30d " +
     "FROM " + sourceTable + " WHERE user_id = ?"
   ).bind(String(userId)).first();
 
@@ -492,6 +502,7 @@ async function getUserUsageSummary(env, userId) {
     totalRequests: Number(row?.total_requests || 0),
     credits24h: Number(row?.credits_24h || 0),
     credits7d: Number(row?.credits_7d || 0),
+    credits30d: Number(row?.credits_30d || 0),
     lastTtsAt: row?.last_tts_at || null,
   };
 }
@@ -632,6 +643,7 @@ export async function adminUserText(env, userId) {
     "Requests: <b>" + Number(usage.totalRequests || 0).toLocaleString("en-US") + "</b>",
     "24h: <b>" + Number(usage.credits24h || 0).toLocaleString("en-US") + " credits</b>",
     "7 days: <b>" + Number(usage.credits7d || 0).toLocaleString("en-US") + " credits</b>",
+    "30 days: <b>" + Number(usage.credits30d || 0).toLocaleString("en-US") + " credits</b>",
     "Last TTS: <b>" + escapeHtml(formatTehranTime(usage.lastTtsAt)) + "</b>",
     "",
     "Last seen: <b>" + escapeHtml(formatTehranTime(user.last_seen_at)) + "</b>",
