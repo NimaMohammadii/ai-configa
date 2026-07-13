@@ -70,7 +70,7 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
 
   try {
     await env.DB.prepare(
-      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, audio_base64, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)"
     ).bind(
       crypto.randomUUID(),
       String(userId),
@@ -84,7 +84,7 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
     ).run();
   } catch (firstError) {
     await env.DB.prepare(
-      "INSERT INTO tts_history (user_id, text, voice, language, credits, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+      "INSERT INTO tts_history (user_id, text, voice, language, credits, audio_base64, created_at) VALUES (?, ?, ?, ?, ?, '', CURRENT_TIMESTAMP)"
     ).bind(
       String(userId),
       String(text || ""),
@@ -168,7 +168,7 @@ export function buildTtsHistoryFile(userId, rows) {
     );
   });
 
-  return lines.join("\n");
+  return "\ufeff" + lines.join("\n");
 }
 
 export function ttsHistoryText(data, userId) {
