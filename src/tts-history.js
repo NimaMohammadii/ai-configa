@@ -48,7 +48,7 @@ async function countUserTtsHistory(env, userId) {
 
 async function countUserTtsCreditUsage(env, userId) {
   const row = await env.DB.prepare(
-    "SELECT COUNT(*) AS total FROM credit_usage_log WHERE user_id = ? AND credits > 0"
+    "SELECT COUNT(*) AS total FROM credit_usage_log WHERE user_id = ? AND credits > 0 AND reason = 'tts'"
   ).bind(String(userId)).first().catch(() => null);
 
   return Number(row?.total || 0);
@@ -195,7 +195,6 @@ export function ttsHistoryKeyboard(data, userId, backPage = 0) {
   if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_tts:" + userId + ":" + (data.page + 1) + ":" + backPage });
   if (nav.length) rows.push(nav);
 
-  rows.push([{ text: "📥 Download Text History", callback_data: "admin_tts_download:" + userId + ":" + backPage }]);
   rows.push([{ text: "← Back to User", callback_data: "admin_user:" + userId + ":" + backPage }]);
   return { inline_keyboard: rows };
 }
