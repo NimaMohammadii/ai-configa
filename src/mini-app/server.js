@@ -44,7 +44,7 @@ export async function handleMiniAppRequest(request, env) {
 async function sessionPayload(request, env) {
   const user = await authenticateMiniAppUser(request, env);
   const access = await getMiniAppAccessForUser(env, user.id);
-  if (access.locked) return { locked: true, lockedUntil: access.lockedUntil, serverNow: Math.floor(Date.now() / 1000) };
+  if (access.locked) return { locked: true, lockedFrom: access.lockedFrom, lockedUntil: access.lockedUntil, serverNow: Math.floor(Date.now() / 1000) };
   const state = await getState(env, user.id);
   return {
     userId: user.id,
@@ -90,9 +90,12 @@ async function createTts(request, env) {
 
 async function getMiniAppAccessForUser(env, userId) {
   const settings = await getMiniAppAccessSettings(env);
-  if (!settings.adminOnly) return { locked: false, lockedUntil: 0 };
-  if (await isAdmin(env, userId)) return { locked: false, lockedUntil: settings.lockedUntil };
-  return { locked: true, lockedUntil: settings.lockedUntil || Math.floor(Date.now() / 1000) + 60 };
+  if (!settings.adminOnly) return { locked: false, lockedFrom: 0, lockedUntil: 0 };
+  if (await isAdmin(env, userId)) return { locked: false, lockedFrom: settings.lockedFrom, lockedUntil: settings.lockedUntil };
+  const now = Math.floor(Date.now() / 1000);
+  const lockedUntil = settings.lockedUntil || now + 60;
+  const lockedFrom = settings.lockedFrom > 0 ? settings.lockedFrom : Math.max(now, lockedUntil - 60);
+  return { locked: true, lockedFrom, lockedUntil };
 }
 
 async function authenticateMiniAppUser(request, env) {
