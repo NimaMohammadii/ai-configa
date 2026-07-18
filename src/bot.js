@@ -387,7 +387,7 @@ export async function handleCallback(query, env) {
 
   if (data === "admin_mini_app_unlock") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    await setMiniAppAccessSettings(env, false, 0);
+    await setMiniAppAccessSettings(env, false, 0, 0);
     await answerCallback(env, query.id, "Mini app opened", false);
     await editCurrentMenu(env, chatId, userId, messageId, (await adminMiniAppAccessText(env)) + "\n\n✅ Mini app is open for everyone.", await adminMiniAppAccessKeyboard(env));
     return;
@@ -779,8 +779,9 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
       return true;
     }
 
-    const lockedUntil = Math.floor(Date.now() / 1000) + (minutes * 60);
-    await setMiniAppAccessSettings(env, true, lockedUntil);
+    const lockedFrom = Math.floor(Date.now() / 1000);
+    const lockedUntil = lockedFrom + (minutes * 60);
+    await setMiniAppAccessSettings(env, true, lockedUntil, lockedFrom);
     await clearAdminAction(env, adminId);
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminMiniAppAccessText(env)) + "\n\n✅ Mini app locked for " + minutes + " minutes.", await adminMiniAppAccessKeyboard(env));
     return true;

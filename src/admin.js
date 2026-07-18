@@ -212,31 +212,34 @@ export async function getMiniAppAccessSettings(env) {
   await ensureAppSettingsTable(env);
 
   const rows = await env.DB.prepare(
-    "SELECT key, value FROM app_settings WHERE key IN ('mini_app_admin_only', 'mini_app_locked_until')"
+    "SELECT key, value FROM app_settings WHERE key IN ('mini_app_admin_only', 'mini_app_locked_until', 'mini_app_locked_from')"
   ).all();
   const values = Object.fromEntries((rows.results || []).map((row) => [row.key, row.value]));
   const lockedUntil = Number.parseInt(values.mini_app_locked_until || "0", 10) || 0;
+  const lockedFrom = Number.parseInt(values.mini_app_locked_from || "0", 10) || 0;
   const now = Math.floor(Date.now() / 1000);
   const isTimedLockActive = lockedUntil > now;
 
   if (values.mini_app_admin_only === "1" && lockedUntil > 0 && !isTimedLockActive) {
-    await setMiniAppAccessSettings(env, false, 0);
-    return { adminOnly: false, lockedUntil: 0, remainingSeconds: 0 };
+    await setMiniAppAccessSettings(env, false, 0, 0);
+    return { adminOnly: false, lockedFrom: 0, lockedUntil: 0, remainingSeconds: 0 };
   }
 
   return {
     adminOnly: values.mini_app_admin_only === "1",
+    lockedFrom,
     lockedUntil,
     remainingSeconds: isTimedLockActive ? lockedUntil - now : 0,
   };
 }
 
-export async function setMiniAppAccessSettings(env, adminOnly, lockedUntil = 0) {
+export async function setMiniAppAccessSettings(env, adminOnly, lockedUntil = 0, lockedFrom = 0) {
   requireDb(env);
   await ensureAppSettingsTable(env);
   await Promise.all([
     env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('mini_app_admin_only', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(adminOnly ? "1" : "0").run(),
     env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('mini_app_locked_until', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(String(Math.max(0, Number(lockedUntil) || 0))).run(),
+    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('mini_app_locked_from', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(String(Math.max(0, Number(lockedFrom) || 0))).run(),
   ]);
 }
 
