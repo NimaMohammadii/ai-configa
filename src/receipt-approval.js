@@ -1,3 +1,4 @@
+import { trackUser } from "./admin.js";
 import { addCredits } from "./credits.js";
 import { getAllAdminIds } from "./receipt-admins.js";
 import { clearPendingPayment, getPendingPayment } from "./payments.js";
@@ -16,6 +17,7 @@ export async function handleReceiptPhoto(message, env) {
   const userId = user.id;
   if (!chatId || !userId) return false;
 
+  await trackUser(env, user);
   const state = await getState(env, userId);
   const pending = await getPendingPayment(env, userId);
 

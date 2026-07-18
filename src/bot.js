@@ -42,7 +42,6 @@ import {
   isAdmin,
   resetUser,
   resolveStartLanguage,
-  recordUserReturn,
   setAdminAction,
   setLanguageSetting,
   setWelcomeAudio,
@@ -81,9 +80,6 @@ export async function handleMessage(message, env) {
   const isFirstStart = text === "/start" && !(await hasTrackedUser(env, userId));
 
   await trackUser(env, message.from);
-  if (text === "/start" && !isFirstStart) {
-    await recordUserReturn(env, userId);
-  }
   await ensureBalanceRow(env, userId);
 
   const state = await getState(env, userId);

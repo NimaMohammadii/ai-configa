@@ -1,3 +1,4 @@
+import { trackUser } from "./admin.js";
 import { getStarPackage, applySuccessfulStarsPayment, createCustomStarPackage, getStarPackageFromPayload, starInvoicePayload } from "./stars.js";
 import { starsPackageInvoiceText, starsPackagesKeyboard, starsPackagesText, buyCreditsTextClean, customStarsPromptText, customStarsCancelKeyboard, customStarsInvoiceText, customStarsInvoiceKeyboard } from "./stars-ui.js";
 import { getState } from "./state.js";
@@ -16,6 +17,7 @@ export async function handleStarsCallback(query, env) {
   const messageId = query.message && query.message.message_id;
   if (!userId || !chatId || !messageId) return;
 
+  await trackUser(env, query.from);
   const state = await getState(env, userId);
 
   if (data === "buy_credits") {
@@ -80,6 +82,7 @@ export async function handleStarsTextInput(message, env) {
   const pending = await getPendingCustomStars(env, userId);
   if (!pending) return false;
 
+  await trackUser(env, message.from);
   const state = await getState(env, userId);
   const credits = parseCreditAmount(text);
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
@@ -112,6 +115,7 @@ export async function handleStarsPayment(message, env) {
   const userId = message.from && message.from.id;
   if (!chatId || !userId || !message.successful_payment) return false;
 
+  await trackUser(env, message.from);
   const state = await getState(env, userId);
   const result = await applySuccessfulStarsPayment(env, userId, message.successful_payment);
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
