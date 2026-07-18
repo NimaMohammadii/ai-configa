@@ -91,6 +91,7 @@ export function adminMainKeyboard() {
       [{ text: "Users", callback_data: "admin_users:0" }],
       [{ text: "💳 Buyers", callback_data: "admin_buyers:0" }],
       [{ text: "🟢 Online Users", callback_data: "admin_online:0" }],
+      [{ text: "🌍 Users by Language", callback_data: "admin_language_stats" }],
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }],
       [{ text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }],
@@ -278,6 +279,50 @@ async function ensureAppSettingsTable(env) {
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
   ).run();
+}
+
+export async function getAdminLanguageStats(env) {
+  requireDb(env);
+
+  const totalRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM bot_users").first();
+  const rows = await env.DB.prepare(
+    "SELECT COALESCE(NULLIF(s.language, ''), 'not_selected') AS language, COUNT(*) AS total " +
+    "FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id " +
+    "GROUP BY COALESCE(NULLIF(s.language, ''), 'not_selected') ORDER BY total DESC, language ASC"
+  ).all();
+
+  return {
+    total: Number(totalRow?.total || 0),
+    languages: (rows.results || []).map((row) => ({
+      language: row.language,
+      total: Number(row.total || 0),
+    })),
+  };
+}
+
+export async function adminLanguageStatsText(env) {
+  const stats = await getAdminLanguageStats(env);
+  const lines = [
+    "🌍 <b>Users by Language</b>",
+    "",
+    "Total users: <b>" + formatNumber(stats.total) + "</b>",
+    "",
+  ];
+
+  if (!stats.languages.length) {
+    lines.push("No users yet.");
+  } else {
+    lines.push(...stats.languages.map((row, index) => {
+      const percent = stats.total > 0 ? (Number(row.total || 0) * 100 / stats.total).toFixed(1) : "0.0";
+      return (index + 1) + ". " + escapeHtml(formatLanguage(row.language)) + ": <b>" + formatNumber(row.total) + "</b> users (" + percent + "%)";
+    }));
+  }
+
+  return lines.join("\n");
+}
+
+export function adminLanguageStatsKeyboard() {
+  return { inline_keyboard: [[{ text: "← Back", callback_data: "admin_main" }]] };
 }
 
 export async function getAdminDashboardStats(env) {
@@ -888,6 +933,7 @@ function formatLanguage(language) {
     es: "Spanish",
     hi: "Hindi",
   };
+  if (language === "not_selected") return "Not selected";
   return labels[language] || language || "Not selected";
 }
 

@@ -14,6 +14,8 @@ import {
   adminInitialStartText,
   adminLanguageSettingsKeyboard,
   adminLanguageSettingsText,
+  adminLanguageStatsKeyboard,
+  adminLanguageStatsText,
   adminMandatoryMembershipKeyboard,
   adminMandatoryMembershipText,
   adminStatsKeyboard,
@@ -284,6 +286,14 @@ export async function handleCallback(query, env) {
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminStatsText(env), adminStatsKeyboard());
+    return;
+  }
+
+  if (data === "admin_language_stats") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminLanguageStatsText(env), adminLanguageStatsKeyboard());
     return;
   }
 
