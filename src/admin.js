@@ -27,8 +27,8 @@ export async function trackUser(env, user) {
     "username = excluded.username, " +
     "first_name = excluded.first_name, " +
     "last_name = excluded.last_name, " +
-    "return_count = COALESCE(bot_users.return_count, 0) + CASE WHEN datetime(bot_users.last_seen_at) <= datetime('now', '-3 hours') THEN 1 ELSE 0 END, " +
-    "last_returned_at = CASE WHEN datetime(bot_users.last_seen_at) <= datetime('now', '-3 hours') THEN CURRENT_TIMESTAMP ELSE bot_users.last_returned_at END, " +
+    "return_count = COALESCE(bot_users.return_count, 0) + CASE WHEN datetime(COALESCE(bot_users.last_returned_at, bot_users.created_at, bot_users.last_seen_at)) <= datetime('now', '-3 hours') THEN 1 ELSE 0 END, " +
+    "last_returned_at = CASE WHEN datetime(COALESCE(bot_users.last_returned_at, bot_users.created_at, bot_users.last_seen_at)) <= datetime('now', '-3 hours') THEN CURRENT_TIMESTAMP ELSE bot_users.last_returned_at END, " +
     "last_seen_at = CURRENT_TIMESTAMP"
   ).bind(
     String(user.id),
