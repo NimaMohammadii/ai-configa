@@ -49,7 +49,7 @@ async function makeAndSendDemo(env, chatId, userId, state) {
 
     let audio = await getDemoAudio(env, voiceName, lang, text);
     if (!audio) {
-      audio = await textToSpeech(env, text, voiceId);
+      audio = await textToSpeech(env, text, voiceId, lang);
       await saveDemoAudio(env, voiceName, lang, audio, text);
     }
 

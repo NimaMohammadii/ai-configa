@@ -975,11 +975,11 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
     if (isDemo) {
       audio = await getDemoAudio(env, voiceName, lang, finalText);
       if (!audio) {
-        audio = await textToSpeech(env, finalText, voiceId);
+        audio = await textToSpeech(env, finalText, voiceId, lang);
         await saveDemoAudio(env, voiceName, lang, audio, finalText);
       }
     } else {
-      audio = await textToSpeech(env, finalText, voiceId);
+      audio = await textToSpeech(env, finalText, voiceId, lang);
     }
 
     if (statusMessage && statusMessage.message_id) {
