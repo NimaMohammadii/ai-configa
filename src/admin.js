@@ -23,7 +23,13 @@ export async function trackUser(env, user) {
 
   await env.DB.prepare(
     "INSERT INTO bot_users (user_id, username, first_name, last_name, last_seen_at, created_at, return_count) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0) " +
-    "ON CONFLICT(user_id) DO UPDATE SET username = excluded.username, first_name = excluded.first_name, last_name = excluded.last_name, last_seen_at = CURRENT_TIMESTAMP"
+    "ON CONFLICT(user_id) DO UPDATE SET " +
+    "username = excluded.username, " +
+    "first_name = excluded.first_name, " +
+    "last_name = excluded.last_name, " +
+    "return_count = COALESCE(bot_users.return_count, 0) + CASE WHEN datetime(bot_users.last_seen_at) <= datetime('now', '-3 hours') THEN 1 ELSE 0 END, " +
+    "last_returned_at = CASE WHEN datetime(bot_users.last_seen_at) <= datetime('now', '-3 hours') THEN CURRENT_TIMESTAMP ELSE bot_users.last_returned_at END, " +
+    "last_seen_at = CURRENT_TIMESTAMP"
   ).bind(
     String(user.id),
     user.username || null,
@@ -37,9 +43,7 @@ export async function recordUserReturn(env, userId) {
   requireDb(env);
   if (!userId) return;
 
-  await env.DB.prepare(
-    "UPDATE bot_users SET return_count = COALESCE(return_count, 0) + 1, last_returned_at = CURRENT_TIMESTAMP, last_seen_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-  ).bind(String(userId)).run();
+  await trackUser(env, { id: userId });
 }
 
 export async function isAdmin(env, userId) {

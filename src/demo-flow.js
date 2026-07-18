@@ -1,6 +1,7 @@
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { getDemoText } from "./demo-texts.js";
 import { textToSpeech } from "./elevenlabs.js";
+import { trackUser } from "./admin.js";
 import { normalizeLang, t } from "./i18n.js";
 import { getState, saveState, setMenuMessageId } from "./state.js";
 import { answerCallback, deleteMessage, sendDemoAudio, sendDemoDocument, sendMessage, sendPlainMessage } from "./telegram-actions.js";
@@ -18,6 +19,7 @@ export async function handleDemoCallback(query, env) {
 
   if (!userId || !chatId || !messageId) return;
 
+  await trackUser(env, query.from);
   const state = await getState(env, userId);
   state.menuMessageId = messageId;
   await saveState(env, userId, state);
