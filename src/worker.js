@@ -1,4 +1,5 @@
 import { handleCallback, handleMessage } from "./bot.js";
+import { handleMiniAppRequest, isMiniAppRequest } from "./mini-app/server.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
@@ -7,6 +8,10 @@ import { handleSupportMessage } from "./support-flow-v2.js";
 
 export default {
   async fetch(request, env, ctx) {
+    if (isMiniAppRequest(request)) {
+      return handleMiniAppRequest(request, env);
+    }
+
     if (request.method === "GET") {
       return new Response("ai-configa worker is running");
     }
