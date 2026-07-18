@@ -107,7 +107,8 @@ export function adminMainKeyboard() {
       [{ text: "🟢 Online Users", callback_data: "admin_online:0" }, { text: "🌍 Users by Language", callback_data: "admin_language_stats" }],
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }, { text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
-      [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
+      [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }],
+      [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }, { text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
   };
@@ -204,6 +205,84 @@ export async function adminMandatoryMembershipKeyboard(env) {
       [{ text: "← Back", callback_data: "admin_main" }],
     ],
   };
+}
+
+export async function getMiniAppAccessSettings(env) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+
+  const rows = await env.DB.prepare(
+    "SELECT key, value FROM app_settings WHERE key IN ('mini_app_admin_only', 'mini_app_locked_until')"
+  ).all();
+  const values = Object.fromEntries((rows.results || []).map((row) => [row.key, row.value]));
+  const lockedUntil = Number.parseInt(values.mini_app_locked_until || "0", 10) || 0;
+  const now = Math.floor(Date.now() / 1000);
+  const isTimedLockActive = lockedUntil > now;
+
+  if (values.mini_app_admin_only === "1" && lockedUntil > 0 && !isTimedLockActive) {
+    await setMiniAppAccessSettings(env, false, 0);
+    return { adminOnly: false, lockedUntil: 0, remainingSeconds: 0 };
+  }
+
+  return {
+    adminOnly: values.mini_app_admin_only === "1",
+    lockedUntil,
+    remainingSeconds: isTimedLockActive ? lockedUntil - now : 0,
+  };
+}
+
+export async function setMiniAppAccessSettings(env, adminOnly, lockedUntil = 0) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  await Promise.all([
+    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('mini_app_admin_only', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(adminOnly ? "1" : "0").run(),
+    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('mini_app_locked_until', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(String(Math.max(0, Number(lockedUntil) || 0))).run(),
+  ]);
+}
+
+export async function adminMiniAppAccessText(env) {
+  const settings = await getMiniAppAccessSettings(env);
+  const lines = [
+    "🔐 <b>Mini App Access</b>",
+    "",
+    "Status: <b>" + (settings.adminOnly ? "Admin only" : "Open for everyone") + "</b>",
+  ];
+  if (settings.adminOnly && settings.lockedUntil > 0) {
+    lines.push("Auto unlock in: <b>" + formatDuration(settings.remainingSeconds) + "</b>");
+  }
+  lines.push("", "Locking shows non-admin users a black update page with a centered progress bar until the selected minutes pass.");
+  return lines.join("\n");
+}
+
+export async function adminMiniAppAccessKeyboard(env) {
+  const settings = await getMiniAppAccessSettings(env);
+  const rows = [];
+  if (settings.adminOnly) {
+    rows.push([{ text: "🔓 Open for everyone now", callback_data: "admin_mini_app_unlock" }]);
+  } else {
+    rows.push([{ text: "🔒 Lock with timer", callback_data: "admin_mini_app_lock_prompt" }]);
+  }
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export function adminMiniAppLockPromptText() {
+  return [
+    "🔒 <b>Lock Mini App</b>",
+    "",
+    "Send how many minutes the mini app should stay admin-only.",
+    "Example: <code>15</code>",
+    "",
+    "After this time, it automatically opens for all users. You can also unlock manually sooner."
+  ].join("\n");
+}
+
+function formatDuration(totalSeconds) {
+  const minutes = Math.max(0, Math.ceil(Number(totalSeconds || 0) / 60));
+  if (minutes < 60) return formatNumber(minutes) + " min";
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return formatNumber(hours) + "h" + (rest ? " " + formatNumber(rest) + "m" : "");
 }
 
 export async function countDueDailyRewards(env) {

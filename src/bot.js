@@ -18,6 +18,9 @@ import {
   adminLanguageStatsText,
   adminMandatoryMembershipKeyboard,
   adminMandatoryMembershipText,
+  adminMiniAppAccessKeyboard,
+  adminMiniAppAccessText,
+  adminMiniAppLockPromptText,
   adminStatsKeyboard,
   adminStatsText,
   adminWelcomeAudioKeyboard,
@@ -44,6 +47,7 @@ import {
   resolveStartLanguage,
   setAdminAction,
   setLanguageSetting,
+  setMiniAppAccessSettings,
   setWelcomeAudio,
   getLanguageSettings,
   searchAdminUsers,
@@ -362,6 +366,30 @@ export async function handleCallback(query, env) {
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminMandatoryMembershipText(env), await adminMandatoryMembershipKeyboard(env));
+    return;
+  }
+
+  if (data === "admin_mini_app_access") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppAccessText(env), await adminMiniAppAccessKeyboard(env));
+    return;
+  }
+
+  if (data === "admin_mini_app_lock_prompt") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "mini_app_lock_minutes", { chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminMiniAppLockPromptText(), adminCancelKeyboard("admin_mini_app_access"));
+    return;
+  }
+
+  if (data === "admin_mini_app_unlock") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await setMiniAppAccessSettings(env, false, 0);
+    await answerCallback(env, query.id, "Mini app opened", false);
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminMiniAppAccessText(env)) + "\n\n✅ Mini app is open for everyone.", await adminMiniAppAccessKeyboard(env));
     return;
   }
 
@@ -741,6 +769,20 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     await setDailyRewardCredits(env, credits);
     await clearAdminAction(env, adminId);
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminDailyRewardText(env)) + "\n\n✅ Daily gift updated.", adminDailyRewardKeyboard());
+    return true;
+  }
+
+  if (action.action === "mini_app_lock_minutes") {
+    const minutes = Number.parseInt(String(text).trim(), 10);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminMiniAppLockPromptText() + "\n\nInvalid duration. Send a positive number like <code>15</code>.", adminCancelKeyboard("admin_mini_app_access"));
+      return true;
+    }
+
+    const lockedUntil = Math.floor(Date.now() / 1000) + (minutes * 60);
+    await setMiniAppAccessSettings(env, true, lockedUntil);
+    await clearAdminAction(env, adminId);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminMiniAppAccessText(env)) + "\n\n✅ Mini app locked for " + minutes + " minutes.", await adminMiniAppAccessKeyboard(env));
     return true;
   }
 
