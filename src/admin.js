@@ -22,7 +22,7 @@ export async function trackUser(env, user) {
   if (!user || !user.id) return;
 
   await env.DB.prepare(
-    "INSERT INTO bot_users (user_id, username, first_name, last_name, last_seen_at, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
+    "INSERT INTO bot_users (user_id, username, first_name, last_name, last_seen_at, created_at, return_count) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0) " +
     "ON CONFLICT(user_id) DO UPDATE SET username = excluded.username, first_name = excluded.first_name, last_name = excluded.last_name, last_seen_at = CURRENT_TIMESTAMP"
   ).bind(
     String(user.id),
@@ -30,6 +30,16 @@ export async function trackUser(env, user) {
     user.first_name || null,
     user.last_name || null
   ).run();
+}
+
+
+export async function recordUserReturn(env, userId) {
+  requireDb(env);
+  if (!userId) return;
+
+  await env.DB.prepare(
+    "UPDATE bot_users SET return_count = COALESCE(return_count, 0) + 1, last_returned_at = CURRENT_TIMESTAMP, last_seen_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+  ).bind(String(userId)).run();
 }
 
 export async function isAdmin(env, userId) {
@@ -88,18 +98,13 @@ export async function adminMainText(env = null) {
 export function adminMainKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: "Users", callback_data: "admin_users:0" }],
-      [{ text: "💳 Buyers", callback_data: "admin_buyers:0" }],
-      [{ text: "🟢 Online Users", callback_data: "admin_online:0" }],
-      [{ text: "🌍 Users by Language", callback_data: "admin_language_stats" }],
-      [{ text: "📊 Usage Stats", callback_data: "admin_stats" }],
-      [{ text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
-      [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }],
-      [{ text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
-      [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }],
-      [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
-      [{ text: "Broadcast Message", callback_data: "admin_broadcast" }],
-      [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
+      [{ text: "Users", callback_data: "admin_users:0" }, { text: "🔎 Search User", callback_data: "admin_user_search_prompt" }],
+      [{ text: "💳 Buyers", callback_data: "admin_buyers:0" }, { text: "↩️ Return Users", callback_data: "admin_returns" }],
+      [{ text: "🟢 Online Users", callback_data: "admin_online:0" }, { text: "🌍 Users by Language", callback_data: "admin_language_stats" }],
+      [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
+      [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }, { text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
+      [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
+      [{ text: "Broadcast Message", callback_data: "admin_broadcast" }, { text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
   };
 }
@@ -439,7 +444,7 @@ export async function getAdminUsersPage(env, page = 0, limit = 8) {
   const offset = Number(page) * Number(limit);
   const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM bot_users").first();
   const users = await env.DB.prepare(
-    "SELECT user_id, username, first_name, last_name, last_seen_at FROM bot_users ORDER BY last_seen_at DESC LIMIT ? OFFSET ?"
+    "SELECT user_id, username, first_name, last_name, last_seen_at, return_count FROM bot_users ORDER BY last_seen_at DESC LIMIT ? OFFSET ?"
   ).bind(Number(limit), Number(offset)).all();
 
   return {
@@ -518,7 +523,7 @@ export async function getAdminUserDetails(env, userId) {
   requireDb(env);
 
   const user = await env.DB.prepare(
-    "SELECT b.user_id, b.username, b.first_name, b.last_name, b.last_seen_at, b.created_at, s.language " +
+    "SELECT b.user_id, b.username, b.first_name, b.last_name, b.last_seen_at, b.created_at, COALESCE(b.return_count, 0) AS return_count, b.last_returned_at, s.language " +
     "FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id WHERE b.user_id = ?"
   ).bind(String(userId)).first();
 
@@ -644,6 +649,8 @@ export async function adminUsersKeyboard(env, page = 0) {
   const data = await getAdminUsersPage(env, page);
   const rows = [];
 
+  rows.push([{ text: "🔎 Search by username or ID", callback_data: "admin_user_search_prompt" }]);
+
   for (const user of data.users) {
     rows.push([{ text: userLabel(user), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
   }
@@ -691,6 +698,8 @@ export async function adminUserText(env, userId) {
     "30 days: <b>" + Number(usage.credits30d || 0).toLocaleString("en-US") + " credits</b>",
     "Last TTS: <b>" + escapeHtml(formatTehranTime(usage.lastTtsAt)) + "</b>",
     "",
+    "Returns to bot: <b>" + Number(user.return_count || 0).toLocaleString("en-US") + "</b>",
+    "Last return: <b>" + escapeHtml(formatTehranTime(user.last_returned_at)) + "</b>",
     "Last seen: <b>" + escapeHtml(formatTehranTime(user.last_seen_at)) + "</b>",
     "Created: <b>" + escapeHtml(formatTehranTime(user.created_at)) + "</b>",
   ].join("\n");
@@ -707,6 +716,109 @@ export function adminUserKeyboard(userId, page = 0) {
       [{ text: "← Back to Users", callback_data: "admin_users:" + page }],
     ],
   };
+}
+
+export function adminUserSearchPromptText() {
+  return [
+    "🔎 <b>Search User</b>",
+    "",
+    "Send a Telegram user ID or username.",
+    "Examples: <code>123456789</code> or <code>@username</code>",
+    "",
+    "Your message will be deleted after processing."
+  ].join("\n");
+}
+
+export async function searchAdminUsers(env, query, limit = 8) {
+  requireDb(env);
+  const raw = String(query || "").trim().replace(/^@/, "");
+  if (!raw) return [];
+  const like = "%" + raw.toLowerCase() + "%";
+  const rows = await env.DB.prepare(
+    "SELECT user_id, username, first_name, last_name, last_seen_at, return_count FROM bot_users " +
+    "WHERE user_id = ? OR LOWER(COALESCE(username, '')) LIKE ? ORDER BY CASE WHEN user_id = ? THEN 0 ELSE 1 END, last_seen_at DESC LIMIT ?"
+  ).bind(raw, like, raw, Number(limit)).all();
+  return rows.results || [];
+}
+
+export function adminUserSearchResultsText(query, users) {
+  return [
+    "🔎 <b>User Search</b>",
+    "",
+    "Query: <code>" + escapeHtml(query) + "</code>",
+    "Results: <b>" + formatNumber(users.length) + "</b>",
+    "",
+    users.length ? "Select a user:" : "No matching users found."
+  ].join("\n");
+}
+
+export function adminUserSearchResultsKeyboard(users) {
+  const rows = users.map((user) => [{ text: userLabel(user), callback_data: "admin_user:" + user.user_id + ":0" }]);
+  rows.push([{ text: "🔎 Search Again", callback_data: "admin_user_search_prompt" }]);
+  rows.push([{ text: "← Back to Users", callback_data: "admin_users:0" }]);
+  return { inline_keyboard: rows };
+}
+
+export async function adminReturnUsersText(env, threshold = null, page = 0) {
+  if (threshold == null) {
+    const stats = await getReturnUserStats(env);
+    return [
+      "↩️ <b>Return Users</b>",
+      "",
+      "Users returned more than 3 times: <b>" + formatNumber(stats.gt3) + "</b>",
+      "Users returned more than 4 times: <b>" + formatNumber(stats.gt4) + "</b>",
+      "Users returned more than 6 times: <b>" + formatNumber(stats.gt6) + "</b>",
+      "",
+      "Choose a segment:"
+    ].join("\n");
+  }
+  const data = await getReturnUsersPage(env, threshold, page);
+  return [
+    "↩️ <b>Users returned more than " + Number(threshold) + " times</b>",
+    "",
+    "Total: <b>" + formatNumber(data.total) + "</b>",
+    "Page: <b>" + (data.page + 1) + "</b>",
+    "",
+    data.users.length ? "Select a user:" : "No users in this segment yet."
+  ].join("\n");
+}
+
+export async function adminReturnUsersKeyboard(env, threshold = null, page = 0) {
+  if (threshold == null) {
+    return { inline_keyboard: [
+      [{ text: "> 3 returns", callback_data: "admin_returns:3:0" }, { text: "> 4 returns", callback_data: "admin_returns:4:0" }],
+      [{ text: "> 6 returns", callback_data: "admin_returns:6:0" }, { text: "← Back", callback_data: "admin_main" }],
+    ] };
+  }
+  const data = await getReturnUsersPage(env, threshold, page);
+  const rows = data.users.map((user) => [{ text: userLabel(user), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_returns:" + threshold + ":" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_returns:" + threshold + ":" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Segments", callback_data: "admin_returns" }, { text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+async function getReturnUserStats(env) {
+  requireDb(env);
+  const row = await env.DB.prepare(
+    "SELECT SUM(CASE WHEN COALESCE(return_count, 0) > 3 THEN 1 ELSE 0 END) AS gt3, " +
+    "SUM(CASE WHEN COALESCE(return_count, 0) > 4 THEN 1 ELSE 0 END) AS gt4, " +
+    "SUM(CASE WHEN COALESCE(return_count, 0) > 6 THEN 1 ELSE 0 END) AS gt6 FROM bot_users"
+  ).first();
+  return { gt3: Number(row?.gt3 || 0), gt4: Number(row?.gt4 || 0), gt6: Number(row?.gt6 || 0) };
+}
+
+async function getReturnUsersPage(env, threshold, page = 0, limit = 8) {
+  requireDb(env);
+  const offset = Number(page) * Number(limit);
+  const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM bot_users WHERE COALESCE(return_count, 0) > ?").bind(Number(threshold)).first();
+  const rows = await env.DB.prepare(
+    "SELECT user_id, username, first_name, last_name, last_seen_at, return_count FROM bot_users " +
+    "WHERE COALESCE(return_count, 0) > ? ORDER BY return_count DESC, datetime(last_returned_at) DESC LIMIT ? OFFSET ?"
+  ).bind(Number(threshold), Number(limit), Number(offset)).all();
+  return { total: Number(countRow?.total || 0), page: Number(page), limit: Number(limit), users: rows.results || [] };
 }
 
 export function adminCreditPromptText() {
@@ -903,7 +1015,8 @@ function userLabel(user) {
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
   const username = user.username ? "@" + user.username : "";
   const label = name || username || user.user_id;
-  return label + " • " + user.user_id;
+  const returns = Number(user.return_count || 0);
+  return label + " • " + user.user_id + (returns > 0 ? " • ↩️ " + formatNumber(returns) : "");
 }
 
 function parseMoneyAmount(value) {
