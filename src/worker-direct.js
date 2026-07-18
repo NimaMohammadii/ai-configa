@@ -1,5 +1,6 @@
 import { handleCallback } from "./bot.js";
 import { handleMessage } from "./bot-secure.js";
+import { handleMiniAppRequest, isMiniAppRequest } from "./mini-app/server.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { shouldProcessMessageOnce } from "./message-dedupe.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
@@ -13,6 +14,10 @@ export default {
   },
 
   async fetch(request, env, ctx) {
+    if (isMiniAppRequest(request)) {
+      return handleMiniAppRequest(request, env);
+    }
+
     if (request.method === "GET") return new Response("ai-configa worker is running");
     if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
