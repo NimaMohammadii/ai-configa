@@ -1,3 +1,4 @@
+import { getMiniAppAccessSettings, isAdmin } from "../admin.js";
 import { getBalance, spendCredits } from "../credits.js";
 import { textToSpeech } from "../elevenlabs.js";
 import { normalizeLang } from "../i18n.js";
@@ -42,6 +43,8 @@ export async function handleMiniAppRequest(request, env) {
 
 async function sessionPayload(request, env) {
   const user = await authenticateMiniAppUser(request, env);
+  const access = await getMiniAppAccessForUser(env, user.id);
+  if (access.locked) return { locked: true, lockedUntil: access.lockedUntil, serverNow: Math.floor(Date.now() / 1000) };
   const state = await getState(env, user.id);
   return {
     userId: user.id,
@@ -58,6 +61,8 @@ async function createTts(request, env) {
   if (Array.from(text).length > MAX_TTS_CHARS) return responseError("متن خیلی طولانی است.", 400);
 
   const user = await authenticateMiniAppUserFromBody(body, env);
+  const access = await getMiniAppAccessForUser(env, user.id);
+  if (access.locked) return responseError("Mini app is updating.", 423);
   const state = await getState(env, user.id);
   const voiceName = state.voice || "Nora";
   const voiceId = VOICES[voiceName] || VOICES.Nora;
@@ -81,6 +86,13 @@ async function createTts(request, env) {
     language: lang,
     balance: balance - cost,
   };
+}
+
+async function getMiniAppAccessForUser(env, userId) {
+  const settings = await getMiniAppAccessSettings(env);
+  if (!settings.adminOnly) return { locked: false, lockedUntil: 0 };
+  if (await isAdmin(env, userId)) return { locked: false, lockedUntil: settings.lockedUntil };
+  return { locked: true, lockedUntil: settings.lockedUntil || Math.floor(Date.now() / 1000) + 60 };
 }
 
 async function authenticateMiniAppUser(request, env) {
