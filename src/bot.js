@@ -29,6 +29,11 @@ import {
   adminUserKeyboard,
   adminUsersKeyboard,
   adminUsersText,
+  adminUserSearchPromptText,
+  adminUserSearchResultsKeyboard,
+  adminUserSearchResultsText,
+  adminReturnUsersKeyboard,
+  adminReturnUsersText,
   adminUserText,
   clearAdminAction,
   deleteWelcomeAudio,
@@ -37,10 +42,12 @@ import {
   isAdmin,
   resetUser,
   resolveStartLanguage,
+  recordUserReturn,
   setAdminAction,
   setLanguageSetting,
   setWelcomeAudio,
   getLanguageSettings,
+  searchAdminUsers,
   getWelcomeAudio,
   hasTrackedUser,
   trackUser,
@@ -74,6 +81,9 @@ export async function handleMessage(message, env) {
   const isFirstStart = text === "/start" && !(await hasTrackedUser(env, userId));
 
   await trackUser(env, message.from);
+  if (text === "/start" && !isFirstStart) {
+    await recordUserReturn(env, userId);
+  }
   await ensureBalanceRow(env, userId);
 
   const state = await getState(env, userId);
@@ -260,6 +270,26 @@ export async function handleCallback(query, env) {
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminUsersText(env, page), await adminUsersKeyboard(env, page));
+    return;
+  }
+
+
+  if (data === "admin_user_search_prompt") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "user_search", { chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminUserSearchPromptText(), adminCancelKeyboard("admin_users:0"));
+    return;
+  }
+
+  if (data === "admin_returns" || data.startsWith("admin_returns:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const parts = data.split(":");
+    const threshold = parts.length > 1 ? Number(parts[1]) : null;
+    const page = parts.length > 2 ? Number(parts[2] || 0) : 0;
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminReturnUsersText(env, threshold, page), await adminReturnUsersKeyboard(env, threshold, page));
     return;
   }
 
@@ -651,6 +681,7 @@ async function handleAdminAudioInput(env, chatId, adminId, inputMessageId, audio
   const action = await getAdminAction(env, adminId);
   if (!action) return false;
 
+
   if (action.action === "welcome_audio") {
     const language = normalizeLang(action.target_user_id || "en");
     await setWelcomeAudio(env, language, audioAttachment.fileId, audioAttachment.fileType);
@@ -676,6 +707,14 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   if (!action) return false;
 
   await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+
+
+  if (action.action === "user_search") {
+    const users = await searchAdminUsers(env, text);
+    await clearAdminAction(env, adminId);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminUserSearchResultsText(text, users), adminUserSearchResultsKeyboard(users));
+    return true;
+  }
 
   if (action.action === "welcome_audio") {
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminWelcomeAudioPromptText(action.target_user_id || "en") + "\n\nPlease send an audio file, not text.", adminCancelKeyboard("admin_welcome_audio"));
