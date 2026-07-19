@@ -3,7 +3,7 @@ import { getBalance, spendCredits } from "../credits.js";
 import { getDemoAudio, saveDemoAudio } from "../demo-cache.js";
 import { getDemoText } from "../demo-texts.js";
 import { textToSpeech } from "../elevenlabs.js";
-import { editImage, generateImage } from "../gpt.js";
+import { editImages, generateImage } from "../gpt.js";
 import { normalizeLang } from "../i18n.js";
 import { getState, saveState } from "../state.js";
 import { buildTtsAudioFileName, getMiniAppTtsHistory, getMiniAppTtsHistoryAudio, getNextTtsFileSequence, saveTtsHistory } from "../tts-history.js";
@@ -16,6 +16,8 @@ import { MINI_APP_CSS } from "./styles.js";
 
 const MAX_TTS_CHARS = 5000;
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_EDIT_INPUTS = 4;
+const MAX_IMAGE_UPLOAD_TOTAL_BYTES = 24 * 1024 * 1024;
 
 export function isMiniAppRequest(request) {
   return new URL(request.url).pathname.startsWith("/mini-app");
@@ -75,15 +77,28 @@ async function createImage(request, env) {
   if (access.locked) return responseError("Mini app is updating.", 423);
 
   const size = resolveImageSize(body.size);
-  const source = decodeImageData(body.imageData, body.imageName);
-  const output = source
-    ? await editImage(env, prompt, source.buffer, source.filename, source.mimeType, { size })
+  const requestedImages = Array.isArray(body.images)
+    ? body.images
+    : body.imageData
+      ? [{ data: body.imageData, name: body.imageName }]
+      : [];
+  if (requestedImages.length > MAX_IMAGE_EDIT_INPUTS) {
+    return responseError("You can edit up to 4 images together.", 400);
+  }
+  const sources = requestedImages.map((item) => decodeImageData(item?.data, item?.name)).filter(Boolean);
+  const totalSourceBytes = sources.reduce((total, source) => total + source.buffer.byteLength, 0);
+  if (totalSourceBytes > MAX_IMAGE_UPLOAD_TOTAL_BYTES) {
+    return responseError("The selected images are too large together.", 413);
+  }
+  const output = sources.length
+    ? await editImages(env, prompt, sources, { size })
     : await generateImage(env, prompt, { size });
 
   return {
     imageBase64: arrayBufferToBase64(output),
-    filename: source ? "vexa-edited-image.png" : "vexa-image.png",
-    kind: source ? "edit" : "generate",
+    filename: sources.length ? "vexa-edited-image.png" : "vexa-image.png",
+    kind: sources.length ? "edit" : "generate",
+    sourceCount: sources.length,
     size,
   };
 }
