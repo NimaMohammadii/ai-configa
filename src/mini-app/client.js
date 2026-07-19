@@ -1,8 +1,7 @@
 export const MINI_APP_JS = `
 (function(){
   var tg=window.Telegram&&window.Telegram.WebApp;
-  function expandMiniApp(){if(!tg)return;try{tg.ready&&tg.ready()}catch(e){}try{tg.expand&&tg.expand()}catch(e){}try{tg.requestFullscreen&&tg.requestFullscreen()}catch(e){}try{tg.disableVerticalSwipes&&tg.disableVerticalSwipes()}catch(e){}}
-  expandMiniApp();setTimeout(expandMiniApp,120);setTimeout(expandMiniApp,500);setTimeout(expandMiniApp,1200);
+  if(tg){try{tg.ready&&tg.ready()}catch(e){}}
 
   var selectedVoice='TX3LPaxmHKxFdv7VOQHJ';
   var initData=(tg&&tg.initData)||'';
