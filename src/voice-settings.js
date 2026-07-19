@@ -33,7 +33,7 @@ export async function saveUserVoiceSettings(env, userId, settings) {
 
 export function normalizeVoiceSettings(settings = {}) {
   return {
-    stability: nearest(Number(settings.stability), [0, 0.5, 1], DEFAULT_VOICE_SETTINGS.stability),
+    stability: clamp(Number(settings.stability), 0, 1, DEFAULT_VOICE_SETTINGS.stability),
   };
 }
 
@@ -44,7 +44,7 @@ async function ensureVoiceSettingsTable(env) {
   ).run();
 }
 
-function nearest(value, choices, fallback) {
+function clamp(value, min, max, fallback) {
   if (!Number.isFinite(value)) return fallback;
-  return choices.reduce((best, choice) => Math.abs(choice - value) < Math.abs(best - value) ? choice : best, choices[0]);
+  return Math.min(max, Math.max(min, value));
 }

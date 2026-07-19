@@ -15,7 +15,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-13"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-14"/>
 </head>
 <body>
   <main class="app">
@@ -56,13 +56,13 @@ export const MINI_APP_HTML = `<!doctype html>
           <audio id="historyAudio" class="tts-hidden-audio"></audio>
         </div>
         <div class="history-sheet" id="historySheet" aria-hidden="true"><button class="history-backdrop" data-action="close-history" type="button" aria-label="Close history"></button><section class="history-card" role="dialog" aria-modal="true" aria-label="Voice history"><label class="history-search" for="historySearch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3" stroke="currentColor" stroke-width="1.9"/><path d="m15.5 15.5 4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg><input id="historySearch" type="search" autocomplete="off" placeholder="Search your voice history..."/></label><div id="historyList" class="history-list"><div class="history-loading"><span></span><span></span><span></span></div></div></section></div>
-        <div class="voice-settings-sheet" id="voiceSettingsSheet" aria-hidden="true"><button class="voice-settings-backdrop" data-action="close-voice-settings" type="button" aria-label="Close voice settings"></button><section class="voice-settings-card" role="dialog" aria-modal="true" aria-label="Eleven v3 voice settings"><div class="sheet-handle" aria-hidden="true"></div><div class="settings-head"><div><span class="settings-eyebrow">ELEVEN V3</span><h2>Sound settings</h2></div><button class="settings-reset" data-action="reset-voice-settings" type="button">Reset</button></div><div id="v3Settings" class="settings-panel v3-settings"><div class="setting-copy"><div><strong>Stability</strong><span>Choose how expressive or consistent the voice feels.</span></div><output id="v3StabilityValue">Natural</output></div><div class="stability-presets"><button data-action="set-v3-stability" data-value="0" type="button"><span>Creative</span><small>More emotion</small></button><button class="active" data-action="set-v3-stability" data-value="0.5" type="button"><span>Natural</span><small>Balanced</small></button><button data-action="set-v3-stability" data-value="1" type="button"><span>Robust</span><small>Consistent</small></button></div><p class="model-note">Designed for Eleven v3. Your choice is saved privately for future voice generations.</p></div><button id="saveVoiceSettings" class="settings-save" data-action="save-voice-settings" type="button"><span>Save settings</span></button></section></div>
+        <div class="voice-settings-sheet" id="voiceSettingsSheet" aria-hidden="true"><button class="voice-settings-backdrop" data-action="close-voice-settings" type="button" aria-label="Close voice settings"></button><section class="voice-settings-card" role="dialog" aria-modal="true" aria-label="Voice settings"><div class="sheet-handle" aria-hidden="true"></div><div class="settings-head"><div><span class="settings-eyebrow">VOICE CONTROL</span><h2>Sound settings</h2></div><button class="settings-reset" data-action="reset-voice-settings" type="button">Reset</button></div><div class="settings-panel"><div class="stability-title">Stability</div><div class="stability-labels"><span>Creative</span><span>Robust</span></div><input id="stabilitySlider" class="stability-slider" type="range" min="0" max="100" step="1" value="50" aria-label="Stability from creative to robust"/><p class="model-note">Lower values feel more expressive. Higher values sound more consistent.</p></div><button id="saveVoiceSettings" class="settings-save" data-action="save-voice-settings" type="button"><span>Save settings</span></button></section></div>
         <div class="limit-sheet" id="ttsLimitSheet" aria-hidden="true"><button class="limit-backdrop" data-action="close-char-limit" type="button" aria-label="Close"></button><div class="limit-card" id="ttsWarningCard"><div class="limit-icon"><span>!</span></div><h3 id="ttsWarningTitle">Character limit</h3><p id="ttsWarningText">You can’t convert more than 1000 characters.</p><button class="limit-close" id="ttsWarningClose" data-action="close-char-limit" type="button">Got it</button></div></div>
       </div>
     </section>
   </main>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260719-13"></script>
+  <script type="module" src="/mini-app/app.js?v=20260719-14"></script>
 </body>
 </html>`;
