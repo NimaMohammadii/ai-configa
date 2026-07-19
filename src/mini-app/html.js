@@ -15,7 +15,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-15"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-16"/>
 </head>
 <body>
   <main class="app">
@@ -23,14 +23,14 @@ export const MINI_APP_HTML = `<!doctype html>
       <div class="tts-page">
         <div class="tts-head">
           <div class="credit-tools"><button id="voiceSettingsButton" class="voice-settings-button" data-action="open-voice-settings" type="button" aria-label="Voice settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37a1.724 1.724 0 0 0 2.572-1.065Z" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.75"/></svg></button><div class="credit-pill"><span id="balance">—</span><span>credits</span></div></div>
-          <div id="voiceWrap" class="voice-wrap">
+          <div class="mode-tools"><div id="voiceWrap" class="voice-wrap">
             <button class="voice-btn" data-action="toggle-voice" type="button">
               <span id="voiceButtonAvatar" class="voice-button-avatar" aria-hidden="true"></span>
               <span id="voiceLabel">Liam</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
             <div class="voice-menu">${VOICE_ROWS}</div>
-          </div>
+          </div><button id="modeToggle" class="mode-toggle" data-action="toggle-creation-mode" type="button" aria-label="Switch to image creation" aria-pressed="false"><svg class="mode-image-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><circle cx="8.3" cy="9" r="1.55" stroke="currentColor" stroke-width="1.55"/><path d="m5.8 17 4.15-4.15a1.4 1.4 0 0 1 1.98 0l1.55 1.55 1.25-1.25a1.4 1.4 0 0 1 1.98 0L19 15.45" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.2 2.7v3M16.7 4.2h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><svg class="mode-voice-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button></div>
         </div>
         <div class="tts-area">
           <div class="tts-label">Text</div>
@@ -55,6 +55,18 @@ export const MINI_APP_HTML = `<!doctype html>
           <audio id="voicePreviewAudio" class="tts-hidden-audio"></audio>
           <audio id="historyAudio" class="tts-hidden-audio"></audio>
         </div>
+        <section id="imageWorkspace" class="image-workspace" aria-hidden="true">
+          <header class="image-intro"><span class="image-kicker">CREATE</span><h1>Imagine anything.</h1><p>Describe a new image, or add one and tell us exactly what to change.</p></header>
+          <div class="image-composer">
+            <label class="image-prompt-label" for="imagePrompt">Prompt</label>
+            <textarea id="imagePrompt" maxlength="2000" placeholder="Describe the image you want to create..."></textarea>
+            <div class="image-composer-foot"><span id="imagePromptCount">0 / 2000</span><button class="image-upload-trigger" data-action="pick-image" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 13.5v4A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Add image</span></button></div>
+          </div>
+          <input id="imageFile" class="image-file-input" type="file" accept="image/jpeg,image/png,image/webp"/>
+          <div id="imageSource" class="image-source" aria-hidden="true"><img id="imageSourcePreview" alt="Selected source"/><div><strong id="imageSourceName">Reference image</strong><span>Ready to edit</span></div><button data-action="remove-image" type="button" aria-label="Remove image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></button></div>
+          <button id="generateImageButton" class="image-generate" data-action="generate-image" type="button"><span id="generateImageLabel">Generate image</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <div id="imageResult" class="image-result" aria-hidden="true"><div class="image-result-frame"><img id="imageResultPreview" alt="Generated image"/><div class="image-result-shine" aria-hidden="true"></div></div><div class="image-result-actions"><button data-action="share-image" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 15.5V4m0 0L7.8 8.2M12 4l4.2 4.2M5.5 13.5v4A2.5 2.5 0 0 0 8 20h8a2.5 2.5 0 0 0 2.5-2.5v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Share</span></button><button data-action="download-image" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Save</span></button></div></div>
+        </section>
         <div class="history-sheet" id="historySheet" aria-hidden="true"><button class="history-backdrop" data-action="close-history" type="button" aria-label="Close history"></button><section class="history-card" role="dialog" aria-modal="true" aria-label="Voice history"><label class="history-search" for="historySearch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3" stroke="currentColor" stroke-width="1.9"/><path d="m15.5 15.5 4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg><input id="historySearch" type="search" autocomplete="off" placeholder="Search your voice history..."/></label><div id="historyList" class="history-list"><div class="history-loading"><span></span><span></span><span></span></div></div></section></div>
         <div class="voice-settings-sheet" id="voiceSettingsSheet" aria-hidden="true"><button class="voice-settings-backdrop" data-action="close-voice-settings" type="button" aria-label="Close voice settings"></button><section class="voice-settings-card" role="dialog" aria-modal="true" aria-label="Voice settings"><div class="sheet-handle" aria-hidden="true"></div><div class="settings-head"><div><span class="settings-eyebrow">VOICE CONTROL</span><h2>Sound settings</h2></div><button class="settings-reset" data-action="reset-voice-settings" type="button">Reset</button></div><div class="settings-panel"><div class="stability-title">Stability</div><div class="stability-labels"><span>Creative</span><span>Robust</span></div><input id="stabilitySlider" class="stability-slider" type="range" min="0" max="100" step="1" value="50" aria-label="Stability from creative to robust"/><p class="model-note">Lower values feel more expressive. Higher values sound more consistent.</p></div><button id="saveVoiceSettings" class="settings-save" data-action="save-voice-settings" type="button"><span>Save settings</span></button></section></div>
         <div class="limit-sheet" id="ttsLimitSheet" aria-hidden="true"><button class="limit-backdrop" data-action="close-char-limit" type="button" aria-label="Close"></button><div class="limit-card" id="ttsWarningCard"><div class="limit-icon"><span>!</span></div><h3 id="ttsWarningTitle">Character limit</h3><p id="ttsWarningText">You can’t convert more than 1000 characters.</p><button class="limit-close" id="ttsWarningClose" data-action="close-char-limit" type="button">Got it</button></div></div>
@@ -63,6 +75,6 @@ export const MINI_APP_HTML = `<!doctype html>
   </main>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260719-15"></script>
+  <script type="module" src="/mini-app/app.js?v=20260719-16"></script>
 </body>
 </html>`;
