@@ -47,12 +47,20 @@ export async function downloadTelegramFile(env, fileId) {
   }
 
   const filename = filePath.split("/").pop() || "telegram-image.jpg";
-  const mimeType = res.headers.get("content-type") || mimeTypeFromFilename(filename);
+  const mimeType = normalizeImageMimeType(res.headers.get("content-type"), filename);
   return {
     buffer: await res.arrayBuffer(),
     filename,
     mimeType,
   };
+}
+
+function normalizeImageMimeType(contentType, filename) {
+  const value = String(contentType || "").split(";")[0].trim().toLowerCase();
+  if (value === "image/jpeg" || value === "image/png" || value === "image/webp") {
+    return value;
+  }
+  return mimeTypeFromFilename(filename);
 }
 
 function mimeTypeFromFilename(filename) {
