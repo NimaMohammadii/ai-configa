@@ -1,5 +1,5 @@
 const GPT_TIMEOUT_MS = 45000;
-const GPT_IMAGE_TIMEOUT_MS = 120000;
+const GPT_IMAGE_TIMEOUT_MS = 150000;
 const GPT_MODEL = "gpt-4o-mini";
 const MAX_ENHANCE_CHARS = 5000;
 
