@@ -781,7 +781,7 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
     const settings = getChannelPostLanguageSettings(language);
 
     try {
-      const miniAppUrl = buildMiniAppUrl(env);
+      const miniAppUrl = await buildMiniAppUrl(env);
       await copyMessage(env, settings.channel, chatId, inputMessageId, undefined, channelPostMiniAppKeyboard(miniAppUrl));
       await deleteMessage(env, chatId, inputMessageId).catch(() => null);
       await clearAdminAction(env, adminId);
@@ -928,7 +928,7 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     const settings = getChannelPostLanguageSettings(language);
 
     try {
-      const miniAppUrl = buildMiniAppUrl(env);
+      const miniAppUrl = await buildMiniAppUrl(env);
       await sendPlainMessage(env, settings.channel, text, channelPostMiniAppKeyboard(miniAppUrl));
       await clearAdminAction(env, adminId);
       await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostsText() + "\n\n✅ Post sent to " + settings.channel + ".", adminChannelPostsKeyboard());

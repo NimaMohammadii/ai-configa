@@ -5,6 +5,7 @@ import { getDailyRewardCredits } from "./daily-reward.js";
 import { getInitialStartCredits } from "./start-bonus.js";
 import { getMandatoryFaMembershipSettings } from "./mandatory-channel.js";
 import { ensureTtsHistoryTable } from "./tts-history.js";
+import { tgJson } from "./telegram-api.js";
 import { VOICE_NAMES } from "./voices.js";
 
 export async function hasTrackedUser(env, userId) {
@@ -1134,14 +1135,28 @@ export function getChannelPostLanguageSettings(language = "fa") {
   return CHANNEL_POST_LANGUAGE_SETTINGS[normalized] || CHANNEL_POST_LANGUAGE_SETTINGS.fa;
 }
 
-const CHANNEL_POST_MINI_APP_URL = "https://ai-configa.vexaagent.workers.dev/mini-app";
+export async function buildMiniAppUrl(env) {
+  const configuredDeepLink = String(env.CHANNEL_POST_MINI_APP_DEEP_LINK || "").trim();
+  if (configuredDeepLink) {
+    if (!/^https:\/\/t\.me\//i.test(configuredDeepLink)) {
+      throw new Error("CHANNEL_POST_MINI_APP_DEEP_LINK must be a https://t.me Mini App link.");
+    }
+    return configuredDeepLink;
+  }
 
-export function buildMiniAppUrl(env) {
-  const raw = env.CHANNEL_POST_MINI_APP_URL || CHANNEL_POST_MINI_APP_URL;
-  if (!raw) throw new Error("Set CHANNEL_POST_MINI_APP_URL to the public /mini-app URL before sending channel posts.");
-  const trimmed = String(raw).trim().replace(/\/+$/, "");
-  if (!/^https:\/\//i.test(trimmed)) throw new Error("MINI_APP_URL must be an HTTPS URL.");
-  return trimmed.endsWith("/mini-app") ? trimmed : trimmed + "/mini-app";
+  const bot = await tgJson(env, "getMe");
+  const username = String(bot?.username || "").trim();
+  if (!username) throw new Error("Telegram did not return the bot username.");
+
+  const shortName = String(env.CHANNEL_POST_MINI_APP_SHORT_NAME || "").trim();
+  if (shortName) {
+    if (!/^[A-Za-z0-9_-]+$/.test(shortName)) {
+      throw new Error("CHANNEL_POST_MINI_APP_SHORT_NAME is invalid.");
+    }
+    return "https://t.me/" + username + "/" + shortName;
+  }
+
+  return "https://t.me/" + username + "?startapp";
 }
 
 export function channelPostMiniAppKeyboard(miniAppUrl) {
