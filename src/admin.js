@@ -1146,7 +1146,7 @@ export function buildMiniAppUrl(env) {
 
 export function channelPostMiniAppKeyboard(miniAppUrl) {
   return {
-    inline_keyboard: [[{ text: "Open Mini App", url: miniAppUrl }]],
+    inline_keyboard: [[{ text: "Open Mini App", web_app: { url: miniAppUrl } }]],
   };
 }
 
