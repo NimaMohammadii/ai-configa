@@ -4,8 +4,11 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
   <meta name="theme-color" content="#000000"/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <meta http-equiv="Pragma" content="no-cache"/>
+  <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-3"/>
 </head>
 <body>
   <main class="app">
@@ -46,6 +49,6 @@ export const MINI_APP_HTML = `<!doctype html>
   </main>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js"></script>
+  <script type="module" src="/mini-app/app.js?v=20260719-3"></script>
 </body>
 </html>`;

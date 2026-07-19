@@ -10,6 +10,11 @@ import { MINI_APP_HTML } from "./html.js";
 import { MINI_APP_CSS } from "./styles.js";
 
 const MAX_TTS_CHARS = 5000;
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  Pragma: "no-cache",
+  Expires: "0",
+};
 
 export function isMiniAppRequest(request) {
   return new URL(request.url).pathname.startsWith("/mini-app");
@@ -171,11 +176,21 @@ function httpError(message, status) {
 }
 
 function html(body) {
-  return new Response(body, { headers: { "Content-Type": "text/html;charset=utf-8" } });
+  return new Response(body, {
+    headers: {
+      "Content-Type": "text/html;charset=utf-8",
+      ...NO_CACHE_HEADERS,
+    },
+  });
 }
 
 function asset(body, contentType) {
-  return new Response(body, { headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=300" } });
+  return new Response(body, {
+    headers: {
+      "Content-Type": contentType,
+      ...NO_CACHE_HEADERS,
+    },
+  });
 }
 
 function json(payload, status = 200) {
