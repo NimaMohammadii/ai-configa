@@ -74,6 +74,11 @@ async function handleMessageWithSupport(message, env) {
       return;
     }
 
+    if (isImageEditMessage(message)) {
+      await handleMessageAndPin(message, env);
+      return;
+    }
+
     await handleReceiptPhoto(message, env);
     return;
   }
@@ -109,6 +114,11 @@ async function handleCallbackAndPin(query, env) {
   const chatId = query.message && query.message.chat && query.message.chat.id;
   const userId = query.from && query.from.id;
   await ensurePinnedFromState(env, chatId, userId).catch(logError);
+}
+
+function isImageEditMessage(message) {
+  const caption = String(message?.caption || "").trim();
+  return /^\/image(?:@\w+)?(?:\s|$)/i.test(caption);
 }
 
 function logError(error) {
