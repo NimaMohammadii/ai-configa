@@ -15,7 +15,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260720-22"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260720-23"/>
 </head>
 <body>
   <main class="app">
@@ -56,7 +56,7 @@ export const MINI_APP_HTML = `<!doctype html>
           <audio id="historyAudio" class="tts-hidden-audio"></audio>
         </div>
         <section id="imageWorkspace" class="image-workspace" aria-hidden="true">
-          <header class="image-intro"><span class="image-kicker">CREATE</span><h1>Imagine anything</h1><p>Describe a new image, or add one and tell us exactly what to change</p></header>
+          <header class="image-intro"><div class="image-kicker-row"><span class="image-kicker">CREATE</span><span id="imageCreditNote" class="image-credit-note">188 credits per image</span></div><h1>Imagine anything</h1><p>Describe a new image, or add one and tell us exactly what to change</p></header>
           <div class="image-composer">
             <label class="image-prompt-label" for="imagePrompt">Prompt</label>
             <textarea id="imagePrompt" maxlength="2000" placeholder="Describe the image you want to create"></textarea>
@@ -76,6 +76,6 @@ export const MINI_APP_HTML = `<!doctype html>
   </main>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260720-22"></script>
+  <script type="module" src="/mini-app/app.js?v=20260720-23"></script>
 </body>
 </html>`;

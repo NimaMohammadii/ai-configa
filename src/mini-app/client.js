@@ -54,9 +54,23 @@ export const MINI_APP_JS = `
     es:{title:'Créditos insuficientes',text:'El texto tiene más caracteres que tus créditos disponibles.',close:'Entendido'},
     hi:{title:'पर्याप्त क्रेडिट नहीं हैं',text:'आपके टेक्स्ट में उपलब्ध क्रेडिट से ज़्यादा अक्षर हैं।',close:'समझ गया'}
   };
+  var imageCreditCopies={
+    en:'188 credits per image',
+    fa:'هر تصویر ۱۸۸ کردیت',
+    ru:'188 кредитов за изображение',
+    de:'188 Credits pro Bild',
+    tr:'Görsel başına 188 kredi',
+    ar:'١٨٨ رصيدًا لكل صورة',
+    zh:'每张图片 188 积分',
+    ja:'画像1枚 188クレジット',
+    es:'188 créditos por imagen',
+    hi:'हर इमेज 188 क्रेडिट'
+  };
+  function normalizedLanguage(){return String(currentLanguage||'en').toLowerCase().split('-')[0]}
+  function updateImageCreditNote(){var node=q('imageCreditNote');if(!node)return;var language=normalizedLanguage();node.textContent=imageCreditCopies[language]||imageCreditCopies.en;node.dir=(language==='fa'||language==='ar')?'rtl':'ltr'}
   function textLength(){var input=q('ttsText');return Array.from((input&&input.value)||'').length}
   function textWarningKind(){var count=textLength();if(availableCredits!==null&&count>availableCredits)return'credits';if(count>1000)return'characters';return''}
-  function applyWarningCopy(kind){var title=q('ttsWarningTitle');var text=q('ttsWarningText');var close=q('ttsWarningClose');var card=q('ttsWarningCard');var language=String(currentLanguage||'en').toLowerCase().split('-')[0];var copy=kind==='credits'?(creditWarningCopies[language]||creditWarningCopies.en):{title:'Character limit',text:'You can’t convert more than 1000 characters',close:'Got it'};if(title)title.textContent=withoutTrailingDot(copy.title);if(text)text.textContent=withoutTrailingDot(copy.text);if(close)close.textContent=withoutTrailingDot(copy.close);if(card)card.dir=(language==='fa'||language==='ar')?'rtl':'ltr'}
+  function applyWarningCopy(kind){var title=q('ttsWarningTitle');var text=q('ttsWarningText');var close=q('ttsWarningClose');var card=q('ttsWarningCard');var language=normalizedLanguage();var copy=kind==='credits'?(creditWarningCopies[language]||creditWarningCopies.en):{title:'Character limit',text:'You can’t convert more than 1000 characters',close:'Got it'};if(title)title.textContent=withoutTrailingDot(copy.title);if(text)text.textContent=withoutTrailingDot(copy.text);if(close)close.textContent=withoutTrailingDot(copy.close);if(card)card.dir=(language==='fa'||language==='ar')?'rtl':'ltr'}
   function setLimitSheet(open,kind){var sheet=q('ttsLimitSheet');if(!sheet)return;if(open)applyWarningCopy(kind||textWarningKind()||'characters');sheet.classList.toggle('open',!!open);sheet.setAttribute('aria-hidden',open?'false':'true')}
   function openTextWarning(){var kind=textWarningKind();if(kind){dismissKeyboard();setLimitSheet(true,kind)}}
   function setHistorySheet(open){var sheet=q('historySheet');if(!sheet)return;sheet.classList.toggle('open',!!open);sheet.setAttribute('aria-hidden',open?'false':'true');document.body.classList.toggle('history-open',!!open);if(!open){var audio=q('historyAudio');if(audio)audio.pause()}}
@@ -114,7 +128,7 @@ export const MINI_APP_JS = `
 
   function showLocked(data){document.body.classList.add('is-locked');document.body.innerHTML='<main class="lock-screen"><section class="lock-card" aria-label="Mini app update"><p class="lock-title"><span>Updating</span><span class="lock-dots" aria-hidden="true"><i></i><i></i><i></i></span></p><div class="lock-bar" aria-hidden="true"><span id="lockFill"></span></div></section></main>';var fill=q('lockFill');var serverNow=Number(data.serverNow)||Math.floor(Date.now()/1000);var lockedUntil=Number(data.lockedUntil)||serverNow+60;var lockedFrom=Number(data.lockedFrom)||Math.max(serverNow,lockedUntil-60);var total=Math.max(1,lockedUntil-lockedFrom);var offset=serverNow-Date.now()/1000;function tick(){var now=Date.now()/1000+offset;var progress=Math.min(100,Math.max(0,(now-lockedFrom)/total*100));if(fill)fill.style.width=progress+'%';if(now>=lockedUntil){clearInterval(lockTimer);location.reload()}}tick();lockTimer=setInterval(tick,500)}
 
-  async function load(){try{var data=await api('/mini-app/api/session',{});if(data.locked){showLocked(data);return}availableCredits=Math.max(0,Number(data.balance)||0);currentLanguage=String(data.language||'en');setVoiceByName(data.voice||'Nora');setText('balance',availableCredits.toLocaleString('en-US'));applyVoiceProfiles(data.voiceProfiles);renderVoiceSettings(data.voiceSettings);updateTtsCharCount()}catch(error){toast(error.message)}}
+  async function load(){try{var data=await api('/mini-app/api/session',{});if(data.locked){showLocked(data);return}availableCredits=Math.max(0,Number(data.balance)||0);currentLanguage=String(data.language||'en');setVoiceByName(data.voice||'Nora');setText('balance',availableCredits.toLocaleString('en-US'));applyVoiceProfiles(data.voiceProfiles);renderVoiceSettings(data.voiceSettings);updateTtsCharCount();updateImageCreditNote()}catch(error){toast(error.message)}}
 
   async function previewVoice(button){var voiceId=button.getAttribute('data-preview-voice')||'';var voiceName=button.getAttribute('data-preview-name')||'Voice';var audio=q('voicePreviewAudio');if(!voiceId||!audio)return;
     if(activePreviewButton===button&&activePreviewVoice===voiceId&&!audio.paused){audio.pause();return}
@@ -123,7 +137,7 @@ export const MINI_APP_JS = `
     try{var data=await api('/mini-app/api/voice-demo',{voice:voiceId});if(activePreviewButton!==button)return;audio.src='data:audio/mpeg;base64,'+data.audioBase64;button.classList.remove('loading');button.classList.add('playing');await audio.play()}catch(error){button.classList.remove('loading','playing');activePreviewButton=null;activePreviewVoice='';toast(error.message||('Could not play '+voiceName))}
   }
 
-  async function generateTts(){var text=(q('ttsText')&&q('ttsText').value.trim())||'';if(!text)return toast('Type text first');var warning=textWarningKind();if(warning){setLimitSheet(true,warning);return}var button=q('convertButton');if(button){button.disabled=true;button.classList.add('loading');button.setAttribute('aria-label','Generating voice')}var audio=q('ttsAudio');var player=q('wavePlayer');if(player)player.classList.remove('show');if(audio){audio.pause();audio.removeAttribute('src');audio.load()}stopPreview();setWavePlaying(false);setText('waveTime','0:00');try{var data=await api('/mini-app/api/tts',{text:text,voice:selectedVoice});if(data.voice)setVoiceByName(data.voice);availableCredits=Math.max(0,Number(data.balance)||0);currentLanguage=String(data.language||currentLanguage||'en');setText('balance',availableCredits.toLocaleString('en-US'));generatedFileName=String(data.filename||'vexa-voice.mp3');if(audio)audio.src='data:audio/mpeg;base64,'+data.audioBase64;if(player)player.classList.add('show');historyLoaded=false;updateTtsCharCount()}catch(error){toast(error.message)}finally{if(button){button.disabled=false;button.classList.remove('loading');button.setAttribute('aria-label','Generate Voice')}}}
+  async function generateTts(){var text=(q('ttsText')&&q('ttsText').value.trim())||'';if(!text)return toast('Type text first');var warning=textWarningKind();if(warning){setLimitSheet(true,warning);return}var button=q('convertButton');if(button){button.disabled=true;button.classList.add('loading');button.setAttribute('aria-label','Generating voice')}var audio=q('ttsAudio');var player=q('wavePlayer');if(player)player.classList.remove('show');if(audio){audio.pause();audio.removeAttribute('src');audio.load()}stopPreview();setWavePlaying(false);setText('waveTime','0:00');try{var data=await api('/mini-app/api/tts',{text:text,voice:selectedVoice});if(data.voice)setVoiceByName(data.voice);availableCredits=Math.max(0,Number(data.balance)||0);currentLanguage=String(data.language||currentLanguage||'en');updateImageCreditNote();setText('balance',availableCredits.toLocaleString('en-US'));generatedFileName=String(data.filename||'vexa-voice.mp3');if(audio)audio.src='data:audio/mpeg;base64,'+data.audioBase64;if(player)player.classList.add('show');historyLoaded=false;updateTtsCharCount()}catch(error){toast(error.message)}finally{if(button){button.disabled=false;button.classList.remove('loading');button.setAttribute('aria-label','Generate Voice')}}}
 
   function playTts(){var audio=q('ttsAudio');if(!audio||!audio.src)return toast('Generate voice first');stopPreview();if(audio.paused){audio.play().catch(function(error){toast(error.message)})}else audio.pause()}
 
@@ -142,6 +156,6 @@ export const MINI_APP_JS = `
   var audio=q('ttsAudio');if(audio){audio.addEventListener('play',function(){setWavePlaying(true)});audio.addEventListener('pause',function(){setWavePlaying(false)});audio.addEventListener('timeupdate',function(){setText('waveTime',formatTime(audio.currentTime))});audio.addEventListener('ended',function(){audio.currentTime=0;setWavePlaying(false);setText('waveTime','0:00')})}
   var historyAudio=q('historyAudio');if(historyAudio){historyAudio.addEventListener('play',function(){setHistoryPlaying(activeHistoryId,true)});historyAudio.addEventListener('pause',function(){setHistoryPlaying(activeHistoryId,false)});historyAudio.addEventListener('ended',function(){historyAudio.currentTime=0;setHistoryPlaying(activeHistoryId,false)})}
   var previewAudio=q('voicePreviewAudio');if(previewAudio){previewAudio.addEventListener('pause',function(){if(activePreviewButton)activePreviewButton.classList.remove('playing')});previewAudio.addEventListener('play',function(){if(activePreviewButton)activePreviewButton.classList.add('playing')});previewAudio.addEventListener('ended',stopPreview)}
-  setWavePlaying(false);updateTtsCharCount();updateImagePromptCount();selectImageSize('1024x1024');setCreationMode('voice');loadImageHistory();load();
+  setWavePlaying(false);updateTtsCharCount();updateImagePromptCount();updateImageCreditNote();selectImageSize('1024x1024');setCreationMode('voice');loadImageHistory();load();
 })();
 `;
