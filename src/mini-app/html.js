@@ -2,7 +2,7 @@ import { VOICE_NAMES, VOICES } from "../voices.js";
 
 const VOICE_ROWS = VOICE_NAMES.map((name) => {
   const voiceId = VOICES[name];
-  return `<div class="voice-option" data-voice-row="${voiceId}"><button class="voice-select${name === "Liam" ? " active" : ""}" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span>${name}</span></button><button class="voice-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Play ${name} demo"><span class="voice-preview-icon">▶</span></button></div>`;
+  return `<div class="voice-option" data-voice-row="${voiceId}"><span class="voice-avatar" aria-hidden="true"></span><button class="voice-select${name === "Liam" ? " active" : ""}" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span>${name}</span></button><button class="voice-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Play ${name} demo"><span class="voice-preview-icon">▶</span></button></div>`;
 }).join("");
 
 export const MINI_APP_HTML = `<!doctype html>
@@ -15,7 +15,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-5"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-6"/>
 </head>
 <body>
   <main class="app">
