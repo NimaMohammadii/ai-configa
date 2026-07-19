@@ -1,5 +1,7 @@
 import { getMiniAppAccessSettings, isAdmin } from "../admin.js";
 import { getBalance, spendCredits } from "../credits.js";
+import { getDemoAudio, saveDemoAudio } from "../demo-cache.js";
+import { getDemoText } from "../demo-texts.js";
 import { textToSpeech } from "../elevenlabs.js";
 import { normalizeLang } from "../i18n.js";
 import { getState, saveState } from "../state.js";
@@ -10,11 +12,6 @@ import { MINI_APP_HTML } from "./html.js";
 import { MINI_APP_CSS } from "./styles.js";
 
 const MAX_TTS_CHARS = 5000;
-const NO_CACHE_HEADERS = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-  Pragma: "no-cache",
-  Expires: "0",
-};
 
 export function isMiniAppRequest(request) {
   return new URL(request.url).pathname.startsWith("/mini-app");
@@ -38,6 +35,9 @@ export async function handleMiniAppRequest(request, env) {
     }
     if (request.method === "POST" && url.pathname === "/mini-app/api/tts") {
       return json(await createTts(request, env));
+    }
+    if (request.method === "POST" && url.pathname === "/mini-app/api/voice-demo") {
+      return json(await createVoiceDemo(request, env));
     }
 
     return json({ error: "Not Found" }, 404);
@@ -95,6 +95,33 @@ async function createTts(request, env) {
     voice: voiceName,
     language: lang,
     balance: balance - cost,
+  };
+}
+
+async function createVoiceDemo(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const user = await authenticateMiniAppUserFromBody(body, env);
+  const access = await getMiniAppAccessForUser(env, user.id);
+  if (access.locked) return responseError("Mini app is updating.", 423);
+
+  const state = await getState(env, user.id);
+  const voiceName = resolveVoiceName(body.voice);
+  if (!voiceName) return responseError("Voice not found.", 404);
+
+  const voiceId = VOICES[voiceName];
+  const lang = normalizeLang(state.language || user.language_code || "en");
+  const text = getDemoText(lang, voiceName);
+  let audio = await getDemoAudio(env, voiceName, lang, text);
+
+  if (!audio) {
+    audio = await textToSpeech(env, text, voiceId, lang);
+    await saveDemoAudio(env, voiceName, lang, audio, text);
+  }
+
+  return {
+    audioBase64: arrayBufferToBase64(audio),
+    voice: voiceName,
+    language: lang,
   };
 }
 
@@ -176,21 +203,20 @@ function httpError(message, status) {
 }
 
 function html(body) {
-  return new Response(body, {
-    headers: {
-      "Content-Type": "text/html;charset=utf-8",
-      ...NO_CACHE_HEADERS,
-    },
-  });
+  return new Response(body, { headers: noStoreHeaders("text/html;charset=utf-8") });
 }
 
 function asset(body, contentType) {
-  return new Response(body, {
-    headers: {
-      "Content-Type": contentType,
-      ...NO_CACHE_HEADERS,
-    },
-  });
+  return new Response(body, { headers: noStoreHeaders(contentType) });
+}
+
+function noStoreHeaders(contentType) {
+  return {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    Pragma: "no-cache",
+    Expires: "0",
+  };
 }
 
 function json(payload, status = 200) {
