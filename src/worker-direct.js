@@ -3,6 +3,7 @@ import { handleCallback } from "./bot.js";
 import { handleMessage } from "./bot-secure.js";
 import { handleMiniAppRequest, isMiniAppRequest } from "./mini-app/server.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
+import { processPendingImageJobs } from "./image-jobs.js";
 import { shouldProcessMessageOnce } from "./message-dedupe.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
@@ -11,7 +12,7 @@ import { handleSupportMessage } from "./support-flow-strict.js";
 
 export default {
   async scheduled(event, env, ctx) {
-    // Daily reward reminder notifications are intentionally disabled.
+    ctx.waitUntil(processPendingImageJobs(env).catch(logError));
   },
 
   async fetch(request, env, ctx) {
