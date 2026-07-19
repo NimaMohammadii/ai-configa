@@ -15,7 +15,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-10"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-11"/>
 </head>
 <body>
   <main class="app">
@@ -49,19 +49,19 @@ export const MINI_APP_HTML = `<!doctype html>
           </div>
           <div class="tts-generate-row">
             <button id="convertButton" class="tts-generate" data-action="generate-tts" type="button">Generate Voice</button>
-            <span class="char-count-wrap"><span class="char-count" id="ttsCharCount">0 characters</span><button class="char-warning" id="ttsCharWarning" data-action="open-char-limit" type="button" aria-label="Character limit warning">!</button></span>
+            <span class="char-count-wrap"><button class="char-warning" id="ttsCharWarning" data-action="open-char-limit" type="button" aria-label="Text length warning"><span>!</span></button><span class="char-count" id="ttsCharCount">0 characters</span></span>
           </div>
           <audio id="ttsAudio" class="tts-hidden-audio"></audio>
           <audio id="voicePreviewAudio" class="tts-hidden-audio"></audio>
           <audio id="historyAudio" class="tts-hidden-audio"></audio>
         </div>
         <div class="history-sheet" id="historySheet" aria-hidden="true"><button class="history-backdrop" data-action="close-history" type="button" aria-label="Close history"></button><section class="history-card" role="dialog" aria-modal="true" aria-label="Voice history"><label class="history-search" for="historySearch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3" stroke="currentColor" stroke-width="1.9"/><path d="m15.5 15.5 4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg><input id="historySearch" type="search" autocomplete="off" placeholder="Search your voice history..."/></label><div id="historyList" class="history-list"><div class="history-loading"><span></span><span></span><span></span></div></div></section></div>
-        <div class="limit-sheet" id="ttsLimitSheet" aria-hidden="true"><button class="limit-backdrop" data-action="close-char-limit" type="button" aria-label="Close"></button><div class="limit-card"><div class="limit-icon">!</div><h3>Character limit</h3><p>You can’t convert more than 1000 characters</p><button class="limit-close" data-action="close-char-limit" type="button">Got it</button></div></div>
+        <div class="limit-sheet" id="ttsLimitSheet" aria-hidden="true"><button class="limit-backdrop" data-action="close-char-limit" type="button" aria-label="Close"></button><div class="limit-card" id="ttsWarningCard"><div class="limit-icon"><span>!</span></div><h3 id="ttsWarningTitle">Character limit</h3><p id="ttsWarningText">You can’t convert more than 1000 characters.</p><button class="limit-close" id="ttsWarningClose" data-action="close-char-limit" type="button">Got it</button></div></div>
       </div>
     </section>
   </main>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260719-11"></script>
+  <script type="module" src="/mini-app/app.js?v=20260719-12"></script>
 </body>
 </html>`;
