@@ -5,6 +5,7 @@ const MAX_ENHANCE_CHARS = 5000;
 
 const GPT_IMAGE_MODEL = "gpt-image-2";
 const GPT_IMAGE_SIZE = "1024x1024";
+const GPT_IMAGE_QUALITY = "low";
 const MAX_IMAGE_PROMPT_CHARS = 2000;
 
 export async function generateImage(env, prompt) {
@@ -33,6 +34,7 @@ export async function generateImage(env, prompt) {
         model: GPT_IMAGE_MODEL,
         prompt: cleanPrompt,
         size: GPT_IMAGE_SIZE,
+        quality: GPT_IMAGE_QUALITY,
         output_format: "png",
       }),
     },
@@ -80,6 +82,7 @@ export async function editImage(env, prompt, imageBuffer, filename = "telegram-i
   form.append("prompt", cleanPrompt);
   form.append("image[]", new Blob([imageBuffer], { type: uploadMimeType }), uploadFilename);
   form.append("size", GPT_IMAGE_SIZE);
+  form.append("quality", GPT_IMAGE_QUALITY);
   form.append("output_format", "png");
 
   const response = await fetchWithTimeout(
