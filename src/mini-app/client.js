@@ -73,9 +73,17 @@ function chooseVoice(option){
 }
 
 function chooseVoiceByName(name){
-  const normalized=String(name||"").trim().toLowerCase();
+  const cleanName=String(name||"Nora").trim()||"Nora";
+  const normalized=cleanName.toLowerCase();
   const match=voiceButtons.find((item)=>String(item.textContent||"").trim().toLowerCase()===normalized);
-  chooseVoice(match||voiceButtons.find((item)=>item.textContent?.trim()==="Nora")||voiceButtons[0]);
+  if(match){
+    chooseVoice(match);
+    return;
+  }
+  selectedVoice=cleanName;
+  voiceButtons.forEach((item)=>item.classList.remove("active"));
+  if(voice)voice.textContent=cleanName;
+  voiceWrap?.classList.remove("open");
 }
 
 async function api(path,body){
