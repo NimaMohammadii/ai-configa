@@ -54,6 +54,63 @@ export async function generateImage(env, prompt) {
   return base64ToArrayBuffer(b64);
 }
 
+export async function editImage(env, prompt, imageBuffer, filename = "telegram-image.jpg", mimeType = "image/jpeg") {
+  if (!env.GPT_API) {
+    throw new Error("GPT image service is not configured.");
+  }
+
+  const cleanPrompt = String(prompt || "").trim();
+  if (!cleanPrompt) {
+    throw new Error("Image edit prompt is empty.");
+  }
+
+  if (Array.from(cleanPrompt).length > MAX_IMAGE_PROMPT_CHARS) {
+    throw new Error("Image prompt is too long. Please send a shorter prompt.");
+  }
+
+  if (!imageBuffer || !imageBuffer.byteLength) {
+    throw new Error("The source image is empty.");
+  }
+
+  const form = new FormData();
+  form.append("model", GPT_IMAGE_MODEL);
+  form.append("prompt", cleanPrompt);
+  form.append("image[]", new Blob([imageBuffer], { type: mimeType || "image/jpeg" }), safeImageFilename(filename));
+  form.append("size", GPT_IMAGE_SIZE);
+  form.append("output_format", "png");
+
+  const response = await fetchWithTimeout(
+    "https://api.openai.com/v1/images/edits",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + env.GPT_API,
+      },
+      body: form,
+    },
+    GPT_IMAGE_TIMEOUT_MS,
+    "AI image editing took too long. Please try again with a simpler instruction.",
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(toFriendlyGptImageError(response.status, errorBody));
+  }
+
+  const data = await response.json();
+  const b64 = data?.data?.[0]?.b64_json || "";
+  if (!b64) {
+    throw new Error("AI did not return an edited image. Please try again.");
+  }
+
+  return base64ToArrayBuffer(b64);
+}
+
+function safeImageFilename(value) {
+  const filename = String(value || "telegram-image.jpg").split("/").pop();
+  return filename.replace(/[^a-zA-Z0-9._-]/g, "_") || "telegram-image.jpg";
+}
+
 export async function enhanceTextWithEmotion(env, text, language = "en") {
   if (!env.GPT_API) {
     throw new Error("GPT service is not configured.");
