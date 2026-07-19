@@ -15,14 +15,14 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-14"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-15"/>
 </head>
 <body>
   <main class="app">
     <section id="flow" class="view active">
       <div class="tts-page">
         <div class="tts-head">
-          <div class="credit-tools"><button id="voiceSettingsButton" class="voice-settings-button" data-action="open-voice-settings" type="button" aria-label="Voice settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16" cy="7" r="2" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="17" r="2" stroke="currentColor" stroke-width="1.8"/></svg></button><div class="credit-pill"><span id="balance">—</span><span>credits</span></div></div>
+          <div class="credit-tools"><button id="voiceSettingsButton" class="voice-settings-button" data-action="open-voice-settings" type="button" aria-label="Voice settings"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 15.25a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5Z" stroke="currentColor" stroke-width="1.65"/><path d="M19.35 13.05c.04-.35.04-.7 0-1.05l1.43-1.12-1.7-2.94-1.69.68a7.7 7.7 0 0 0-.91-.53L16.23 6.3h-3.4l-.26 1.79c-.31.15-.61.33-.9.53l-1.69-.68-1.7 2.94L9.7 12c-.04.35-.04.7 0 1.05l-1.42 1.12 1.7 2.94 1.69-.68c.29.21.59.38.9.53l.26 1.79h3.4l.25-1.79c.32-.15.62-.32.91-.53l1.69.68 1.7-2.94-1.43-1.12Z" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div class="credit-pill"><span id="balance">—</span><span>credits</span></div></div>
           <div id="voiceWrap" class="voice-wrap">
             <button class="voice-btn" data-action="toggle-voice" type="button">
               <span id="voiceButtonAvatar" class="voice-button-avatar" aria-hidden="true"></span>
@@ -63,6 +63,6 @@ export const MINI_APP_HTML = `<!doctype html>
   </main>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260719-14"></script>
+  <script type="module" src="/mini-app/app.js?v=20260719-15"></script>
 </body>
 </html>`;
