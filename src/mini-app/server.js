@@ -96,7 +96,8 @@ async function createImage(request, env) {
 
   return {
     imageBase64: arrayBufferToBase64(output),
-    filename: sources.length ? "vexa-edited-image.png" : "vexa-image.png",
+    filename: sources.length ? "vexa-edited-image.jpg" : "vexa-image.jpg",
+    mimeType: "image/jpeg",
     kind: sources.length ? "edit" : "generate",
     sourceCount: sources.length,
     size,
