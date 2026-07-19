@@ -48,6 +48,27 @@ export async function recordUserReturn(env, userId) {
   await trackUser(env, { id: userId });
 }
 
+export async function trackMiniAppOpen(env, user) {
+  requireDb(env);
+  if (!user || !user.id) return;
+
+  await env.DB.prepare(
+    "INSERT INTO bot_users (user_id, username, first_name, last_name, last_seen_at, created_at, return_count, mini_app_open_count, last_mini_app_opened_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 1, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET " +
+    "username = COALESCE(excluded.username, bot_users.username), " +
+    "first_name = COALESCE(excluded.first_name, bot_users.first_name), " +
+    "last_name = COALESCE(excluded.last_name, bot_users.last_name), " +
+    "mini_app_open_count = COALESCE(bot_users.mini_app_open_count, 0) + 1, " +
+    "last_mini_app_opened_at = CURRENT_TIMESTAMP, " +
+    "last_seen_at = CURRENT_TIMESTAMP"
+  ).bind(
+    String(user.id),
+    user.username || null,
+    user.first_name || null,
+    user.last_name || null
+  ).run();
+}
+
 export async function isAdmin(env, userId) {
   requireDb(env);
   if (!userId) return false;
@@ -109,7 +130,8 @@ export function adminMainKeyboard() {
       [{ text: "🟢 Online Users", callback_data: "admin_online:0" }, { text: "🌍 Users by Language", callback_data: "admin_language_stats" }],
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }, { text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
-      [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }],
+      [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
+      [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }],
       [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }, { text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }, { text: "📢 Channel Posts", callback_data: "admin_channel_posts" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
@@ -533,7 +555,7 @@ export async function getAdminUsersPage(env, page = 0, limit = 8) {
   const offset = Number(page) * Number(limit);
   const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM bot_users").first();
   const users = await env.DB.prepare(
-    "SELECT user_id, username, first_name, last_name, last_seen_at, return_count FROM bot_users ORDER BY last_seen_at DESC LIMIT ? OFFSET ?"
+    "SELECT user_id, username, first_name, last_name, last_seen_at, return_count, mini_app_open_count FROM bot_users ORDER BY last_seen_at DESC LIMIT ? OFFSET ?"
   ).bind(Number(limit), Number(offset)).all();
 
   return {
@@ -544,6 +566,54 @@ export async function getAdminUsersPage(env, page = 0, limit = 8) {
   };
 }
 
+export async function getAdminMiniAppUsersPage(env, page = 0, limit = 8) {
+  requireDb(env);
+
+  const offset = Number(page) * Number(limit);
+  const countRow = await env.DB.prepare(
+    "SELECT COUNT(*) AS total FROM bot_users WHERE COALESCE(mini_app_open_count, 0) > 0"
+  ).first();
+  const users = await env.DB.prepare(
+    "SELECT user_id, username, first_name, last_name, last_seen_at, COALESCE(mini_app_open_count, 0) AS mini_app_open_count, last_mini_app_opened_at FROM bot_users " +
+    "WHERE COALESCE(mini_app_open_count, 0) > 0 ORDER BY mini_app_open_count DESC, datetime(last_mini_app_opened_at) DESC LIMIT ? OFFSET ?"
+  ).bind(Number(limit), Number(offset)).all();
+
+  return {
+    total: Number(countRow?.total || 0),
+    page: Number(page),
+    limit: Number(limit),
+    users: users.results || [],
+  };
+}
+
+export async function adminMiniAppUsersText(env, page = 0) {
+  const data = await getAdminMiniAppUsersPage(env, page);
+  const totalOpens = data.users.reduce((sum, user) => sum + Number(user.mini_app_open_count || 0), 0);
+  return [
+    "📱 <b>Mini App Users</b>",
+    "",
+    "Users opened mini app: <b>" + formatNumber(data.total) + "</b>",
+    "This page opens: <b>" + formatNumber(totalOpens) + "</b>",
+    "Page: <b>" + (data.page + 1) + "</b>",
+    "",
+    data.users.length ? "Select a user (each mini app entry is counted):" : "No mini app opens yet."
+  ].join("\n");
+}
+
+export async function adminMiniAppUsersKeyboard(env, page = 0) {
+  const data = await getAdminMiniAppUsersPage(env, page);
+  const rows = data.users.map((user) => [{ text: miniAppUserLabel(user), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_mini_app_users:" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_mini_app_users:" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+function miniAppUserLabel(user) {
+  return userLabel(user) + " • 📱 " + formatNumber(user.mini_app_open_count || 0);
+}
 
 export async function getAdminBuyersPage(env, page = 0, limit = 8) {
   requireDb(env);
@@ -612,7 +682,7 @@ export async function getAdminUserDetails(env, userId) {
   requireDb(env);
 
   const user = await env.DB.prepare(
-    "SELECT b.user_id, b.username, b.first_name, b.last_name, b.last_seen_at, b.created_at, COALESCE(b.return_count, 0) AS return_count, b.last_returned_at, s.language " +
+    "SELECT b.user_id, b.username, b.first_name, b.last_name, b.last_seen_at, b.created_at, COALESCE(b.return_count, 0) AS return_count, b.last_returned_at, COALESCE(b.mini_app_open_count, 0) AS mini_app_open_count, b.last_mini_app_opened_at, s.language " +
     "FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id WHERE b.user_id = ?"
   ).bind(String(userId)).first();
 
@@ -789,6 +859,8 @@ export async function adminUserText(env, userId) {
     "",
     "Returns to bot: <b>" + Number(user.return_count || 0).toLocaleString("en-US") + "</b>",
     "Last return: <b>" + escapeHtml(formatTehranTime(user.last_returned_at)) + "</b>",
+    "Mini app opens: <b>" + Number(user.mini_app_open_count || 0).toLocaleString("en-US") + "</b>",
+    "Last mini app open: <b>" + escapeHtml(formatTehranTime(user.last_mini_app_opened_at)) + "</b>",
     "Last seen: <b>" + escapeHtml(formatTehranTime(user.last_seen_at)) + "</b>",
     "Created: <b>" + escapeHtml(formatTehranTime(user.created_at)) + "</b>",
   ].join("\n");
