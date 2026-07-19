@@ -2,6 +2,52 @@ const GPT_TIMEOUT_MS = 45000;
 const GPT_MODEL = "gpt-4o-mini";
 const MAX_ENHANCE_CHARS = 5000;
 
+const GPT_IMAGE_MODEL = "gpt-image-2";
+const GPT_IMAGE_SIZE = "1024x1024";
+const MAX_IMAGE_PROMPT_CHARS = 2000;
+
+export async function generateImage(env, prompt) {
+  if (!env.GPT_API) {
+    throw new Error("GPT image service is not configured.");
+  }
+
+  const cleanPrompt = String(prompt || "").trim();
+  if (!cleanPrompt) {
+    throw new Error("Image prompt is empty.");
+  }
+
+  if (Array.from(cleanPrompt).length > MAX_IMAGE_PROMPT_CHARS) {
+    throw new Error("Image prompt is too long. Please send a shorter prompt.");
+  }
+
+  const response = await fetchWithTimeout("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + env.GPT_API,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: GPT_IMAGE_MODEL,
+      prompt: cleanPrompt,
+      size: GPT_IMAGE_SIZE,
+      output_format: "png",
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(toFriendlyGptImageError(response.status, errorBody));
+  }
+
+  const data = await response.json();
+  const b64 = data?.data?.[0]?.b64_json || "";
+  if (!b64) {
+    throw new Error("AI did not return an image. Please try again.");
+  }
+
+  return base64ToArrayBuffer(b64);
+}
+
 export async function enhanceTextWithEmotion(env, text, language = "en") {
   if (!env.GPT_API) {
     throw new Error("GPT service is not configured.");
@@ -143,4 +189,44 @@ function toFriendlyGptError(status, errorBody) {
   }
 
   return "AI could not enhance this text. Please try again.";
+}
+
+function toFriendlyGptImageError(status, errorBody) {
+  let message = "";
+
+  try {
+    const parsed = JSON.parse(errorBody);
+    message = parsed?.error?.message || parsed?.message || "";
+  } catch {
+    message = errorBody || "";
+  }
+
+  const raw = String(message || "").toLowerCase();
+
+  if (status === 401 || raw.includes("invalid api key") || raw.includes("unauthorized")) {
+    return "AI image connection error. Please try again later.";
+  }
+
+  if (status === 429 || raw.includes("rate limit") || raw.includes("quota")) {
+    return "AI image service is temporarily busy. Please try again later.";
+  }
+
+  if (status === 400 && (raw.includes("policy") || raw.includes("safety") || raw.includes("moderation"))) {
+    return "This image request cannot be generated. Please try a different prompt.";
+  }
+
+  if (status >= 500) {
+    return "AI image service is temporarily unavailable. Please try again later.";
+  }
+
+  return "AI could not generate this image. Please try again.";
+}
+
+function base64ToArrayBuffer(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
 }

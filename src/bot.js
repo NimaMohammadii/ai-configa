@@ -74,12 +74,13 @@ import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { claimDailyReward, dailyRewardMessage, setDailyRewardCredits } from "./daily-reward.js";
 import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
 import { getDemoText } from "./demo-texts.js";
+import { generateImage } from "./gpt.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
 import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember, isMandatoryFaMembershipEnabled, setMandatoryFaMembershipEnabled } from "./mandatory-channel.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
-import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
+import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPhoto, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
 import { buildTtsAudioFileName, buildTtsHistoryFile, getNextTtsFileSequence, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
 import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
@@ -202,6 +203,11 @@ export async function handleMessage(message, env) {
   }
 
   if (await requireFaMembership(env, chatId, userId, messageId, state, false)) {
+    return;
+  }
+
+  if (isImageCommand(text)) {
+    await handleImageCommand(env, chatId, userId, messageId, text, state);
     return;
   }
 
@@ -766,6 +772,55 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id);
     await makeAndSendAudio(env, chatId, userId, null, getDemoText(state.language, state.voice || "Nora"), state, true);
   }
+}
+
+function isImageCommand(text) {
+  return /^\/image(?:@\w+)?(?:\s|$)/i.test(String(text || ""));
+}
+
+function getImagePrompt(text) {
+  return String(text || "").replace(/^\/image(?:@\w+)?/i, "").trim();
+}
+
+async function handleImageCommand(env, chatId, userId, messageId, text, state) {
+  const prompt = getImagePrompt(text);
+  await deleteMessage(env, chatId, messageId).catch(() => null);
+
+  if (!prompt) {
+    await sendMessage(env, chatId, imageUsageText(state), mainKeyboard(state));
+    return;
+  }
+
+  const waitMessage = await sendMessage(env, chatId, imageWaitText(state));
+
+  try {
+    const image = await generateImage(env, prompt);
+    await deleteMessage(env, chatId, waitMessage?.message_id).catch(() => null);
+    await sendPhoto(env, chatId, image, "vexa-image.png", imageCaption(prompt, state));
+  } catch (error) {
+    await deleteMessage(env, chatId, waitMessage?.message_id).catch(() => null);
+    await sendMessage(env, chatId, error?.message || imageErrorText(state), mainKeyboard(state));
+  }
+}
+
+function imageUsageText(state) {
+  return state.language === "fa"
+    ? "🎨 برای ساخت تصویر، دستور را همراه توضیح تصویر بفرست:\n\n<code>/image یک گربه فضانورد روی ماه، سبک سینمایی</code>"
+    : "🎨 To create an image, send /image followed by your prompt:\n\n<code>/image a cinematic astronaut cat on the moon</code>";
+}
+
+function imageWaitText(state) {
+  return state.language === "fa" ? "🎨 دارم تصویر را می‌سازم..." : "🎨 Generating your image...";
+}
+
+function imageErrorText(state) {
+  return state.language === "fa" ? "ساخت تصویر ناموفق بود. دوباره تلاش کن." : "Image generation failed. Please try again.";
+}
+
+function imageCaption(prompt, state) {
+  const cleanPrompt = String(prompt || "").slice(0, 850);
+  const label = state.language === "fa" ? "ساخته‌شده با GPT Image 2" : "Generated with GPT Image 2";
+  return "🎨 " + label + "\n\n" + escapeHtml(cleanPrompt);
 }
 
 async function handleAdminPhotoInput(env, chatId, adminId, message) {
