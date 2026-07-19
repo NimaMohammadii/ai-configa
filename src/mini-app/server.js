@@ -2,7 +2,7 @@ import { getMiniAppAccessSettings, isAdmin } from "../admin.js";
 import { getBalance, spendCredits } from "../credits.js";
 import { textToSpeech } from "../elevenlabs.js";
 import { normalizeLang } from "../i18n.js";
-import { getState, saveState } from "../state.js";
+import { getState } from "../state.js";
 import { buildTtsAudioFileName, getNextTtsFileSequence, saveTtsHistory } from "../tts-history.js";
 import { VOICES } from "../voices.js";
 import { MINI_APP_JS } from "./client.js";
@@ -64,12 +64,7 @@ async function createTts(request, env) {
   const access = await getMiniAppAccessForUser(env, user.id);
   if (access.locked) return responseError("Mini app is updating.", 423);
   const state = await getState(env, user.id);
-  const requestedVoiceName = resolveVoiceName(body.voice);
-  const voiceName = requestedVoiceName || (VOICES[state.voice] ? state.voice : "Nora");
-  if (requestedVoiceName && state.voice !== voiceName) {
-    state.voice = voiceName;
-    await saveState(env, user.id, state);
-  }
+  const voiceName = state.voice || "Nora";
   const voiceId = VOICES[voiceName] || VOICES.Nora;
   const lang = normalizeLang(state.language || user.language_code || "en");
   const cost = Array.from(text).length;
@@ -91,13 +86,6 @@ async function createTts(request, env) {
     language: lang,
     balance: balance - cost,
   };
-}
-
-function resolveVoiceName(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-  if (VOICES[raw]) return raw;
-  return Object.keys(VOICES).find((name) => VOICES[name] === raw) || null;
 }
 
 async function getMiniAppAccessForUser(env, userId) {
