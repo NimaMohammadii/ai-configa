@@ -1,6 +1,9 @@
 import {
   adminBroadcastPromptText,
   adminCancelKeyboard,
+  adminChannelPostPromptText,
+  adminChannelPostsKeyboard,
+  adminChannelPostsText,
   adminCreditPromptText,
   adminDailyRewardKeyboard,
   adminDailyRewardPromptText,
@@ -41,11 +44,14 @@ import {
   adminReturnUsersKeyboard,
   adminReturnUsersText,
   adminUserText,
+  buildMiniAppUrl,
+  channelPostMiniAppKeyboard,
   clearAdminAction,
   deleteWelcomeAudio,
   deleteVoiceProfile,
   getAdminAction,
   getAllUserIds,
+  getChannelPostLanguageSettings,
   isAdmin,
   resetUser,
   resolveStartLanguage,
@@ -616,6 +622,23 @@ export async function handleCallback(query, env) {
     return;
   }
 
+  if (data === "admin_channel_posts") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, adminChannelPostsText(), adminChannelPostsKeyboard());
+    return;
+  }
+
+  if (data.startsWith("admin_channel_post_prompt:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const language = data.split(":")[1] || "fa";
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "channel_post", { targetUserId: language, chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminChannelPostPromptText(language), adminCancelKeyboard("admin_channel_posts"));
+    return;
+  }
+
   if (!state.language) {
     const startLanguage = await resolveStartLanguage(env, state.language);
     await answerCallback(env, query.id);
@@ -875,6 +898,21 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     return true;
   }
 
+  if (action.action === "channel_post") {
+    const language = action.target_user_id || "fa";
+    const settings = getChannelPostLanguageSettings(language);
+
+    try {
+      const miniAppUrl = buildMiniAppUrl(env);
+      await sendPlainMessage(env, settings.channel, text, channelPostMiniAppKeyboard(miniAppUrl));
+      await clearAdminAction(env, adminId);
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostsText() + "\n\n✅ Post sent to " + settings.channel + ".", adminChannelPostsKeyboard());
+    } catch (error) {
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostPromptText(language) + "\n\n❌ " + escapeForAdminError(error), adminCancelKeyboard("admin_channel_posts"));
+    }
+    return true;
+  }
+
   await clearAdminAction(env, adminId);
   return true;
 }
@@ -928,6 +966,10 @@ async function editBroadcastProgress(env, chatId, adminId, messageId, total, sen
     "Skipped: <b>" + skipped + "</b>"
   ].join("\n");
   await editCurrentMenu(env, chatId, adminId, messageId, text, done ? adminMainKeyboard() : null).catch(() => null);
+}
+
+function escapeForAdminError(error) {
+  return String(error?.message || error).replace(/[<>&]/g, (char) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[char]));
 }
 
 function parseCreditAmount(text) {

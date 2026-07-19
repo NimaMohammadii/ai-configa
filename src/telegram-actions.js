@@ -13,10 +13,11 @@ export async function sendMessage(env, chatId, text, replyMarkup = null) {
   return result;
 }
 
-export async function sendPlainMessage(env, chatId, text) {
+export async function sendPlainMessage(env, chatId, text, replyMarkup = null) {
   const result = await tgJson(env, "sendMessage", {
     chat_id: chatId,
     text,
+    reply_markup: replyMarkup,
   });
   rememberBotMessage(chatId, result?.message_id);
   return result;

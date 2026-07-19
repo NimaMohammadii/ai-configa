@@ -110,7 +110,8 @@ export function adminMainKeyboard() {
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }, { text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }],
       [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }, { text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
-      [{ text: "Broadcast Message", callback_data: "admin_broadcast" }, { text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
+      [{ text: "Broadcast Message", callback_data: "admin_broadcast" }, { text: "📢 Channel Posts", callback_data: "admin_channel_posts" }],
+      [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
   };
 }
@@ -1083,6 +1084,67 @@ function normalizeVoiceProfileName(voiceName) {
   const match = VOICE_NAMES.find((name) => name.toLowerCase() === raw.toLowerCase());
   if (!match) throw new Error("Invalid voice name");
   return match;
+}
+
+
+const CHANNEL_POST_LANGUAGE_SETTINGS = {
+  fa: { label: "فارسی", channel: "@VexaOrder" },
+};
+
+export function adminChannelPostsText() {
+  return [
+    "📢 <b>Channel Posts</b>",
+    "",
+    "Send a post to a language-specific Telegram channel with an inline Mini App button under it.",
+    "",
+    "Configured channels:",
+    ...Object.entries(CHANNEL_POST_LANGUAGE_SETTINGS).map(([code, settings]) => "• <b>" + settings.label + "</b> (<code>" + code + "</code>): <b>" + escapeHtml(settings.channel) + "</b>"),
+    "",
+    "Button text: <b>Open Mini App</b>"
+  ].join("\n");
+}
+
+export function adminChannelPostsKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "🇮🇷 Send Persian Post", callback_data: "admin_channel_post_prompt:fa" }],
+      [{ text: "← Back", callback_data: "admin_main" }],
+    ],
+  };
+}
+
+export function adminChannelPostPromptText(language = "fa") {
+  const settings = getChannelPostLanguageSettings(language);
+  return [
+    "📢 <b>Send Channel Post</b>",
+    "",
+    "Language: <b>" + settings.label + "</b>",
+    "Channel: <b>" + escapeHtml(settings.channel) + "</b>",
+    "",
+    "Send the text you want to publish.",
+    "It will be posted with an inline button named <b>Open Mini App</b> below it.",
+    "",
+    "Your message will be deleted after processing."
+  ].join("\n");
+}
+
+export function getChannelPostLanguageSettings(language = "fa") {
+  const normalized = normalizeLang(language);
+  return CHANNEL_POST_LANGUAGE_SETTINGS[normalized] || CHANNEL_POST_LANGUAGE_SETTINGS.fa;
+}
+
+export function buildMiniAppUrl(env) {
+  const raw = env.MINI_APP_URL || env.WEB_APP_URL || env.APP_URL || env.PUBLIC_APP_URL || "";
+  if (!raw) throw new Error("Set MINI_APP_URL to the public /mini-app URL before sending channel posts.");
+  const trimmed = String(raw).trim().replace(/\/+$/, "");
+  if (!/^https:\/\//i.test(trimmed)) throw new Error("MINI_APP_URL must be an HTTPS URL.");
+  return trimmed.endsWith("/mini-app") ? trimmed : trimmed + "/mini-app";
+}
+
+export function channelPostMiniAppKeyboard(miniAppUrl) {
+  return {
+    inline_keyboard: [[{ text: "Open Mini App", web_app: { url: miniAppUrl } }]],
+  };
 }
 
 export function adminBroadcastPromptText() {
