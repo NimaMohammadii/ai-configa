@@ -6,9 +6,10 @@ const MAX_ENHANCE_CHARS = 5000;
 const GPT_IMAGE_MODEL = "gpt-image-2";
 const GPT_IMAGE_SIZE = "1024x1024";
 const GPT_IMAGE_QUALITY = "low";
+const GPT_IMAGE_SIZES = new Set(["1024x1024", "1024x1536", "1536x1024"]);
 const MAX_IMAGE_PROMPT_CHARS = 2000;
 
-export async function generateImage(env, prompt) {
+export async function generateImage(env, prompt, options = {}) {
   if (!env.GPT_API) {
     throw new Error("GPT image service is not configured.");
   }
@@ -33,7 +34,7 @@ export async function generateImage(env, prompt) {
       body: JSON.stringify({
         model: GPT_IMAGE_MODEL,
         prompt: cleanPrompt,
-        size: GPT_IMAGE_SIZE,
+        size: resolveImageSize(options.size),
         quality: GPT_IMAGE_QUALITY,
         output_format: "png",
       }),
@@ -56,7 +57,7 @@ export async function generateImage(env, prompt) {
   return base64ToArrayBuffer(b64);
 }
 
-export async function editImage(env, prompt, imageBuffer, filename = "telegram-image.jpg", mimeType = "image/jpeg") {
+export async function editImage(env, prompt, imageBuffer, filename = "telegram-image.jpg", mimeType = "image/jpeg", options = {}) {
   if (!env.GPT_API) {
     throw new Error("GPT image service is not configured.");
   }
@@ -81,7 +82,7 @@ export async function editImage(env, prompt, imageBuffer, filename = "telegram-i
   form.append("model", GPT_IMAGE_MODEL);
   form.append("prompt", cleanPrompt);
   form.append("image[]", new Blob([imageBuffer], { type: uploadMimeType }), uploadFilename);
-  form.append("size", GPT_IMAGE_SIZE);
+  form.append("size", resolveImageSize(options.size));
   form.append("quality", GPT_IMAGE_QUALITY);
   form.append("output_format", "png");
 
@@ -110,6 +111,11 @@ export async function editImage(env, prompt, imageBuffer, filename = "telegram-i
   }
 
   return base64ToArrayBuffer(b64);
+}
+
+function resolveImageSize(value) {
+  const size = String(value || "").trim().toLowerCase();
+  return GPT_IMAGE_SIZES.has(size) ? size : GPT_IMAGE_SIZE;
 }
 
 function safeImageFilename(value) {
