@@ -74,16 +74,15 @@ import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { claimDailyReward, dailyRewardMessage, setDailyRewardCredits } from "./daily-reward.js";
 import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
 import { getDemoText } from "./demo-texts.js";
-import { editImage, generateImage } from "./gpt.js";
+import { enqueueImageJob } from "./image-jobs.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
 import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember, isMandatoryFaMembershipEnabled, setMandatoryFaMembershipEnabled } from "./mandatory-channel.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPhoto, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
-import { downloadTelegramFile } from "./telegram-api.js";
 import { buildTtsAudioFileName, buildTtsHistoryFile, getNextTtsFileSequence, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
-import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, escapeHtml, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
+import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
 
 export async function handleMessage(message, env) {
@@ -801,9 +800,14 @@ async function handleImageCommand(env, chatId, userId, messageId, text, state) {
   const waitMessage = await sendMessage(env, chatId, imageWaitText(state));
 
   try {
-    const image = await generateImage(env, prompt);
-    await deleteMessage(env, chatId, waitMessage?.message_id).catch(() => null);
-    await sendPhoto(env, chatId, image, "vexa-image.png", imageCaption(prompt, state));
+    await enqueueImageJob(env, {
+      chatId,
+      userId,
+      kind: "generate",
+      prompt,
+      language: state.language,
+      waitMessageId: waitMessage?.message_id,
+    });
   } catch (error) {
     await deleteMessage(env, chatId, waitMessage?.message_id).catch(() => null);
     await sendMessage(env, chatId, error?.message || imageErrorText(state), mainKeyboard(state));
@@ -828,10 +832,15 @@ async function handleImageEditCommand(env, chatId, userId, messageId, caption, m
   const waitMessage = await sendMessage(env, chatId, imageEditWaitText(state));
 
   try {
-    const source = await downloadTelegramFile(env, fileId);
-    const image = await editImage(env, prompt, source.buffer, source.filename, source.mimeType);
-    await deleteMessage(env, chatId, waitMessage?.message_id).catch(() => null);
-    await sendPhoto(env, chatId, image, "vexa-edited-image.png", imageCaption(prompt, state));
+    await enqueueImageJob(env, {
+      chatId,
+      userId,
+      kind: "edit",
+      prompt,
+      sourceFileId: fileId,
+      language: state.language,
+      waitMessageId: waitMessage?.message_id,
+    });
   } catch (error) {
     await deleteMessage(env, chatId, waitMessage?.message_id).catch(() => null);
     await sendMessage(env, chatId, error?.message || imageErrorText(state), mainKeyboard(state));
@@ -860,12 +869,6 @@ function imageWaitText(state) {
 
 function imageErrorText(state) {
   return state.language === "fa" ? "ساخت تصویر ناموفق بود. دوباره تلاش کن." : "Image generation failed. Please try again.";
-}
-
-function imageCaption(prompt, state) {
-  const cleanPrompt = String(prompt || "").slice(0, 850);
-  const label = state.language === "fa" ? "ساخته‌شده با GPT Image 2" : "Generated with GPT Image 2";
-  return "🎨 " + label + "\n\n" + escapeHtml(cleanPrompt);
 }
 
 async function handleAdminPhotoInput(env, chatId, adminId, message) {
