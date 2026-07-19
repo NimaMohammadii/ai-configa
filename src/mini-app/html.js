@@ -2,7 +2,7 @@ import { VOICE_NAMES, VOICES } from "../voices.js";
 
 const VOICE_ROWS = VOICE_NAMES.map((name) => {
   const voiceId = VOICES[name];
-  return `<div class="voice-option" data-voice-row="${voiceId}"><span class="voice-avatar" aria-hidden="true"><span class="voice-avatar-image"></span></span><button class="voice-select${name === "Liam" ? " active" : ""}" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span>${name}</span></button><button class="voice-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Play ${name} demo"><span class="voice-preview-icon">▶</span></button></div>`;
+  return `<div class="voice-option" data-voice-row="${voiceId}"><span class="voice-avatar" aria-hidden="true"><img class="voice-avatar-image" alt="" decoding="async"/></span><button class="voice-select${name === "Liam" ? " active" : ""}" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span>${name}</span></button><button class="voice-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Play ${name} demo"><span class="voice-preview-icon">▶</span></button></div>`;
 }).join("");
 
 export const MINI_APP_HTML = `<!doctype html>
@@ -55,6 +55,6 @@ export const MINI_APP_HTML = `<!doctype html>
   </main>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260719-7"></script>
+  <script type="module" src="/mini-app/app.js?v=20260719-8"></script>
 </body>
 </html>`;
