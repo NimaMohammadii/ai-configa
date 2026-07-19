@@ -38,7 +38,8 @@ export async function generateImage(env, prompt, options = {}) {
         size: resolveImageSize(options.size),
         quality: GPT_IMAGE_QUALITY,
         moderation: "low",
-        output_format: "png",
+        output_format: "jpeg",
+        output_compression: 90,
       }),
     },
     GPT_IMAGE_TIMEOUT_MS,
@@ -98,7 +99,8 @@ export async function editImages(env, prompt, images, options = {}) {
   form.append("size", resolveImageSize(options.size));
   form.append("quality", GPT_IMAGE_QUALITY);
   form.append("moderation", "low");
-  form.append("output_format", "png");
+  form.append("output_format", "jpeg");
+  form.append("output_compression", "90");
 
   const response = await fetchWithTimeout(
     "https://api.openai.com/v1/images/edits",
