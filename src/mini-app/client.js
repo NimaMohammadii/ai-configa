@@ -1,22 +1,15 @@
 export const MINI_APP_JS = `
 (function(){
   var tg=window.Telegram&&window.Telegram.WebApp;
-  function expandMiniApp(){
-    if(!tg)return;
-    try{tg.ready&&tg.ready()}catch(e){}
-    try{tg.expand&&tg.expand()}catch(e){}
-    try{tg.requestFullscreen&&tg.requestFullscreen()}catch(e){}
-    try{tg.disableVerticalSwipes&&tg.disableVerticalSwipes()}catch(e){}
-  }
-  expandMiniApp();
-  setTimeout(expandMiniApp,120);
-  setTimeout(expandMiniApp,500);
-  setTimeout(expandMiniApp,1200);
+  function expandMiniApp(){if(!tg)return;try{tg.ready&&tg.ready()}catch(e){}try{tg.expand&&tg.expand()}catch(e){}try{tg.requestFullscreen&&tg.requestFullscreen()}catch(e){}try{tg.disableVerticalSwipes&&tg.disableVerticalSwipes()}catch(e){}}
+  expandMiniApp();setTimeout(expandMiniApp,120);setTimeout(expandMiniApp,500);setTimeout(expandMiniApp,1200);
 
   var selectedVoice='TX3LPaxmHKxFdv7VOQHJ';
   var initData=(tg&&tg.initData)||'';
   var lockTimer=null;
   var toastTimer=null;
+  var activePreviewButton=null;
+  var activePreviewVoice='';
 
   function q(id){return document.getElementById(id)}
   function setText(id,value){var node=q(id);if(node)node.textContent=value}
@@ -25,91 +18,35 @@ export const MINI_APP_JS = `
   function dismissKeyboard(){var active=document.activeElement;if(active&&typeof active.blur==='function')active.blur();setKeyboardOpen(false)}
   function setLimitSheet(open){var sheet=q('ttsLimitSheet');if(!sheet)return;sheet.classList.toggle('open',!!open);sheet.setAttribute('aria-hidden',open?'false':'true')}
   function updateTtsCharCount(){var input=q('ttsText');var counter=q('ttsCharCount');var flow=q('flow');var count=(input&&input.value||'').length;if(counter)counter.textContent=String(count)+' characters';if(flow)flow.classList.toggle('over-limit',count>1000)}
-  function setVoice(value,label){selectedVoice=value;setText('voiceLabel',label);document.querySelectorAll('[data-voice]').forEach(function(option){option.classList.toggle('active',option.getAttribute('data-voice')===value)});var wrap=q('voiceWrap');if(wrap)wrap.classList.remove('open')}
-  function setVoiceByName(name){var clean=String(name||'Nora').trim();var option=Array.prototype.slice.call(document.querySelectorAll('[data-voice]')).filter(function(item){return String(item.textContent||'').trim().toLowerCase()===clean.toLowerCase()})[0];if(option){setVoice(option.getAttribute('data-voice'),String(option.textContent||clean).trim());return}setText('voiceLabel',clean);document.querySelectorAll('[data-voice]').forEach(function(item){item.classList.remove('active')})}
+  function stopPreview(){var audio=q('voicePreviewAudio');if(audio){audio.pause();audio.removeAttribute('src');audio.load()}if(activePreviewButton){activePreviewButton.classList.remove('loading','playing')}activePreviewButton=null;activePreviewVoice=''}
+  function setVoice(value,label){selectedVoice=value;setText('voiceLabel',label);document.querySelectorAll('.voice-select[data-voice]').forEach(function(option){option.classList.toggle('active',option.getAttribute('data-voice')===value)});var wrap=q('voiceWrap');if(wrap)wrap.classList.remove('open')}
+  function setVoiceByName(name){var clean=String(name||'Nora').trim();var option=Array.prototype.slice.call(document.querySelectorAll('.voice-select[data-voice]')).filter(function(item){return String(item.getAttribute('data-voice-name')||'').trim().toLowerCase()===clean.toLowerCase()})[0];if(option){setVoice(option.getAttribute('data-voice'),option.getAttribute('data-voice-name')||clean);return}setText('voiceLabel',clean);document.querySelectorAll('.voice-select[data-voice]').forEach(function(item){item.classList.remove('active')})}
   function formatTime(seconds){var value=Math.max(0,Math.floor(Number(seconds)||0));return Math.floor(value/60)+':'+String(value%60).padStart(2,'0')}
 
-  async function api(path,body){
-    var response=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.assign({initData:initData},body||{}))});
-    var data=await response.json().catch(function(){return{error:'Invalid response'}});
-    if(!response.ok)throw new Error(data.error||'Request failed');
-    return data;
+  async function api(path,body){var response=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.assign({initData:initData},body||{}))});var data=await response.json().catch(function(){return{error:'Invalid response'}});if(!response.ok)throw new Error(data.error||'Request failed');return data}
+
+  function showLocked(data){document.body.classList.add('is-locked');document.body.innerHTML='<main class="lock-screen"><section class="lock-card" aria-label="Mini app update"><p class="lock-title">Updating</p><div class="lock-bar" aria-hidden="true"><span id="lockFill"></span></div></section></main>';var fill=q('lockFill');var serverNow=Number(data.serverNow)||Math.floor(Date.now()/1000);var lockedUntil=Number(data.lockedUntil)||serverNow+60;var lockedFrom=Number(data.lockedFrom)||Math.max(serverNow,lockedUntil-60);var total=Math.max(1,lockedUntil-lockedFrom);var offset=serverNow-Date.now()/1000;function tick(){var now=Date.now()/1000+offset;var progress=Math.min(100,Math.max(0,(now-lockedFrom)/total*100));if(fill)fill.style.width=progress+'%';if(now>=lockedUntil){clearInterval(lockTimer);location.reload()}}tick();lockTimer=setInterval(tick,500)}
+
+  async function load(){try{var data=await api('/mini-app/api/session',{});if(data.locked){showLocked(data);return}setVoiceByName(data.voice||'Nora');setText('balance',Number(data.balance||0).toLocaleString('en-US'))}catch(error){toast(error.message)}}
+
+  async function previewVoice(button){var voiceId=button.getAttribute('data-preview-voice')||'';var voiceName=button.getAttribute('data-preview-name')||'Voice';var audio=q('voicePreviewAudio');if(!voiceId||!audio)return;
+    if(activePreviewButton===button&&activePreviewVoice===voiceId&&!audio.paused){audio.pause();return}
+    stopPreview();
+    activePreviewButton=button;activePreviewVoice=voiceId;button.classList.add('loading');
+    try{var data=await api('/mini-app/api/voice-demo',{voice:voiceId});if(activePreviewButton!==button)return;audio.src='data:audio/mpeg;base64,'+data.audioBase64;button.classList.remove('loading');button.classList.add('playing');await audio.play()}catch(error){button.classList.remove('loading','playing');activePreviewButton=null;activePreviewVoice='';toast(error.message||('Could not play '+voiceName))}
   }
 
-  function showLocked(data){
-    document.body.classList.add('is-locked');
-    document.body.innerHTML='<main class="lock-screen"><section class="lock-card" aria-label="Mini app update"><p class="lock-title">Updating</p><div class="lock-bar" aria-hidden="true"><span id="lockFill"></span></div></section></main>';
-    var fill=q('lockFill');
-    var serverNow=Number(data.serverNow)||Math.floor(Date.now()/1000);
-    var lockedUntil=Number(data.lockedUntil)||serverNow+60;
-    var lockedFrom=Number(data.lockedFrom)||Math.max(serverNow,lockedUntil-60);
-    var total=Math.max(1,lockedUntil-lockedFrom);
-    var offset=serverNow-Date.now()/1000;
-    function tick(){var now=Date.now()/1000+offset;var progress=Math.min(100,Math.max(0,(now-lockedFrom)/total*100));if(fill)fill.style.width=progress+'%';if(now>=lockedUntil){clearInterval(lockTimer);location.reload()}}
-    tick();
-    lockTimer=setInterval(tick,500);
-  }
+  async function generateTts(){var text=(q('ttsText')&&q('ttsText').value.trim())||'';if(!text)return toast('Type text first');if(text.length>1000){setLimitSheet(true);return}var button=q('convertButton');if(button)button.disabled=true;var audio=q('ttsAudio');var player=q('wavePlayer');if(player)player.classList.remove('show');if(audio){audio.pause();audio.removeAttribute('src');audio.load()}stopPreview();setText('wavePlay','▶');setText('waveTime','0:00');toast('Generating voice');try{var data=await api('/mini-app/api/tts',{text:text,voice:selectedVoice});if(data.voice)setVoiceByName(data.voice);setText('balance',Number(data.balance||0).toLocaleString('en-US'));if(audio)audio.src='data:audio/mpeg;base64,'+data.audioBase64;if(player)player.classList.add('show');toast('Voice generated')}catch(error){toast(error.message)}finally{if(button)button.disabled=false}}
 
-  async function load(){
-    try{
-      var data=await api('/mini-app/api/session',{});
-      if(data.locked){showLocked(data);return}
-      setVoiceByName(data.voice||'Nora');
-      setText('balance',Number(data.balance||0).toLocaleString('en-US'));
-    }catch(error){toast(error.message)}
-  }
-
-  async function generateTts(){
-    var text=(q('ttsText')&&q('ttsText').value.trim())||'';
-    if(!text)return toast('Type text first');
-    if(text.length>1000){setLimitSheet(true);return}
-    var button=q('convertButton');
-    if(button)button.disabled=true;
-    var audio=q('ttsAudio');
-    var player=q('wavePlayer');
-    if(player)player.classList.remove('show');
-    if(audio){audio.pause();audio.removeAttribute('src');audio.load()}
-    setText('wavePlay','▶');
-    setText('waveTime','0:00');
-    toast('Generating voice');
-    try{
-      var data=await api('/mini-app/api/tts',{text:text,voice:selectedVoice});
-      if(data.voice)setVoiceByName(data.voice);
-      setText('balance',Number(data.balance||0).toLocaleString('en-US'));
-      if(audio)audio.src='data:audio/mpeg;base64,'+data.audioBase64;
-      if(player)player.classList.add('show');
-      toast('Voice generated');
-    }catch(error){toast(error.message)}finally{if(button)button.disabled=false}
-  }
-
-  function playTts(){var audio=q('ttsAudio');if(!audio||!audio.src)return toast('Generate voice first');if(audio.paused){audio.play().catch(function(error){toast(error.message)})}else audio.pause()}
+  function playTts(){var audio=q('ttsAudio');if(!audio||!audio.src)return toast('Generate voice first');stopPreview();if(audio.paused){audio.play().catch(function(error){toast(error.message)})}else audio.pause()}
 
   document.body.addEventListener('focusin',function(event){if(event.target&&event.target.id==='ttsText')setKeyboardOpen(true)});
   document.body.addEventListener('focusout',function(event){if(event.target&&event.target.id==='ttsText')setTimeout(function(){if(document.activeElement!==q('ttsText'))setKeyboardOpen(false)},80)});
-  document.body.addEventListener('click',function(event){
-    var button=event.target&&event.target.closest?event.target.closest('button'):null;
-    if(!button){var wrap=q('voiceWrap');if(wrap)wrap.classList.remove('open');return}
-    var voice=button.getAttribute('data-voice');
-    if(voice){setVoice(voice,button.textContent||voice);return}
-    var action=button.getAttribute('data-action');
-    if(action==='open-char-limit'){setLimitSheet(true);return}
-    if(action==='close-char-limit'){setLimitSheet(false);return}
-    if(action==='dismiss-keyboard'){dismissKeyboard();return}
-    if(action==='toggle-voice'){var wrap=q('voiceWrap');if(wrap)wrap.classList.toggle('open');return}
-    if(action==='generate-tts'){generateTts();return}
-    if(action==='play-tts')playTts();
-  });
+  document.body.addEventListener('click',function(event){var button=event.target&&event.target.closest?event.target.closest('button'):null;if(!button){var wrap=q('voiceWrap');if(wrap)wrap.classList.remove('open');return}var action=button.getAttribute('data-action');if(action==='preview-voice'){event.preventDefault();event.stopPropagation();previewVoice(button);return}var voice=button.getAttribute('data-voice');if(voice){stopPreview();setVoice(voice,button.getAttribute('data-voice-name')||button.textContent||voice);return}if(action==='open-char-limit'){setLimitSheet(true);return}if(action==='close-char-limit'){setLimitSheet(false);return}if(action==='dismiss-keyboard'){dismissKeyboard();return}if(action==='toggle-voice'){var wrap=q('voiceWrap');if(wrap)wrap.classList.toggle('open');return}if(action==='generate-tts'){generateTts();return}if(action==='play-tts')playTts()});
 
-  var input=q('ttsText');
-  if(input)input.addEventListener('input',updateTtsCharCount);
-  var audio=q('ttsAudio');
-  if(audio){
-    audio.addEventListener('play',function(){setText('wavePlay','Pause')});
-    audio.addEventListener('pause',function(){setText('wavePlay',audio.currentTime>0?'Play':'▶')});
-    audio.addEventListener('timeupdate',function(){setText('waveTime',formatTime(audio.currentTime))});
-    audio.addEventListener('ended',function(){audio.currentTime=0;setText('wavePlay','▶');setText('waveTime','0:00')});
-  }
-  updateTtsCharCount();
-  load();
+  var input=q('ttsText');if(input)input.addEventListener('input',updateTtsCharCount);
+  var audio=q('ttsAudio');if(audio){audio.addEventListener('play',function(){setText('wavePlay','Pause')});audio.addEventListener('pause',function(){setText('wavePlay',audio.currentTime>0?'Play':'▶')});audio.addEventListener('timeupdate',function(){setText('waveTime',formatTime(audio.currentTime))});audio.addEventListener('ended',function(){audio.currentTime=0;setText('wavePlay','▶');setText('waveTime','0:00')})}
+  var previewAudio=q('voicePreviewAudio');if(previewAudio){previewAudio.addEventListener('pause',function(){if(activePreviewButton)activePreviewButton.classList.remove('playing')});previewAudio.addEventListener('play',function(){if(activePreviewButton)activePreviewButton.classList.add('playing')});previewAudio.addEventListener('ended',stopPreview)}
+  updateTtsCharCount();load();
 })();
 `;
