@@ -18,6 +18,7 @@ const MAX_TTS_CHARS = 5000;
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_IMAGE_EDIT_INPUTS = 4;
 const MAX_IMAGE_UPLOAD_TOTAL_BYTES = 24 * 1024 * 1024;
+const IMAGE_CREDIT_COST = 188;
 
 export function isMiniAppRequest(request) {
   return new URL(request.url).pathname.startsWith("/mini-app");
@@ -75,6 +76,8 @@ async function createImage(request, env) {
   const user = await authenticateMiniAppUserFromBody(body, env);
   const access = await getMiniAppAccessForUser(env, user.id);
   if (access.locked) return responseError("Mini app is updating.", 423);
+  const balance = await getBalance(env, user.id);
+  if (balance < IMAGE_CREDIT_COST) return responseError("Not enough credits · Image creation costs 188 credits", 402);
 
   const size = resolveImageSize(body.size);
   const requestedImages = Array.isArray(body.images)
@@ -93,6 +96,12 @@ async function createImage(request, env) {
   const output = sources.length
     ? await editImages(env, prompt, sources, { size })
     : await generateImage(env, prompt, { size });
+  const creditResult = await spendCredits(env, user.id, IMAGE_CREDIT_COST, "mini_app_image", {
+    kind: sources.length ? "edit" : "generate",
+    sourceCount: sources.length,
+    size,
+  });
+  if (!creditResult.ok) return responseError("Not enough credits · Image creation costs 188 credits", 402);
 
   return {
     imageBase64: arrayBufferToBase64(output),
@@ -101,6 +110,8 @@ async function createImage(request, env) {
     kind: sources.length ? "edit" : "generate",
     sourceCount: sources.length,
     size,
+    cost: IMAGE_CREDIT_COST,
+    balance: creditResult.balance,
   };
 }
 
