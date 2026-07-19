@@ -8,6 +8,7 @@ const GPT_IMAGE_SIZE = "1024x1024";
 const GPT_IMAGE_QUALITY = "low";
 const GPT_IMAGE_SIZES = new Set(["1024x1024", "1024x1536", "1536x1024"]);
 const MAX_IMAGE_PROMPT_CHARS = 2000;
+const MAX_IMAGE_EDIT_INPUTS = 4;
 
 export async function generateImage(env, prompt, options = {}) {
   if (!env.GPT_API) {
@@ -59,6 +60,10 @@ export async function generateImage(env, prompt, options = {}) {
 }
 
 export async function editImage(env, prompt, imageBuffer, filename = "telegram-image.jpg", mimeType = "image/jpeg", options = {}) {
+  return editImages(env, prompt, [{ buffer: imageBuffer, filename, mimeType }], options);
+}
+
+export async function editImages(env, prompt, images, options = {}) {
   if (!env.GPT_API) {
     throw new Error("GPT image service is not configured.");
   }
@@ -72,17 +77,24 @@ export async function editImage(env, prompt, imageBuffer, filename = "telegram-i
     throw new Error("Image prompt is too long. Please send a shorter prompt.");
   }
 
-  if (!imageBuffer || !imageBuffer.byteLength) {
-    throw new Error("The source image is empty.");
+  const sources = Array.isArray(images) ? images.slice(0, MAX_IMAGE_EDIT_INPUTS) : [];
+  if (!sources.length) {
+    throw new Error("Add at least one source image.");
   }
 
   const form = new FormData();
-  const uploadFilename = safeImageFilename(filename);
-  const uploadMimeType = normalizeImageMimeType(mimeType, uploadFilename);
 
   form.append("model", GPT_IMAGE_MODEL);
   form.append("prompt", cleanPrompt);
-  form.append("image[]", new Blob([imageBuffer], { type: uploadMimeType }), uploadFilename);
+  for (const source of sources) {
+    const imageBuffer = source?.buffer;
+    if (!imageBuffer || !imageBuffer.byteLength) {
+      throw new Error("One of the source images is empty.");
+    }
+    const uploadFilename = safeImageFilename(source.filename);
+    const uploadMimeType = normalizeImageMimeType(source.mimeType, uploadFilename);
+    form.append("image[]", new Blob([imageBuffer], { type: uploadMimeType }), uploadFilename);
+  }
   form.append("size", resolveImageSize(options.size));
   form.append("quality", GPT_IMAGE_QUALITY);
   form.append("moderation", "low");
