@@ -74,16 +74,23 @@ async function createImage(request, env) {
   const access = await getMiniAppAccessForUser(env, user.id);
   if (access.locked) return responseError("Mini app is updating.", 423);
 
+  const size = resolveImageSize(body.size);
   const source = decodeImageData(body.imageData, body.imageName);
   const output = source
-    ? await editImage(env, prompt, source.buffer, source.filename, source.mimeType)
-    : await generateImage(env, prompt);
+    ? await editImage(env, prompt, source.buffer, source.filename, source.mimeType, { size })
+    : await generateImage(env, prompt, { size });
 
   return {
     imageBase64: arrayBufferToBase64(output),
     filename: source ? "vexa-edited-image.png" : "vexa-image.png",
     kind: source ? "edit" : "generate",
+    size,
   };
+}
+
+function resolveImageSize(value) {
+  const size = String(value || "").trim().toLowerCase();
+  return ["1024x1024", "1024x1536", "1536x1024"].includes(size) ? size : "1024x1024";
 }
 
 function decodeImageData(value, filename) {
