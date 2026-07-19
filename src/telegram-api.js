@@ -32,6 +32,36 @@ export async function tgForm(env, method, form) {
   return json.result;
 }
 
+export async function downloadTelegramFile(env, fileId) {
+  const file = await tgJson(env, "getFile", { file_id: fileId });
+  const filePath = String(file?.file_path || "");
+  if (!filePath) {
+    throw new Error("Telegram did not return the image file.");
+  }
+
+  const tokenPart = ["bot", env.BOT_TOKEN].join("");
+  const url = [TG_HOST, "file", tokenPart, filePath].join("/");
+  const res = await fetchWithTimeout(url, { method: "GET" });
+  if (!res.ok) {
+    throw new Error("Telegram image download failed.");
+  }
+
+  const filename = filePath.split("/").pop() || "telegram-image.jpg";
+  const mimeType = res.headers.get("content-type") || mimeTypeFromFilename(filename);
+  return {
+    buffer: await res.arrayBuffer(),
+    filename,
+    mimeType,
+  };
+}
+
+function mimeTypeFromFilename(filename) {
+  const value = String(filename || "").toLowerCase();
+  if (value.endsWith(".png")) return "image/png";
+  if (value.endsWith(".webp")) return "image/webp";
+  return "image/jpeg";
+}
+
 async function fetchWithTimeout(url, options) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("telegram_timeout"), TELEGRAM_TIMEOUT_MS);
