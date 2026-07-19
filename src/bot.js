@@ -74,13 +74,14 @@ import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { claimDailyReward, dailyRewardMessage, setDailyRewardCredits } from "./daily-reward.js";
 import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
 import { getDemoText } from "./demo-texts.js";
-import { generateImage } from "./gpt.js";
+import { editImage, generateImage } from "./gpt.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
 import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember, isMandatoryFaMembershipEnabled, setMandatoryFaMembershipEnabled } from "./mandatory-channel.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPhoto, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
+import { downloadTelegramFile } from "./telegram-api.js";
 import { buildTtsAudioFileName, buildTtsHistoryFile, getNextTtsFileSequence, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
 import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, escapeHtml, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES } from "./voices.js";
@@ -90,6 +91,7 @@ export async function handleMessage(message, env) {
   const userId = message.from && message.from.id;
   const messageId = message.message_id;
   const text = message.text ? message.text.trim() : "";
+  const caption = message.caption ? message.caption.trim() : "";
   const hasPhoto = Array.isArray(message.photo) && message.photo.length > 0;
   const audioAttachment = getAudioAttachment(message);
 
@@ -111,6 +113,11 @@ export async function handleMessage(message, env) {
   }
 
   if (hasPhoto && await requireFaMembership(env, chatId, userId, messageId, state, false)) {
+    return;
+  }
+
+  if (hasPhoto && isImageCommand(caption)) {
+    await handleImageEditCommand(env, chatId, userId, messageId, caption, message, state);
     return;
   }
 
@@ -801,6 +808,44 @@ async function handleImageCommand(env, chatId, userId, messageId, text, state) {
     await deleteMessage(env, chatId, waitMessage?.message_id).catch(() => null);
     await sendMessage(env, chatId, error?.message || imageErrorText(state), mainKeyboard(state));
   }
+}
+
+async function handleImageEditCommand(env, chatId, userId, messageId, caption, message, state) {
+  const prompt = getImagePrompt(caption);
+  await deleteMessage(env, chatId, messageId).catch(() => null);
+
+  if (!prompt) {
+    await sendMessage(env, chatId, imageEditUsageText(state), mainKeyboard(state));
+    return;
+  }
+
+  const fileId = getLargestPhotoFileId(message);
+  if (!fileId) {
+    await sendMessage(env, chatId, imageErrorText(state), mainKeyboard(state));
+    return;
+  }
+
+  const waitMessage = await sendMessage(env, chatId, imageEditWaitText(state));
+
+  try {
+    const source = await downloadTelegramFile(env, fileId);
+    const image = await editImage(env, prompt, source.buffer, source.filename, source.mimeType);
+    await deleteMessage(env, chatId, waitMessage?.message_id).catch(() => null);
+    await sendPhoto(env, chatId, image, "vexa-edited-image.png", imageCaption(prompt, state));
+  } catch (error) {
+    await deleteMessage(env, chatId, waitMessage?.message_id).catch(() => null);
+    await sendMessage(env, chatId, error?.message || imageErrorText(state), mainKeyboard(state));
+  }
+}
+
+function imageEditUsageText(state) {
+  return state.language === "fa"
+    ? "برای ادیت تصویر، عکس را با کپشن زیر بفرست:\n\n<code>/image دستور ادیت تصویر</code>"
+    : "To edit an image, send the photo with this caption:\n\n<code>/image describe the edit</code>";
+}
+
+function imageEditWaitText(state) {
+  return state.language === "fa" ? "🎨 دارم تصویر را ادیت می‌کنم..." : "🎨 Editing your image...";
 }
 
 function imageUsageText(state) {
