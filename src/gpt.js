@@ -1,4 +1,5 @@
 const GPT_TIMEOUT_MS = 45000;
+const GPT_IMAGE_TIMEOUT_MS = 120000;
 const GPT_MODEL = "gpt-4o-mini";
 const MAX_ENHANCE_CHARS = 5000;
 
@@ -20,19 +21,24 @@ export async function generateImage(env, prompt) {
     throw new Error("Image prompt is too long. Please send a shorter prompt.");
   }
 
-  const response = await fetchWithTimeout("https://api.openai.com/v1/images/generations", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + env.GPT_API,
-      "Content-Type": "application/json",
+  const response = await fetchWithTimeout(
+    "https://api.openai.com/v1/images/generations",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + env.GPT_API,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: GPT_IMAGE_MODEL,
+        prompt: cleanPrompt,
+        size: GPT_IMAGE_SIZE,
+        output_format: "png",
+      }),
     },
-    body: JSON.stringify({
-      model: GPT_IMAGE_MODEL,
-      prompt: cleanPrompt,
-      size: GPT_IMAGE_SIZE,
-      output_format: "png",
-    }),
-  });
+    GPT_IMAGE_TIMEOUT_MS,
+    "AI image generation took too long. Please try again with a simpler prompt.",
+  );
 
   if (!response.ok) {
     const errorBody = await response.text();
@@ -148,15 +154,20 @@ function cleanEnhancedText(value) {
     .trim();
 }
 
-async function fetchWithTimeout(url, options) {
+async function fetchWithTimeout(
+  url,
+  options,
+  timeoutMs = GPT_TIMEOUT_MS,
+  timeoutMessage = "AI took too long. Please try a shorter text.",
+) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort("gpt_timeout"), GPT_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort("gpt_timeout"), timeoutMs);
 
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
     if (error?.name === "AbortError" || String(error).includes("gpt_timeout")) {
-      throw new Error("AI took too long. Please try a shorter text.");
+      throw new Error(timeoutMessage);
     }
     throw error;
   } finally {
