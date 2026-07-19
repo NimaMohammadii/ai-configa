@@ -23,6 +23,8 @@ export const VOICES = {
   Aurora: "eUdJpUEN3EslrgE24PKx",
   Allison: "1wGbFxmAM3Fgw63G1zZJ",
   Mason: "fXhoW006nc5Wf8xkGVSy",
+  Ragnar: "7EzWGsX10sAS4c9m9cPf",
+  Orion: "qDuRKMlYmrm8trt5QyBn",
 };
 
 export const VOICE_NAMES = Object.keys(VOICES);

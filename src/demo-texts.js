@@ -287,6 +287,30 @@ export const DEMO_TEXTS = {
     es: "Una voz profunda hace que una promesa simple se sienta fuerte, segura e inolvidable",
     hi: "गहरी आवाज़ साधारण वादे को भी मजबूत, सुरक्षित और यादगार बना देती है",
   },
+  Ragnar: {
+    en: "A bold voice can make every line feel cinematic and unforgettable",
+    ru: "Смелый голос делает каждую строку кинематографичной и незабываемой",
+    de: "Eine markante Stimme macht jede Zeile filmisch und unvergesslich",
+    fa: "یه صدای جسور می‌تونه هر خط رو سینمایی و فراموش‌نشدنی کنه",
+    tr: "Cesur bir ses her satırı sinematik ve unutulmaz yapabilir",
+    ar: "الصوت الجريء يجعل كل سطر سينمائياً ولا يُنسى",
+    zh: "大胆的声音能让每句话都像电影般难忘",
+    ja: "大胆な声は一行ごとを映画のように忘れがたくします",
+    es: "Una voz audaz puede hacer que cada línea sea cinematográfica e inolvidable",
+    hi: "दमदार आवाज़ हर पंक्ति को सिनेमाई और यादगार बना सकती है",
+  },
+  Orion: {
+    en: "A sharp confident voice can carry your message with power and style",
+    ru: "Четкий уверенный голос передает сообщение с силой и стилем",
+    de: "Eine klare selbstsichere Stimme trägt deine Botschaft mit Kraft und Stil",
+    fa: "یه صدای تیز و مطمئن پیام تو رو با قدرت و استایل منتقل می‌کنه",
+    tr: "Keskin ve kendinden emin bir ses mesajını güç ve tarzla taşır",
+    ar: "الصوت الواثق والواضح يحمل رسالتك بقوة وأناقة",
+    zh: "清晰自信的声音能有力又有风格地传达信息",
+    ja: "鋭く自信のある声がメッセージを力強くスタイリッシュに届けます",
+    es: "Una voz nítida y segura lleva tu mensaje con fuerza y estilo",
+    hi: "तेज़ और आत्मविश्वासी आवाज़ आपका संदेश ताकत और अंदाज़ से पहुँचाती है",
+  },
 };
 
 export function getDemoText(language, voice) {
