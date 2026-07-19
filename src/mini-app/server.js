@@ -1,4 +1,4 @@
-import { getMiniAppAccessSettings, isAdmin } from "../admin.js";
+import { getMiniAppAccessSettings, getVoiceProfile, getVoiceProfiles, isAdmin } from "../admin.js";
 import { getBalance, spendCredits } from "../credits.js";
 import { getDemoAudio, saveDemoAudio } from "../demo-cache.js";
 import { getDemoText } from "../demo-texts.js";
@@ -7,6 +7,7 @@ import { normalizeLang } from "../i18n.js";
 import { getState, saveState } from "../state.js";
 import { buildTtsAudioFileName, getNextTtsFileSequence, saveTtsHistory } from "../tts-history.js";
 import { VOICES } from "../voices.js";
+import { tgJson } from "../telegram-api.js";
 import { MINI_APP_JS } from "./client.js";
 import { MINI_APP_HTML } from "./html.js";
 import { MINI_APP_CSS } from "./styles.js";
@@ -30,6 +31,9 @@ export async function handleMiniAppRequest(request, env) {
     if (request.method === "GET" && url.pathname === "/mini-app/app.js") {
       return asset(MINI_APP_JS, "application/javascript;charset=utf-8");
     }
+    if (request.method === "GET" && url.pathname.startsWith("/mini-app/api/voice-profile/")) {
+      return await serveVoiceProfileImage(url.pathname.slice("/mini-app/api/voice-profile/".length), env);
+    }
     if (request.method === "POST" && url.pathname === "/mini-app/api/session") {
       return json(await sessionPayload(request, env));
     }
@@ -51,11 +55,13 @@ async function sessionPayload(request, env) {
   const access = await getMiniAppAccessForUser(env, user.id);
   if (access.locked) return { locked: true, lockedFrom: access.lockedFrom, lockedUntil: access.lockedUntil, serverNow: Math.floor(Date.now() / 1000) };
   const state = await getState(env, user.id);
+  const profiles = await getVoiceProfiles(env);
   return {
     userId: user.id,
     voice: state.voice || "Nora",
     language: normalizeLang(state.language || user.language_code || "en"),
     balance: await getBalance(env, user.id),
+    voiceProfiles: Object.fromEntries(Object.keys(profiles).map((name) => [name, "/mini-app/api/voice-profile/" + encodeURIComponent(name) + "?v=" + encodeURIComponent(profiles[name].fileId)])),
   };
 }
 
@@ -123,6 +129,27 @@ async function createVoiceDemo(request, env) {
     voice: voiceName,
     language: lang,
   };
+}
+
+async function serveVoiceProfileImage(rawVoiceName, env) {
+  const voiceName = resolveVoiceName(decodeURIComponent(String(rawVoiceName || "")));
+  if (!voiceName) return new Response("Not Found", { status: 404 });
+
+  const profile = await getVoiceProfile(env, voiceName);
+  if (!profile?.fileId) return new Response("Not Found", { status: 404 });
+
+  const file = await tgJson(env, "getFile", { file_id: profile.fileId });
+  if (!file?.file_path) return new Response("Not Found", { status: 404 });
+
+  const response = await fetch("https://api.telegram.org/file/bot" + env.BOT_TOKEN + "/" + file.file_path);
+  if (!response.ok) return new Response("Not Found", { status: 404 });
+
+  return new Response(response.body, {
+    headers: {
+      "Content-Type": response.headers.get("Content-Type") || "image/jpeg",
+      "Cache-Control": "public, max-age=86400",
+    },
+  });
 }
 
 function resolveVoiceName(value) {
