@@ -73,9 +73,12 @@ export async function editImage(env, prompt, imageBuffer, filename = "telegram-i
   }
 
   const form = new FormData();
+  const uploadFilename = safeImageFilename(filename);
+  const uploadMimeType = normalizeImageMimeType(mimeType, uploadFilename);
+
   form.append("model", GPT_IMAGE_MODEL);
   form.append("prompt", cleanPrompt);
-  form.append("image[]", new Blob([imageBuffer], { type: mimeType || "image/jpeg" }), safeImageFilename(filename));
+  form.append("image[]", new Blob([imageBuffer], { type: uploadMimeType }), uploadFilename);
   form.append("size", GPT_IMAGE_SIZE);
   form.append("output_format", "png");
 
@@ -109,6 +112,18 @@ export async function editImage(env, prompt, imageBuffer, filename = "telegram-i
 function safeImageFilename(value) {
   const filename = String(value || "telegram-image.jpg").split("/").pop();
   return filename.replace(/[^a-zA-Z0-9._-]/g, "_") || "telegram-image.jpg";
+}
+
+function normalizeImageMimeType(mimeType, filename) {
+  const value = String(mimeType || "").split(";")[0].trim().toLowerCase();
+  if (value === "image/jpeg" || value === "image/png" || value === "image/webp") {
+    return value;
+  }
+
+  const name = String(filename || "").toLowerCase();
+  if (name.endsWith(".png")) return "image/png";
+  if (name.endsWith(".webp")) return "image/webp";
+  return "image/jpeg";
 }
 
 export async function enhanceTextWithEmotion(env, text, language = "en") {
@@ -243,7 +258,6 @@ function toFriendlyGptError(status, errorBody) {
   }
 
   const raw = String(message || "").toLowerCase();
-
   if (status === 401 || raw.includes("invalid api key") || raw.includes("unauthorized")) {
     return "AI connection error. Please try again later.";
   }
@@ -270,6 +284,11 @@ function toFriendlyGptImageError(status, errorBody) {
   }
 
   const raw = String(message || "").toLowerCase();
+  console.error("OpenAI image API error", {
+    status,
+    message: String(message || "").slice(0, 1000),
+  });
+
 
   if (status === 401 || raw.includes("invalid api key") || raw.includes("unauthorized")) {
     return "AI image connection error. Please try again later.";
@@ -281,6 +300,18 @@ function toFriendlyGptImageError(status, errorBody) {
 
   if (status === 400 && (raw.includes("policy") || raw.includes("safety") || raw.includes("moderation"))) {
     return "This image request cannot be generated. Please try a different prompt.";
+  }
+
+  if (status === 400 && (raw.includes("image") || raw.includes("mime") || raw.includes("format") || raw.includes("file"))) {
+    return "The uploaded image could not be processed. Please send it as a Telegram photo and try again.";
+  }
+
+  if (status === 403 || raw.includes("verification") || raw.includes("permission")) {
+    return "AI image editing is not enabled for this API account.";
+  }
+
+  if (status === 400 && message) {
+    return "AI image request error: " + String(message).replace(/\s+/g, " ").slice(0, 300);
   }
 
   if (status >= 500) {
