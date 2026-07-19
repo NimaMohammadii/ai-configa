@@ -3,6 +3,7 @@ import { getBalance, spendCredits } from "../credits.js";
 import { getDemoAudio, saveDemoAudio } from "../demo-cache.js";
 import { getDemoText } from "../demo-texts.js";
 import { textToSpeech } from "../elevenlabs.js";
+import { editImage, generateImage } from "../gpt.js";
 import { normalizeLang } from "../i18n.js";
 import { getState, saveState } from "../state.js";
 import { buildTtsAudioFileName, getMiniAppTtsHistory, getMiniAppTtsHistoryAudio, getNextTtsFileSequence, saveTtsHistory } from "../tts-history.js";
@@ -14,6 +15,7 @@ import { MINI_APP_HTML } from "./html.js";
 import { MINI_APP_CSS } from "./styles.js";
 
 const MAX_TTS_CHARS = 5000;
+const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 export function isMiniAppRequest(request) {
   return new URL(request.url).pathname.startsWith("/mini-app");
@@ -41,6 +43,9 @@ export async function handleMiniAppRequest(request, env) {
     if (request.method === "POST" && url.pathname === "/mini-app/api/tts") {
       return json(await createTts(request, env));
     }
+    if (request.method === "POST" && url.pathname === "/mini-app/api/image") {
+      return json(await createImage(request, env));
+    }
     if (request.method === "POST" && url.pathname === "/mini-app/api/voice-settings") {
       return json(await updateVoiceSettings(request, env));
     }
@@ -58,6 +63,51 @@ export async function handleMiniAppRequest(request, env) {
   } catch (error) {
     return json({ error: error?.message || "Mini app error" }, error?.status || 500);
   }
+}
+
+async function createImage(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const prompt = String(body.prompt || "").trim();
+  if (!prompt) return responseError("Describe the image you want first.", 400);
+
+  const user = await authenticateMiniAppUserFromBody(body, env);
+  const access = await getMiniAppAccessForUser(env, user.id);
+  if (access.locked) return responseError("Mini app is updating.", 423);
+
+  const source = decodeImageData(body.imageData, body.imageName);
+  const output = source
+    ? await editImage(env, prompt, source.buffer, source.filename, source.mimeType)
+    : await generateImage(env, prompt);
+
+  return {
+    imageBase64: arrayBufferToBase64(output),
+    filename: source ? "vexa-edited-image.png" : "vexa-image.png",
+    kind: source ? "edit" : "generate",
+  };
+}
+
+function decodeImageData(value, filename) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const match = raw.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\s]+)$/i);
+  if (!match) return responseError("Use a JPG, PNG, or WebP image.", 400);
+
+  let binary;
+  try {
+    binary = atob(match[2].replace(/\s/g, ""));
+  } catch {
+    return responseError("The selected image could not be read.", 400);
+  }
+  if (!binary.length || binary.length > MAX_IMAGE_UPLOAD_BYTES) {
+    return responseError("The selected image is too large.", 413);
+  }
+
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const mimeType = match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase();
+  const extension = mimeType === "image/png" ? ".png" : mimeType === "image/webp" ? ".webp" : ".jpg";
+  const safeName = String(filename || "reference" + extension).split("/").pop().replace(/[^a-zA-Z0-9._-]/g, "_");
+  return { buffer: bytes.buffer, filename: safeName || "reference" + extension, mimeType };
 }
 
 async function sessionPayload(request, env) {
