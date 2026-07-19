@@ -36,6 +36,7 @@ export async function generateImage(env, prompt, options = {}) {
         prompt: cleanPrompt,
         size: resolveImageSize(options.size),
         quality: GPT_IMAGE_QUALITY,
+        moderation: "low",
         output_format: "png",
       }),
     },
@@ -84,6 +85,7 @@ export async function editImage(env, prompt, imageBuffer, filename = "telegram-i
   form.append("image[]", new Blob([imageBuffer], { type: uploadMimeType }), uploadFilename);
   form.append("size", resolveImageSize(options.size));
   form.append("quality", GPT_IMAGE_QUALITY);
+  form.append("moderation", "low");
   form.append("output_format", "png");
 
   const response = await fetchWithTimeout(
