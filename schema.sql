@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS bot_users (
   last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   return_count INTEGER NOT NULL DEFAULT 0,
   last_returned_at TEXT,
+  mini_app_open_count INTEGER NOT NULL DEFAULT 0,
+  last_mini_app_opened_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -97,6 +99,7 @@ CREATE TABLE IF NOT EXISTS credit_usage_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bot_users_return_count ON bot_users (return_count DESC, last_returned_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bot_users_mini_app_open_count ON bot_users (mini_app_open_count DESC, last_mini_app_opened_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_credit_usage_log_created ON credit_usage_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_credit_usage_log_user_created ON credit_usage_log (user_id, created_at DESC);

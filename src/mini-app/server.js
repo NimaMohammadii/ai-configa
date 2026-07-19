@@ -1,4 +1,4 @@
-import { getMiniAppAccessSettings, getVoiceProfile, getVoiceProfiles, isAdmin } from "../admin.js";
+import { getMiniAppAccessSettings, getVoiceProfile, getVoiceProfiles, isAdmin, trackMiniAppOpen } from "../admin.js";
 import { getBalance, spendCredits } from "../credits.js";
 import { getDemoAudio, saveDemoAudio } from "../demo-cache.js";
 import { getDemoText } from "../demo-texts.js";
@@ -58,6 +58,7 @@ export async function handleMiniAppRequest(request, env) {
 
 async function sessionPayload(request, env) {
   const user = await authenticateMiniAppUser(request, env);
+  await trackMiniAppOpen(env, user);
   const access = await getMiniAppAccessForUser(env, user.id);
   if (access.locked) return { locked: true, lockedFrom: access.lockedFrom, lockedUntil: access.lockedUntil, serverNow: Math.floor(Date.now() / 1000) };
   const state = await getState(env, user.id);
