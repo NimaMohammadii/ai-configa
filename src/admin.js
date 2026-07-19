@@ -1121,7 +1121,8 @@ export function adminChannelPostPromptText(language = "fa") {
     "Language: <b>" + settings.label + "</b>",
     "Channel: <b>" + escapeHtml(settings.channel) + "</b>",
     "",
-    "Send the text you want to publish.",
+    "Send the text, photo, or photo with caption that you want to publish.",
+    "Photo-only posts are allowed, and photo captions will be kept.",
     "It will be posted with an inline button named <b>Open Mini App</b> below it.",
     "",
     "Your message will be deleted after processing."

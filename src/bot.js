@@ -103,7 +103,7 @@ export async function handleMessage(message, env) {
     return;
   }
 
-  if (hasPhoto && await handleAdminPhotoInput(env, chatId, userId, messageId, getLargestPhotoFileId(message))) {
+  if (hasPhoto && await handleAdminPhotoInput(env, chatId, userId, message)) {
     return;
   }
 
@@ -757,18 +757,43 @@ export async function handleCallback(query, env) {
   }
 }
 
-async function handleAdminPhotoInput(env, chatId, adminId, inputMessageId, fileId) {
+async function handleAdminPhotoInput(env, chatId, adminId, message) {
   if (!(await isAdmin(env, adminId))) return false;
   const action = await getAdminAction(env, adminId);
-  if (!action || action.action !== "voice_profile") return false;
-  if (!fileId) return false;
+  if (!action) return false;
 
-  const voiceName = action.target_user_id || "Nora";
-  await setVoiceProfile(env, voiceName, fileId);
-  await deleteMessage(env, chatId, inputMessageId).catch(() => null);
-  await clearAdminAction(env, adminId);
-  await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminVoiceProfilesText(env)) + "\n\n✅ Profile image updated for " + voiceName + ".", adminVoiceProfilesKeyboard());
-  return true;
+  const inputMessageId = message.message_id;
+
+  if (action.action === "voice_profile") {
+    const fileId = getLargestPhotoFileId(message);
+    if (!fileId) return false;
+
+    const voiceName = action.target_user_id || "Nora";
+    await setVoiceProfile(env, voiceName, fileId);
+    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+    await clearAdminAction(env, adminId);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminVoiceProfilesText(env)) + "\n\n✅ Profile image updated for " + voiceName + ".", adminVoiceProfilesKeyboard());
+    return true;
+  }
+
+  if (action.action === "channel_post") {
+    const language = action.target_user_id || "fa";
+    const settings = getChannelPostLanguageSettings(language);
+
+    try {
+      const miniAppUrl = buildMiniAppUrl(env);
+      await copyMessage(env, settings.channel, chatId, inputMessageId, undefined, channelPostMiniAppKeyboard(miniAppUrl));
+      await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+      await clearAdminAction(env, adminId);
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostsText() + "\n\n✅ Post sent to " + settings.channel + ".", adminChannelPostsKeyboard());
+    } catch (error) {
+      await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostPromptText(language) + "\n\n❌ " + escapeForAdminError(error), adminCancelKeyboard("admin_channel_posts"));
+    }
+    return true;
+  }
+
+  return false;
 }
 
 function getLargestPhotoFileId(message) {
