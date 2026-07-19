@@ -73,7 +73,7 @@ export function buildTtsAudioFileName(sequence) {
   return "Vexa " + String(safeSequence).padStart(4, "0") + ".mp3";
 }
 
-export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage = null, fileSequence = null) {
+export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage = null, fileSequence = null, audioBase64 = "") {
   await ensureTtsHistoryTable(env);
 
   const audio = sentMessage?.audio || sentMessage?.document || null;
@@ -83,7 +83,7 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
 
   try {
     await env.DB.prepare(
-      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, file_sequence, audio_base64, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)"
+      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, file_sequence, audio_base64, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
     ).bind(
       crypto.randomUUID(),
       String(userId),
@@ -92,22 +92,47 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
       String(language || ""),
       Number(credits || 0),
       fileSequence == null ? null : Number(fileSequence),
+      String(audioBase64 || ""),
       fileId,
       fileType,
       telegramMessageId
     ).run();
   } catch (firstError) {
     await env.DB.prepare(
-      "INSERT INTO tts_history (user_id, text, voice, language, credits, file_sequence, audio_base64, created_at) VALUES (?, ?, ?, ?, ?, ?, '', CURRENT_TIMESTAMP)"
+      "INSERT INTO tts_history (user_id, text, voice, language, credits, file_sequence, audio_base64, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
     ).bind(
       String(userId),
       String(text || ""),
       String(voice || ""),
       String(language || ""),
       Number(credits || 0),
-      fileSequence == null ? null : Number(fileSequence)
+      fileSequence == null ? null : Number(fileSequence),
+      String(audioBase64 || "")
     ).run();
   }
+}
+
+export async function getMiniAppTtsHistory(env, userId, limit = 30) {
+  await ensureTtsHistoryTable(env);
+  const safeLimit = Math.min(50, Math.max(1, Number(limit || 30)));
+  const rows = await env.DB.prepare(
+    "SELECT id, text, voice, language, credits, file_sequence, created_at, " +
+      "CASE WHEN audio_base64 != '' OR file_id IS NOT NULL THEN 1 ELSE 0 END AS has_audio " +
+    "FROM tts_history WHERE user_id = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ?"
+  ).bind(String(userId), safeLimit).all();
+
+  return (rows.results || []).map((row) => ({
+    ...row,
+    has_audio: Boolean(row.has_audio),
+    filename: buildTtsAudioFileName(row.file_sequence),
+  }));
+}
+
+export async function getMiniAppTtsHistoryAudio(env, userId, historyId) {
+  await ensureTtsHistoryTable(env);
+  return await env.DB.prepare(
+    "SELECT id, text, voice, file_sequence, audio_base64, file_id, file_type FROM tts_history WHERE id = ? AND user_id = ?"
+  ).bind(String(historyId), String(userId)).first();
 }
 
 export async function getTtsHistoryPage(env, userId, page = 0, limit = HISTORY_LIMIT) {

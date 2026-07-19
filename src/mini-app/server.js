@@ -5,7 +5,7 @@ import { getDemoText } from "../demo-texts.js";
 import { textToSpeech } from "../elevenlabs.js";
 import { normalizeLang } from "../i18n.js";
 import { getState, saveState } from "../state.js";
-import { buildTtsAudioFileName, getNextTtsFileSequence, saveTtsHistory } from "../tts-history.js";
+import { buildTtsAudioFileName, getMiniAppTtsHistory, getMiniAppTtsHistoryAudio, getNextTtsFileSequence, saveTtsHistory } from "../tts-history.js";
 import { VOICES } from "../voices.js";
 import { tgJson } from "../telegram-api.js";
 import { MINI_APP_JS } from "./client.js";
@@ -39,6 +39,12 @@ export async function handleMiniAppRequest(request, env) {
     }
     if (request.method === "POST" && url.pathname === "/mini-app/api/tts") {
       return json(await createTts(request, env));
+    }
+    if (request.method === "POST" && url.pathname === "/mini-app/api/history") {
+      return json(await historyPayload(request, env));
+    }
+    if (request.method === "POST" && url.pathname === "/mini-app/api/history-audio") {
+      return json(await historyAudioPayload(request, env));
     }
     if (request.method === "POST" && url.pathname === "/mini-app/api/voice-demo") {
       return json(await createVoiceDemo(request, env));
@@ -91,16 +97,54 @@ async function createTts(request, env) {
   await spendCredits(env, user.id, cost, "mini_app_tts", { voice: voiceName, language: lang });
 
   const sequence = await getNextTtsFileSequence(env, user.id);
-  await saveTtsHistory(env, user.id, text, voiceName, lang, cost, null, sequence).catch((error) => {
+  const audioBase64 = arrayBufferToBase64(audio);
+  await saveTtsHistory(env, user.id, text, voiceName, lang, cost, null, sequence, audioBase64).catch((error) => {
     console.error("save mini app tts history failed", error && error.message ? error.message : error);
   });
 
   return {
-    audioBase64: arrayBufferToBase64(audio),
+    audioBase64,
     filename: buildTtsAudioFileName(sequence),
     voice: voiceName,
     language: lang,
     balance: balance - cost,
+  };
+}
+
+async function historyPayload(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const user = await authenticateMiniAppUserFromBody(body, env);
+  const access = await getMiniAppAccessForUser(env, user.id);
+  if (access.locked) return responseError("Mini app is updating.", 423);
+  return { items: await getMiniAppTtsHistory(env, user.id, 30) };
+}
+
+async function historyAudioPayload(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const historyId = String(body.id || "").trim();
+  if (!historyId) return responseError("History item not found.", 400);
+
+  const user = await authenticateMiniAppUserFromBody(body, env);
+  const access = await getMiniAppAccessForUser(env, user.id);
+  if (access.locked) return responseError("Mini app is updating.", 423);
+
+  const item = await getMiniAppTtsHistoryAudio(env, user.id, historyId);
+  if (!item) return responseError("History item not found.", 404);
+
+  let audioBase64 = String(item.audio_base64 || "");
+  if (!audioBase64 && item.file_id) {
+    const file = await tgJson(env, "getFile", { file_id: item.file_id });
+    if (file?.file_path) {
+      const response = await fetch("https://api.telegram.org/file/bot" + env.BOT_TOKEN + "/" + file.file_path);
+      if (response.ok) audioBase64 = arrayBufferToBase64(await response.arrayBuffer());
+    }
+  }
+
+  if (!audioBase64) return responseError("Audio is not available for this older item.", 404);
+  return {
+    id: item.id,
+    audioBase64,
+    filename: buildTtsAudioFileName(item.file_sequence),
   };
 }
 
