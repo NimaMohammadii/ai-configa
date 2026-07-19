@@ -23,6 +23,9 @@ import {
   adminMiniAppLockPromptText,
   adminStatsKeyboard,
   adminStatsText,
+  adminVoiceProfilePromptText,
+  adminVoiceProfilesKeyboard,
+  adminVoiceProfilesText,
   adminWelcomeAudioKeyboard,
   adminWelcomeAudioPromptText,
   adminWelcomeAudioText,
@@ -40,6 +43,7 @@ import {
   adminUserText,
   clearAdminAction,
   deleteWelcomeAudio,
+  deleteVoiceProfile,
   getAdminAction,
   getAllUserIds,
   isAdmin,
@@ -49,6 +53,7 @@ import {
   setLanguageSetting,
   setMiniAppAccessSettings,
   setWelcomeAudio,
+  setVoiceProfile,
   getLanguageSettings,
   searchAdminUsers,
   getWelcomeAudio,
@@ -89,6 +94,10 @@ export async function handleMessage(message, env) {
   const state = await getState(env, userId);
 
   if (audioAttachment && await handleAdminAudioInput(env, chatId, userId, messageId, audioAttachment)) {
+    return;
+  }
+
+  if (hasPhoto && await handleAdminPhotoInput(env, chatId, userId, messageId, getLargestPhotoFileId(message))) {
     return;
   }
 
@@ -374,6 +383,32 @@ export async function handleCallback(query, env) {
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppAccessText(env), await adminMiniAppAccessKeyboard(env));
+    return;
+  }
+
+  if (data === "admin_voice_profiles") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminVoiceProfilesText(env), adminVoiceProfilesKeyboard());
+    return;
+  }
+
+  if (data.startsWith("admin_voice_profile_upload:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const voiceName = data.slice("admin_voice_profile_upload:".length);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "voice_profile", { targetUserId: voiceName, chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminVoiceProfilePromptText(voiceName), adminCancelKeyboard("admin_voice_profiles"));
+    return;
+  }
+
+  if (data.startsWith("admin_voice_profile_delete:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const voiceName = data.slice("admin_voice_profile_delete:".length);
+    await deleteVoiceProfile(env, voiceName);
+    await answerCallback(env, query.id, "Voice profile deleted", false);
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminVoiceProfilesText(env)) + "\n\n🗑 Deleted for " + voiceName + ".", adminVoiceProfilesKeyboard());
     return;
   }
 
@@ -699,6 +734,26 @@ export async function handleCallback(query, env) {
   }
 }
 
+async function handleAdminPhotoInput(env, chatId, adminId, inputMessageId, fileId) {
+  if (!(await isAdmin(env, adminId))) return false;
+  const action = await getAdminAction(env, adminId);
+  if (!action || action.action !== "voice_profile") return false;
+  if (!fileId) return false;
+
+  const voiceName = action.target_user_id || "Nora";
+  await setVoiceProfile(env, voiceName, fileId);
+  await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+  await clearAdminAction(env, adminId);
+  await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminVoiceProfilesText(env)) + "\n\n✅ Profile image updated for " + voiceName + ".", adminVoiceProfilesKeyboard());
+  return true;
+}
+
+function getLargestPhotoFileId(message) {
+  const photos = Array.isArray(message?.photo) ? message.photo : [];
+  if (!photos.length) return null;
+  return photos[photos.length - 1]?.file_id || null;
+}
+
 async function handleAdminAudioInput(env, chatId, adminId, inputMessageId, audioAttachment) {
   if (!(await isAdmin(env, adminId))) return false;
 
@@ -737,6 +792,11 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     const users = await searchAdminUsers(env, text);
     await clearAdminAction(env, adminId);
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminUserSearchResultsText(text, users), adminUserSearchResultsKeyboard(users));
+    return true;
+  }
+
+  if (action.action === "voice_profile") {
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminVoiceProfilePromptText(action.target_user_id || "Nora") + "\n\nPlease send a photo, not text.", adminCancelKeyboard("admin_voice_profiles"));
     return true;
   }
 

@@ -5,6 +5,7 @@ import { getDailyRewardCredits } from "./daily-reward.js";
 import { getInitialStartCredits } from "./start-bonus.js";
 import { getMandatoryFaMembershipSettings } from "./mandatory-channel.js";
 import { ensureTtsHistoryTable } from "./tts-history.js";
+import { VOICE_NAMES } from "./voices.js";
 
 export async function hasTrackedUser(env, userId) {
   requireDb(env);
@@ -108,7 +109,7 @@ export function adminMainKeyboard() {
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }, { text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }],
-      [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
+      [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }, { text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }, { text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
   };
@@ -1006,6 +1007,82 @@ export async function getWelcomeAudios(env) {
     if (fileId) result[code] = { fileId, fileType: values["welcome_audio_file_type_" + code] || "audio", language: code };
   }
   return result;
+}
+
+export async function adminVoiceProfilesText(env) {
+  const profiles = await getVoiceProfiles(env);
+  const lines = [
+    "🖼 <b>Voice Profiles</b>",
+    "",
+    "Upload a photo for each voice. The photo appears in the left circle of the mini app voice menu.",
+    "",
+    "Configured voices:"
+  ];
+  for (const name of VOICE_NAMES) {
+    lines.push((profiles[name]?.fileId ? "✅ " : "❌ ") + escapeHtml(name));
+  }
+  return lines.join("\n");
+}
+
+export function adminVoiceProfilesKeyboard() {
+  const rows = [];
+  for (const name of VOICE_NAMES) {
+    rows.push([{ text: "Upload " + name, callback_data: "admin_voice_profile_upload:" + name }, { text: "Delete", callback_data: "admin_voice_profile_delete:" + name }]);
+  }
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export function adminVoiceProfilePromptText(voiceName = "Nora") {
+  return [
+    "🖼 <b>Upload Voice Profile</b>",
+    "",
+    "Target voice: <b>" + escapeHtml(voiceName) + "</b>",
+    "Send one photo now.",
+    "The new photo will replace the old profile image for this voice in the mini app."
+  ].join("\n");
+}
+
+export async function setVoiceProfile(env, voiceName, fileId) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const name = normalizeVoiceProfileName(voiceName);
+  await env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("voice_profile_file_id_" + name, String(fileId)).run();
+}
+
+export async function deleteVoiceProfile(env, voiceName) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const name = normalizeVoiceProfileName(voiceName);
+  await env.DB.prepare("DELETE FROM app_settings WHERE key = ?").bind("voice_profile_file_id_" + name).run();
+}
+
+export async function getVoiceProfiles(env) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const rows = await env.DB.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'voice_profile_file_id_%'").all();
+  const values = Object.fromEntries((rows.results || []).map((row) => [row.key, row.value]));
+  const result = {};
+  for (const name of VOICE_NAMES) {
+    const fileId = values["voice_profile_file_id_" + name];
+    if (fileId) result[name] = { fileId, voiceName: name };
+  }
+  return result;
+}
+
+export async function getVoiceProfile(env, voiceName) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const name = normalizeVoiceProfileName(voiceName);
+  const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind("voice_profile_file_id_" + name).first();
+  return row?.value ? { fileId: row.value, voiceName: name } : null;
+}
+
+function normalizeVoiceProfileName(voiceName) {
+  const raw = String(voiceName || "").trim();
+  const match = VOICE_NAMES.find((name) => name.toLowerCase() === raw.toLowerCase());
+  if (!match) throw new Error("Invalid voice name");
+  return match;
 }
 
 export function adminBroadcastPromptText() {
