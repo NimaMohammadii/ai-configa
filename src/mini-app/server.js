@@ -7,6 +7,7 @@ import { normalizeLang } from "../i18n.js";
 import { getState, saveState } from "../state.js";
 import { buildTtsAudioFileName, getMiniAppTtsHistory, getMiniAppTtsHistoryAudio, getNextTtsFileSequence, saveTtsHistory } from "../tts-history.js";
 import { VOICES } from "../voices.js";
+import { getUserVoiceSettings, saveUserVoiceSettings } from "../voice-settings.js";
 import { tgJson } from "../telegram-api.js";
 import { MINI_APP_JS } from "./client.js";
 import { MINI_APP_HTML } from "./html.js";
@@ -40,6 +41,9 @@ export async function handleMiniAppRequest(request, env) {
     if (request.method === "POST" && url.pathname === "/mini-app/api/tts") {
       return json(await createTts(request, env));
     }
+    if (request.method === "POST" && url.pathname === "/mini-app/api/voice-settings") {
+      return json(await updateVoiceSettings(request, env));
+    }
     if (request.method === "POST" && url.pathname === "/mini-app/api/history") {
       return json(await historyPayload(request, env));
     }
@@ -68,6 +72,7 @@ async function sessionPayload(request, env) {
     voice: state.voice || "Nora",
     language: normalizeLang(state.language || user.language_code || "en"),
     balance: await getBalance(env, user.id),
+    voiceSettings: await getUserVoiceSettings(env, user.id),
     voiceProfiles: Object.fromEntries(Object.keys(profiles).map((name) => [name, "/mini-app/api/voice-profile/" + encodeURIComponent(name) + "?v=" + encodeURIComponent(profiles[name].fileId)])),
   };
 }
@@ -94,7 +99,8 @@ async function createTts(request, env) {
   const balance = await getBalance(env, user.id);
   if (balance < cost) return responseError("اعتبار کافی نیست.", 402);
 
-  const audio = await textToSpeech(env, text, voiceId, lang);
+  const voiceSettings = await getUserVoiceSettings(env, user.id);
+  const audio = await textToSpeech(env, text, voiceId, lang, voiceSettings);
   await spendCredits(env, user.id, cost, "mini_app_tts", { voice: voiceName, language: lang });
 
   const sequence = await getNextTtsFileSequence(env, user.id);
@@ -109,6 +115,17 @@ async function createTts(request, env) {
     voice: voiceName,
     language: lang,
     balance: balance - cost,
+  };
+}
+
+async function updateVoiceSettings(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const user = await authenticateMiniAppUserFromBody(body, env);
+  const access = await getMiniAppAccessForUser(env, user.id);
+  if (access.locked) return responseError("Mini app is updating.", 423);
+
+  return {
+    voiceSettings: await saveUserVoiceSettings(env, user.id, body.settings || {}),
   };
 }
 
