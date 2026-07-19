@@ -1,3 +1,4 @@
+import { getAdminAction, isAdmin } from "./admin.js";
 import { handleCallback, handleMessage } from "./bot-ui.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { shouldProcessMessageOnce } from "./message-dedupe.js";
@@ -58,11 +59,24 @@ async function handleMessageWithSupport(message, env) {
   if (await handleSupportMessage(message, env)) return;
 
   if (Array.isArray(message.photo) && message.photo.length > 0) {
+    if (await isAdminVoiceProfilePhoto(message, env)) {
+      await handleMessageAndPin(message, env);
+      return;
+    }
+
     await handleReceiptPhoto(message, env);
     return;
   }
 
   await handleMessageAndPin(message, env);
+}
+
+async function isAdminVoiceProfilePhoto(message, env) {
+  const adminId = message.from && message.from.id;
+  if (!adminId || !(await isAdmin(env, adminId))) return false;
+
+  const action = await getAdminAction(env, adminId);
+  return action?.action === "voice_profile";
 }
 
 async function handleMessageAndPin(message, env) {
