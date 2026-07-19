@@ -1,3 +1,10 @@
+import { VOICE_NAMES, VOICES } from "../voices.js";
+
+const VOICE_ROWS = VOICE_NAMES.map((name) => {
+  const voiceId = VOICES[name];
+  return `<div class="voice-option" data-voice-row="${voiceId}"><button class="voice-select${name === "Liam" ? " active" : ""}" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span>${name}</span></button><button class="voice-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Play ${name} demo"><span class="voice-preview-icon">▶</span></button></div>`;
+}).join("");
+
 export const MINI_APP_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -8,7 +15,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-3"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-4"/>
 </head>
 <body>
   <main class="app">
@@ -21,9 +28,7 @@ export const MINI_APP_HTML = `<!doctype html>
               <span id="voiceLabel">Liam</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-            <div class="voice-menu">
-              <button class="active" data-voice="TX3LPaxmHKxFdv7VOQHJ" type="button">Liam</button><button data-voice="1SM7GgM6IMuvQlz2BwM3" type="button">Noah</button><button data-voice="tnSpp4vdxKPjI9w0GnoV" type="button">Ava</button><button data-voice="BIvP0GN1cAtSRTxNHnWS" type="button">Nora</button><button data-voice="GFGuOkimbpNkTEOVDkqX" type="button">Alex</button><button data-voice="NZiuR1C6kVMSWHG27sIM" type="button">Ella</button><button data-voice="BZgkqPqms7Kj9ulSkVzn" type="button">Chloe</button><button data-voice="kdmDKE6EkgrWrrykO9Qt" type="button">Alexandra</button><button data-voice="7piC4m7q8WrpEAnMj5xC" type="button">Laura</button><button data-voice="0dPqNXnhg2bmxQv1WKDp" type="button">Maxon</button><button data-voice="cgSgspJ2msm6clMCkdW9" type="button">Jessica</button><button data-voice="Bj9UqZbhQsanLzgalpEG" type="button">Austin</button>
-            </div>
+            <div class="voice-menu">${VOICE_ROWS}</div>
           </div>
         </div>
         <div class="tts-area">
@@ -42,6 +47,7 @@ export const MINI_APP_HTML = `<!doctype html>
             <span class="char-count-wrap"><span class="char-count" id="ttsCharCount">0 characters</span><button class="char-warning" id="ttsCharWarning" data-action="open-char-limit" type="button" aria-label="Character limit warning">!</button></span>
           </div>
           <audio id="ttsAudio" class="tts-hidden-audio"></audio>
+          <audio id="voicePreviewAudio" class="tts-hidden-audio"></audio>
         </div>
         <div class="limit-sheet" id="ttsLimitSheet" aria-hidden="true"><button class="limit-backdrop" data-action="close-char-limit" type="button" aria-label="Close"></button><div class="limit-card"><div class="limit-icon">!</div><h3>Character limit</h3><p>You can’t convert more than 1000 characters</p><button class="limit-close" data-action="close-char-limit" type="button">Got it</button></div></div>
       </div>
@@ -49,6 +55,6 @@ export const MINI_APP_HTML = `<!doctype html>
   </main>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260719-3"></script>
+  <script type="module" src="/mini-app/app.js?v=20260719-4"></script>
 </body>
 </html>`;
