@@ -106,6 +106,18 @@ export function copyMessage(env, chatId, fromChatId, messageId, caption, replyMa
   }, replyMarkup));
 }
 
+
+export function sendPhoto(env, chatId, imageBuffer, filename = "vexa-image.png", caption = "") {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("photo", new Blob([imageBuffer], { type: "image/png" }), filename);
+  if (caption) {
+    form.append("caption", caption);
+    form.append("parse_mode", "HTML");
+  }
+  return tgForm(env, "sendPhoto", form);
+}
+
 export function sendTextDocument(env, chatId, content, filename, caption = "") {
   const form = new FormData();
   form.append("chat_id", String(chatId));

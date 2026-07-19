@@ -5,6 +5,7 @@ Telegram text-to-speech bot built for Cloudflare Workers, D1, and ElevenLabs.
 ## Features
 
 - Cloudflare Worker webhook bot, no polling server needed
+- `/image` command for GPT Image 2 image generation
 - ElevenLabs `eleven_v3` model
 - Voice menu matching the requested layout
 - Selected voice shows `✔️`
@@ -24,10 +25,12 @@ Use exactly these environment secret names:
 ```bash
 npx wrangler secret put BOT_TOKEN
 npx wrangler secret put ELEVEN_API
+npx wrangler secret put GPT_API
 ```
 
 `BOT_TOKEN` is your Telegram bot token.
 `ELEVEN_API` is your ElevenLabs API key.
+`GPT_API` is your OpenAI API key for GPT text and image features.
 
 ## D1 setup
 
@@ -65,6 +68,7 @@ Put local secrets inside `.dev.vars`:
 ```env
 BOT_TOKEN=telegram_bot_token
 ELEVEN_API=elevenlabs_api_key
+GPT_API=openai_api_key
 ```
 
 ## Deploy to Cloudflare Workers
@@ -73,6 +77,7 @@ ELEVEN_API=elevenlabs_api_key
 npm install
 npx wrangler secret put BOT_TOKEN
 npx wrangler secret put ELEVEN_API
+npx wrangler secret put GPT_API
 npm run deploy
 ```
 
