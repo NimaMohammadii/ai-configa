@@ -1,3 +1,4 @@
+import { getAdminAction, isAdmin } from "./admin.js";
 import { handleCallback } from "./bot.js";
 import { handleMessage } from "./bot-secure.js";
 import { handleMiniAppRequest, isMiniAppRequest } from "./mini-app/server.js";
@@ -68,11 +69,24 @@ async function handleMessageWithSupport(message, env) {
   if (await handleSupportMessage(message, env)) return;
 
   if (Array.isArray(message.photo) && message.photo.length > 0) {
+    if (await isAdminVoiceProfilePhoto(message, env)) {
+      await handleMessageAndPin(message, env);
+      return;
+    }
+
     await handleReceiptPhoto(message, env);
     return;
   }
 
   await handleMessageAndPin(message, env);
+}
+
+async function isAdminVoiceProfilePhoto(message, env) {
+  const adminId = message.from && message.from.id;
+  if (!adminId || !(await isAdmin(env, adminId))) return false;
+
+  const action = await getAdminAction(env, adminId);
+  return action?.action === "voice_profile";
 }
 
 async function handleMessageAndPin(message, env) {
