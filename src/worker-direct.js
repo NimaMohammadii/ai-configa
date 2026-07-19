@@ -69,7 +69,7 @@ async function handleMessageWithSupport(message, env) {
   if (await handleSupportMessage(message, env)) return;
 
   if (Array.isArray(message.photo) && message.photo.length > 0) {
-    if (await isAdminVoiceProfilePhoto(message, env)) {
+    if (await isAdminPendingPhoto(message, env)) {
       await handleMessageAndPin(message, env);
       return;
     }
@@ -81,12 +81,12 @@ async function handleMessageWithSupport(message, env) {
   await handleMessageAndPin(message, env);
 }
 
-async function isAdminVoiceProfilePhoto(message, env) {
+async function isAdminPendingPhoto(message, env) {
   const adminId = message.from && message.from.id;
   if (!adminId || !(await isAdmin(env, adminId))) return false;
 
   const action = await getAdminAction(env, adminId);
-  return action?.action === "voice_profile";
+  return action?.action === "voice_profile" || action?.action === "channel_post";
 }
 
 async function handleMessageAndPin(message, env) {
