@@ -1134,9 +1134,11 @@ export function getChannelPostLanguageSettings(language = "fa") {
   return CHANNEL_POST_LANGUAGE_SETTINGS[normalized] || CHANNEL_POST_LANGUAGE_SETTINGS.fa;
 }
 
+const CHANNEL_POST_MINI_APP_URL = "https://ai-configa.vexaagent.workers.dev/mini-app";
+
 export function buildMiniAppUrl(env) {
-  const raw = env.MINI_APP_URL || env.WEB_APP_URL || env.APP_URL || env.PUBLIC_APP_URL || "";
-  if (!raw) throw new Error("Set MINI_APP_URL to the public /mini-app URL before sending channel posts.");
+  const raw = env.CHANNEL_POST_MINI_APP_URL || CHANNEL_POST_MINI_APP_URL;
+  if (!raw) throw new Error("Set CHANNEL_POST_MINI_APP_URL to the public /mini-app URL before sending channel posts.");
   const trimmed = String(raw).trim().replace(/\/+$/, "");
   if (!/^https:\/\//i.test(trimmed)) throw new Error("MINI_APP_URL must be an HTTPS URL.");
   return trimmed.endsWith("/mini-app") ? trimmed : trimmed + "/mini-app";

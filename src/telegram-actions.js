@@ -2,56 +2,58 @@ import { tgForm, tgJson } from "./telegram-api.js";
 
 const botMessageIdsByChat = new Map();
 
+function withOptionalReplyMarkup(payload, replyMarkup) {
+  if (replyMarkup && typeof replyMarkup === "object") {
+    payload.reply_markup = replyMarkup;
+  }
+  return payload;
+}
+
 export async function sendMessage(env, chatId, text, replyMarkup = null) {
-  const result = await tgJson(env, "sendMessage", {
+  const result = await tgJson(env, "sendMessage", withOptionalReplyMarkup({
     chat_id: chatId,
     text,
     parse_mode: "HTML",
-    reply_markup: replyMarkup,
-  });
+  }, replyMarkup));
   rememberBotMessage(chatId, result?.message_id);
   return result;
 }
 
 export async function sendPlainMessage(env, chatId, text, replyMarkup = null) {
-  const result = await tgJson(env, "sendMessage", {
+  const result = await tgJson(env, "sendMessage", withOptionalReplyMarkup({
     chat_id: chatId,
     text,
-    reply_markup: replyMarkup,
-  });
+  }, replyMarkup));
   rememberBotMessage(chatId, result?.message_id);
   return result;
 }
 
 export async function sendHtmlMessage(env, chatId, text, replyMarkup = null) {
-  const result = await tgJson(env, "sendMessage", {
+  const result = await tgJson(env, "sendMessage", withOptionalReplyMarkup({
     chat_id: chatId,
     text,
     parse_mode: "HTML",
-    reply_markup: replyMarkup,
-  });
+  }, replyMarkup));
   rememberBotMessage(chatId, result?.message_id);
   return result;
 }
 
 export function editMessage(env, chatId, messageId, text, replyMarkup = null) {
-  return tgJson(env, "editMessageText", {
+  return tgJson(env, "editMessageText", withOptionalReplyMarkup({
     chat_id: chatId,
     message_id: messageId,
     text,
     parse_mode: "HTML",
-    reply_markup: replyMarkup,
-  });
+  }, replyMarkup));
 }
 
 export function editMessageCaption(env, chatId, messageId, caption, replyMarkup = null) {
-  return tgJson(env, "editMessageCaption", {
+  return tgJson(env, "editMessageCaption", withOptionalReplyMarkup({
     chat_id: chatId,
     message_id: messageId,
     caption,
     parse_mode: "HTML",
-    reply_markup: replyMarkup,
-  });
+  }, replyMarkup));
 }
 
 export function deleteMessage(env, chatId, messageId) {
@@ -95,14 +97,13 @@ export function sendStarsInvoice(env, chatId, pack, payload = null) {
 }
 
 export function copyMessage(env, chatId, fromChatId, messageId, caption, replyMarkup = null) {
-  return tgJson(env, "copyMessage", {
+  return tgJson(env, "copyMessage", withOptionalReplyMarkup({
     chat_id: chatId,
     from_chat_id: fromChatId,
     message_id: messageId,
     caption,
     parse_mode: "HTML",
-    reply_markup: replyMarkup,
-  });
+  }, replyMarkup));
 }
 
 export function sendTextDocument(env, chatId, content, filename, caption = "") {
