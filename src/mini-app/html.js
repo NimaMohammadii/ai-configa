@@ -15,7 +15,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-16"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260719-17"/>
 </head>
 <body>
   <main class="app">
@@ -62,6 +62,11 @@ export const MINI_APP_HTML = `<!doctype html>
             <textarea id="imagePrompt" maxlength="2000" placeholder="Describe the image you want to create..."></textarea>
             <div class="image-composer-foot"><span id="imagePromptCount">0 / 2000</span><button class="image-upload-trigger" data-action="pick-image" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 13.5v4A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Add image</span></button></div>
           </div>
+          <div class="image-size-control" role="group" aria-label="Output image size">
+            <button class="image-size-option active" data-action="select-image-size" data-image-size="1024x1024" type="button" aria-pressed="true"><span class="size-shape size-square" aria-hidden="true"></span><span><strong>Square</strong><small>1:1</small></span></button>
+            <button class="image-size-option" data-action="select-image-size" data-image-size="1024x1536" type="button" aria-pressed="false"><span class="size-shape size-portrait" aria-hidden="true"></span><span><strong>Portrait</strong><small>2:3</small></span></button>
+            <button class="image-size-option" data-action="select-image-size" data-image-size="1536x1024" type="button" aria-pressed="false"><span class="size-shape size-landscape" aria-hidden="true"></span><span><strong>Wide</strong><small>3:2</small></span></button>
+          </div>
           <input id="imageFile" class="image-file-input" type="file" accept="image/jpeg,image/png,image/webp"/>
           <div id="imageSource" class="image-source" aria-hidden="true"><img id="imageSourcePreview" alt="Selected source"/><div><strong id="imageSourceName">Reference image</strong><span>Ready to edit</span></div><button data-action="remove-image" type="button" aria-label="Remove image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></button></div>
           <button id="generateImageButton" class="image-generate" data-action="generate-image" type="button"><span id="generateImageLabel">Generate image</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -75,6 +80,6 @@ export const MINI_APP_HTML = `<!doctype html>
   </main>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260719-16"></script>
+  <script type="module" src="/mini-app/app.js?v=20260719-17"></script>
 </body>
 </html>`;
