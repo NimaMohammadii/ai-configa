@@ -54,20 +54,9 @@ export const MINI_APP_JS = `
     es:{title:'Créditos insuficientes',text:'El texto tiene más caracteres que tus créditos disponibles.',close:'Entendido'},
     hi:{title:'पर्याप्त क्रेडिट नहीं हैं',text:'आपके टेक्स्ट में उपलब्ध क्रेडिट से ज़्यादा अक्षर हैं।',close:'समझ गया'}
   };
-  var imageCreditCopies={
-    en:'188 credits per image',
-    fa:'هر تصویر ۱۸۸ کردیت',
-    ru:'188 кредитов за изображение',
-    de:'188 Credits pro Bild',
-    tr:'Görsel başına 188 kredi',
-    ar:'١٨٨ رصيدًا لكل صورة',
-    zh:'每张图片 188 积分',
-    ja:'画像1枚 188クレジット',
-    es:'188 créditos por imagen',
-    hi:'हर इमेज 188 क्रेडिट'
-  };
+  var imageCreditCopy='188 credits per image';
   function normalizedLanguage(){return String(currentLanguage||'en').toLowerCase().split('-')[0]}
-  function updateImageCreditNote(){var node=q('imageCreditNote');if(!node)return;var language=normalizedLanguage();node.textContent=imageCreditCopies[language]||imageCreditCopies.en;node.dir=(language==='fa'||language==='ar')?'rtl':'ltr'}
+  function updateImageCreditNote(){var node=q('imageCreditNote');if(!node)return;node.textContent=imageCreditCopy;node.dir='ltr'}
   function textLength(){var input=q('ttsText');return Array.from((input&&input.value)||'').length}
   function textWarningKind(){var count=textLength();if(availableCredits!==null&&count>availableCredits)return'credits';if(count>1000)return'characters';return''}
   function applyWarningCopy(kind){var title=q('ttsWarningTitle');var text=q('ttsWarningText');var close=q('ttsWarningClose');var card=q('ttsWarningCard');var language=normalizedLanguage();var copy=kind==='credits'?(creditWarningCopies[language]||creditWarningCopies.en):{title:'Character limit',text:'You can’t convert more than 1000 characters',close:'Got it'};if(title)title.textContent=withoutTrailingDot(copy.title);if(text)text.textContent=withoutTrailingDot(copy.text);if(close)close.textContent=withoutTrailingDot(copy.close);if(card)card.dir=(language==='fa'||language==='ar')?'rtl':'ltr'}
