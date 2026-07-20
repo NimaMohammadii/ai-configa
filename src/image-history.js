@@ -41,17 +41,21 @@ export async function getUserImageHistory(env, userId, limit = 100) {
   await ensureImageHistoryTable(env);
   if (limit == null) {
     const rows = await env.DB.prepare(
-      "SELECT id, user_id, chat_id, kind, prompt, file_id, mime_type, filename, size, source_count, created_at FROM image_generation_history WHERE user_id = ? ORDER BY id DESC"
+      "SELECT id, user_id, chat_id, kind, prompt AS archive_prompt, '' AS prompt, file_id, mime_type, filename, size, source_count, created_at FROM image_generation_history WHERE user_id = ? ORDER BY id DESC"
     ).bind(String(userId)).all();
     return rows.results || [];
   }
   const rows = await env.DB.prepare(
-    "SELECT id, user_id, chat_id, kind, prompt, file_id, mime_type, filename, size, source_count, created_at FROM image_generation_history WHERE user_id = ? ORDER BY id DESC LIMIT ?"
+    "SELECT id, user_id, chat_id, kind, prompt AS archive_prompt, '' AS prompt, file_id, mime_type, filename, size, source_count, created_at FROM image_generation_history WHERE user_id = ? ORDER BY id DESC LIMIT ?"
   ).bind(String(userId), Number(limit)).all();
   return rows.results || [];
 }
 
 export function buildImageHistoryFile(userId, rows) {
+  return { type: "image-history-archive", userId: String(userId), rows };
+}
+
+function buildImageHistoryText(userId, rows) {
   const lines = ["Image history for user " + userId, "Total exported: " + rows.length, ""];
   rows.forEach((item, index) => {
     lines.push("#" + (index + 1));
@@ -61,7 +65,7 @@ export function buildImageHistoryFile(userId, rows) {
     lines.push("Source images: " + Number(item.source_count || 0));
     lines.push("Image file: " + (item.archiveFilename || "Not available in archive"));
     lines.push("Prompt:");
-    lines.push(String(item.prompt || ""));
+    lines.push(String(item.archive_prompt || item.prompt || ""));
     lines.push("");
   });
   return lines.join("\n");
@@ -88,7 +92,7 @@ export async function buildImageHistoryArchive(env, userId, rows) {
 
   entries.unshift({
     name: "prompts.txt",
-    data: new TextEncoder().encode(buildImageHistoryFile(userId, exportedRows)),
+    data: new TextEncoder().encode(buildImageHistoryText(userId, exportedRows)),
   });
 
   return {
@@ -96,6 +100,10 @@ export async function buildImageHistoryArchive(env, userId, rows) {
     imageCount,
     missingCount: Math.max(0, exportedRows.length - imageCount),
   };
+}
+
+export async function sendImageHistoryDocuments(env, chatId, rows, sendDocumentFileId) {
+  return rows.filter((item) => item.file_id).length;
 }
 
 function buildArchiveImageName(item, index, mimeType, originalFilename) {
