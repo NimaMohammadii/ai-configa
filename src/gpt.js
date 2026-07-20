@@ -6,7 +6,25 @@ const MAX_ENHANCE_CHARS = 5000;
 const GPT_IMAGE_MODEL = "gpt-image-2";
 const GPT_IMAGE_SIZE = "1024x1024";
 const GPT_IMAGE_QUALITY = "low";
-const GPT_IMAGE_SIZES = new Set(["1024x1024", "1024x1536", "1536x1024"]);
+const GPT_IMAGE_SIZES = new Set([
+  "1024x1024",
+  "1024x1280",
+  "960x1344",
+  "1152x1536",
+  "1024x1536",
+  "1152x2048",
+  "768x1792",
+  "1024x2048",
+  "864x2592",
+  "1280x1024",
+  "1344x960",
+  "1536x1152",
+  "1536x1024",
+  "2048x1152",
+  "1792x768",
+  "2048x1024",
+  "2592x864",
+]);
 const MAX_IMAGE_PROMPT_CHARS = 2000;
 const MAX_IMAGE_EDIT_INPUTS = 4;
 
