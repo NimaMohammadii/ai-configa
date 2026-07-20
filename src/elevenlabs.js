@@ -114,7 +114,7 @@ const ELEVEN_ERROR_MESSAGES = {
   },
 };
 
-export async function textToSpeech(env, text, voiceId, lang = "en", voiceOptions = null) {
+export async function textToSpeech(env, text, voiceId, lang = "en") {
   if (!env.ELEVEN_API) {
     throw new Error(elevenError(lang, "missingApi"));
   }
@@ -128,10 +128,6 @@ export async function textToSpeech(env, text, voiceId, lang = "en", voiceOptions
     throw new Error(elevenError(lang, "textTooLong"));
   }
 
-  const voiceSettings = {
-    stability: voiceOptions?.stability ?? 0.5,
-  };
-
   const response = await fetchWithTimeout(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: "POST",
     headers: {
@@ -142,7 +138,6 @@ export async function textToSpeech(env, text, voiceId, lang = "en", voiceOptions
     body: JSON.stringify({
       text: cleanText,
       model_id: "eleven_v3",
-      voice_settings: voiceSettings,
     }),
   }, lang);
 
