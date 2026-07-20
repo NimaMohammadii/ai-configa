@@ -10,7 +10,7 @@ export async function ensureImageHistoryTable(env) {
 
 export async function saveImageHistory(env, entry) {
   await ensureImageHistoryTable(env);
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     "INSERT INTO image_generation_history (user_id, chat_id, kind, prompt, file_id, mime_type, filename, size, source_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
   ).bind(
     String(entry.userId),
@@ -23,6 +23,17 @@ export async function saveImageHistory(env, entry) {
     entry.size ? String(entry.size) : null,
     Number(entry.sourceCount || 0),
   ).run();
+  return { id: Number(result?.meta?.last_row_id || 0) || null };
+}
+
+export async function deleteImageHistory(env, userId, historyId) {
+  await ensureImageHistoryTable(env);
+  const id = Number(historyId);
+  if (!Number.isInteger(id) || id <= 0) return false;
+  const result = await env.DB.prepare(
+    "DELETE FROM image_generation_history WHERE id = ? AND user_id = ?"
+  ).bind(id, String(userId)).run();
+  return Number(result?.meta?.changes || 0) > 0;
 }
 
 export async function getImageUsersPage(env, page = 0, limit = 8) {
