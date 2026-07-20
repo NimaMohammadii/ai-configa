@@ -2,6 +2,7 @@ import { editImage, generateImage } from "./gpt.js";
 import { deleteMessage, sendPhoto, sendPlainMessage } from "./telegram-actions.js";
 import { downloadTelegramFile } from "./telegram-api.js";
 import { escapeHtml } from "./ui.js";
+import { saveImageHistory } from "./image-history.js";
 
 const JOB_LIMIT = 3;
 const STALE_JOB_SECONDS = 240;
@@ -68,13 +69,23 @@ async function processImageJob(env, job) {
       output = await generateImage(env, job.prompt);
     }
 
-    await sendPhoto(
+    const filename = job.kind === "edit" ? "vexa-edited-image.png" : "vexa-image.png";
+    const sent = await sendPhoto(
       env,
       job.chat_id,
       output,
-      job.kind === "edit" ? "vexa-edited-image.png" : "vexa-image.png",
+      filename,
       imageCaption(job.prompt, job.language),
     );
+    await saveImageHistory(env, {
+      userId: job.user_id,
+      chatId: job.chat_id,
+      kind: job.kind,
+      prompt: job.prompt,
+      fileId: getSentPhotoFileId(sent),
+      mimeType: "image/png",
+      filename,
+    });
 
     await deleteWaitMessage(env, job);
     await finishJob(env, job.id, "completed", "");
@@ -123,4 +134,9 @@ function localizedImageError(language) {
 
 function unixNow() {
   return Math.floor(Date.now() / 1000);
+}
+
+function getSentPhotoFileId(sent) {
+  const photos = Array.isArray(sent?.photo) ? sent.photo : [];
+  return photos.length ? photos[photos.length - 1].file_id : null;
 }

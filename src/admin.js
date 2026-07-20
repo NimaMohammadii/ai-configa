@@ -7,6 +7,7 @@ import { getMandatoryFaMembershipSettings } from "./mandatory-channel.js";
 import { ensureTtsHistoryTable } from "./tts-history.js";
 import { tgJson } from "./telegram-api.js";
 import { VOICE_NAMES } from "./voices.js";
+import { getImageUsersPage, getUserImageHistory } from "./image-history.js";
 
 export async function hasTrackedUser(env, userId) {
   requireDb(env);
@@ -131,7 +132,7 @@ export function adminMainKeyboard() {
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }, { text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
-      [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }],
+      [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🎨 Image Users", callback_data: "admin_image_users:0" }],
       [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }, { text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }, { text: "📢 Channel Posts", callback_data: "admin_channel_posts" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
@@ -613,6 +614,60 @@ export async function adminMiniAppUsersKeyboard(env, page = 0) {
 
 function miniAppUserLabel(user) {
   return userLabel(user) + " • 📱 " + formatNumber(user.mini_app_open_count || 0);
+}
+
+export async function adminImageUsersText(env, page = 0) {
+  const data = await getImageUsersPage(env, page);
+  const pageImages = data.users.reduce((sum, user) => sum + Number(user.image_count || 0), 0);
+  return [
+    "🎨 <b>Image Generation Users</b>",
+    "",
+    "Users with images: <b>" + formatNumber(data.total) + "</b>",
+    "This page images: <b>" + formatNumber(pageImages) + "</b>",
+    "Page: <b>" + (data.page + 1) + "</b>",
+    "",
+    data.users.length ? "Select a user to view details or download their image history:" : "No image generations have been recorded yet."
+  ].join("\n");
+}
+
+export async function adminImageUsersKeyboard(env, page = 0) {
+  const data = await getImageUsersPage(env, page);
+  const rows = data.users.map((user) => [{ text: imageUserLabel(user), callback_data: "admin_image_user:" + user.user_id + ":" + data.page }]);
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_image_users:" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_image_users:" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export async function adminImageUserText(env, userId) {
+  const rows = await getUserImageHistory(env, userId, 100);
+  const latest = rows.slice(0, 5);
+  const lines = [
+    "🎨 <b>User Image History</b>",
+    "",
+    "User ID: <code>" + escapeHtml(userId) + "</code>",
+    "Recorded images: <b>" + formatNumber(rows.length) + "</b>",
+    "",
+    latest.length ? "Latest prompts:" : "No image history for this user."
+  ];
+  latest.forEach((item, index) => {
+    lines.push("", (index + 1) + ". <b>" + escapeHtml(formatTehranTime(item.created_at)) + "</b> · " + escapeHtml(item.kind || "generate"));
+    lines.push(escapeHtml(String(item.prompt || "").slice(0, 260)));
+  });
+  return lines.join("\n");
+}
+
+export function adminImageUserKeyboard(userId, page = 0) {
+  return { inline_keyboard: [
+    [{ text: "📥 Download Images + Prompts", callback_data: "admin_image_download:" + userId + ":" + page }],
+    [{ text: "← Back to Image Users", callback_data: "admin_image_users:" + page }],
+  ] };
+}
+
+function imageUserLabel(user) {
+  return userLabel(user) + " • 🎨 " + formatNumber(user.image_count || 0);
 }
 
 export async function getAdminBuyersPage(env, page = 0, limit = 8) {
