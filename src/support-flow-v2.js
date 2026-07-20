@@ -18,18 +18,42 @@ const END = {
 
 const TEXT = {
   fa: {
-    start: "💬 چت با پشتیبانی باز شد.\n\nهرچی می‌خوای همینجا بنویس. اگر چت بسته شد، می‌تونی با ریپلای روی پیام پشتیبانی دوباره جواب بدی.",
+    start: "💬 چت با پشتیبانی باز شد.\n\nهرچی می‌خوای همینجا بنویس. اگر چت بسته شد، می‌تونی با ریپلای روی پیام پشتیبانی دوباره جواب بدی.\n\nاگر خواستی چت رو ببندی، روی دکمه‌ی «اتمام چت» بزن.",
     end: "✅ چت با پشتیبانی بسته شد.",
     sent: "✅ پیام شما برای پشتیبانی ارسال شد.",
     noAdmin: "پشتیبانی فعلاً در دسترس نیست. لطفاً کمی بعد دوباره امتحان کن.",
     adminSent: "✅ پاسخ برای کاربر ارسال شد.",
   },
   en: {
-    start: "💬 Support chat is open.\n\nWrite anything you need here. If the chat is closed, you can still reply to a support message to continue the conversation.",
+    start: "💬 Support chat is open.\n\nWrite anything you need here. If the chat is closed, you can still reply to a support message to continue the conversation.\n\nTo close the chat, tap the “End chat” button.",
     end: "✅ Support chat closed.",
     sent: "✅ Your message was sent to support.",
     noAdmin: "Support is not available right now. Please try again later.",
     adminSent: "✅ Reply sent to user.",
+  },
+  ru: {
+    start: "💬 Чат с поддержкой открыт.\n\nНапишите здесь всё, что нужно. Если чат закроется, вы можете ответить на сообщение поддержки, чтобы продолжить разговор.\n\nЧтобы закрыть чат, нажмите кнопку «Завершить чат».",
+  },
+  de: {
+    start: "💬 Der Support-Chat ist geöffnet.\n\nSchreib hier alles, was du brauchst. Wenn der Chat geschlossen wird, kannst du auf eine Support-Nachricht antworten, um das Gespräch fortzusetzen.\n\nWenn du den Chat schließen möchtest, tippe auf „Chat beenden“.",
+  },
+  tr: {
+    start: "💬 Destek sohbeti açıldı.\n\nİhtiyacın olan her şeyi buraya yaz. Sohbet kapanırsa, konuşmaya devam etmek için bir destek mesajını yanıtlayabilirsin.\n\nSohbeti kapatmak istersen “Sohbeti bitir” düğmesine dokun.",
+  },
+  ar: {
+    start: "💬 تم فتح محادثة الدعم.\n\nاكتب هنا أي شيء تحتاجه. إذا أُغلقت المحادثة، يمكنك الرد على رسالة الدعم لمتابعة المحادثة.\n\nإذا أردت إغلاق المحادثة، اضغط زر «إنهاء المحادثة».",
+  },
+  zh: {
+    start: "💬 支持聊天已打开。\n\n你需要什么都可以在这里写。如果聊天关闭了，你仍然可以回复支持消息来继续对话。\n\n如果想关闭聊天，请点击“结束聊天”按钮。",
+  },
+  ja: {
+    start: "💬 サポートチャットが開きました。\n\n必要なことをここに書いてください。チャットが閉じられた場合でも、サポートメッセージに返信すると会話を続けられます。\n\nチャットを閉じたい場合は、「チャット終了」ボタンをタップしてください。",
+  },
+  es: {
+    start: "💬 El chat de soporte está abierto.\n\nEscribe aquí lo que necesites. Si el chat se cierra, puedes responder a un mensaje de soporte para continuar la conversación.\n\nSi quieres cerrar el chat, toca el botón “Finalizar chat”.",
+  },
+  hi: {
+    start: "💬 सहायता चैट खुल गई है।\n\nआपको जो भी चाहिए, यहीं लिखें। अगर चैट बंद हो जाए, तो बातचीत जारी रखने के लिए सहायता संदेश का जवाब दे सकते हैं।\n\nअगर आप चैट बंद करना चाहते हैं, तो “चैट समाप्त करें” बटन पर टैप करें।",
   },
 };
 
