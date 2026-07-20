@@ -82,7 +82,11 @@ async function isAdminVoiceProfilePhoto(message, env) {
   if (!adminId || !(await isAdmin(env, adminId))) return false;
 
   const action = await getAdminAction(env, adminId);
-  return action?.action === "voice_profile";
+  return isAdminPhotoAction(action);
+}
+
+function isAdminPhotoAction(action) {
+  return ["voice_profile", "mini_app_icon", "channel_post"].includes(action?.action);
 }
 
 async function handleMessageAndPin(message, env) {
