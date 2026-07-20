@@ -12,6 +12,10 @@ import {
   adminBuyersText,
   adminMainKeyboard,
   adminMainText,
+  adminImageUserKeyboard,
+  adminImageUserText,
+  adminImageUsersKeyboard,
+  adminImageUsersText,
   adminInitialStartKeyboard,
   adminInitialStartPromptText,
   adminInitialStartText,
@@ -75,6 +79,7 @@ import { claimDailyReward, dailyRewardMessage, setDailyRewardCredits } from "./d
 import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
 import { getDemoText } from "./demo-texts.js";
 import { enqueueImageJob } from "./image-jobs.js";
+import { buildImageHistoryFile, getUserImageHistory, sendImageHistoryDocuments } from "./image-history.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
 import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember, isMandatoryFaMembershipEnabled, setMandatoryFaMembershipEnabled } from "./mandatory-channel.js";
@@ -404,6 +409,43 @@ export async function handleCallback(query, env) {
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppUsersText(env, page), await adminMiniAppUsersKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_image_users:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const page = Number(data.split(":")[1] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminImageUsersText(env, page), await adminImageUsersKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_image_user:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const parts = data.split(":");
+    const targetUserId = parts[1];
+    const page = Number(parts[2] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminImageUserText(env, targetUserId), adminImageUserKeyboard(targetUserId, page));
+    return;
+  }
+
+  if (data.startsWith("admin_image_download:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const parts = data.split(":");
+    const targetUserId = parts[1];
+    const rows = await getUserImageHistory(env, targetUserId, 100);
+    const content = buildImageHistoryFile(targetUserId, rows);
+    const filename = "image-history-" + String(targetUserId).replace(/[^a-zA-Z0-9_-]/g, "_") + ".txt";
+    await answerCallback(env, query.id, rows.length ? "Sending image history..." : "Sending empty image history...", false);
+    await sendTextDocument(env, chatId, content, filename, "🎨 Image prompts for <code>" + targetUserId + "</code>");
+    const sent = await sendImageHistoryDocuments(env, chatId, rows, sendDocumentFileId);
+    if (rows.length && !sent) {
+      await sendPlainMessage(env, chatId, "No Telegram image files are stored for this user yet. Prompts were sent as a text file.");
+    }
     return;
   }
 
