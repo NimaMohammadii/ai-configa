@@ -1,4 +1,5 @@
 import { tgForm, tgJson } from "./telegram-api.js";
+import { buildImageHistoryArchive } from "./image-history.js";
 
 const botMessageIdsByChat = new Map();
 
@@ -118,7 +119,13 @@ export function sendPhoto(env, chatId, imageBuffer, filename = "vexa-image.png",
   return tgForm(env, "sendPhoto", form);
 }
 
-export function sendTextDocument(env, chatId, content, filename, caption = "") {
+export async function sendTextDocument(env, chatId, content, filename, caption = "") {
+  if (content?.type === "image-history-archive") {
+    const archive = await buildImageHistoryArchive(env, content.userId, content.rows || []);
+    const archiveName = String(filename || "image-history.zip").replace(/\.txt$/i, ".zip");
+    const archiveCaption = "🎨 Image archive for <code>" + content.userId + "</code> · " + archive.imageCount + " images" + (archive.missingCount ? " · " + archive.missingCount + " unavailable" : "");
+    return sendBinaryDocument(env, chatId, archive.buffer, archiveName, "application/zip", archiveCaption);
+  }
   const form = new FormData();
   form.append("chat_id", String(chatId));
   form.append("document", new Blob([content], { type: "text/plain;charset=utf-8" }), filename);
