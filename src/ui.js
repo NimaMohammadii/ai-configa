@@ -75,6 +75,7 @@ export function mainKeyboard(state) {
     { text: t(lang, "balance"), callback_data: "balance" },
     { text: t(lang, "buyCredits"), callback_data: "buy_credits" },
   ]);
+  rows.push([{ text: "Open Mini App 🐙", web_app: { url: "https://ai-configa.vexaagent.workers.dev/mini-app" } }]);
   return { inline_keyboard: rows };
 }
 
