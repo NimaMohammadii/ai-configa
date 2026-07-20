@@ -49,7 +49,7 @@ export const MINI_APP_HTML = `<!doctype html>
           </div>
           <div class="tts-generate-row">
             <button id="convertButton" class="tts-generate" data-action="generate-tts" type="button">Generate Voice</button>
-            <span class="char-count-wrap"><button class="char-warning" id="ttsCharWarning" data-action="open-char-limit" type="button" aria-label="Text length warning"><span>!</span></button><span class="char-count" id="ttsCharCount">0 characters</span></span>
+            <span class="char-count-wrap"><button class="char-warning" id="ttsCharWarning" data-action="open-char-limit" type="button" aria-label="Text length warning"><span>!</span></button><span class="char-count" id="ttsCharCount">0 / 5,000 characters</span></span>
           </div>
           <audio id="ttsAudio" class="tts-hidden-audio"></audio>
           <audio id="voicePreviewAudio" class="tts-hidden-audio"></audio>
