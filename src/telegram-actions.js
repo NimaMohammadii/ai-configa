@@ -1,5 +1,6 @@
 import { tgForm, tgJson } from "./telegram-api.js";
 import { buildImageHistoryArchive } from "./image-history.js";
+import { consumeStartMessageProtection } from "./start-message-guard.js";
 
 const botMessageIdsByChat = new Map();
 
@@ -58,6 +59,9 @@ export function editMessageCaption(env, chatId, messageId, caption, replyMarkup 
 }
 
 export function deleteMessage(env, chatId, messageId) {
+  if (consumeStartMessageProtection(chatId, messageId)) {
+    return Promise.resolve({ skipped: true });
+  }
   return tgJson(env, "deleteMessage", {
     chat_id: chatId,
     message_id: messageId,
