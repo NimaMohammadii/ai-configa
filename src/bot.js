@@ -142,7 +142,9 @@ export async function handleMessage(message, env) {
   }
 
   if (text === "/start") {
-    await deleteMessage(env, chatId, messageId).catch(() => null);
+    if (!isFirstStart) {
+      await deleteMessage(env, chatId, messageId).catch(() => null);
+    }
     const startLanguage = await resolveStartLanguage(env, state.language);
     if (!startLanguage) {
       await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
