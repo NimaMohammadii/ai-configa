@@ -27,6 +27,9 @@ import {
   adminMandatoryMembershipText,
   adminMiniAppAccessKeyboard,
   adminMiniAppAccessText,
+  adminMiniAppIconsKeyboard,
+  adminMiniAppIconsText,
+  adminMiniAppIconPromptText,
   adminMiniAppUsersKeyboard,
   adminMiniAppUsersText,
   adminMiniAppLockPromptText,
@@ -55,6 +58,7 @@ import {
   clearAdminAction,
   deleteWelcomeAudio,
   deleteVoiceProfile,
+  deleteMiniAppButtonIcon,
   getAdminAction,
   getAllUserIds,
   getChannelPostLanguageSettings,
@@ -64,6 +68,7 @@ import {
   setAdminAction,
   setLanguageSetting,
   setMiniAppAccessSettings,
+  setMiniAppButtonIcon,
   setWelcomeAudio,
   setVoiceProfile,
   getLanguageSettings,
@@ -456,6 +461,33 @@ export async function handleCallback(query, env) {
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppAccessText(env), await adminMiniAppAccessKeyboard(env));
+    return;
+  }
+
+
+  if (data === "admin_mini_app_icons") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppIconsText(env), adminMiniAppIconsKeyboard());
+    return;
+  }
+
+  if (data.startsWith("admin_mini_app_icon_upload:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const iconKey = data.slice("admin_mini_app_icon_upload:".length);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "mini_app_icon", { targetUserId: iconKey, chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminMiniAppIconPromptText(iconKey), adminCancelKeyboard("admin_mini_app_icons"));
+    return;
+  }
+
+  if (data.startsWith("admin_mini_app_icon_delete:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const iconKey = data.slice("admin_mini_app_icon_delete:".length);
+    await deleteMiniAppButtonIcon(env, iconKey);
+    await answerCallback(env, query.id, "Mini app icon deleted", false);
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminMiniAppIconsText(env)) + "\n\n🗑 Deleted icon.", adminMiniAppIconsKeyboard());
     return;
   }
 
@@ -922,6 +954,19 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
 
   const inputMessageId = message.message_id;
 
+
+  if (action.action === "mini_app_icon") {
+    const fileId = getLargestPhotoFileId(message);
+    if (!fileId) return false;
+
+    const iconKey = action.target_user_id || "history";
+    await setMiniAppButtonIcon(env, iconKey, fileId);
+    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+    await clearAdminAction(env, adminId);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminMiniAppIconsText(env)) + "\n\n✅ Mini app icon updated.", adminMiniAppIconsKeyboard());
+    return true;
+  }
+
   if (action.action === "voice_profile") {
     const fileId = getLargestPhotoFileId(message);
     if (!fileId) return false;
@@ -1003,6 +1048,11 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
 
   if (action.action === "voice_profile") {
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminVoiceProfilePromptText(action.target_user_id || "Nora") + "\n\nPlease send a photo, not text.", adminCancelKeyboard("admin_voice_profiles"));
+    return true;
+  }
+
+  if (action.action === "mini_app_icon") {
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminMiniAppIconPromptText(action.target_user_id || "history") + "\n\nPlease send a photo, not text.", adminCancelKeyboard("admin_mini_app_icons"));
     return true;
   }
 

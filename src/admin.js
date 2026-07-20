@@ -132,8 +132,9 @@ export function adminMainKeyboard() {
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }, { text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
-      [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🎨 Image Users", callback_data: "admin_image_users:0" }],
-      [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }, { text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
+      [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
+      [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }, { text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
+      [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }, { text: "📢 Channel Posts", callback_data: "admin_channel_posts" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
@@ -1136,6 +1137,88 @@ export async function getWelcomeAudios(env) {
     if (fileId) result[code] = { fileId, fileType: values["welcome_audio_file_type_" + code] || "audio", language: code };
   }
   return result;
+}
+
+const MINI_APP_ICON_TARGETS = [
+  { key: "history", label: "History button" },
+  { key: "emotions", label: "Emotions button" },
+  { key: "image_mode", label: "Create image mode icon" },
+  { key: "voice_mode", label: "Text to voice mode icon" },
+  { key: "image_generate", label: "Generate image button" },
+];
+
+export async function adminMiniAppIconsText(env) {
+  const icons = await getMiniAppButtonIcons(env);
+  return [
+    "🖼 <b>Mini App Button Icons</b>",
+    "",
+    "Upload custom photos for the mini app buttons. Uploaded images are shown as circular icons with the current button border/line.",
+    "",
+    "Configured icons:",
+    ...MINI_APP_ICON_TARGETS.map((item) => (icons[item.key]?.fileId ? "✅ " : "❌ ") + escapeHtml(item.label))
+  ].join("\n");
+}
+
+export function adminMiniAppIconsKeyboard() {
+  const rows = MINI_APP_ICON_TARGETS.map((item) => [
+    { text: "Upload " + item.label, callback_data: "admin_mini_app_icon_upload:" + item.key },
+    { text: "Delete", callback_data: "admin_mini_app_icon_delete:" + item.key }
+  ]);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export function adminMiniAppIconPromptText(iconKey = "history") {
+  const target = miniAppIconTarget(iconKey);
+  return [
+    "🖼 <b>Upload Mini App Icon</b>",
+    "",
+    "Target: <b>" + escapeHtml(target.label) + "</b>",
+    "Send one photo now.",
+    "The new photo will replace the current mini app button icon."
+  ].join("\n");
+}
+
+export async function setMiniAppButtonIcon(env, iconKey, fileId) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const target = miniAppIconTarget(iconKey);
+  await env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("mini_app_icon_file_id_" + target.key, String(fileId)).run();
+}
+
+export async function deleteMiniAppButtonIcon(env, iconKey) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const target = miniAppIconTarget(iconKey);
+  await env.DB.prepare("DELETE FROM app_settings WHERE key = ?").bind("mini_app_icon_file_id_" + target.key).run();
+}
+
+export async function getMiniAppButtonIcons(env) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const rows = await env.DB.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'mini_app_icon_file_id_%'").all();
+  const values = Object.fromEntries((rows.results || []).map((row) => [row.key, row.value]));
+  const result = {};
+  for (const item of MINI_APP_ICON_TARGETS) {
+    const fileId = values["mini_app_icon_file_id_" + item.key];
+    if (fileId) result[item.key] = { fileId, key: item.key, label: item.label };
+  }
+  return result;
+}
+
+export async function getMiniAppButtonIcon(env, iconKey) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const target = miniAppIconTarget(iconKey);
+  const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind("mini_app_icon_file_id_" + target.key).first();
+  return row?.value ? { fileId: row.value, key: target.key, label: target.label } : null;
+}
+
+function miniAppIconTarget(iconKey) {
+  const key = String(iconKey || "").trim();
+  const target = MINI_APP_ICON_TARGETS.find((item) => item.key === key);
+  if (!target) throw new Error("Invalid mini app icon");
+  return target;
 }
 
 export async function adminVoiceProfilesText(env) {
