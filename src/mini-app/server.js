@@ -5,6 +5,7 @@ import { getDemoText } from "../demo-texts.js";
 import { textToSpeech } from "../elevenlabs.js";
 import { editImages, generateImage } from "../gpt.js";
 import { normalizeLang } from "../i18n.js";
+import { saveImageHistory } from "../image-history.js";
 import { getState, saveState } from "../state.js";
 import { buildTtsAudioFileName, getMiniAppTtsHistory, getMiniAppTtsHistoryAudio, getNextTtsFileSequence, saveTtsHistory } from "../tts-history.js";
 import { VOICES } from "../voices.js";
@@ -102,6 +103,16 @@ async function createImage(request, env) {
     size,
   });
   if (!creditResult.ok) return responseError("Not enough credits · Image creation costs 188 credits", 402);
+
+  await saveImageHistory(env, {
+    userId: user.id,
+    kind: sources.length ? "edit" : "generate",
+    prompt,
+    filename: sources.length ? "vexa-edited-image.jpg" : "vexa-image.jpg",
+    mimeType: "image/jpeg",
+    size,
+    sourceCount: sources.length,
+  });
 
   return {
     imageBase64: arrayBufferToBase64(output),
