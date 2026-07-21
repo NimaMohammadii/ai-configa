@@ -12,9 +12,9 @@ body.keyboard-open #flow.active .emotion-trigger,body.keyboard-open.emotion-audi
 .emotion-handle{margin-bottom:8px!important}.emotion-search{height:37px!important;flex-basis:37px!important}.emotion-categories{padding-top:7px!important;padding-bottom:6px!important}.emotion-list{gap:5px!important}.emotion-tag{min-height:46px!important;padding:7px 8px!important;border-radius:13px!important}
 body.keyboard-open .emotion-card{bottom:calc(116px + env(safe-area-inset-bottom))!important;max-height:min(36dvh,300px)!important}
 .tts-area{position:relative}
-.emotion-text-overlay{position:absolute;z-index:1;overflow:hidden;pointer-events:none;color:#fff;background:transparent;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;font-size:16px;line-height:1.45;font-weight:430;letter-spacing:-.025em;text-align:start}
+.emotion-text-overlay{position:absolute;z-index:1;overflow:hidden;pointer-events:none;color:#fff;background:transparent;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;font-size:16px;line-height:1.34;font-weight:430;letter-spacing:-.025em;text-align:start}
 .emotion-text-content{min-height:100%;transform:translateY(0);transform-origin:top left;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word}
-.emotion-inline-tag{display:inline;color:#c7a1ff;font-weight:740;letter-spacing:-.015em;background:rgba(52,25,82,.92);border:1px solid rgba(174,123,255,.3);border-radius:5px;padding:1px 2px;margin:0 1px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.emotion-inline-tag{display:inline;color:#c7a1ff;font:inherit;line-height:inherit;letter-spacing:inherit;vertical-align:baseline;background:rgba(52,25,82,.92);border:0;border-radius:3px;padding:0;margin:0;box-shadow:inset 0 0 0 1px rgba(174,123,255,.3);-webkit-box-decoration-break:clone;box-decoration-break:clone}
 body.emotion-highlight-ready .tts-area textarea{position:relative;z-index:2;color:transparent!important;-webkit-text-fill-color:transparent!important;caret-color:#fff!important}
 body.emotion-highlight-ready .tts-area textarea::placeholder{color:rgba(255,255,255,.28)!important;-webkit-text-fill-color:rgba(255,255,255,.28)!important}
 body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,72,178,.42)}
