@@ -15,7 +15,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260721-30"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260721-31"/>
 </head>
 <body>
   <main class="app">
@@ -34,7 +34,7 @@ export const MINI_APP_HTML = `<!doctype html>
         </div>
         <div class="tts-area">
           <div class="tts-label">Text</div>
-          <textarea id="ttsText" placeholder="Type something"></textarea>
+          <textarea id="ttsText" dir="ltr" placeholder="Type something"></textarea>
         </div>
         <button class="keyboard-dismiss" data-action="dismiss-keyboard" type="button" aria-label="Hide keyboard"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <div class="tts-bottom">
@@ -93,6 +93,6 @@ export const MINI_APP_HTML = `<!doctype html>
   </main>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260721-27"></script>
+  <script type="module" src="/mini-app/app.js?v=20260721-28"></script>
 </body>
 </html>`;
