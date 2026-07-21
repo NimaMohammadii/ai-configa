@@ -1,7 +1,7 @@
 export const MINI_APP_JS = `
 (function(){
   var tg=window.Telegram&&window.Telegram.WebApp;
-  if(tg){try{tg.ready&&tg.ready();tg.expand&&tg.expand();if(tg.isFullscreen&&tg.exitFullscreen)tg.exitFullscreen();tg.disableVerticalSwipes&&tg.disableVerticalSwipes();tg.setBackgroundColor&&tg.setBackgroundColor('#000000');tg.setBottomBarColor&&tg.setBottomBarColor('#000000')}catch(e){}}
+  if(tg){try{tg.ready&&tg.ready();tg.expand&&tg.expand();tg.disableVerticalSwipes&&tg.disableVerticalSwipes();tg.setBackgroundColor&&tg.setBackgroundColor('#000000');tg.setBottomBarColor&&tg.setBottomBarColor('#000000')}catch(e){}}
 
   function syncAppViewport(){
     var height=window.visualViewport&&window.visualViewport.height?window.visualViewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight);
