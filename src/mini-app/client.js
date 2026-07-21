@@ -3,6 +3,15 @@ export const MINI_APP_JS = `
   var tg=window.Telegram&&window.Telegram.WebApp;
   if(tg){try{tg.ready&&tg.ready();tg.expand&&tg.expand();tg.disableVerticalSwipes&&tg.disableVerticalSwipes();tg.setBackgroundColor&&tg.setBackgroundColor('#000000');tg.setBottomBarColor&&tg.setBottomBarColor('#000000')}catch(e){}}
 
+  function syncAppViewport(){
+    var height=window.visualViewport&&window.visualViewport.height?window.visualViewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight);
+    if(height>0)document.documentElement.style.setProperty('--app-viewport-height',Math.round(height)+'px');
+  }
+  syncAppViewport();
+  window.addEventListener('resize',syncAppViewport,{passive:true});
+  if(window.visualViewport)window.visualViewport.addEventListener('resize',syncAppViewport,{passive:true});
+  if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',syncAppViewport)}catch(e){}}
+
   var selectedVoice='TX3LPaxmHKxFdv7VOQHJ';
   var initData=(tg&&tg.initData)||'';
   var imageHistoryOwner='default';
