@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS tts_history (
   file_id TEXT,
   file_type TEXT,
   telegram_message_id INTEGER,
+  source TEXT NOT NULL DEFAULT 'chatbot',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
