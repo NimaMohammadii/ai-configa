@@ -685,7 +685,8 @@ export async function getAdminMiniAppUsersPage(env, page = 0, limit = 8) {
   ).first();
   const users = await env.DB.prepare(
     "SELECT user_id, username, first_name, last_name, last_seen_at, COALESCE(mini_app_open_count, 0) AS mini_app_open_count, last_mini_app_opened_at FROM bot_users " +
-    "WHERE COALESCE(mini_app_open_count, 0) > 0 ORDER BY mini_app_open_count DESC, datetime(last_mini_app_opened_at) DESC LIMIT ? OFFSET ?"
+    "WHERE COALESCE(mini_app_open_count, 0) > 0 " +
+    "ORDER BY datetime(COALESCE(last_mini_app_opened_at, last_seen_at)) DESC, mini_app_open_count DESC LIMIT ? OFFSET ?"
   ).bind(Number(limit), Number(offset)).all();
 
   return {
@@ -706,7 +707,7 @@ export async function adminMiniAppUsersText(env, page = 0) {
     "This page opens: <b>" + formatNumber(totalOpens) + "</b>",
     "Page: <b>" + (data.page + 1) + "</b>",
     "",
-    data.users.length ? "Select a user (each mini app entry is counted):" : "No mini app opens yet."
+    data.users.length ? "Select a user (most recent mini app activity first):" : "No mini app opens yet."
   ].join("\n");
 }
 
