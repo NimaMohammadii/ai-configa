@@ -20,6 +20,10 @@ import {
   adminImagePricingText,
   adminImagePricePromptText,
   adminImageDiscountPromptText,
+  adminImageExploreKeyboard,
+  adminImageExplorePromptText,
+  adminImageExploreText,
+  adminImageExploreUploadText,
   adminInitialStartKeyboard,
   adminInitialStartPromptText,
   adminInitialStartText,
@@ -63,6 +67,7 @@ import {
   deleteWelcomeAudio,
   deleteVoiceProfile,
   deleteMiniAppButtonIcon,
+  deleteImageExploreItem,
   getAdminAction,
   getAllUserIds,
   getChannelPostLanguageSettings,
@@ -74,9 +79,12 @@ import {
   setMiniAppAccessSettings,
   setMiniAppButtonIcon,
   getImagePricingSettings,
+  getImageExploreItems,
   setImageCreditCost,
   setImageDiscountOffer,
   setImageDiscountEnabled,
+  addImageExplorePrompt,
+  setImageExploreImage,
   setWelcomeAudio,
   setVoiceProfile,
   getLanguageSettings,
@@ -496,6 +504,40 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id, "Discount canceled", false);
     const settings = await getImagePricingSettings(env);
     await editCurrentMenu(env, chatId, userId, messageId, (await adminImagePricingText(env)) + "\n\n⛔ Discount canceled.", adminImagePricingKeyboard(settings));
+    return;
+  }
+  if (data === "admin_image_explore") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    const items = await getImageExploreItems(env);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminImageExploreText(env), adminImageExploreKeyboard(items));
+    return;
+  }
+
+  if (data === "admin_image_explore_add") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "image_explore_prompt", { chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminImageExplorePromptText(), adminCancelKeyboard("admin_image_explore"));
+    return;
+  }
+
+  if (data.startsWith("admin_image_explore_upload:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const itemId = data.slice("admin_image_explore_upload:".length);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "image_explore_image", { targetUserId: itemId, chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminImageExploreUploadText(), adminCancelKeyboard("admin_image_explore"));
+    return;
+  }
+
+  if (data.startsWith("admin_image_explore_delete:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await deleteImageExploreItem(env, data.slice("admin_image_explore_delete:".length));
+    await answerCallback(env, query.id, "Explore card deleted", false);
+    const items = await getImageExploreItems(env);
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminImageExploreText(env)) + "\n\n🗑 Deleted card.", adminImageExploreKeyboard(items));
     return;
   }
 
@@ -998,6 +1040,17 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
   const inputMessageId = message.message_id;
 
 
+  if (action.action === "image_explore_image") {
+    const fileId = getLargestPhotoFileId(message);
+    if (!fileId) return false;
+    await setImageExploreImage(env, action.target_user_id, fileId);
+    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+    await clearAdminAction(env, adminId);
+    const items = await getImageExploreItems(env);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImageExploreText(env)) + "\n\n✅ Explore card image updated.", adminImageExploreKeyboard(items));
+    return true;
+  }
+
   if (action.action === "mini_app_icon") {
     const fileId = getLargestPhotoFileId(message);
     if (!fileId) return false;
@@ -1094,6 +1147,11 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     return true;
   }
 
+  if (action.action === "image_explore_image") {
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageExploreUploadText() + "\n\nPlease send a photo, not text.", adminCancelKeyboard("admin_image_explore"));
+    return true;
+  }
+
   if (action.action === "mini_app_icon") {
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminMiniAppIconPromptText(action.target_user_id || "history") + "\n\nPlease send a photo, not text.", adminCancelKeyboard("admin_mini_app_icons"));
     return true;
@@ -1105,6 +1163,18 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   }
 
 
+
+  if (action.action === "image_explore_prompt") {
+    const prompt = String(text || "").trim();
+    if (!prompt) {
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageExplorePromptText() + "\n\nPrompt cannot be empty.", adminCancelKeyboard("admin_image_explore"));
+      return true;
+    }
+    const itemId = await addImageExplorePrompt(env, prompt);
+    await setAdminAction(env, adminId, "image_explore_image", { targetUserId: itemId, chatId: action.chat_id || chatId, messageId: Number(action.message_id) });
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageExploreUploadText() + "\n\n✅ Prompt saved. Now send the card photo.", adminCancelKeyboard("admin_image_explore"));
+    return true;
+  }
 
   if (action.action === "image_base_price") {
     const credits = Number.parseInt(String(text).trim(), 10);
