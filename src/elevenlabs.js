@@ -114,6 +114,50 @@ const ELEVEN_ERROR_MESSAGES = {
   },
 };
 
+export async function textToDialogue(env, inputs, lang = "en") {
+  if (!env.ELEVEN_API) {
+    throw new Error(elevenError(lang, "missingApi"));
+  }
+
+  const cleanInputs = (Array.isArray(inputs) ? inputs : []).map((item) => ({
+    text: String(item?.text || "").trim(),
+    voice_id: String(item?.voiceId || item?.voice_id || "").trim(),
+  }));
+
+  if (!cleanInputs.length || cleanInputs.some((item) => !item.text || !item.voice_id)) {
+    throw new Error(elevenError(lang, "emptyText"));
+  }
+
+  const totalCharacters = cleanInputs.reduce((sum, item) => sum + Array.from(item.text).length, 0);
+  if (totalCharacters > 2000) {
+    throw new Error(elevenError(lang, "textTooLong"));
+  }
+
+  if (new Set(cleanInputs.map((item) => item.voice_id)).size > 10) {
+    throw new Error("Text to Dialogue supports up to 10 unique voices per generation.");
+  }
+
+  const response = await fetchWithTimeout("https://api.elevenlabs.io/v1/text-to-dialogue?output_format=mp3_44100_128", {
+    method: "POST",
+    headers: {
+      "Accept": "audio/mpeg",
+      "Content-Type": "application/json",
+      "xi-api-key": env.ELEVEN_API,
+    },
+    body: JSON.stringify({
+      inputs: cleanInputs,
+      model_id: "eleven_v3",
+    }),
+  }, lang);
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(toFriendlyElevenLabsError(response.status, errorBody, lang));
+  }
+
+  return await response.arrayBuffer();
+}
+
 export async function textToSpeech(env, text, voiceId, lang = "en") {
   if (!env.ELEVEN_API) {
     throw new Error(elevenError(lang, "missingApi"));
