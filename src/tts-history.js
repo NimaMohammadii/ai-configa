@@ -6,7 +6,7 @@ const EXPORT_LIMIT = 5000;
 export async function ensureTtsHistoryTable(env) {
   requireDb(env);
   await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS tts_history (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, text TEXT NOT NULL, voice TEXT NOT NULL, language TEXT NOT NULL, credits INTEGER NOT NULL, file_sequence INTEGER, audio_base64 TEXT NOT NULL DEFAULT '', file_id TEXT, file_type TEXT, telegram_message_id INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    "CREATE TABLE IF NOT EXISTS tts_history (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, text TEXT NOT NULL, voice TEXT NOT NULL, language TEXT NOT NULL, credits INTEGER NOT NULL, file_sequence INTEGER, audio_base64 TEXT NOT NULL DEFAULT '', file_id TEXT, file_type TEXT, telegram_message_id INTEGER, source TEXT NOT NULL DEFAULT 'chatbot', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
   ).run();
 
   await addMissingTtsHistoryColumns(env);
@@ -23,6 +23,7 @@ async function addMissingTtsHistoryColumns(env) {
     "file_id TEXT",
     "file_type TEXT",
     "telegram_message_id INTEGER",
+    "source TEXT NOT NULL DEFAULT 'chatbot'",
   ];
 
   for (const column of columns) {
@@ -73,7 +74,7 @@ export function buildTtsAudioFileName(sequence) {
   return "Vexa " + String(safeSequence).padStart(4, "0") + ".mp3";
 }
 
-export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage = null, fileSequence = null, audioBase64 = "") {
+export async function saveTtsHistory(env, userId, text, voice, language, credits, sentMessage = null, fileSequence = null, audioBase64 = "", source = "chatbot") {
   await ensureTtsHistoryTable(env);
 
   const audio = sentMessage?.audio || sentMessage?.document || null;
@@ -83,7 +84,7 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
 
   try {
     await env.DB.prepare(
-      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, file_sequence, audio_base64, file_id, file_type, telegram_message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+      "INSERT INTO tts_history (id, user_id, text, voice, language, credits, file_sequence, audio_base64, file_id, file_type, telegram_message_id, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
     ).bind(
       crypto.randomUUID(),
       String(userId),
@@ -95,11 +96,12 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
       String(audioBase64 || ""),
       fileId,
       fileType,
-      telegramMessageId
+      telegramMessageId,
+      normalizeTtsSource(source)
     ).run();
   } catch (firstError) {
     await env.DB.prepare(
-      "INSERT INTO tts_history (user_id, text, voice, language, credits, file_sequence, audio_base64, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+      "INSERT INTO tts_history (user_id, text, voice, language, credits, file_sequence, audio_base64, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
     ).bind(
       String(userId),
       String(text || ""),
@@ -107,7 +109,8 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
       String(language || ""),
       Number(credits || 0),
       fileSequence == null ? null : Number(fileSequence),
-      String(audioBase64 || "")
+      String(audioBase64 || ""),
+      normalizeTtsSource(source)
     ).run();
   }
 }
@@ -116,7 +119,7 @@ export async function getMiniAppTtsHistory(env, userId, limit = 30) {
   await ensureTtsHistoryTable(env);
   const safeLimit = Math.min(50, Math.max(1, Number(limit || 30)));
   const rows = await env.DB.prepare(
-    "SELECT id, text, voice, language, credits, file_sequence, created_at, " +
+    "SELECT id, text, voice, language, credits, file_sequence, source, created_at, " +
       "CASE WHEN audio_base64 != '' OR file_id IS NOT NULL THEN 1 ELSE 0 END AS has_audio " +
     "FROM tts_history WHERE user_id = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ?"
   ).bind(String(userId), safeLimit).all();
@@ -146,7 +149,7 @@ export async function getTtsHistoryPage(env, userId, page = 0, limit = HISTORY_L
   ).bind(String(userId)).first();
 
   const rows = await env.DB.prepare(
-    "SELECT id, text, voice, language, credits, file_id, file_type, created_at FROM tts_history WHERE user_id = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ? OFFSET ?"
+    "SELECT id, text, voice, language, credits, file_id, file_type, source, created_at FROM tts_history WHERE user_id = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ? OFFSET ?"
   ).bind(String(userId), safeLimit, offset).all();
 
   return {
@@ -160,7 +163,7 @@ export async function getTtsHistoryPage(env, userId, page = 0, limit = HISTORY_L
 export async function getTtsHistoryItem(env, id) {
   await ensureTtsHistoryTable(env);
   return await env.DB.prepare(
-    "SELECT id, user_id, text, voice, language, credits, file_id, file_type, created_at FROM tts_history WHERE id = ?"
+    "SELECT id, user_id, text, voice, language, credits, file_id, file_type, source, created_at FROM tts_history WHERE id = ?"
   ).bind(String(id)).first();
 }
 
@@ -172,7 +175,7 @@ export async function getTtsHistoryItemByIndex(env, userId, page = 0, index = 0,
 export async function getTtsHistoryExport(env, userId, limit = EXPORT_LIMIT) {
   await ensureTtsHistoryTable(env);
   const rows = await env.DB.prepare(
-    "SELECT text, voice, language, credits, created_at FROM tts_history WHERE user_id = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ?"
+    "SELECT text, voice, language, credits, source, created_at FROM tts_history WHERE user_id = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ?"
   ).bind(String(userId), Math.max(1, Number(limit || EXPORT_LIMIT))).all();
 
   return rows.results || [];
@@ -198,6 +201,7 @@ export function buildTtsHistoryFile(userId, rows) {
       "Date: " + (item.created_at || "-"),
       "Voice: " + (item.voice || "-"),
       "Language: " + (item.language || "-"),
+      "Source: " + ttsSourceLabel(item.source),
       "Characters: " + Array.from(text).length,
       "Consumed credits: " + Number(item.credits || 0),
       "Text:",
@@ -248,6 +252,7 @@ export function ttsHistoryItemText(item) {
     "User ID: <code>" + escapeHtml(item.user_id) + "</code>",
     "Voice: <b>" + escapeHtml(item.voice || "-") + "</b>",
     "Language: <b>" + escapeHtml(item.language || "-") + "</b>",
+    "Source: <b>" + escapeHtml(ttsSourceLabel(item.source)) + "</b>",
     "Credits: <b>" + Number(item.credits || 0).toLocaleString("en-US") + "</b>",
     "Date: <b>" + escapeHtml(item.created_at || "-") + "</b>",
     "",
@@ -271,6 +276,7 @@ export function ttsAudioCaption(item) {
     "",
     "User ID: <code>" + escapeHtml(item.user_id) + "</code>",
     "Voice: <b>" + escapeHtml(item.voice || "-") + "</b>",
+    "Source: <b>" + escapeHtml(ttsSourceLabel(item.source)) + "</b>",
     "Credits: <b>" + Number(item.credits || 0).toLocaleString("en-US") + "</b>",
   ].join("\n");
 }
@@ -278,7 +284,15 @@ export function ttsAudioCaption(item) {
 function historyLabel(item) {
   const shortText = String(item.text || "").replace(/\s+/g, " ").trim().slice(0, 28);
   const date = String(item.created_at || "").slice(0, 16);
-  return `${date} • ${item.voice || "voice"} • ${shortText || "text"}`;
+  return `${date} • ${ttsSourceLabel(item.source)} • ${item.voice || "voice"} • ${shortText || "text"}`;
+}
+
+function normalizeTtsSource(value) {
+  return String(value || "").trim() === "mini_app" ? "mini_app" : "chatbot";
+}
+
+function ttsSourceLabel(value) {
+  return normalizeTtsSource(value) === "mini_app" ? "Mini App" : "Chat Bot";
 }
 
 function escapeHtml(value) {
