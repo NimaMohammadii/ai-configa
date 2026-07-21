@@ -134,7 +134,7 @@ export function adminMainKeyboard() {
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
       [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }, { text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
-      [{ text: "💸 Image Pricing", callback_data: "admin_image_pricing" }],
+      [{ text: "💸 Image Pricing", callback_data: "admin_image_pricing" }, { text: "🧭 Explore Prompts", callback_data: "admin_image_explore" }],
       [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }, { text: "📢 Channel Posts", callback_data: "admin_channel_posts" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
@@ -1328,6 +1328,78 @@ function miniAppIconTarget(iconKey) {
   const target = MINI_APP_ICON_TARGETS.find((item) => item.key === key);
   if (!target) throw new Error("Invalid mini app icon");
   return target;
+}
+
+export async function getImageExploreItems(env) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind("image_explore_items").first();
+  let items = [];
+  try { items = JSON.parse(row?.value || "[]"); } catch { items = []; }
+  return Array.isArray(items) ? items.map((item, index) => ({
+    id: String(item.id || index + 1),
+    prompt: String(item.prompt || ""),
+    fileId: String(item.fileId || ""),
+    order: Number(item.order || index + 1),
+  })).filter((item) => item.prompt).sort((a, b) => a.order - b.order).slice(0, 50) : [];
+}
+
+async function saveImageExploreItems(env, items) {
+  await ensureAppSettingsTable(env);
+  await env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("image_explore_items", JSON.stringify(items)).run();
+}
+
+export async function addImageExplorePrompt(env, prompt) {
+  const clean = String(prompt || "").trim();
+  if (!clean) throw new Error("Prompt is empty");
+  const items = await getImageExploreItems(env);
+  const id = String(Date.now());
+  items.push({ id, prompt: clean, fileId: "", order: items.length + 1 });
+  await saveImageExploreItems(env, items);
+  return id;
+}
+
+export async function setImageExploreImage(env, itemId, fileId) {
+  const items = await getImageExploreItems(env);
+  const item = items.find((entry) => entry.id === String(itemId));
+  if (!item) throw new Error("Explore card not found");
+  item.fileId = String(fileId);
+  await saveImageExploreItems(env, items);
+}
+
+export async function deleteImageExploreItem(env, itemId) {
+  const items = (await getImageExploreItems(env)).filter((item) => item.id !== String(itemId)).map((item, index) => ({ ...item, order: index + 1 }));
+  await saveImageExploreItems(env, items);
+}
+
+export async function adminImageExploreText(env) {
+  const items = await getImageExploreItems(env);
+  return [
+    "🧭 <b>Image Explore Prompts</b>",
+    "",
+    "Create numbered cards for the mini app image Explore row. Add a prompt first, then upload the card image.",
+    "",
+    items.length ? "Cards:" : "No cards yet.",
+    ...items.map((item, index) => "#" + (index + 1) + " · " + escapeHtml(item.prompt).slice(0, 90))
+  ].join("\n");
+}
+
+export function adminImageExploreKeyboard(items = []) {
+  const rows = [[{ text: "➕ Add Card", callback_data: "admin_image_explore_add" }]];
+  items.forEach((item, index) => rows.push([
+    { text: "🖼 Upload #" + (index + 1), callback_data: "admin_image_explore_upload:" + item.id },
+    { text: "🗑 Delete #" + (index + 1), callback_data: "admin_image_explore_delete:" + item.id }
+  ]));
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export function adminImageExplorePromptText() {
+  return "🧭 <b>Add Explore Card</b>\n\nSend the image prompt text for this card.";
+}
+
+export function adminImageExploreUploadText() {
+  return "🖼 <b>Upload Explore Card Image</b>\n\nSend one photo for this card. It will appear as a 3:4 Explore card in the mini app.";
 }
 
 export async function adminVoiceProfilesText(env) {
