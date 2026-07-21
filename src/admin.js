@@ -1331,6 +1331,11 @@ function miniAppIconTarget(iconKey) {
 }
 
 export async function getImageExploreItems(env) {
+  const items = await readImageExploreItems(env);
+  return items.filter((item) => item.prompt || item.fileId).sort((a, b) => a.order - b.order).slice(0, 50);
+}
+
+async function readImageExploreItems(env) {
   requireDb(env);
   await ensureAppSettingsTable(env);
   const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind("image_explore_items").first();
@@ -1341,7 +1346,7 @@ export async function getImageExploreItems(env) {
     prompt: String(item.prompt || ""),
     fileId: String(item.fileId || ""),
     order: Number(item.order || index + 1),
-  })).filter((item) => item.prompt || item.fileId).sort((a, b) => a.order - b.order).slice(0, 50) : [];
+  })) : [];
 }
 
 async function saveImageExploreItems(env, items) {
@@ -1351,7 +1356,7 @@ async function saveImageExploreItems(env, items) {
 
 export async function addImageExplorePrompt(env, prompt) {
   const clean = String(prompt || "").trim();
-  const items = await getImageExploreItems(env);
+  const items = await readImageExploreItems(env);
   const id = String(Date.now());
   items.push({ id, prompt: clean, fileId: "", order: items.length + 1 });
   await saveImageExploreItems(env, items);
@@ -1359,7 +1364,7 @@ export async function addImageExplorePrompt(env, prompt) {
 }
 
 export async function setImageExploreImage(env, itemId, fileId) {
-  const items = await getImageExploreItems(env);
+  const items = await readImageExploreItems(env);
   const item = items.find((entry) => entry.id === String(itemId));
   if (!item) throw new Error("Explore card not found");
   item.fileId = String(fileId);
@@ -1367,7 +1372,7 @@ export async function setImageExploreImage(env, itemId, fileId) {
 }
 
 export async function deleteImageExploreItem(env, itemId) {
-  const items = (await getImageExploreItems(env)).filter((item) => item.id !== String(itemId)).map((item, index) => ({ ...item, order: index + 1 }));
+  const items = (await readImageExploreItems(env)).filter((item) => item.id !== String(itemId)).map((item, index) => ({ ...item, order: index + 1 }));
   await saveImageExploreItems(env, items);
 }
 
