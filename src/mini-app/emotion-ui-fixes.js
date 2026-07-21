@@ -49,7 +49,7 @@ export const EMOTION_UI_FIXES_JS = String.raw`
       }else content.appendChild(document.createTextNode(part));
     });
     if(value.endsWith('\n'))content.appendChild(document.createTextNode(' '));
-    syncOverlayBox();
+    requestAnimationFrame(syncOverlayBox);
   }
 
   input.addEventListener('input',renderHighlightedText);
