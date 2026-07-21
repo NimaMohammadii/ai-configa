@@ -6,7 +6,7 @@ body{position:fixed;top:0;left:0;right:0;bottom:auto;height:var(--app-viewport-h
 button,textarea{font:inherit;font-family:var(--font-main)}
 button{border:0}
 strong,.wave-time{font-family:var(--font-num);font-variant-numeric:tabular-nums lining-nums;font-feature-settings:"tnum" 1,"lnum" 1,"kern" 1}
-.app{position:relative;width:min(100%,560px);height:100%;margin:auto;padding:calc(22px + env(safe-area-inset-top)) 16px 0;background:#000!important;overflow:hidden}
+.app{position:relative;width:min(100%,560px);height:100%;margin:auto;padding:calc(22px + env(safe-area-inset-top)) 0 0;background:#000!important;overflow:hidden}
 .view{display:none;height:100%;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:0;scroll-padding-bottom:210px;position:relative}.view.active{display:block}
 .tts-page{position:relative;min-height:100%;height:auto;display:flex;flex-direction:column;overflow:visible;padding-bottom:210px}
 .tts-head{display:flex;align-items:stretch!important;justify-content:space-between!important;gap:12px!important;height:36px;min-height:36px;max-height:36px;margin:0 0 14px!important}
