@@ -5,8 +5,7 @@ export const EMOTION_UI_FIXES_JS = String.raw`
   var player=document.getElementById('wavePlayer');
   if(!input||!trigger)return;
 
-  trigger.innerHTML='';
-  trigger.classList.add('emotion-icon-pending');
+  trigger.innerHTML='<svg class="emotion-real-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.55"/><path d="M8.35 9.45c.45-.38.93-.56 1.45-.54M15.65 9.45c-.45-.38-.93-.56-1.45-.54" stroke="currentColor" stroke-width="1.55" stroke-linecap="round"/><path d="M8.45 14.05c1.02 1.12 2.2 1.68 3.55 1.68s2.53-.56 3.55-1.68" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/><path d="M18.65 3.55v2.7M17.3 4.9H20" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/></svg>';
   trigger.setAttribute('aria-label','Open emotion tags');
 
   var panel=document.getElementById('emotionPanel');
