@@ -134,6 +134,7 @@ export function adminMainKeyboard() {
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
       [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }, { text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
+      [{ text: "💸 Image Pricing", callback_data: "admin_image_pricing" }],
       [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }, { text: "📢 Channel Posts", callback_data: "admin_channel_posts" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
@@ -141,6 +142,111 @@ export function adminMainKeyboard() {
   };
 }
 
+
+export const DEFAULT_IMAGE_CREDIT_COST = 188;
+
+export async function getImagePricingSettings(env) {
+  requireDb(env);
+  const rows = await env.DB.prepare(
+    "SELECT key, value FROM app_settings WHERE key IN ('image_credit_cost', 'image_discount_enabled', 'image_discount_cost', 'image_discount_until')"
+  ).all().catch(() => ({ results: [] }));
+  const values = Object.fromEntries((rows?.results || []).map((row) => [row.key, row.value]));
+  const baseCost = parsePositiveInt(values.image_credit_cost, DEFAULT_IMAGE_CREDIT_COST);
+  const discountCost = parsePositiveInt(values.image_discount_cost, 0);
+  const discountUntil = parsePositiveInt(values.image_discount_until, 0);
+  const now = Math.floor(Date.now() / 1000);
+  const enabled = values.image_discount_enabled === "1" && discountCost > 0 && discountCost < baseCost && discountUntil > now;
+  if (values.image_discount_enabled === "1" && discountUntil > 0 && discountUntil <= now) {
+    await setImageDiscountEnabled(env, false);
+  }
+  return {
+    baseCost,
+    activeCost: enabled ? discountCost : baseCost,
+    discountEnabled: enabled,
+    discountCost: enabled ? discountCost : 0,
+    discountUntil: enabled ? discountUntil : 0,
+    serverNow: now,
+    discountPercent: enabled ? Math.max(1, Math.round((baseCost - discountCost) / baseCost * 100)) : 0,
+  };
+}
+
+export async function setImageCreditCost(env, credits) {
+  const value = Number.parseInt(credits, 10);
+  if (!Number.isFinite(value) || value <= 0) throw new Error("Image credit cost must be a positive number");
+  await setAppSetting(env, "image_credit_cost", String(value));
+}
+
+export async function setImageDiscountOffer(env, discountCost, minutes) {
+  const cost = Number.parseInt(discountCost, 10);
+  const duration = Number.parseInt(minutes, 10);
+  if (!Number.isFinite(cost) || cost <= 0) throw new Error("Discount cost must be a positive number");
+  if (!Number.isFinite(duration) || duration <= 0) throw new Error("Discount duration must be a positive number");
+  const until = Math.floor(Date.now() / 1000) + duration * 60;
+  await Promise.all([
+    setAppSetting(env, "image_discount_cost", String(cost)),
+    setAppSetting(env, "image_discount_until", String(until)),
+    setAppSetting(env, "image_discount_enabled", "1"),
+  ]);
+}
+
+export async function setImageDiscountEnabled(env, enabled) {
+  await setAppSetting(env, "image_discount_enabled", enabled ? "1" : "0");
+}
+
+export async function adminImagePricingText(env) {
+  const settings = await getImagePricingSettings(env);
+  const lines = [
+    "💸 <b>Image Credit Pricing</b>",
+    "",
+    "Base price: <b>" + formatNumber(settings.baseCost) + " credits</b>",
+    "Active price: <b>" + formatNumber(settings.activeCost) + " credits</b>",
+  ];
+  if (settings.discountEnabled) {
+    lines.push("Discount: <b>ON</b> · <b>" + settings.discountPercent + "% OFF</b>", "Ends in: <b>" + formatImageOfferDuration(settings.discountUntil - settings.serverNow) + "</b>");
+  } else {
+    lines.push("Discount: <b>OFF</b>");
+  }
+  lines.push("", "Use Set Base Price for the normal image cost, or Start Timed Discount with: <code>discount_price minutes</code>.");
+  return lines.join("\n");
+}
+
+export function adminImagePricingKeyboard(settings = null) {
+  const rows = [
+    [{ text: "✏️ Set Base Price", callback_data: "admin_image_price_prompt" }],
+    [{ text: "🔥 Start Timed Discount", callback_data: "admin_image_discount_prompt" }],
+  ];
+  if (settings?.discountEnabled) rows.push([{ text: "⛔ Cancel Discount", callback_data: "admin_image_discount_cancel" }]);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export function adminImagePricePromptText() {
+  return ["💸 <b>Set Image Base Price</b>", "", "Send the new positive credit cost per image.", "Example: <code>188</code>"].join("\n");
+}
+
+export function adminImageDiscountPromptText() {
+  return ["🔥 <b>Start Timed Image Discount</b>", "", "Send discount price and duration in minutes.", "Example: <code>99 30</code>", "", "The offer automatically ends after the selected minutes."].join("\n");
+}
+
+function parsePositiveInt(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function setAppSetting(env, key, value) {
+  requireDb(env);
+  await env.DB.prepare(
+    "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP"
+  ).bind(key, value == null ? null : String(value)).run();
+}
+
+function formatImageOfferDuration(seconds) {
+  const total = Math.max(0, Number(seconds || 0));
+  const minutes = Math.floor(total / 60);
+  const secs = total % 60;
+  if (minutes >= 60) return Math.floor(minutes / 60) + "h " + (minutes % 60) + "m";
+  return minutes + "m " + secs + "s";
+}
 
 
 export async function adminDailyRewardText(env) {
