@@ -1040,10 +1040,11 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
   const inputMessageId = message.message_id;
 
 
-  if (action.action === "image_explore_image") {
+  if (action.action === "image_explore_image" || action.action === "image_explore_prompt") {
     const fileId = getLargestPhotoFileId(message);
     if (!fileId) return false;
-    await setImageExploreImage(env, action.target_user_id, fileId);
+    const itemId = action.action === "image_explore_prompt" ? await addImageExplorePrompt(env, "") : action.target_user_id;
+    await setImageExploreImage(env, itemId, fileId);
     await deleteMessage(env, chatId, inputMessageId).catch(() => null);
     await clearAdminAction(env, adminId);
     const items = await getImageExploreItems(env);
@@ -1167,7 +1168,7 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   if (action.action === "image_explore_prompt") {
     const prompt = String(text || "").trim();
     if (!prompt) {
-      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageExplorePromptText() + "\n\nPrompt cannot be empty.", adminCancelKeyboard("admin_image_explore"));
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageExplorePromptText() + "\n\nSend a prompt text, or upload a photo to skip prompt text.", adminCancelKeyboard("admin_image_explore"));
       return true;
     }
     const itemId = await addImageExplorePrompt(env, prompt);

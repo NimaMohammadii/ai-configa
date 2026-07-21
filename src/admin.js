@@ -1341,7 +1341,7 @@ export async function getImageExploreItems(env) {
     prompt: String(item.prompt || ""),
     fileId: String(item.fileId || ""),
     order: Number(item.order || index + 1),
-  })).filter((item) => item.prompt).sort((a, b) => a.order - b.order).slice(0, 50) : [];
+  })).filter((item) => item.prompt || item.fileId).sort((a, b) => a.order - b.order).slice(0, 50) : [];
 }
 
 async function saveImageExploreItems(env, items) {
@@ -1351,7 +1351,6 @@ async function saveImageExploreItems(env, items) {
 
 export async function addImageExplorePrompt(env, prompt) {
   const clean = String(prompt || "").trim();
-  if (!clean) throw new Error("Prompt is empty");
   const items = await getImageExploreItems(env);
   const id = String(Date.now());
   items.push({ id, prompt: clean, fileId: "", order: items.length + 1 });
@@ -1377,10 +1376,10 @@ export async function adminImageExploreText(env) {
   return [
     "🐙 <b>Image Explore Prompts</b>",
     "",
-    "Create numbered cards for the mini app image Explore row. Add a prompt first, then upload the card image.",
+    "Create numbered cards for the mini app image Explore row. Send prompt text, or upload a card image without prompt text.",
     "",
     items.length ? "Cards:" : "No cards yet.",
-    ...items.map((item, index) => "#" + (index + 1) + " · " + escapeHtml(item.prompt).slice(0, 90))
+    ...items.map((item, index) => "#" + (index + 1) + " · " + (item.prompt ? escapeHtml(item.prompt).slice(0, 90) : "<i>No prompt text</i>") + (item.fileId ? " · 🖼" : ""))
   ].join("\n");
 }
 
@@ -1395,7 +1394,7 @@ export function adminImageExploreKeyboard(items = []) {
 }
 
 export function adminImageExplorePromptText() {
-  return "🐙 <b>Add Explore Card</b>\n\nSend the image prompt text for this card.";
+  return "🐙 <b>Add Explore Card</b>\n\nSend prompt text for this card, or send a photo now to create it without prompt text.";
 }
 
 export function adminImageExploreUploadText() {
