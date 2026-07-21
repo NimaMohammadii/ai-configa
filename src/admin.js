@@ -155,7 +155,7 @@ export async function getImagePricingSettings(env) {
   const discountCost = parsePositiveInt(values.image_discount_cost, 0);
   const discountUntil = parsePositiveInt(values.image_discount_until, 0);
   const now = Math.floor(Date.now() / 1000);
-  const enabled = values.image_discount_enabled === "1" && discountCost > 0 && discountCost < baseCost && discountUntil > now;
+  const enabled = values.image_discount_enabled === "1" && discountCost > 0 && discountCost < baseCost && (discountUntil === 0 || discountUntil > now);
   if (values.image_discount_enabled === "1" && discountUntil > 0 && discountUntil <= now) {
     await setImageDiscountEnabled(env, false);
   }
@@ -164,7 +164,7 @@ export async function getImagePricingSettings(env) {
     activeCost: enabled ? discountCost : baseCost,
     discountEnabled: enabled,
     discountCost: enabled ? discountCost : 0,
-    discountUntil: enabled ? discountUntil : 0,
+    discountUntil: enabled && discountUntil > now ? discountUntil : 0,
     serverNow: now,
     discountPercent: enabled ? Math.max(1, Math.round((baseCost - discountCost) / baseCost * 100)) : 0,
   };
@@ -178,10 +178,10 @@ export async function setImageCreditCost(env, credits) {
 
 export async function setImageDiscountOffer(env, discountCost, minutes) {
   const cost = Number.parseInt(discountCost, 10);
-  const duration = Number.parseInt(minutes, 10);
+  const duration = minutes == null || String(minutes).trim() === "" ? 0 : Number.parseInt(minutes, 10);
   if (!Number.isFinite(cost) || cost <= 0) throw new Error("Discount cost must be a positive number");
-  if (!Number.isFinite(duration) || duration <= 0) throw new Error("Discount duration must be a positive number");
-  const until = Math.floor(Date.now() / 1000) + duration * 60;
+  if (!Number.isFinite(duration) || duration < 0) throw new Error("Discount duration must be a positive number");
+  const until = duration > 0 ? Math.floor(Date.now() / 1000) + duration * 60 : 0;
   await Promise.all([
     setAppSetting(env, "image_discount_cost", String(cost)),
     setAppSetting(env, "image_discount_until", String(until)),
@@ -202,18 +202,20 @@ export async function adminImagePricingText(env) {
     "Active price: <b>" + formatNumber(settings.activeCost) + " credits</b>",
   ];
   if (settings.discountEnabled) {
-    lines.push("Discount: <b>ON</b> · <b>" + settings.discountPercent + "% OFF</b>", "Ends in: <b>" + formatImageOfferDuration(settings.discountUntil - settings.serverNow) + "</b>");
+    lines.push("Discount: <b>ON</b> · <b>" + settings.discountPercent + "% OFF</b>");
+    if (settings.discountUntil > 0) lines.push("Ends in: <b>" + formatImageOfferDuration(settings.discountUntil - settings.serverNow) + "</b>");
+    else lines.push("Timer: <b>OFF</b>");
   } else {
     lines.push("Discount: <b>OFF</b>");
   }
-  lines.push("", "Use Set Base Price for the normal image cost, or Start Timed Discount with: <code>discount_price minutes</code>.");
+  lines.push("", "Use Set Base Price for the normal image cost, or Start Discount with: <code>discount_price</code> or <code>discount_price minutes</code>.");
   return lines.join("\n");
 }
 
 export function adminImagePricingKeyboard(settings = null) {
   const rows = [
     [{ text: "✏️ Set Base Price", callback_data: "admin_image_price_prompt" }],
-    [{ text: "🔥 Start Timed Discount", callback_data: "admin_image_discount_prompt" }],
+    [{ text: "🔥 Start Discount", callback_data: "admin_image_discount_prompt" }],
   ];
   if (settings?.discountEnabled) rows.push([{ text: "⛔ Cancel Discount", callback_data: "admin_image_discount_cancel" }]);
   rows.push([{ text: "← Back", callback_data: "admin_main" }]);
@@ -225,7 +227,7 @@ export function adminImagePricePromptText() {
 }
 
 export function adminImageDiscountPromptText() {
-  return ["🔥 <b>Start Timed Image Discount</b>", "", "Send discount price and duration in minutes.", "Example: <code>99 30</code>", "", "The offer automatically ends after the selected minutes."].join("\n");
+  return ["🔥 <b>Start Image Discount</b>", "", "Send discount price, optionally followed by duration in minutes.", "Examples: <code>99</code> or <code>99 30</code>", "", "If you omit minutes, the discount stays active until you cancel it."].join("\n");
 }
 
 function parsePositiveInt(value, fallback) {
