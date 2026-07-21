@@ -134,7 +134,7 @@ export function adminMainKeyboard() {
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
       [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }, { text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
-      [{ text: "💸 Image Pricing", callback_data: "admin_image_pricing" }, { text: "🧭 Explore Prompts", callback_data: "admin_image_explore" }],
+      [{ text: "💸 Image Pricing", callback_data: "admin_image_pricing" }, { text: "🐙 Explore Prompts", callback_data: "admin_image_explore" }],
       [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
       [{ text: "Broadcast Message", callback_data: "admin_broadcast" }, { text: "📢 Channel Posts", callback_data: "admin_channel_posts" }],
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
@@ -1375,7 +1375,7 @@ export async function deleteImageExploreItem(env, itemId) {
 export async function adminImageExploreText(env) {
   const items = await getImageExploreItems(env);
   return [
-    "🧭 <b>Image Explore Prompts</b>",
+    "🐙 <b>Image Explore Prompts</b>",
     "",
     "Create numbered cards for the mini app image Explore row. Add a prompt first, then upload the card image.",
     "",
@@ -1395,7 +1395,7 @@ export function adminImageExploreKeyboard(items = []) {
 }
 
 export function adminImageExplorePromptText() {
-  return "🧭 <b>Add Explore Card</b>\n\nSend the image prompt text for this card.";
+  return "🐙 <b>Add Explore Card</b>\n\nSend the image prompt text for this card.";
 }
 
 export function adminImageExploreUploadText() {

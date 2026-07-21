@@ -80,7 +80,7 @@ async function isAdminPendingPhoto(message, env) {
 }
 
 function isAdminPhotoAction(action) {
-  return ["voice_profile", "mini_app_icon", "channel_post"].includes(action?.action);
+  return ["voice_profile", "mini_app_icon", "channel_post", "image_explore_image"].includes(action?.action);
 }
 
 async function handleMessageAndPin(message, env) {
