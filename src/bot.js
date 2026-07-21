@@ -1122,16 +1122,16 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   if (action.action === "image_discount_offer") {
     const parts = String(text).trim().split(/\s+/);
     const discountCost = Number.parseInt(parts[0], 10);
-    const minutes = Number.parseInt(parts[1], 10);
+    const minutes = parts[1] == null ? 0 : Number.parseInt(parts[1], 10);
     const current = await getImagePricingSettings(env);
-    if (!Number.isFinite(discountCost) || discountCost <= 0 || discountCost >= current.baseCost || !Number.isFinite(minutes) || minutes <= 0) {
-      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageDiscountPromptText() + "\n\nInvalid offer. Send a lower price and positive minutes like <code>99 30</code>.", adminCancelKeyboard("admin_image_pricing"));
+    if (!Number.isFinite(discountCost) || discountCost <= 0 || discountCost >= current.baseCost || !Number.isFinite(minutes) || minutes < 0) {
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageDiscountPromptText() + "\n\nInvalid offer. Send a lower price like <code>99</code>, or add positive minutes like <code>99 30</code>.", adminCancelKeyboard("admin_image_pricing"));
       return true;
     }
     await setImageDiscountOffer(env, discountCost, minutes);
     await clearAdminAction(env, adminId);
     const settings = await getImagePricingSettings(env);
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImagePricingText(env)) + "\n\n✅ Timed discount started for " + minutes + " minutes.", adminImagePricingKeyboard(settings));
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImagePricingText(env)) + "\n\n✅ Discount started" + (minutes > 0 ? " for " + minutes + " minutes." : " without a timer."), adminImagePricingKeyboard(settings));
     return true;
   }
 
