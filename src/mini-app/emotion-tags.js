@@ -75,7 +75,7 @@ export const EMOTION_TAGS_JS = String.raw`
   var savedStart=0;
   var savedEnd=0;
   var open=false;
-  var input=document.getElementById('ttsText');
+  var input=document.querySelector('[data-dialogue-text]')||document.getElementById('ttsText');
   var historyButton=document.getElementById('historyButton');
   if(!input||!historyButton)return;
 
@@ -166,10 +166,13 @@ export const EMOTION_TAGS_JS = String.raw`
     trigger.classList.add('tagged');
   }
 
-  input.addEventListener('input',rememberCursor);
-  input.addEventListener('select',rememberCursor);
-  input.addEventListener('keyup',rememberCursor);
-  input.addEventListener('click',rememberCursor);
+  function useDialogueInput(target){if(target&&target.matches&&target.matches('[data-dialogue-text]')){input=target;rememberCursor()}}
+  document.addEventListener('focusin',function(event){useDialogueInput(event.target)});
+  document.addEventListener('input',function(event){if(event.target===input)rememberCursor()});
+  document.addEventListener('select',function(event){if(event.target===input)rememberCursor()},true);
+  document.addEventListener('keyup',function(event){if(event.target===input)rememberCursor()});
+  document.addEventListener('click',function(event){if(event.target===input)rememberCursor()});
+  document.addEventListener('dialogue-turn-added',function(event){if(event.detail&&event.detail.input)useDialogueInput(event.detail.input)});
   search.addEventListener('input',render);
   document.addEventListener('pointerdown',function(event){var button=event.target.closest&&event.target.closest('[data-action="toggle-emotions"],[data-emotion-tag]');if(button)event.preventDefault()});
   document.addEventListener('click',function(event){
