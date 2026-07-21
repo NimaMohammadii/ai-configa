@@ -144,7 +144,7 @@ export const EMOTION_TAGS_JS = String.raw`
     trigger.classList.toggle('active',open);
     trigger.setAttribute('aria-expanded',open?'true':'false');
     document.body.classList.toggle('emotions-open',open);
-    if(open){rememberCursor();render();requestAnimationFrame(function(){input.focus({preventScroll:true});try{input.setSelectionRange(savedStart,savedEnd)}catch(error){}})}
+    if(open){rememberCursor();render()}
   }
 
   function insertTag(tag){
@@ -159,7 +159,8 @@ export const EMOTION_TAGS_JS = String.raw`
     savedStart=input.selectionStart;
     savedEnd=input.selectionEnd;
     input.dispatchEvent(new Event('input',{bubbles:true}));
-    input.focus({preventScroll:true});
+    setOpen(false);
+    requestAnimationFrame(function(){input.focus({preventScroll:true});try{input.setSelectionRange(savedStart,savedEnd)}catch(error){}});
     trigger.classList.remove('tagged');
     void trigger.offsetWidth;
     trigger.classList.add('tagged');
@@ -173,7 +174,7 @@ export const EMOTION_TAGS_JS = String.raw`
   document.addEventListener('pointerdown',function(event){var button=event.target.closest&&event.target.closest('[data-action="toggle-emotions"],[data-emotion-tag]');if(button)event.preventDefault()});
   document.addEventListener('click',function(event){
     var toggle=event.target.closest&&event.target.closest('[data-action="toggle-emotions"]');
-    if(toggle){event.preventDefault();setOpen(!open);return}
+    if(toggle){event.preventDefault();var opening=!open;if(opening&&document.body.classList.contains('keyboard-open')){var dismiss=document.querySelector('[data-action="dismiss-keyboard"]');if(dismiss)dismiss.click();else input.blur()}setOpen(opening);return}
     var category=event.target.closest&&event.target.closest('[data-emotion-category]');
     if(category){activeCategory=category.getAttribute('data-emotion-category')||'All';render();return}
     var tag=event.target.closest&&event.target.closest('[data-emotion-tag]');
