@@ -1,18 +1,16 @@
 export const MINI_APP_JS = `
 (function(){
   var tg=window.Telegram&&window.Telegram.WebApp;
-  if(tg){try{tg.ready&&tg.ready();tg.expand&&tg.expand();tg.disableVerticalSwipes&&tg.disableVerticalSwipes();tg.setHeaderColor&&tg.setHeaderColor('#000000');tg.setBackgroundColor&&tg.setBackgroundColor('#000000');tg.setBottomBarColor&&tg.setBottomBarColor('#000000');if(tg.requestFullscreen&&(!tg.isVersionAtLeast||tg.isVersionAtLeast('8.0'))&&!tg.isFullscreen)tg.requestFullscreen()}catch(e){}}
+  if(tg){try{tg.ready&&tg.ready();tg.expand&&tg.expand();tg.disableVerticalSwipes&&tg.disableVerticalSwipes();tg.setBackgroundColor&&tg.setBackgroundColor('#000000');tg.setBottomBarColor&&tg.setBottomBarColor('#000000')}catch(e){}}
 
-  function syncAppInsets(){var safe=tg&&tg.safeAreaInset||{},content=tg&&tg.contentSafeAreaInset||{};var top=Math.max(Number(safe.top)||0,Number(content.top)||0),bottom=Math.max(Number(safe.bottom)||0,Number(content.bottom)||0);document.documentElement.style.setProperty('--tg-safe-top',Math.round(top)+'px');document.documentElement.style.setProperty('--tg-safe-bottom',Math.round(bottom)+'px');document.body.classList.toggle('tg-fullscreen',!!(tg&&tg.isFullscreen))}
   function syncAppViewport(){
     var height=window.visualViewport&&window.visualViewport.height?window.visualViewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight);
     if(height>0)document.documentElement.style.setProperty('--app-viewport-height',Math.round(height)+'px');
-    syncAppInsets();
   }
   syncAppViewport();
   window.addEventListener('resize',syncAppViewport,{passive:true});
   if(window.visualViewport)window.visualViewport.addEventListener('resize',syncAppViewport,{passive:true});
-  if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',syncAppViewport);tg.onEvent('fullscreenChanged',syncAppViewport);tg.onEvent('safeAreaChanged',syncAppViewport);tg.onEvent('contentSafeAreaChanged',syncAppViewport)}catch(e){}}
+  if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',syncAppViewport)}catch(e){}}
 
   var selectedVoice='TX3LPaxmHKxFdv7VOQHJ';
   var activeDialogueTurn=null;
