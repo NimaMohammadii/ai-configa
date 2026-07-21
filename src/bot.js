@@ -16,6 +16,10 @@ import {
   adminImageUserText,
   adminImageUsersKeyboard,
   adminImageUsersText,
+  adminImagePricingKeyboard,
+  adminImagePricingText,
+  adminImagePricePromptText,
+  adminImageDiscountPromptText,
   adminInitialStartKeyboard,
   adminInitialStartPromptText,
   adminInitialStartText,
@@ -69,6 +73,10 @@ import {
   setLanguageSetting,
   setMiniAppAccessSettings,
   setMiniAppButtonIcon,
+  getImagePricingSettings,
+  setImageCreditCost,
+  setImageDiscountOffer,
+  setImageDiscountEnabled,
   setWelcomeAudio,
   setVoiceProfile,
   getLanguageSettings,
@@ -453,6 +461,41 @@ export async function handleCallback(query, env) {
     if (rows.length && !sent) {
       await sendPlainMessage(env, chatId, "No Telegram image files are stored for this user yet. Prompts were sent as a text file.");
     }
+    return;
+  }
+
+
+  if (data === "admin_image_pricing") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    const settings = await getImagePricingSettings(env);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminImagePricingText(env), adminImagePricingKeyboard(settings));
+    return;
+  }
+
+  if (data === "admin_image_price_prompt") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "image_base_price", { chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminImagePricePromptText(), adminCancelKeyboard("admin_image_pricing"));
+    return;
+  }
+
+  if (data === "admin_image_discount_prompt") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "image_discount_offer", { chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminImageDiscountPromptText(), adminCancelKeyboard("admin_image_pricing"));
+    return;
+  }
+
+  if (data === "admin_image_discount_cancel") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await setImageDiscountEnabled(env, false);
+    await answerCallback(env, query.id, "Discount canceled", false);
+    const settings = await getImagePricingSettings(env);
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminImagePricingText(env)) + "\n\n⛔ Discount canceled.", adminImagePricingKeyboard(settings));
     return;
   }
 
@@ -1061,6 +1104,36 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     return true;
   }
 
+
+
+  if (action.action === "image_base_price") {
+    const credits = Number.parseInt(String(text).trim(), 10);
+    if (!Number.isFinite(credits) || credits <= 0) {
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImagePricePromptText() + "\n\nInvalid amount. Send a positive number like <code>188</code>.", adminCancelKeyboard("admin_image_pricing"));
+      return true;
+    }
+    await setImageCreditCost(env, credits);
+    await clearAdminAction(env, adminId);
+    const settings = await getImagePricingSettings(env);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImagePricingText(env)) + "\n\n✅ Image base price updated.", adminImagePricingKeyboard(settings));
+    return true;
+  }
+
+  if (action.action === "image_discount_offer") {
+    const parts = String(text).trim().split(/\s+/);
+    const discountCost = Number.parseInt(parts[0], 10);
+    const minutes = Number.parseInt(parts[1], 10);
+    const current = await getImagePricingSettings(env);
+    if (!Number.isFinite(discountCost) || discountCost <= 0 || discountCost >= current.baseCost || !Number.isFinite(minutes) || minutes <= 0) {
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageDiscountPromptText() + "\n\nInvalid offer. Send a lower price and positive minutes like <code>99 30</code>.", adminCancelKeyboard("admin_image_pricing"));
+      return true;
+    }
+    await setImageDiscountOffer(env, discountCost, minutes);
+    await clearAdminAction(env, adminId);
+    const settings = await getImagePricingSettings(env);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImagePricingText(env)) + "\n\n✅ Timed discount started for " + minutes + " minutes.", adminImagePricingKeyboard(settings));
+    return true;
+  }
 
   if (action.action === "initial_start_credits") {
     const credits = Number.parseInt(String(text).trim(), 10);
