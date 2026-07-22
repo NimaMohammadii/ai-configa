@@ -1506,6 +1506,49 @@ function miniAppIconTarget(iconKey) {
   return target;
 }
 
+
+export const IMAGE_EXPLORE_SIZE_OPTIONS = [
+  { size: "1024x1024", label: "Square" },
+  { size: "1024x1280", label: "Social portrait" },
+  { size: "960x1344", label: "Photo portrait" },
+  { size: "1152x1536", label: "Classic portrait" },
+  { size: "1024x1536", label: "Portrait" },
+  { size: "1152x2048", label: "Story" },
+  { size: "768x1792", label: "Mobile tall" },
+  { size: "1024x2048", label: "Tall" },
+  { size: "864x2592", label: "Ultra tall" },
+  { size: "1280x1024", label: "Social landscape" },
+  { size: "1344x960", label: "Photo landscape" },
+  { size: "1536x1152", label: "Classic landscape" },
+  { size: "1536x1024", label: "Wide" },
+  { size: "2048x1152", label: "Cinema" },
+  { size: "1792x768", label: "Ultrawide" },
+  { size: "2048x1024", label: "Panorama" },
+  { size: "2592x864", label: "Banner" },
+];
+
+export function normalizeImageExploreSize(size) {
+  const clean = String(size || "").trim().toLowerCase();
+  return IMAGE_EXPLORE_SIZE_OPTIONS.some((item) => item.size === clean) ? clean : "1024x1024";
+}
+
+export function imageExploreSizeLabel(size) {
+  const clean = normalizeImageExploreSize(size);
+  const option = IMAGE_EXPLORE_SIZE_OPTIONS.find((item) => item.size === clean);
+  return (option ? option.label : "Square") + " · " + clean.replace("x", "×");
+}
+
+export async function cycleImageExploreSize(env, itemId) {
+  const items = await readImageExploreItems(env);
+  const item = items.find((entry) => entry.id === String(itemId));
+  if (!item) throw new Error("Explore card not found");
+  const current = normalizeImageExploreSize(item.size);
+  const index = IMAGE_EXPLORE_SIZE_OPTIONS.findIndex((option) => option.size === current);
+  item.size = IMAGE_EXPLORE_SIZE_OPTIONS[(index + 1) % IMAGE_EXPLORE_SIZE_OPTIONS.length].size;
+  await saveImageExploreItems(env, items);
+  return item.size;
+}
+
 export async function getImageExploreItems(env) {
   const items = await readImageExploreItems(env);
   return items.filter((item) => item.prompt || item.fileId).sort((a, b) => a.order - b.order).slice(0, 50);
@@ -1522,6 +1565,7 @@ async function readImageExploreItems(env) {
     prompt: String(item.prompt || ""),
     fileId: String(item.fileId || ""),
     order: Number(item.order || index + 1),
+    size: normalizeImageExploreSize(item.size),
   })) : [];
 }
 
@@ -1534,7 +1578,7 @@ export async function addImageExplorePrompt(env, prompt) {
   const clean = String(prompt || "").trim();
   const items = await readImageExploreItems(env);
   const id = String(Date.now());
-  items.push({ id, prompt: clean, fileId: "", order: items.length + 1 });
+  items.push({ id, prompt: clean, fileId: "", size: "1024x1024", order: items.length + 1 });
   await saveImageExploreItems(env, items);
   return id;
 }
@@ -1560,16 +1604,19 @@ export async function adminImageExploreText(env) {
     "Upload visual reference cards for the mini app Explore row. Users provide their own image; no card prompt is shown or required.",
     "",
     items.length ? "Cards:" : "No cards yet.",
-    ...items.map((item, index) => "#" + (index + 1) + (item.fileId ? " · 🖼 Ready" : " · <i>Needs image</i>"))
+    ...items.map((item, index) => "#" + (index + 1) + " · " + imageExploreSizeLabel(item.size) + (item.fileId ? " · 🖼 Ready" : " · <i>Needs image</i>"))
   ].join("\n");
 }
 
 export function adminImageExploreKeyboard(items = []) {
   const rows = [[{ text: "➕ Add Card", callback_data: "admin_image_explore_add" }]];
-  items.forEach((item, index) => rows.push([
-    { text: "🖼 Upload #" + (index + 1), callback_data: "admin_image_explore_upload:" + item.id },
-    { text: "🗑 Delete #" + (index + 1), callback_data: "admin_image_explore_delete:" + item.id }
-  ]));
+  items.forEach((item, index) => {
+    rows.push([
+      { text: "🖼 Upload #" + (index + 1), callback_data: "admin_image_explore_upload:" + item.id },
+      { text: "🗑 Delete #" + (index + 1), callback_data: "admin_image_explore_delete:" + item.id }
+    ]);
+    rows.push([{ text: "📐 Size #" + (index + 1) + ": " + imageExploreSizeLabel(item.size), callback_data: "admin_image_explore_size:" + item.id }]);
+  });
   rows.push([{ text: "← Back", callback_data: "admin_main" }]);
   return { inline_keyboard: rows };
 }
@@ -1579,7 +1626,7 @@ export function adminImageExplorePromptText() {
 }
 
 export function adminImageExploreUploadText() {
-  return "🖼 <b>Upload Explore Card Image</b>\n\nSend one photo for this card. It will appear as a 3:4 Explore card in the mini app.";
+  return "🖼 <b>Upload Explore Card Image</b>\n\nSend one photo for this card. It will appear in the mini app Explore grid. Use the Size button after upload to choose where it appears.";
 }
 
 export async function adminVoiceProfilesText(env) {
