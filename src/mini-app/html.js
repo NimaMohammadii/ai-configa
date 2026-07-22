@@ -105,19 +105,6 @@ export const MINI_APP_HTML = `<!doctype html>
     </section>
   </main>
 
-  <div class="creator-sheet" id="creatorSheet" aria-hidden="true">
-    <button class="creator-backdrop" data-action="close-creator" type="button" aria-label="Close creator signup"></button>
-    <section class="creator-card" role="dialog" aria-modal="true" aria-label="Creator signup">
-      <div class="creator-icon" id="creatorIcon" aria-hidden="true"><span></span></div>
-      <p class="creator-kicker">CREATOR PROGRAM</p>
-      <h2>Claim your creator bonus</h2>
-      <p class="creator-copy">Enter your Instagram page ID, YouTube channel link, or Telegram channel link.</p>
-      <p class="creator-copy creator-copy-strong">Tag our bot under your posts every day and get 799 free credits daily.</p>
-      <input id="creatorHandle" class="creator-input" type="text" inputmode="text" autocomplete="off" placeholder="@yourpage or channel link"/>
-      <button id="creatorSubmit" class="creator-submit" data-action="submit-creator" type="button">Submit request</button>
-      <div id="creatorStatus" class="creator-status" aria-live="polite"></div>
-    </section>
-  </div>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script type="module" src="/mini-app/app.js?v=20260722-02"></script>

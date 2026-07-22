@@ -749,7 +749,6 @@ export async function getAdminUsersPage(env, page = 0, limit = 8) {
   };
 }
 
-export const CREATOR_PROMO_CODE = "VXCREATOR25";
 export const CREATOR_SIGNUP_BONUS = 2500;
 
 export async function ensureCreatorApplicationsTable(env) {
