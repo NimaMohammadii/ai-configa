@@ -1538,6 +1538,25 @@ export function imageExploreSizeLabel(size) {
   return (option ? option.label : "Square") + " · " + clean.replace("x", "×");
 }
 
+export function imageExploreSizeShortLabel(size) {
+  const clean = normalizeImageExploreSize(size);
+  const [width, height] = clean.split("x").map((value) => Number.parseInt(value, 10));
+  if (!width || !height) return clean.replace("x", ":");
+  const divisor = greatestCommonDivisor(width, height);
+  return (width / divisor) + ":" + (height / divisor);
+}
+
+function greatestCommonDivisor(a, b) {
+  let x = Math.abs(a);
+  let y = Math.abs(b);
+  while (y) {
+    const next = x % y;
+    x = y;
+    y = next;
+  }
+  return x || 1;
+}
+
 export async function cycleImageExploreSize(env, itemId) {
   const items = await readImageExploreItems(env);
   const item = items.find((entry) => entry.id === String(itemId));
@@ -1550,16 +1569,18 @@ export async function cycleImageExploreSize(env, itemId) {
 }
 
 export async function setImageExplorePosition(env, itemId, position = "bottom") {
+  const targetIndex = position === "top" ? 1 : Number.MAX_SAFE_INTEGER;
+  return moveImageExploreItemToPosition(env, itemId, targetIndex);
+}
+
+export async function moveImageExploreItemToPosition(env, itemId, position) {
   const id = String(itemId);
   const items = (await readImageExploreItems(env)).sort((a, b) => a.order - b.order);
   const index = items.findIndex((entry) => entry.id === id);
   if (index < 0) throw new Error("Explore card not found");
+  const target = Math.max(1, Math.min(Number.parseInt(String(position), 10) || 1, items.length));
   const [item] = items.splice(index, 1);
-  if (position === "top") {
-    items.unshift(item);
-  } else {
-    items.push(item);
-  }
+  items.splice(target - 1, 0, item);
   const ordered = normalizeImageExploreOrder(items);
   await saveImageExploreItems(env, ordered);
   return ordered.findIndex((entry) => entry.id === id) + 1;
@@ -1629,16 +1650,17 @@ export async function adminImageExploreText(env) {
 }
 
 export function adminImageExploreKeyboard(items = []) {
-  const rows = [[{ text: "➕ Add Card", callback_data: "admin_image_explore_add" }]];
+  const rows = [[{ text: "Add", callback_data: "admin_image_explore_add" }]];
   items.forEach((item, index) => {
+    const position = index === 0 ? "bottom" : "top";
+    const edgeText = index === 0 ? "Last" : "First";
     rows.push([
-      { text: "🖼 Upload #" + (index + 1), callback_data: "admin_image_explore_upload:" + item.id },
-      { text: "🗑 Delete #" + (index + 1), callback_data: "admin_image_explore_delete:" + item.id }
-    ]);
-    rows.push([{ text: "📐 Size #" + (index + 1) + ": " + imageExploreSizeLabel(item.size), callback_data: "admin_image_explore_size:" + item.id }]);
-    rows.push([
-      { text: "⬆️ Show #" + (index + 1) + " First", callback_data: "admin_image_explore_position:" + item.id + ":top" },
-      { text: "⬇️ Show #" + (index + 1) + " Last", callback_data: "admin_image_explore_position:" + item.id + ":bottom" }
+      { text: String(index + 1), callback_data: "admin_image_explore_noop" },
+      { text: "Upload", callback_data: "admin_image_explore_upload:" + item.id },
+      { text: "Delete", callback_data: "admin_image_explore_delete:" + item.id },
+      { text: imageExploreSizeShortLabel(item.size), callback_data: "admin_image_explore_size:" + item.id },
+      { text: edgeText, callback_data: "admin_image_explore_position:" + item.id + ":" + position },
+      { text: "Move", callback_data: "admin_image_explore_move:" + item.id }
     ]);
   });
   rows.push([{ text: "← Back", callback_data: "admin_main" }]);
@@ -1650,7 +1672,12 @@ export function adminImageExplorePromptText() {
 }
 
 export function adminImageExploreUploadText() {
-  return "🖼 <b>Upload Explore Card Image</b>\n\nSend one photo for this card. After upload, use Show First or Show Last to choose whether it appears at the beginning or end of the Explore page.";
+  return "🖼 <b>Upload Explore Card Image</b>\n\nSend one photo for this card.";
+}
+
+export function adminImageExploreMoveText(index = null) {
+  const card = index ? " #" + index : "";
+  return "↕️ <b>Move Explore Card" + card + "</b>\n\nSend the destination card number. For example, send <code>3</code> to place this card at position 3 in the list.";
 }
 
 export async function adminVoiceProfilesText(env) {

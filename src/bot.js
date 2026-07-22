@@ -26,6 +26,7 @@ import {
   adminImageExplorePromptText,
   adminImageExploreText,
   adminImageExploreUploadText,
+  adminImageExploreMoveText,
   adminInitialStartKeyboard,
   adminInitialStartPromptText,
   adminInitialStartText,
@@ -97,6 +98,7 @@ import {
   imageExploreSizeLabel,
   setImageExploreImage,
   setImageExplorePosition,
+  moveImageExploreItemToPosition,
   setWelcomeAudio,
   setVoiceProfile,
   getLanguageSettings,
@@ -654,6 +656,13 @@ export async function handleCallback(query, env) {
     return;
   }
 
+
+  if (data === "admin_image_explore_noop") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    return;
+  }
+
   if (data === "admin_image_explore_add") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await answerCallback(env, query.id);
@@ -668,6 +677,18 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id);
     await setAdminAction(env, userId, "image_explore_image", { targetUserId: itemId, chatId, messageId });
     await editCurrentMenu(env, chatId, userId, messageId, adminImageExploreUploadText(), adminCancelKeyboard("admin_image_explore"));
+    return;
+  }
+
+
+  if (data.startsWith("admin_image_explore_move:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const itemId = data.slice("admin_image_explore_move:".length);
+    const items = await getImageExploreItems(env);
+    const index = items.findIndex((item) => item.id === itemId) + 1;
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "image_explore_move", { targetUserId: itemId, chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminImageExploreMoveText(index || null), adminCancelKeyboard("admin_image_explore"));
     return;
   }
 
@@ -1323,6 +1344,21 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   }
 
 
+
+
+  if (action.action === "image_explore_move") {
+    const position = Number.parseInt(String(text).trim(), 10);
+    const itemsBefore = await getImageExploreItems(env);
+    if (!Number.isFinite(position) || position < 1 || position > itemsBefore.length) {
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageExploreMoveText() + "\n\nInvalid number. Send a number from 1 to " + itemsBefore.length + ".", adminCancelKeyboard("admin_image_explore"));
+      return true;
+    }
+    const newPosition = await moveImageExploreItemToPosition(env, action.target_user_id, position);
+    await clearAdminAction(env, adminId);
+    const items = await getImageExploreItems(env);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImageExploreText(env)) + "\n\n↕️ Card moved to #" + newPosition + ".", adminImageExploreKeyboard(items));
+    return true;
+  }
 
   if (action.action === "image_explore_prompt") {
     const prompt = String(text || "").trim();
