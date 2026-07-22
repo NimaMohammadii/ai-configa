@@ -15,14 +15,14 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260722-06"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260722-07"/>
 </head>
 <body>
   <main class="app">
     <section id="flow" class="view active">
       <div class="tts-page">
         <div class="tts-head">
-          <div class="credit-tools"><div class="credit-pill"><span id="balance">—</span><span>credits</span></div></div>
+          <div class="credit-tools"><div class="credit-pill"><span id="balance">—</span><span>credits</span></div><button id="wheelOpenButton" class="wheel-open-button" data-action="open-wheel" type="button" aria-label="Open daily reward wheel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.75v4.1M12 16.15v4.1M3.75 12h4.1M16.15 12h4.1M6.16 6.16l2.9 2.9M14.94 14.94l2.9 2.9M17.84 6.16l-2.9 2.9M9.06 14.94l-2.9 2.9" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/><circle cx="12" cy="12" r="2.15" fill="currentColor"/></svg><span class="wheel-ready-dot" aria-hidden="true"></span></button></div>
           <div class="mode-tools"><div id="voiceWrap" class="voice-wrap">
             <button class="voice-btn" data-action="toggle-voice" type="button">
               <span id="voiceButtonAvatar" class="voice-button-avatar" aria-hidden="true"></span>
@@ -105,10 +105,12 @@ export const MINI_APP_HTML = `<!doctype html>
     </section>
   </main>
 
+  <div id="rewardWheelSheet" class="wheel-sheet" aria-hidden="true"><button class="wheel-backdrop" data-action="close-wheel" type="button" aria-label="Close reward wheel"></button><section class="wheel-panel" role="dialog" aria-modal="true" aria-labelledby="wheelTitle"><header class="wheel-panel-head"><div><span>DAILY REWARD</span><h2 id="wheelTitle">Spin & win</h2></div><button data-action="close-wheel" type="button" aria-label="Close reward wheel"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="wheel-stage"><span class="wheel-pointer" aria-hidden="true"></span><div id="wheelRotor" class="wheel-rotor"><span class="wheel-prize" style="--wheel-angle:0deg">5,000</span><span class="wheel-prize" style="--wheel-angle:60deg">2,100</span><span class="wheel-prize" style="--wheel-angle:120deg">150</span><span class="wheel-prize" style="--wheel-angle:180deg">400</span><span class="wheel-prize" style="--wheel-angle:240deg">990</span><span class="wheel-prize" style="--wheel-angle:300deg">80</span><i class="wheel-hub" aria-hidden="true"></i></div></div><p id="wheelResult" class="wheel-result" aria-live="polite">Your daily reward is ready</p><button id="wheelSpinButton" class="wheel-spin-button" data-action="spin-wheel" type="button"><span>Spin the wheel</span></button><small id="wheelCountdown" class="wheel-countdown"></small></section></div>
+
   <section id="explorePage" class="explore-page" aria-hidden="true"><div class="explore-page-head"><h2>Explore</h2><small id="explorePageCount">0 cards</small></div><div id="explorePageGrid" class="explore-page-grid"></div></section>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260722-07"></script>
+  <script type="module" src="/mini-app/app.js?v=20260722-08"></script>
 </body>
 </html>`;
