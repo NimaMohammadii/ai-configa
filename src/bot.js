@@ -54,7 +54,9 @@ import {
   adminWelcomeAudioPromptText,
   adminWelcomeAudioText,
   creatorAcceptedMessage,
+  creatorAdminRequestText,
   creatorRejectedMessage,
+  creatorReviewKeyboard,
   adminOnlineKeyboard,
   adminOnlineText,
   adminMessagePromptText,
@@ -99,6 +101,7 @@ import {
   getWelcomeAudio,
   hasTrackedUser,
   trackUser,
+  submitCreatorApplication,
   tryAdminLogin,
 } from "./admin.js";
 import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
@@ -216,6 +219,11 @@ export async function handleMessage(message, env) {
     return;
   }
 
+  if (isCreatorCommand(text)) {
+    await handleCreatorCommand(env, chatId, userId, messageId, text, state, message.from);
+    return;
+  }
+
   if (text === "/debug") {
     await deleteMessage(env, chatId, messageId).catch(() => null);
     if (!(await isAdmin(env, userId))) {
@@ -259,6 +267,49 @@ export async function handleMessage(message, env) {
   }
 
   await makeAndSendAudio(env, chatId, userId, messageId, text, state, false);
+}
+
+
+function isCreatorCommand(text) {
+  return /^\/creator(?:@\w+)?(?:\s|$)/i.test(String(text || ""));
+}
+
+function creatorCommandHandle(text) {
+  return String(text || "").replace(/^\/creator(?:@\w+)?/i, "").trim();
+}
+
+function creatorCommandUsageText(lang) {
+  if (normalizeLang(lang) === "fa") {
+    return "🎬 برای ثبت درخواست Creator، دستور را همراه آیدی چنل یا پیج اینستاگرام بفرستید:\n\n<code>/Creator @yourpage</code>";
+  }
+  return "🎬 Send your Instagram page ID or channel ID/link with the Creator command:\n\n<code>/Creator @yourpage</code>";
+}
+
+function creatorCommandSubmittedText(lang) {
+  if (normalizeLang(lang) === "fa") return "✅ درخواست Creator ثبت شد و در انتظار بررسی ادمین است.";
+  return "✅ Creator request submitted and is pending admin review.";
+}
+
+async function handleCreatorCommand(env, chatId, userId, messageId, text, state, user) {
+  await deleteMessage(env, chatId, messageId).catch(() => null);
+  const handle = creatorCommandHandle(text);
+  if (!handle) {
+    await replaceMenu(env, chatId, userId, state, creatorCommandUsageText(state.language), mainKeyboard(state));
+    return;
+  }
+  const app = await submitCreatorApplication(env, user || { id: userId }, normalizeLang(state.language || user?.language_code || "en"), handle);
+  await notifyCreatorAdmins(env, app);
+  await replaceMenu(env, chatId, userId, state, creatorCommandSubmittedText(state.language), mainKeyboard(state));
+}
+
+async function notifyCreatorAdmins(env, application) {
+  const adminIds = [];
+  if (env.ADMIN_TOKEN && /^\d+$/.test(String(env.ADMIN_TOKEN))) adminIds.push(String(env.ADMIN_TOKEN));
+  const admins = await env.DB.prepare("SELECT user_id FROM admin_users").all().catch(() => ({ results: [] }));
+  for (const admin of admins?.results || []) {
+    if (admin.user_id) adminIds.push(String(admin.user_id));
+  }
+  await Promise.all(Array.from(new Set(adminIds)).map((adminId) => sendMessage(env, adminId, creatorAdminRequestText(application), creatorReviewKeyboard(application.user_id)).catch((error) => console.error("send creator admin message failed", error?.message || error))));
 }
 
 export async function handleCallback(query, env) {
