@@ -93,6 +93,8 @@ import {
   setImageDiscountOffer,
   setImageDiscountEnabled,
   addImageExplorePrompt,
+  cycleImageExploreSize,
+  imageExploreSizeLabel,
   setImageExploreImage,
   setWelcomeAudio,
   setVoiceProfile,
@@ -674,6 +676,15 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id, "Explore card deleted", false);
     const items = await getImageExploreItems(env);
     await editCurrentMenu(env, chatId, userId, messageId, (await adminImageExploreText(env)) + "\n\n🗑 Deleted card.", adminImageExploreKeyboard(items));
+    return;
+  }
+
+  if (data.startsWith("admin_image_explore_size:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    const size = await cycleImageExploreSize(env, data.slice("admin_image_explore_size:".length));
+    const items = await getImageExploreItems(env);
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminImageExploreText(env)) + "\n\n📐 Card size set to " + imageExploreSizeLabel(size) + ".", adminImageExploreKeyboard(items));
     return;
   }
 
