@@ -1555,12 +1555,12 @@ export async function deleteImageExploreItem(env, itemId) {
 export async function adminImageExploreText(env) {
   const items = await getImageExploreItems(env);
   return [
-    "🐙 <b>Image Explore Prompts</b>",
+    "🐙 <b>Image Explore References</b>",
     "",
-    "Create numbered cards for the mini app image Explore row. Send prompt text, or upload a card image without prompt text.",
+    "Upload visual reference cards for the mini app Explore row. Users provide their own image; no card prompt is shown or required.",
     "",
     items.length ? "Cards:" : "No cards yet.",
-    ...items.map((item, index) => "#" + (index + 1) + " · " + (item.prompt ? escapeHtml(item.prompt).slice(0, 90) : "<i>No prompt text</i>") + (item.fileId ? " · 🖼" : ""))
+    ...items.map((item, index) => "#" + (index + 1) + (item.fileId ? " · 🖼 Ready" : " · <i>Needs image</i>"))
   ].join("\n");
 }
 
@@ -1575,7 +1575,7 @@ export function adminImageExploreKeyboard(items = []) {
 }
 
 export function adminImageExplorePromptText() {
-  return "🐙 <b>Add Explore Card</b>\n\nSend prompt text for this card, or send a photo now to create it without prompt text.";
+  return "🐙 <b>Add Explore Reference</b>\n\nSend one photo. It will be used as a visual reference; no text prompt is needed.";
 }
 
 export function adminImageExploreUploadText() {

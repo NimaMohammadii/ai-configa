@@ -15,7 +15,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260722-01"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260722-03"/>
 </head>
 <body>
   <main class="app">
@@ -72,7 +72,7 @@ export const MINI_APP_HTML = `<!doctype html>
           <div class="image-composer">
             <label class="image-prompt-label" for="imagePrompt">Prompt</label>
             <textarea id="imagePrompt" maxlength="2000" placeholder="Describe the image you want to create"></textarea>
-            <div class="image-composer-foot"><span id="imagePromptCount">0 / 2000</span><div class="image-composer-tools"><div id="imageSizePicker" class="image-size-picker"><button id="imageSizeToggle" class="image-size-toggle" data-action="toggle-image-size" type="button" aria-label="Image size: Square" aria-expanded="false"><span id="selectedSizeShape" class="size-shape size-square" aria-hidden="true"></span></button><div class="image-size-menu" role="menu" aria-label="Choose output size">
+            <div class="image-composer-foot"><div class="image-composer-status"><span id="imagePromptCount">0 / 2000</span><button id="exploreReferenceChip" class="explore-reference-chip" data-action="clear-explore-image" type="button" aria-label="Remove selected reference" aria-hidden="true"><img id="exploreReferenceThumb" alt=""/><span aria-hidden="true">×</span></button></div><div class="image-composer-tools"><div id="imageSizePicker" class="image-size-picker"><button id="imageSizeToggle" class="image-size-toggle" data-action="toggle-image-size" type="button" aria-label="Image size: Square" aria-expanded="false"><span id="selectedSizeShape" class="size-shape size-square" aria-hidden="true"></span></button><div class="image-size-menu" role="menu" aria-label="Choose output size">
               <button class="image-size-option active" data-action="select-image-size" data-image-size="1024x1024" data-size-name="Square" type="button" role="menuitem" aria-pressed="true"><span class="size-shape size-square" aria-hidden="true"></span><span><strong>Square</strong><small>1:1 · 1024×1024</small></span></button>
               <button class="image-size-option" data-action="select-image-size" data-image-size="1024x1280" data-size-name="Social portrait" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-portrait" aria-hidden="true"></span><span><strong>Social portrait</strong><small>4:5 · 1024×1280</small></span></button>
               <button class="image-size-option" data-action="select-image-size" data-image-size="960x1344" data-size-name="Photo portrait" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-portrait" aria-hidden="true"></span><span><strong>Photo portrait</strong><small>5:7 · 960×1344</small></span></button>
@@ -107,6 +107,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260722-02"></script>
+  <script type="module" src="/mini-app/app.js?v=20260722-03"></script>
 </body>
 </html>`;

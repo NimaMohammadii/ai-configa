@@ -26,7 +26,7 @@ const GPT_IMAGE_SIZES = new Set([
   "2592x864",
 ]);
 const MAX_IMAGE_PROMPT_CHARS = 2000;
-const MAX_IMAGE_EDIT_INPUTS = 4;
+const MAX_IMAGE_EDIT_INPUTS = 5;
 
 export async function generateImage(env, prompt, options = {}) {
   if (!env.GPT_API) {
