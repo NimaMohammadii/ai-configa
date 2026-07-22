@@ -43,7 +43,7 @@ export const MINI_APP_HTML = `<!doctype html>
               <button class="dialogue-remove" data-action="remove-speaker" type="button" aria-label="Remove speaker"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
             </div>
             <div class="dialogue-input-wrap">
-              <textarea id="ttsText" class="dialogue-text" data-dialogue-text dir="ltr" placeholder="Type your text… Add emotion tags like [laughs] or [whispering]."></textarea>
+              <textarea id="ttsText" class="dialogue-text" data-dialogue-text dir="ltr" placeholder="Type your text… Add emotion tags like [laughs] or [whispering]"></textarea>
             </div>
             <button class="add-speaker" data-action="add-speaker" type="button"><span aria-hidden="true"></span><strong>+ Add speaker</strong><span aria-hidden="true"></span></button>
           </section>
