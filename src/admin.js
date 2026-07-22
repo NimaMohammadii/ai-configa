@@ -1545,8 +1545,24 @@ export async function cycleImageExploreSize(env, itemId) {
   const current = normalizeImageExploreSize(item.size);
   const index = IMAGE_EXPLORE_SIZE_OPTIONS.findIndex((option) => option.size === current);
   item.size = IMAGE_EXPLORE_SIZE_OPTIONS[(index + 1) % IMAGE_EXPLORE_SIZE_OPTIONS.length].size;
-  await saveImageExploreItems(env, items);
+  await saveImageExploreItems(env, normalizeImageExploreOrder(items));
   return item.size;
+}
+
+export async function setImageExplorePosition(env, itemId, position = "bottom") {
+  const id = String(itemId);
+  const items = (await readImageExploreItems(env)).sort((a, b) => a.order - b.order);
+  const index = items.findIndex((entry) => entry.id === id);
+  if (index < 0) throw new Error("Explore card not found");
+  const [item] = items.splice(index, 1);
+  if (position === "top") {
+    items.unshift(item);
+  } else {
+    items.push(item);
+  }
+  const ordered = normalizeImageExploreOrder(items);
+  await saveImageExploreItems(env, ordered);
+  return ordered.findIndex((entry) => entry.id === id) + 1;
 }
 
 export async function getImageExploreItems(env) {
@@ -1569,9 +1585,13 @@ async function readImageExploreItems(env) {
   })) : [];
 }
 
+function normalizeImageExploreOrder(items) {
+  return items.map((item, index) => ({ ...item, order: index + 1 }));
+}
+
 async function saveImageExploreItems(env, items) {
   await ensureAppSettingsTable(env);
-  await env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("image_explore_items", JSON.stringify(items)).run();
+  await env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("image_explore_items", JSON.stringify(normalizeImageExploreOrder(items))).run();
 }
 
 export async function addImageExplorePrompt(env, prompt) {
@@ -1616,6 +1636,10 @@ export function adminImageExploreKeyboard(items = []) {
       { text: "🗑 Delete #" + (index + 1), callback_data: "admin_image_explore_delete:" + item.id }
     ]);
     rows.push([{ text: "📐 Size #" + (index + 1) + ": " + imageExploreSizeLabel(item.size), callback_data: "admin_image_explore_size:" + item.id }]);
+    rows.push([
+      { text: "⬆️ Show #" + (index + 1) + " First", callback_data: "admin_image_explore_position:" + item.id + ":top" },
+      { text: "⬇️ Show #" + (index + 1) + " Last", callback_data: "admin_image_explore_position:" + item.id + ":bottom" }
+    ]);
   });
   rows.push([{ text: "← Back", callback_data: "admin_main" }]);
   return { inline_keyboard: rows };
@@ -1626,7 +1650,7 @@ export function adminImageExplorePromptText() {
 }
 
 export function adminImageExploreUploadText() {
-  return "🖼 <b>Upload Explore Card Image</b>\n\nSend one photo for this card. It will appear in the mini app Explore grid. Use the Size button after upload to choose where it appears.";
+  return "🖼 <b>Upload Explore Card Image</b>\n\nSend one photo for this card. After upload, use Show First or Show Last to choose whether it appears at the beginning or end of the Explore page.";
 }
 
 export async function adminVoiceProfilesText(env) {
