@@ -4,6 +4,8 @@ import {
   adminChannelPostPromptText,
   adminChannelPostsKeyboard,
   adminChannelPostsText,
+  adminCreatorsKeyboard,
+  adminCreatorsText,
   adminCreditPromptText,
   adminDailyRewardKeyboard,
   adminDailyRewardPromptText,
@@ -51,6 +53,8 @@ import {
   adminWelcomeAudioKeyboard,
   adminWelcomeAudioPromptText,
   adminWelcomeAudioText,
+  creatorAcceptedMessage,
+  creatorRejectedMessage,
   adminOnlineKeyboard,
   adminOnlineText,
   adminMessagePromptText,
@@ -72,6 +76,7 @@ import {
   deleteImageExploreItem,
   getAdminAction,
   getAllUserIds,
+  reviewCreatorApplication,
   getChannelPostLanguageSettings,
   isAdmin,
   resetUser,
@@ -446,6 +451,27 @@ export async function handleCallback(query, env) {
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppUsersText(env, page), await adminMiniAppUsersKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_creators:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const page = Number(data.split(":")[1] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminCreatorsText(env, page), await adminCreatorsKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_creator_accept:") || data.startsWith("admin_creator_reject:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const approved = data.startsWith("admin_creator_accept:");
+    const targetUserId = data.slice((approved ? "admin_creator_accept:" : "admin_creator_reject:").length);
+    const result = await reviewCreatorApplication(env, targetUserId, userId, approved);
+    await answerCallback(env, query.id, approved ? "Creator accepted" : "Creator rejected", false);
+    const lang = result.application?.language || "en";
+    await sendPlainMessage(env, targetUserId, approved ? creatorAcceptedMessage(lang) : creatorRejectedMessage(lang)).catch(() => null);
+    await editCurrentMenu(env, chatId, userId, messageId, (approved ? "✅ Accepted creator. " : "❌ Rejected creator. ") + "User was notified.", { inline_keyboard: [[{ text: "🎬 Creators", callback_data: "admin_creators:0" }, { text: "← Admin", callback_data: "admin_main" }]] });
     return;
   }
 
