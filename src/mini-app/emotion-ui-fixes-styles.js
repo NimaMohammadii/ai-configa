@@ -15,7 +15,7 @@ body.keyboard-open .emotion-panel{display:none!important}
 .emotion-text-overlay{position:absolute;z-index:1;overflow:hidden;pointer-events:none;color:#fff;background:transparent;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;font-size:16px;line-height:1.34;font-weight:430;letter-spacing:-.025em;direction:ltr;text-align:left;unicode-bidi:isolate}
 .emotion-text-content{min-height:100%;transform:translateY(0);transform-origin:top left;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word}
 .emotion-text-content.placeholder{color:rgba(255,255,255,.28)}
-.emotion-inline-tag{display:inline;color:#c7a1ff;font:inherit;line-height:inherit;letter-spacing:inherit;vertical-align:baseline;background:rgba(52,25,82,.92);border:0;border-radius:3px;padding:0;margin:0;box-shadow:inset 0 0 0 1px rgba(174,123,255,.3);-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.emotion-inline-tag{display:inline;color:inherit;font:inherit;line-height:inherit;letter-spacing:inherit;vertical-align:baseline;background:rgba(255,255,255,.075);border:0;border-radius:5px;padding:.045em .16em .055em;margin:0 .015em;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);-webkit-box-decoration-break:clone;box-decoration-break:clone}
 body.emotion-highlight-ready .tts-area textarea{position:relative;z-index:2;color:transparent!important;-webkit-text-fill-color:transparent!important;caret-color:#fff!important}
 body.emotion-highlight-ready .tts-area textarea::placeholder{color:transparent!important;-webkit-text-fill-color:transparent!important}
 body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,72,178,.42)}
