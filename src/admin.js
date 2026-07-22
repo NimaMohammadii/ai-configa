@@ -1590,6 +1590,24 @@ export const IMAGE_EXPLORE_SIZE_OPTIONS = [
   { size: "2592x864", label: "Banner" },
 ];
 
+
+export const IMAGE_EXPLORE_TAGS = [
+  "Trending", "Portrait", "Profile", "Cinematic", "Realistic", "Studio", "Fashion", "Luxury", "Lifestyle", "Street",
+  "Travel", "Nature", "Fantasy", "Business", "Couple", "Family", "Product", "Advertising", "E-commerce", "Food",
+  "Beauty", "Technology", "Automotive", "Indoor", "Outdoor", "Night", "Minimal", "Colorful", "Instagram", "Story",
+];
+
+function normalizeImageExploreTags(tags) {
+  const allowed = new Set(IMAGE_EXPLORE_TAGS);
+  const values = Array.isArray(tags) ? tags : String(tags || "").split(",");
+  return Array.from(new Set(values.map((tag) => String(tag || "").trim()).filter((tag) => allowed.has(tag))));
+}
+
+function imageExploreTagsLabel(tags) {
+  const clean = normalizeImageExploreTags(tags);
+  return clean.length ? clean.join(", ") : "No tags";
+}
+
 export function normalizeImageExploreSize(size) {
   const clean = String(size || "").trim().toLowerCase();
   return IMAGE_EXPLORE_SIZE_OPTIONS.some((item) => item.size === clean) ? clean : "1024x1024";
@@ -1666,6 +1684,7 @@ async function readImageExploreItems(env) {
     fileId: String(item.fileId || ""),
     order: Number(item.order || index + 1),
     size: normalizeImageExploreSize(item.size),
+    tags: normalizeImageExploreTags(item.tags),
   })) : [];
 }
 
@@ -1682,7 +1701,7 @@ export async function addImageExplorePrompt(env, prompt) {
   const clean = String(prompt || "").trim();
   const items = await readImageExploreItems(env);
   const id = String(Date.now());
-  items.push({ id, prompt: clean, fileId: "", size: "1024x1024", order: items.length + 1 });
+  items.push({ id, prompt: clean, fileId: "", size: "1024x1024", tags: [], order: items.length + 1 });
   await saveImageExploreItems(env, items);
   return id;
 }
@@ -1693,6 +1712,29 @@ export async function setImageExploreImage(env, itemId, fileId) {
   if (!item) throw new Error("Explore card not found");
   item.fileId = String(fileId);
   await saveImageExploreItems(env, items);
+}
+
+export async function setImageExploreTags(env, itemId, tags) {
+  const items = await readImageExploreItems(env);
+  const item = items.find((entry) => entry.id === String(itemId));
+  if (!item) throw new Error("Explore card not found");
+  item.tags = normalizeImageExploreTags(tags);
+  await saveImageExploreItems(env, items);
+  return item.tags;
+}
+
+export async function toggleImageExploreTag(env, itemId, tag) {
+  const items = await readImageExploreItems(env);
+  const item = items.find((entry) => entry.id === String(itemId));
+  if (!item) throw new Error("Explore card not found");
+  const cleanTag = normalizeImageExploreTags([tag])[0];
+  if (!cleanTag) throw new Error("Invalid explore tag");
+  const tags = new Set(normalizeImageExploreTags(item.tags));
+  if (tags.has(cleanTag)) tags.delete(cleanTag);
+  else tags.add(cleanTag);
+  item.tags = normalizeImageExploreTags(Array.from(tags));
+  await saveImageExploreItems(env, items);
+  return item.tags;
 }
 
 export async function deleteImageExploreItem(env, itemId) {
@@ -1708,7 +1750,7 @@ export async function adminImageExploreText(env) {
     "Upload visual reference cards for the mini app Explore row. Users provide their own image; no card prompt is shown or required.",
     "",
     items.length ? "Cards:" : "No cards yet.",
-    ...items.map((item, index) => "#" + (index + 1) + " · " + imageExploreSizeLabel(item.size) + (item.fileId ? " · 🖼 Ready" : " · <i>Needs image</i>"))
+    ...items.map((item, index) => "#" + (index + 1) + " · " + imageExploreSizeLabel(item.size) + (item.fileId ? " · 🖼 Ready" : " · <i>Needs image</i>") + " · 🏷 " + imageExploreTagsLabel(item.tags))
   ].join("\n");
 }
 
@@ -1736,6 +1778,30 @@ export function adminImageExplorePromptText() {
 
 export function adminImageExploreUploadText() {
   return "🖼 <b>Upload Explore Card Image</b>\n\nSend one photo for this card.";
+}
+
+export function adminImageExploreTagsText(item = null) {
+  return [
+    "🏷 <b>Choose Explore Tags</b>",
+    "",
+    "Select any number of tags for this image, then tap Confirm.",
+    "",
+    "Selected: <b>" + imageExploreTagsLabel(item?.tags) + "</b>",
+  ].join("\n");
+}
+
+export function adminImageExploreTagsKeyboard(itemId, selectedTags = []) {
+  const selected = new Set(normalizeImageExploreTags(selectedTags));
+  const rows = [];
+  for (let index = 0; index < IMAGE_EXPLORE_TAGS.length; index += 3) {
+    rows.push(IMAGE_EXPLORE_TAGS.slice(index, index + 3).map((tag) => ({
+      text: (selected.has(tag) ? "✅ " : "") + tag,
+      callback_data: "admin_image_explore_tag:" + itemId + ":" + encodeURIComponent(tag),
+    })));
+  }
+  rows.push([{ text: "✅ Confirm", callback_data: "admin_image_explore_tags_done:" + itemId }]);
+  rows.push([{ text: "← Back", callback_data: "admin_image_explore" }]);
+  return { inline_keyboard: rows };
 }
 
 export function adminImageExploreMoveText(index = null) {
