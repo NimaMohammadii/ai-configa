@@ -38,7 +38,7 @@ export async function spinRewardWheel(env, userId, isAdmin = false) {
   if (!isAdmin) {
     const cutoff = now - SPIN_COOLDOWN_SECONDS;
     const claim = await env.DB.prepare(
-      "INSERT INTO mini_app_wheel_spins (user_id, last_spin_at, reward, spin_id, updated_at, created_at) VALUES (?, ?, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
+      "INSERT INTO mini_app_wheel_spins (user_id, last_spin_at, reward, spin_id, spin_count, total_reward, updated_at, created_at) VALUES (?, ?, 0, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
       "ON CONFLICT(user_id) DO UPDATE SET last_spin_at = excluded.last_spin_at, reward = 0, spin_id = excluded.spin_id, updated_at = CURRENT_TIMESTAMP " +
       "WHERE mini_app_wheel_spins.last_spin_at <= ?"
     ).bind(String(userId), now, crypto.randomUUID(), cutoff).run();
@@ -56,9 +56,9 @@ export async function spinRewardWheel(env, userId, isAdmin = false) {
   const balance = await addCredits(env, userId, winner.credits);
   const spinId = crypto.randomUUID();
   await env.DB.prepare(
-    "INSERT INTO mini_app_wheel_spins (user_id, last_spin_at, reward, spin_id, updated_at, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
-    "ON CONFLICT(user_id) DO UPDATE SET last_spin_at = excluded.last_spin_at, reward = excluded.reward, spin_id = excluded.spin_id, updated_at = CURRENT_TIMESTAMP"
-  ).bind(String(userId), now, winner.credits, spinId).run();
+    "INSERT INTO mini_app_wheel_spins (user_id, last_spin_at, reward, spin_id, spin_count, total_reward, updated_at, created_at) VALUES (?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET last_spin_at = excluded.last_spin_at, reward = excluded.reward, spin_id = excluded.spin_id, spin_count = COALESCE(mini_app_wheel_spins.spin_count, 0) + 1, total_reward = COALESCE(mini_app_wheel_spins.total_reward, 0) + excluded.reward, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(userId), now, winner.credits, spinId, winner.credits).run();
 
   return {
     reward: winner.credits,
@@ -83,8 +83,12 @@ function pickPrize() {
   return { ...WHEEL_PRIZES[index], index };
 }
 
-async function ensureWheelTable(env) {
+export async function ensureWheelTable(env) {
   await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS mini_app_wheel_spins (user_id TEXT PRIMARY KEY, last_spin_at INTEGER NOT NULL DEFAULT 0, reward INTEGER NOT NULL DEFAULT 0, spin_id TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    "CREATE TABLE IF NOT EXISTS mini_app_wheel_spins (user_id TEXT PRIMARY KEY, last_spin_at INTEGER NOT NULL DEFAULT 0, reward INTEGER NOT NULL DEFAULT 0, spin_id TEXT, spin_count INTEGER NOT NULL DEFAULT 0, total_reward INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
   ).run();
+  await env.DB.prepare("ALTER TABLE mini_app_wheel_spins ADD COLUMN spin_count INTEGER NOT NULL DEFAULT 0").run().catch(() => null);
+  await env.DB.prepare("ALTER TABLE mini_app_wheel_spins ADD COLUMN total_reward INTEGER NOT NULL DEFAULT 0").run().catch(() => null);
+  await env.DB.prepare("UPDATE mini_app_wheel_spins SET spin_count = 1 WHERE spin_count = 0 AND reward > 0").run().catch(() => null);
+  await env.DB.prepare("UPDATE mini_app_wheel_spins SET total_reward = reward WHERE total_reward = 0 AND reward > 0").run().catch(() => null);
 }

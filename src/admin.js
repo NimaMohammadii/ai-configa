@@ -8,6 +8,7 @@ import { ensureTtsHistoryTable } from "./tts-history.js";
 import { tgJson } from "./telegram-api.js";
 import { VOICE_NAMES } from "./voices.js";
 import { getImageUsersPage, getUserImageHistory } from "./image-history.js";
+import { ensureWheelTable } from "./reward-wheel.js";
 
 export async function hasTrackedUser(env, userId) {
   requireDb(env);
@@ -132,6 +133,7 @@ export function adminMainKeyboard() {
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }, { text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
+      [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
       [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }, { text: "🎬 Creators", callback_data: "admin_creators:0" }],
       [{ text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
@@ -902,6 +904,61 @@ function miniAppUserLabel(user) {
   return userLabel(user) + " • 📱 " + formatNumber(user.mini_app_open_count || 0);
 }
 
+
+export async function getAdminWheelUsersPage(env, page = 0, limit = 8) {
+  requireDb(env);
+  await ensureWheelTable(env);
+
+  const offset = Number(page) * Number(limit);
+  const countRow = await env.DB.prepare(
+    "SELECT COUNT(*) AS total FROM mini_app_wheel_spins WHERE COALESCE(spin_count, 0) > 0"
+  ).first();
+  const users = await env.DB.prepare(
+    "SELECT w.user_id, u.username, u.first_name, u.last_name, u.last_seen_at, w.last_spin_at, w.reward, COALESCE(w.spin_count, 0) AS spin_count, COALESCE(w.total_reward, 0) AS total_reward " +
+    "FROM mini_app_wheel_spins w LEFT JOIN bot_users u ON u.user_id = w.user_id " +
+    "WHERE COALESCE(w.spin_count, 0) > 0 " +
+    "ORDER BY w.last_spin_at DESC, w.updated_at DESC LIMIT ? OFFSET ?"
+  ).bind(Number(limit), Number(offset)).all();
+
+  return {
+    total: Number(countRow?.total || 0),
+    page: Number(page),
+    limit: Number(limit),
+    users: users.results || [],
+  };
+}
+
+export async function adminWheelUsersText(env, page = 0) {
+  const data = await getAdminWheelUsersPage(env, page);
+  const pageSpins = data.users.reduce((sum, user) => sum + Number(user.spin_count || 0), 0);
+  const pageRewards = data.users.reduce((sum, user) => sum + Number(user.total_reward || 0), 0);
+  return [
+    "🎡 <b>Reward Wheel Users</b>",
+    "",
+    "Users spun wheel: <b>" + formatNumber(data.total) + "</b>",
+    "This page spins: <b>" + formatNumber(pageSpins) + "</b>",
+    "This page rewards: <b>" + formatNumber(pageRewards) + " credits</b>",
+    "Page: <b>" + (data.page + 1) + "</b>",
+    "",
+    data.users.length ? "Select a user from the buttons below (latest wheel activity first):" : "No wheel spins have been recorded yet."
+  ].join("\n");
+}
+
+export async function adminWheelUsersKeyboard(env, page = 0) {
+  const data = await getAdminWheelUsersPage(env, page);
+  const rows = data.users.map((user) => [{ text: wheelUserLabel(user), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_wheel_users:" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_wheel_users:" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+function wheelUserLabel(user) {
+  return userLabel(user) + " • 🎡 #" + formatNumber(user.spin_count || 0) + " • 🏆 " + formatNumber(user.total_reward || 0);
+}
+
 export async function adminImageUsersText(env, page = 0) {
   const data = await getImageUsersPage(env, page);
   const pageImages = data.users.reduce((sum, user) => sum + Number(user.image_count || 0), 0);
@@ -1021,10 +1078,12 @@ export async function getAllUserIds(env) {
 
 export async function getAdminUserDetails(env, userId) {
   requireDb(env);
+  await ensureWheelTable(env);
 
   const user = await env.DB.prepare(
-    "SELECT b.user_id, b.username, b.first_name, b.last_name, b.last_seen_at, b.created_at, COALESCE(b.return_count, 0) AS return_count, b.last_returned_at, COALESCE(b.mini_app_open_count, 0) AS mini_app_open_count, b.last_mini_app_opened_at, s.language " +
-    "FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id WHERE b.user_id = ?"
+    "SELECT b.user_id, b.username, b.first_name, b.last_name, b.last_seen_at, b.created_at, COALESCE(b.return_count, 0) AS return_count, b.last_returned_at, COALESCE(b.mini_app_open_count, 0) AS mini_app_open_count, b.last_mini_app_opened_at, s.language, " +
+    "COALESCE(w.spin_count, 0) AS wheel_spin_count, COALESCE(w.reward, 0) AS wheel_last_reward, COALESCE(w.total_reward, 0) AS wheel_total_reward, w.last_spin_at AS wheel_last_spin_at " +
+    "FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id LEFT JOIN mini_app_wheel_spins w ON w.user_id = b.user_id WHERE b.user_id = ?"
   ).bind(String(userId)).first();
 
   if (!user) return null;
@@ -1202,6 +1261,10 @@ export async function adminUserText(env, userId) {
     "Last return: <b>" + escapeHtml(formatTehranTime(user.last_returned_at)) + "</b>",
     "Mini app opens: <b>" + Number(user.mini_app_open_count || 0).toLocaleString("en-US") + "</b>",
     "Last mini app open: <b>" + escapeHtml(formatTehranTime(user.last_mini_app_opened_at)) + "</b>",
+    "Wheel spins: <b>" + Number(user.wheel_spin_count || 0).toLocaleString("en-US") + "</b>",
+    "Last wheel prize: <b>" + Number(user.wheel_last_reward || 0).toLocaleString("en-US") + " credits</b>",
+    "Total wheel prizes: <b>" + Number(user.wheel_total_reward || 0).toLocaleString("en-US") + " credits</b>",
+    "Last wheel spin: <b>" + escapeHtml(formatUnixTehranTime(user.wheel_last_spin_at)) + "</b>",
     "Last seen: <b>" + escapeHtml(formatTehranTime(user.last_seen_at)) + "</b>",
     "Created: <b>" + escapeHtml(formatTehranTime(user.created_at)) + "</b>",
   ].join("\n");
@@ -1960,6 +2023,12 @@ function formatLanguage(language) {
   };
   if (language === "not_selected") return "Not selected";
   return labels[language] || language || "Not selected";
+}
+
+function formatUnixTehranTime(value) {
+  const seconds = Number(value || 0);
+  if (!Number.isFinite(seconds) || seconds <= 0) return "-";
+  return formatTehranTime(new Date(seconds * 1000).toISOString());
 }
 
 function formatTehranTime(value) {
