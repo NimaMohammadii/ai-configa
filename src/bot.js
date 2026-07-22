@@ -96,6 +96,7 @@ import {
   cycleImageExploreSize,
   imageExploreSizeLabel,
   setImageExploreImage,
+  setImageExplorePosition,
   setWelcomeAudio,
   setVoiceProfile,
   getLanguageSettings,
@@ -688,6 +689,17 @@ export async function handleCallback(query, env) {
     return;
   }
 
+  if (data.startsWith("admin_image_explore_position:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const [, itemId, position] = data.match(/^admin_image_explore_position:([^:]+):(top|bottom)$/) || [];
+    if (!itemId) return answerCallback(env, query.id, "Invalid position", true);
+    const newPosition = await setImageExplorePosition(env, itemId, position);
+    await answerCallback(env, query.id, position === "top" ? "Card moved to first" : "Card moved to last", false);
+    const items = await getImageExploreItems(env);
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminImageExploreText(env)) + "\n\n↕️ Card moved to #" + newPosition + ".", adminImageExploreKeyboard(items));
+    return;
+  }
+
   if (data === "admin_mini_app_access") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
@@ -1195,7 +1207,7 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
     await deleteMessage(env, chatId, inputMessageId).catch(() => null);
     await clearAdminAction(env, adminId);
     const items = await getImageExploreItems(env);
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImageExploreText(env)) + "\n\n✅ Explore card image updated.", adminImageExploreKeyboard(items));
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImageExploreText(env)) + "\n\n✅ Explore card image updated. Use Show First or Show Last to choose its position.", adminImageExploreKeyboard(items));
     return true;
   }
 
