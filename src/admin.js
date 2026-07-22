@@ -825,8 +825,26 @@ export function creatorReviewKeyboard(userId) {
 }
 
 export function creatorAcceptedMessage(lang, bonus = CREATOR_SIGNUP_BONUS) {
-  if (normalizeLang(lang) === "fa") return "✅ درخواست تولیدکننده محتوای شما پذیرفته شد! می‌توانید از همین حالا شروع کنید. " + formatNumber(bonus) + " کردیت هدیه به حساب شما اضافه شد. هر روز ربات ما را زیر پست‌هایتان تگ کنید و 799 کردیت رایگان روزانه بگیرید.";
-  return "✅ You’re accepted as a Vexa content creator! You can start now. We added " + formatNumber(bonus) + " bonus credits to your account. Tag our bot under your posts every day to receive 799 free daily credits.";
+  if (normalizeLang(lang) === "fa") {
+    return [
+      "✅ <b>درخواست شما پذیرفته شد</b>",
+      "",
+      "<b>نقش:</b> تولیدکننده محتوای Vexa",
+      "<b>شروع:</b> از همین حالا می‌توانید فعالیت را آغاز کنید.",
+      "<b>هدیه:</b> " + formatNumber(bonus) + " کردیت به حساب شما اضافه شد.",
+      "",
+      "برای ادامه همکاری، محتواهای خود را طبق شرایط Creator آماده و منتشر کنید.",
+    ].join("\n");
+  }
+  return [
+    "✅ <b>Your request was accepted</b>",
+    "",
+    "<b>Role:</b> Vexa content creator",
+    "<b>Start:</b> You can begin right away.",
+    "<b>Bonus:</b> " + formatNumber(bonus) + " credits were added to your account.",
+    "",
+    "To continue the collaboration, prepare and publish your content according to the Creator terms.",
+  ].join("\n");
 }
 
 export function creatorRejectedMessage(lang) {

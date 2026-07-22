@@ -280,26 +280,52 @@ function creatorCommandHandle(text) {
 
 function creatorCommandUsageText(lang) {
   if (normalizeLang(lang) === "fa") {
-    return "🎬 برای ثبت درخواست Creator، دستور را همراه آیدی چنل یا پیج اینستاگرام بفرستید:\n\n<code>/Creator @yourpage</code>";
+    return [
+      "🎬 <b>درخواست Creator</b>",
+      "",
+      "برای ثبت درخواست، آیدی یا لینک <b>پیج اینستاگرام</b> / <b>کانال</b> را بعد از دستور بفرستید.",
+      "",
+      "<b>نمونه:</b>",
+      "<code>/Creator @yourpage</code>",
+    ].join("\n");
   }
-  return "🎬 Send your Instagram page ID or channel ID/link with the Creator command:\n\n<code>/Creator @yourpage</code>";
+  return [
+    "🎬 <b>Creator Request</b>",
+    "",
+    "Send your <b>Instagram page</b> or <b>channel</b> ID/link after the command.",
+    "",
+    "<b>Example:</b>",
+    "<code>/Creator @yourpage</code>",
+  ].join("\n");
 }
 
 function creatorCommandSubmittedText(lang) {
-  if (normalizeLang(lang) === "fa") return "✅ درخواست Creator ثبت شد و در انتظار بررسی ادمین است.";
-  return "✅ Creator request submitted and is pending admin review.";
+  if (normalizeLang(lang) === "fa") {
+    return [
+      "✅ <b>درخواست Creator ثبت شد</b>",
+      "",
+      "<b>وضعیت:</b> در انتظار بررسی ادمین",
+      "<b>مرحله بعد:</b> نتیجه بررسی از همین ربات برای شما ارسال می‌شود.",
+    ].join("\n");
+  }
+  return [
+    "✅ <b>Creator request submitted</b>",
+    "",
+    "<b>Status:</b> Pending admin review",
+    "<b>Next:</b> We’ll send the review result from this bot.",
+  ].join("\n");
 }
 
 async function handleCreatorCommand(env, chatId, userId, messageId, text, state, user) {
   await deleteMessage(env, chatId, messageId).catch(() => null);
   const handle = creatorCommandHandle(text);
   if (!handle) {
-    await replaceMenu(env, chatId, userId, state, creatorCommandUsageText(state.language), mainKeyboard(state));
+    await sendMessage(env, chatId, creatorCommandUsageText(state.language));
     return;
   }
   const app = await submitCreatorApplication(env, user || { id: userId }, normalizeLang(state.language || user?.language_code || "en"), handle);
   await notifyCreatorAdmins(env, app);
-  await replaceMenu(env, chatId, userId, state, creatorCommandSubmittedText(state.language), mainKeyboard(state));
+  await sendMessage(env, chatId, creatorCommandSubmittedText(state.language));
 }
 
 async function notifyCreatorAdmins(env, application) {
@@ -521,7 +547,7 @@ export async function handleCallback(query, env) {
     const result = await reviewCreatorApplication(env, targetUserId, userId, approved);
     await answerCallback(env, query.id, approved ? "Creator accepted" : "Creator rejected", false);
     const lang = result.application?.language || "en";
-    await sendPlainMessage(env, targetUserId, approved ? creatorAcceptedMessage(lang) : creatorRejectedMessage(lang)).catch(() => null);
+    await sendMessage(env, targetUserId, approved ? creatorAcceptedMessage(lang) : creatorRejectedMessage(lang)).catch(() => null);
     await editCurrentMenu(env, chatId, userId, messageId, (approved ? "✅ Accepted creator. " : "❌ Rejected creator. ") + "User was notified.", { inline_keyboard: [[{ text: "🎬 Creators", callback_data: "admin_creators:0" }, { text: "← Admin", callback_data: "admin_main" }]] });
     return;
   }
