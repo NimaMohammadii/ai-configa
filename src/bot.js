@@ -45,6 +45,8 @@ import {
   adminMiniAppIconPromptText,
   adminMiniAppUsersKeyboard,
   adminMiniAppUsersText,
+  adminWheelUsersKeyboard,
+  adminWheelUsersText,
   adminMiniAppLockPromptText,
   adminStatsKeyboard,
   adminStatsText,
@@ -552,6 +554,15 @@ export async function handleCallback(query, env) {
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppUsersText(env, page), await adminMiniAppUsersKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_wheel_users:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const page = Number(data.split(":")[1] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminWheelUsersText(env, page), await adminWheelUsersKeyboard(env, page));
     return;
   }
 
