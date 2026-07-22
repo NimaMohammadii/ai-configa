@@ -283,7 +283,8 @@ function creatorCommandUsageText(lang) {
     return [
       "🎬 <b>درخواست Creator</b>",
       "",
-      "برای ثبت درخواست، آیدی یا لینک <b>پیج اینستاگرام</b> / <b>کانال</b> را بعد از دستور بفرستید.",
+      "آیدی یا لینک <b>پیج اینستاگرام</b> / <b>کانالت</b> رو بعد از دستور بفرست.",
+      "هر روز هم اگه زیر پست‌هات مارو تگ کنی، <b>799 کردیت</b> بهت می‌دیم.",
       "",
       "<b>نمونه:</b>",
       "<code>/Creator @yourpage</code>",
@@ -293,6 +294,7 @@ function creatorCommandUsageText(lang) {
     "🎬 <b>Creator Request</b>",
     "",
     "Send your <b>Instagram page</b> or <b>channel</b> ID/link after the command.",
+    "Tag us under your posts and we’ll give you <b>799 credits</b> every day.",
     "",
     "<b>Example:</b>",
     "<code>/Creator @yourpage</code>",
@@ -304,8 +306,9 @@ function creatorCommandSubmittedText(lang) {
     return [
       "✅ <b>درخواست Creator ثبت شد</b>",
       "",
-      "<b>وضعیت:</b> در انتظار بررسی ادمین",
-      "<b>مرحله بعد:</b> نتیجه بررسی از همین ربات برای شما ارسال می‌شود.",
+      "<b>وضعیت:</b> منتظر بررسی ادمین باش",
+      "<b>بعدش چی؟</b> نتیجه رو از همین ربات بهت می‌گیم.",
+      "هر روز هم اگه زیر پست‌هات مارو تگ کنی، <b>799 کردیت</b> می‌گیری.",
     ].join("\n");
   }
   return [
@@ -313,6 +316,7 @@ function creatorCommandSubmittedText(lang) {
     "",
     "<b>Status:</b> Pending admin review",
     "<b>Next:</b> We’ll send the review result from this bot.",
+    "Tag us under your posts and we’ll give you <b>799 credits</b> every day.",
   ].join("\n");
 }
 
@@ -320,12 +324,27 @@ async function handleCreatorCommand(env, chatId, userId, messageId, text, state,
   await deleteMessage(env, chatId, messageId).catch(() => null);
   const handle = creatorCommandHandle(text);
   if (!handle) {
-    await sendMessage(env, chatId, creatorCommandUsageText(state.language));
+    const prompt = await sendMessage(env, chatId, creatorCommandUsageText(state.language));
+    await setMenuMessageId(env, userId, prompt?.message_id || null);
     return;
   }
   const app = await submitCreatorApplication(env, user || { id: userId }, normalizeLang(state.language || user?.language_code || "en"), handle);
   await notifyCreatorAdmins(env, app);
-  await sendMessage(env, chatId, creatorCommandSubmittedText(state.language));
+  const submittedText = creatorCommandSubmittedText(state.language);
+  if (state?.menuMessageId) {
+    try {
+      await editMessage(env, chatId, state.menuMessageId, submittedText);
+      await setMenuMessageId(env, userId, state.menuMessageId);
+      return;
+    } catch (error) {
+      if (isMessageNotModifiedError(error)) {
+        await setMenuMessageId(env, userId, state.menuMessageId);
+        return;
+      }
+    }
+  }
+  const submitted = await sendMessage(env, chatId, submittedText);
+  await setMenuMessageId(env, userId, submitted?.message_id || null);
 }
 
 async function notifyCreatorAdmins(env, application) {
