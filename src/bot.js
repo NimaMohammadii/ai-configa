@@ -31,6 +31,8 @@ import {
   adminLanguageSettingsText,
   adminLanguageStatsKeyboard,
   adminLanguageStatsText,
+  adminLanguageUsersKeyboard,
+  adminLanguageUsersText,
   adminMandatoryMembershipKeyboard,
   adminMandatoryMembershipText,
   adminMiniAppAccessKeyboard,
@@ -380,7 +382,19 @@ export async function handleCallback(query, env) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, await adminLanguageStatsText(env), adminLanguageStatsKeyboard());
+    await editCurrentMenu(env, chatId, userId, messageId, await adminLanguageStatsText(env), await adminLanguageStatsKeyboard(env));
+    return;
+  }
+
+
+  if (data.startsWith("admin_language_users:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const parts = data.split(":");
+    const language = parts[1] || "not_selected";
+    const page = Number(parts[2] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminLanguageUsersText(env, language, page), await adminLanguageUsersKeyboard(env, language, page));
     return;
   }
 

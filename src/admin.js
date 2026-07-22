@@ -547,8 +547,80 @@ export async function adminLanguageStatsText(env) {
   return lines.join("\n");
 }
 
-export function adminLanguageStatsKeyboard() {
-  return { inline_keyboard: [[{ text: "← Back", callback_data: "admin_main" }]] };
+export async function adminLanguageStatsKeyboard(env) {
+  const stats = await getAdminLanguageStats(env);
+  const rows = [];
+  for (const row of stats.languages) {
+    rows.push([{ text: "👥 " + formatLanguage(row.language) + " (" + formatNumber(row.total) + ")", callback_data: "admin_language_users:" + row.language + ":0" }]);
+  }
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export async function getAdminLanguageUsersPage(env, language, page = 0, limit = 8) {
+  requireDb(env);
+  const selectedLanguage = normalizeLanguageSegment(language);
+  const offset = Number(page) * Number(limit);
+  const where = selectedLanguage === "not_selected"
+    ? "COALESCE(NULLIF(s.language, ''), 'not_selected') = 'not_selected'"
+    : "s.language = ?";
+  const countSql = "SELECT COUNT(*) AS total FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id WHERE " + where;
+  const usersSql = "SELECT b.user_id, b.username, b.first_name, b.last_name, b.last_seen_at, b.return_count, b.mini_app_open_count " +
+    "FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id WHERE " + where +
+    " ORDER BY datetime(b.last_seen_at) DESC LIMIT ? OFFSET ?";
+  const countRow = selectedLanguage === "not_selected"
+    ? await env.DB.prepare(countSql).first()
+    : await env.DB.prepare(countSql).bind(selectedLanguage).first();
+  const users = selectedLanguage === "not_selected"
+    ? await env.DB.prepare(usersSql).bind(Number(limit), Number(offset)).all()
+    : await env.DB.prepare(usersSql).bind(selectedLanguage, Number(limit), Number(offset)).all();
+
+  return {
+    language: selectedLanguage,
+    total: Number(countRow?.total || 0),
+    page: Number(page),
+    limit: Number(limit),
+    users: users.results || [],
+  };
+}
+
+export async function adminLanguageUsersText(env, language, page = 0) {
+  const data = await getAdminLanguageUsersPage(env, language, page);
+  const lines = [
+    "🌍 <b>" + escapeHtml(formatLanguage(data.language)) + " Users</b>",
+    "",
+    "Total: <b>" + formatNumber(data.total) + "</b>",
+    "Page: <b>" + (data.page + 1) + "</b>",
+    "",
+  ];
+
+  if (!data.users.length) {
+    lines.push("No users in this language yet.");
+  } else {
+    lines.push(...data.users.map((user, index) => {
+      const number = data.page * data.limit + index + 1;
+      return number + ". " + escapeHtml(userLabel(user)) + "\nLast seen: <b>" + escapeHtml(formatTehranTime(user.last_seen_at)) + "</b>";
+    }));
+  }
+
+  return lines.join("\n");
+}
+
+export async function adminLanguageUsersKeyboard(env, language, page = 0) {
+  const data = await getAdminLanguageUsersPage(env, language, page);
+  const rows = data.users.map((user) => [{ text: userLabel(user), callback_data: "admin_user:" + user.user_id + ":0" }]);
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_language_users:" + data.language + ":" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_language_users:" + data.language + ":" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Languages", callback_data: "admin_language_stats" }, { text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+function normalizeLanguageSegment(language) {
+  const raw = String(language || "not_selected").trim();
+  if (raw === "not_selected") return raw;
+  return normalizeLang(raw);
 }
 
 export async function getAdminDashboardStats(env) {
