@@ -284,7 +284,6 @@ function creatorCommandUsageText(lang) {
       "🎬 <b>درخواست Creator</b>",
       "",
       "برای ثبت درخواست، آیدی یا لینک <b>پیج اینستاگرام</b> / <b>کانال</b> را بعد از دستور بفرستید.",
-      "اگر زیر پست‌های خودتان ما را تگ کنید، هر روز <b>X کردیت</b> به شما می‌دهیم.",
       "",
       "<b>نمونه:</b>",
       "<code>/Creator @yourpage</code>",
@@ -294,7 +293,6 @@ function creatorCommandUsageText(lang) {
     "🎬 <b>Creator Request</b>",
     "",
     "Send your <b>Instagram page</b> or <b>channel</b> ID/link after the command.",
-    "Tag us under your posts and we’ll give you <b>X credits</b> every day.",
     "",
     "<b>Example:</b>",
     "<code>/Creator @yourpage</code>",
@@ -306,16 +304,12 @@ function creatorCommandSubmittedText(lang) {
     return [
       "✅ <b>درخواست Creator ثبت شد</b>",
       "",
-      "اگر زیر پست‌های خودتان ما را تگ کنید، هر روز <b>X کردیت</b> به شما می‌دهیم.",
-      "",
       "<b>وضعیت:</b> در انتظار بررسی ادمین",
       "<b>مرحله بعد:</b> نتیجه بررسی از همین ربات برای شما ارسال می‌شود.",
     ].join("\n");
   }
   return [
     "✅ <b>Creator request submitted</b>",
-    "",
-    "Tag us under your posts and we’ll give you <b>X credits</b> every day.",
     "",
     "<b>Status:</b> Pending admin review",
     "<b>Next:</b> We’ll send the review result from this bot.",
@@ -326,12 +320,12 @@ async function handleCreatorCommand(env, chatId, userId, messageId, text, state,
   await deleteMessage(env, chatId, messageId).catch(() => null);
   const handle = creatorCommandHandle(text);
   if (!handle) {
-    await upsertMenu(env, chatId, userId, state, creatorCommandUsageText(state.language), null);
+    await sendMessage(env, chatId, creatorCommandUsageText(state.language));
     return;
   }
   const app = await submitCreatorApplication(env, user || { id: userId }, normalizeLang(state.language || user?.language_code || "en"), handle);
   await notifyCreatorAdmins(env, app);
-  await upsertMenu(env, chatId, userId, state, creatorCommandSubmittedText(state.language), null);
+  await sendMessage(env, chatId, creatorCommandSubmittedText(state.language));
 }
 
 async function notifyCreatorAdmins(env, application) {
