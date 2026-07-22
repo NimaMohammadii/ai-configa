@@ -15,7 +15,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260722-07"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260722-tags-01"/>
 </head>
 <body>
   <main class="app">
@@ -107,7 +107,7 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="rewardWheelSheet" class="wheel-sheet" aria-hidden="true"><button class="wheel-backdrop" data-action="close-wheel" type="button" aria-label="Close reward wheel"></button><section class="wheel-panel" role="dialog" aria-modal="true" aria-labelledby="wheelTitle"><header class="wheel-panel-head"><div><span>DAILY REWARD</span><h2 id="wheelTitle">Spin & win</h2></div><button data-action="close-wheel" type="button" aria-label="Close reward wheel"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="wheel-stage"><span class="wheel-pointer" aria-hidden="true"></span><div id="wheelRotor" class="wheel-rotor"><span class="wheel-prize" style="--wheel-angle:0deg">5,000</span><span class="wheel-prize" style="--wheel-angle:60deg">2,100</span><span class="wheel-prize" style="--wheel-angle:120deg">150</span><span class="wheel-prize" style="--wheel-angle:180deg">400</span><span class="wheel-prize" style="--wheel-angle:240deg">990</span><span class="wheel-prize" style="--wheel-angle:300deg">80</span><i class="wheel-hub" aria-hidden="true"></i></div></div><p id="wheelResult" class="wheel-result" aria-live="polite">Your daily reward is ready</p><button id="wheelSpinButton" class="wheel-spin-button" data-action="spin-wheel" type="button"><span>Spin the wheel</span></button><small id="wheelCountdown" class="wheel-countdown"></small></section></div>
 
-  <section id="explorePage" class="explore-page" aria-hidden="true"><div class="explore-page-head"><h2>Explore</h2><small id="explorePageCount">0 cards</small></div><div id="explorePageGrid" class="explore-page-grid"></div></section>
+  <section id="explorePage" class="explore-page" aria-hidden="true"><div class="explore-page-head"><h2>Explore</h2><small id="explorePageCount">0 cards</small></div><label class="explore-search"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.1" stroke="currentColor" stroke-width="1.8"/><path d="m15.4 15.4 4.1 4.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="exploreSearch" type="search" autocomplete="off" placeholder="Search tags like Portrait, Fashion, Night"/></label><div id="explorePageGrid" class="explore-page-grid"></div><div id="exploreEmpty" class="explore-empty" aria-hidden="true">No matching images</div></section>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>

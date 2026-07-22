@@ -26,6 +26,8 @@ import {
   adminImageExplorePromptText,
   adminImageExploreText,
   adminImageExploreUploadText,
+  adminImageExploreTagsText,
+  adminImageExploreTagsKeyboard,
   adminImageExploreMoveText,
   adminInitialStartKeyboard,
   adminInitialStartPromptText,
@@ -100,6 +102,7 @@ import {
   imageExploreSizeLabel,
   setImageExploreImage,
   setImageExplorePosition,
+  toggleImageExploreTag,
   moveImageExploreItemToPosition,
   setWelcomeAudio,
   setVoiceProfile,
@@ -692,6 +695,28 @@ export async function handleCallback(query, env) {
   }
 
 
+
+  if (data.startsWith("admin_image_explore_tag:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const [, itemId, encodedTag] = data.match(/^admin_image_explore_tag:([^:]+):(.+)$/) || [];
+    if (!itemId || !encodedTag) return answerCallback(env, query.id, "Invalid tag", true);
+    const tags = await toggleImageExploreTag(env, itemId, decodeURIComponent(encodedTag));
+    await answerCallback(env, query.id, tags.includes(decodeURIComponent(encodedTag)) ? "Tag selected" : "Tag removed", false);
+    const item = (await getImageExploreItems(env)).find((entry) => entry.id === itemId);
+    await editCurrentMenu(env, chatId, userId, messageId, adminImageExploreTagsText(item), adminImageExploreTagsKeyboard(itemId, item?.tags || []));
+    return;
+  }
+
+  if (data.startsWith("admin_image_explore_tags_done:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const itemId = data.slice("admin_image_explore_tags_done:".length);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id, "Explore tags saved", false);
+    const items = await getImageExploreItems(env);
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminImageExploreText(env)) + "\n\n✅ Explore card is ready with tags.", adminImageExploreKeyboard(items));
+    return;
+  }
+
   if (data.startsWith("admin_image_explore_move:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     const itemId = data.slice("admin_image_explore_move:".length);
@@ -1237,9 +1262,9 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
     const itemId = action.action === "image_explore_prompt" ? await addImageExplorePrompt(env, "") : action.target_user_id;
     await setImageExploreImage(env, itemId, fileId);
     await deleteMessage(env, chatId, inputMessageId).catch(() => null);
-    await clearAdminAction(env, adminId);
-    const items = await getImageExploreItems(env);
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImageExploreText(env)) + "\n\n✅ Explore card image updated. Use Show First or Show Last to choose its position.", adminImageExploreKeyboard(items));
+    await setAdminAction(env, adminId, "image_explore_tags", { targetUserId: itemId, chatId: action.chat_id || chatId, messageId: Number(action.message_id) });
+    const item = (await getImageExploreItems(env)).find((entry) => entry.id === itemId);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageExploreTagsText(item) + "\n\n✅ Image uploaded. Now choose tags.", adminImageExploreTagsKeyboard(itemId, item?.tags || []));
     return true;
   }
 
