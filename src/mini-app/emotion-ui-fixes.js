@@ -22,8 +22,12 @@ export const EMOTION_UI_FIXES_JS = String.raw`
     var input=entry.input;
     var content=entry.content;
     var value=String(input.value||'');
+    var placeholder=String(input.getAttribute('placeholder')||'');
+    var displayValue=value||placeholder;
     var parts=value.split(/(\[[^\]\r\n]{1,80}\])/g);
+    if(!value)parts=displayValue.split(/(\[[^\]\r\n]{1,80}\])/g);
     content.textContent='';
+    content.classList.toggle('placeholder',!value);
     parts.forEach(function(part){
       if(!part)return;
       if(/^\[[^\]\r\n]{1,80}\]$/.test(part)){
