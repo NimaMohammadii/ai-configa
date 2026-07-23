@@ -121,6 +121,7 @@ import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
 import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember, isMandatoryFaMembershipEnabled, setMandatoryFaMembershipEnabled } from "./mandatory-channel.js";
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
+import { getActiveWheelPurchaseDiscount } from "./reward-wheel.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPhoto, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
 import { buildTtsAudioFileName, buildTtsHistoryFile, getNextTtsFileSequence, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
@@ -1588,7 +1589,7 @@ async function handleTomanCreditInput(env, chatId, userId, messageId, text, stat
     return true;
   }
 
-  const pack = createCustomTomanPackage(credits);
+  const pack = createCustomTomanPackage(credits, await getActiveWheelPurchaseDiscount(env, userId));
   await setPendingPayment(env, userId, customTomanPaymentId(pack));
   await editCurrentMenu(env, chatId, userId, state.menuMessageId, customTomanPreviewText(pack, state), customTomanConfirmKeyboard(state));
   return true;
@@ -1600,8 +1601,12 @@ function customTomanPreviewText(pack, state = {}) {
     lang === "fa" ? "🇮🇷 <b>پرداخت با تومان</b>" : t(lang, "buyTomanTitle"),
     "",
     `${t(lang, "package")}: <b>${Number(pack.credits).toLocaleString("en-US")} credits</b>`,
-    `${t(lang, "amount")}: <b>${pack.amount} تومان</b>`,
+    customTomanAmountLine(pack, lang),
   ];
+
+  if (Number(pack.discountPercent || 0) > 0) {
+    lines.push(lang === "fa" ? "این مبلغ با تخفیف گردونه محاسبه شده و جایزه فقط ۲۴ ساعت اعتبار دارد." : "This amount is calculated with your wheel discount, which is valid for 24 hours.");
+  }
 
   if (pack.minimumApplied) {
     lines.push(
@@ -1615,6 +1620,15 @@ function customTomanPreviewText(pack, state = {}) {
   return lines.join("\n");
 }
 
+function customTomanAmountLine(pack, lang) {
+  if (Number(pack.discountPercent || 0) > 0) {
+    const percent = Number(pack.discountPercent).toLocaleString("en-US");
+    const note = lang === "fa" ? `با ${percent}٪ تخفیف گردونه حساب می‌شود` : `calculated with ${percent}% wheel discount`;
+    return `${t(lang, "amount")}: <s>${Number(pack.originalAmountValue).toLocaleString("en-US")} تومان</s> → <b>${pack.amount} تومان</b> (${note})`;
+  }
+  return `${t(lang, "amount")}: <b>${pack.amount} تومان</b>`;
+}
+
 function customTomanPaymentId(pack) {
   return `custom:${Number(pack.credits || 0)}:${Number(pack.amountValue || 0)}`;
 }
@@ -1625,7 +1639,12 @@ function pendingPackage(pending) {
   if (!String(packageId).startsWith("custom:")) return null;
   const [, credits, amount] = String(packageId).split(":");
   const pack = createCustomTomanPackage(Number(credits));
-  return Number(amount) === Number(pack.amountValue) ? pack : null;
+  if (Number(amount) === Number(pack.amountValue)) return pack;
+  if (Number(amount) > 0 && Number(amount) < Number(pack.amountValue)) {
+    const percent = Math.round((1 - Number(amount) / Number(pack.amountValue)) * 100);
+    return createCustomTomanPackage(Number(credits), { percent });
+  }
+  return null;
 }
 
 function parseTomanCreditAmount(text) {

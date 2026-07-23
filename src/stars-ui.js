@@ -32,7 +32,7 @@ export function customStarsInvoiceText(pack, state = {}) {
     "",
     `Credits: <b>${formatNumber(pack.totalCredits)}</b>`,
     `Estimated value: <b>$${formatUsd(pack.usd)}</b>`,
-    `Stars to pay: <b>${formatNumber(pack.stars)} ⭐️</b>`,
+    starsAmountLine(pack, lang),
     "",
     `Rate: <b>${CUSTOM_STARS_CREDITS_PER_STAR} credits = 1 ⭐️</b>`,
     lang === "fa" ? "برای دریافت فاکتور پرداخت تایید کن" : "Confirm to receive the payment invoice",
@@ -69,9 +69,7 @@ export function starsPackagesKeyboard(state = {}) {
 export function starsPackageInvoiceText(pack, state = {}) {
   const lang = state.language || "en";
   const audioLine = starPackageAudioLine(pack, lang);
-  const paymentLine = lang === "fa"
-    ? `پرداخت <b>${pack.stars} ⭐️</b> برای اضافه شدن کردیت‌ها`
-    : `Pay <b>${pack.stars} ⭐️</b> to add credits`;
+  const paymentLine = starsPaymentLine(pack, lang);
 
   return [
     `⭐ <b>${pack.description}</b>`,
@@ -91,6 +89,23 @@ export function buyCreditsTextClean(state = {}) {
     "",
     t(lang, "choosePayment"),
   ].join("\n");
+}
+
+function starsAmountLine(pack, lang) {
+  if (Number(pack.discountPercent || 0) > 0) {
+    const note = lang === "fa" ? `با ${formatNumber(pack.discountPercent)}٪ تخفیف گردونه حساب می‌شود` : `calculated with ${formatNumber(pack.discountPercent)}% wheel discount`;
+    return `Stars to pay: <s>${formatNumber(pack.originalStars)} ⭐️</s> → <b>${formatNumber(pack.stars)} ⭐️</b> (${note})`;
+  }
+  return `Stars to pay: <b>${formatNumber(pack.stars)} ⭐️</b>`;
+}
+
+function starsPaymentLine(pack, lang) {
+  if (Number(pack.discountPercent || 0) > 0) {
+    return lang === "fa"
+      ? `پرداخت <s>${formatNumber(pack.originalStars)} ⭐️</s> → <b>${formatNumber(pack.stars)} ⭐️</b> برای اضافه شدن کردیت‌ها (تخفیف گردونه، اعتبار ۲۴ ساعت)`
+      : `Pay <s>${formatNumber(pack.originalStars)} ⭐️</s> → <b>${formatNumber(pack.stars)} ⭐️</b> to add credits (24-hour wheel discount)`;
+  }
+  return lang === "fa" ? `پرداخت <b>${pack.stars} ⭐️</b> برای اضافه شدن کردیت‌ها` : `Pay <b>${pack.stars} ⭐️</b> to add credits`;
 }
 
 function starPackageAudioLine(pack, lang) {

@@ -69,7 +69,12 @@ function pendingPackage(pending) {
   if (!String(packageId).startsWith("custom:")) return null;
   const [, credits, amount] = String(packageId).split(":");
   const pack = createCustomTomanPackage(Number(credits));
-  return Number(amount) === Number(pack.amountValue) ? pack : null;
+  if (Number(amount) === Number(pack.amountValue)) return pack;
+  if (Number(amount) > 0 && Number(amount) < Number(pack.amountValue)) {
+    const percent = Math.round((1 - Number(amount) / Number(pack.amountValue)) * 100);
+    return createCustomTomanPackage(Number(credits), { percent });
+  }
+  return null;
 }
 
 export async function handleReceiptCallback(query, env) {
