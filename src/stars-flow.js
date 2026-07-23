@@ -4,7 +4,7 @@ import { getActiveWheelPurchaseDiscount } from "./reward-wheel.js";
 import { starsPackageInvoiceText, starsPackagesKeyboard, starsPackagesText, buyCreditsTextClean, customStarsPromptText, customStarsCancelKeyboard, customStarsInvoiceText, customStarsInvoiceKeyboard } from "./stars-ui.js";
 import { getState } from "./state.js";
 import { answerCallback, answerPreCheckout, editMessage, sendMessage, sendStarsInvoice, deleteMessage } from "./telegram-actions.js";
-import { buyCreditsKeyboard, mainKeyboard, startText } from "./ui.js";
+import { buyCreditsKeyboard, userMainKeyboard, startText } from "./ui.js";
 import { t } from "./i18n.js";
 
 export function isStarsCallback(data) {
@@ -122,7 +122,7 @@ export async function handleStarsPayment(message, env) {
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
 
   if (!result.ok) {
-    await sendMessage(env, chatId, "Payment error\n\n" + startText(state), mainKeyboard(state));
+    await sendMessage(env, chatId, "Payment error\n\n" + startText(state), await userMainKeyboard(env, userId, state));
     return true;
   }
 
@@ -130,7 +130,7 @@ export async function handleStarsPayment(message, env) {
     env,
     chatId,
     `✅ Payment successful\n\nAdded: <b>${result.pack.totalCredits.toLocaleString("en-US")} credits</b>\nBalance: <b>${result.balance?.toLocaleString("en-US") || "updated"} credits</b>\n\n${startText(state)}`,
-    mainKeyboard(state)
+    await userMainKeyboard(env, userId, state)
   );
   return true;
 }

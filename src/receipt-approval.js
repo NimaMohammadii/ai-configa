@@ -4,7 +4,7 @@ import { getAllAdminIds } from "./receipt-admins.js";
 import { clearPendingPayment, getPendingPayment } from "./payments.js";
 import { requireDb } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessageCaption, sendMessage, sendPlainMessage } from "./telegram-actions.js";
-import { createCustomTomanPackage, mainKeyboard, startText, TOMAN_PACKAGES } from "./ui.js";
+import { createCustomTomanPackage, userMainKeyboard, startText, TOMAN_PACKAGES } from "./ui.js";
 import { getState, setMenuMessageId } from "./state.js";
 
 export function isReceiptCallback(data) {
@@ -27,7 +27,7 @@ export async function handleReceiptPhoto(message, env) {
   }
 
   if (!pending || !pendingPackage(pending)) {
-    const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
+    const menu = await sendMessage(env, chatId, startText(state), await userMainKeyboard(env, userId, state));
     await setMenuMessageId(env, userId, menu?.message_id || null);
     await notifyUser(env, chatId, "⚠️ <b>Screenshot received</b>\n\nPlease choose a credit package first", "⚠️ Screenshot received\n\nPlease choose a credit package first");
     return true;
@@ -50,7 +50,7 @@ export async function handleReceiptPhoto(message, env) {
     }
   }
 
-  const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
+  const menu = await sendMessage(env, chatId, startText(state), await userMainKeyboard(env, userId, state));
   await setMenuMessageId(env, userId, menu?.message_id || null);
 
   if (sentToAdmin > 0) {

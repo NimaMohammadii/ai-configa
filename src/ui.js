@@ -1,6 +1,7 @@
 import { LANGUAGES, t } from "./i18n.js";
 import { CARD_NUMBER } from "./payment-card.js";
-import { VOICE_NAMES, VOICES_PER_PAGE } from "./voices.js";
+import { getUserVoices } from "./user-voices.js";
+import { VOICE_NAMES } from "./voices.js";
 
 export const CREDIT_PRICE_PER_1000_USD = 0.24;
 export const CREDIT_PER_CHARACTER = 1;
@@ -45,11 +46,8 @@ export function startText(state) {
 
 export function mainKeyboard(state) {
   const lang = state.language || "en";
-  const totalPages = Math.ceil(VOICE_NAMES.length / VOICES_PER_PAGE);
-  const page = Math.min(Math.max(Number(state.page || 0), 0), totalPages - 1);
   const selectedVoice = state.voice || "Nora";
-  const start = page * VOICES_PER_PAGE;
-  const voices = VOICE_NAMES.slice(start, start + VOICES_PER_PAGE);
+  const voices = normalizeMenuVoices(state.savedVoices, selectedVoice);
   const rows = [];
 
   for (let i = 0; i < voices.length; i += 2) {
@@ -58,17 +56,7 @@ export function mainKeyboard(state) {
     rows.push(row);
   }
 
-  const paginationButtons = [];
-  if (page > 0) paginationButtons.push({ text: t(lang, "previous"), callback_data: `page:${page - 1}` });
-  if (page < totalPages - 1) paginationButtons.push({ text: t(lang, "next"), callback_data: `page:${page + 1}` });
-  if (paginationButtons.length) {
-    const lastVoiceRow = rows[rows.length - 1];
-    if (lastVoiceRow && lastVoiceRow.length === 1 && paginationButtons.length === 1) {
-      lastVoiceRow.push(paginationButtons[0]);
-    } else {
-      rows.push(paginationButtons);
-    }
-  }
+  rows.push([{ text: "🎙️ صداهای بیشتر", web_app: { url: "https://ai-configa.vexaagent.workers.dev/mini-app?section=voices" } }]);
 
   rows.push([{ text: t(lang, "demo"), callback_data: "demo" }]);
   rows.push([
@@ -77,6 +65,23 @@ export function mainKeyboard(state) {
   ]);
   rows.push([{ text: "Open Mini App 🐙", web_app: { url: "https://ai-configa.vexaagent.workers.dev/mini-app" } }]);
   return { inline_keyboard: rows };
+}
+
+export async function userMainKeyboard(env, userId, state) {
+  let savedVoices = [];
+  try {
+    savedVoices = await getUserVoices(env, userId, state.voice || "Nora");
+  } catch {}
+  return mainKeyboard({ ...state, savedVoices });
+}
+
+function normalizeMenuVoices(savedVoices, selectedVoice) {
+  const voices = Array.isArray(savedVoices)
+    ? savedVoices.map((voice) => String(voice || "").trim()).filter((voice) => VOICE_NAMES.includes(voice))
+    : [];
+  if (selectedVoice && VOICE_NAMES.includes(selectedVoice) && !voices.includes(selectedVoice)) voices.unshift(selectedVoice);
+  if (!voices.length) voices.push(VOICE_NAMES.includes(selectedVoice) ? selectedVoice : "Nora");
+  return voices.slice(0, 6);
 }
 
 export function buyCreditsText(state = {}) {

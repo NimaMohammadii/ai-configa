@@ -125,7 +125,7 @@ import { getActiveWheelPurchaseDiscount } from "./reward-wheel.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPhoto, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
 import { buildTtsAudioFileName, buildTtsHistoryFile, getNextTtsFileSequence, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
-import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, mainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
+import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, userMainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES, isLockedVoice } from "./voices.js";
 
 export async function handleMessage(message, env) {
@@ -195,7 +195,7 @@ export async function handleMessage(message, env) {
     if (await requireFaMembership(env, chatId, userId, null, state, false)) {
       return;
     }
-    await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+    await replaceMenu(env, chatId, userId, state, startText(state), await userMainKeyboard(env, userId, state));
     await sendInitialStartBonusOnce(env, chatId, userId, state.language);
     await sendWelcomeAudioOnFirstStart(env, chatId, isFirstStart, state.language);
     return;
@@ -213,7 +213,7 @@ export async function handleMessage(message, env) {
       if (await requireFaMembership(env, chatId, userId, null, state, false)) {
         return;
       }
-      await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+      await replaceMenu(env, chatId, userId, state, startText(state), await userMainKeyboard(env, userId, state));
       await sendInitialStartBonusOnce(env, chatId, userId, state.language);
       return;
     }
@@ -230,10 +230,10 @@ export async function handleMessage(message, env) {
   if (text === "/debug") {
     await deleteMessage(env, chatId, messageId).catch(() => null);
     if (!(await isAdmin(env, userId))) {
-      await replaceMenu(env, chatId, userId, state, t(state.language, "accessDenied"), mainKeyboard(state));
+      await replaceMenu(env, chatId, userId, state, t(state.language, "accessDenied"), await userMainKeyboard(env, userId, state));
       return;
     }
-    await replaceMenu(env, chatId, userId, state, buildDebugText(env, state), mainKeyboard(state));
+    await replaceMenu(env, chatId, userId, state, buildDebugText(env, state), await userMainKeyboard(env, userId, state));
     return;
   }
 
@@ -246,7 +246,7 @@ export async function handleMessage(message, env) {
       if (await requireFaMembership(env, chatId, userId, null, state, false)) {
         return;
       }
-      await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+      await replaceMenu(env, chatId, userId, state, startText(state), await userMainKeyboard(env, userId, state));
       await sendInitialStartBonusOnce(env, chatId, userId, state.language);
       return;
     }
@@ -265,7 +265,7 @@ export async function handleMessage(message, env) {
 
   if (text.startsWith("/")) {
     await deleteMessage(env, chatId, messageId).catch(() => null);
-    await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+    await replaceMenu(env, chatId, userId, state, startText(state), await userMainKeyboard(env, userId, state));
     return;
   }
 
@@ -304,7 +304,7 @@ export async function handleCallback(query, env) {
     if (await requireFaMembership(env, chatId, userId, null, fresh, false, null, messageId)) {
       return;
     }
-    await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), mainKeyboard(fresh));
+    await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), await userMainKeyboard(env, userId, fresh));
     await sendInitialStartBonusOnce(env, chatId, userId, fresh.language);
     await sendWelcomeAudioOnFirstStart(env, chatId, shouldSendWelcomeAudio, fresh.language);
     return;
@@ -314,7 +314,7 @@ export async function handleCallback(query, env) {
     if (!(await isMandatoryFaMembershipEnabled(env))) {
       const fresh = await getState(env, userId);
       await answerCallback(env, query.id, "عضویت اجباری غیرفعال است", false);
-      await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), mainKeyboard(fresh));
+      await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), await userMainKeyboard(env, userId, fresh));
       return;
     }
     const member = await isFaChannelMember(env, userId);
@@ -325,7 +325,7 @@ export async function handleCallback(query, env) {
     }
     await grantFaJoinBonusOnce(env, userId);
     const fresh = await getState(env, userId);
-    await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), mainKeyboard(fresh));
+    await editCurrentMenu(env, chatId, userId, messageId, startText(fresh), await userMainKeyboard(env, userId, fresh));
     return;
   }
 
@@ -998,7 +998,7 @@ export async function handleCallback(query, env) {
     if (startLanguage) {
       state.language = startLanguage;
       await setUserLanguage(env, userId, startLanguage);
-      await editCurrentMenu(env, chatId, userId, messageId, startText(state), mainKeyboard(state));
+      await editCurrentMenu(env, chatId, userId, messageId, startText(state), await userMainKeyboard(env, userId, state));
       return;
     }
     await editCurrentMenu(env, chatId, userId, messageId, languageText(), languageKeyboard());
@@ -1009,7 +1009,7 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id);
     state.page = Number(data.split(":")[1] || 0);
     await saveState(env, userId, state);
-    await editCurrentMenu(env, chatId, userId, messageId, startText(state), mainKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, startText(state), await userMainKeyboard(env, userId, state));
     return;
   }
 
@@ -1018,7 +1018,7 @@ export async function handleCallback(query, env) {
     if (VOICES[voice]) state.voice = voice;
     await answerCallback(env, query.id);
     await saveState(env, userId, state);
-    await editCurrentMenu(env, chatId, userId, messageId, startText(state), mainKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, startText(state), await userMainKeyboard(env, userId, state));
     return;
   }
 
@@ -1084,13 +1084,13 @@ export async function handleCallback(query, env) {
   if (data === "cancel_payment") {
     await answerCallback(env, query.id);
     await clearPendingPayment(env, userId);
-    await editCurrentMenu(env, chatId, userId, messageId, startText(state), mainKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, startText(state), await userMainKeyboard(env, userId, state));
     return;
   }
 
   if (data === "back_main") {
     await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, startText(state), mainKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, startText(state), await userMainKeyboard(env, userId, state));
     return;
   }
 
@@ -1118,7 +1118,7 @@ async function handleImageCommand(env, chatId, userId, messageId, text, state) {
   await deleteMessage(env, chatId, messageId).catch(() => null);
 
   if (!prompt) {
-    await sendMessage(env, chatId, imageUsageText(state), mainKeyboard(state));
+    await sendMessage(env, chatId, imageUsageText(state), await userMainKeyboard(env, userId, state));
     return;
   }
 
@@ -1135,7 +1135,7 @@ async function handleImageCommand(env, chatId, userId, messageId, text, state) {
     });
   } catch (error) {
     await deleteMessage(env, chatId, waitMessage?.message_id).catch(() => null);
-    await sendMessage(env, chatId, error?.message || imageErrorText(state), mainKeyboard(state));
+    await sendMessage(env, chatId, error?.message || imageErrorText(state), await userMainKeyboard(env, userId, state));
   }
 }
 
@@ -1144,13 +1144,13 @@ async function handleImageEditCommand(env, chatId, userId, messageId, caption, m
   await deleteMessage(env, chatId, messageId).catch(() => null);
 
   if (!prompt) {
-    await sendMessage(env, chatId, imageEditUsageText(state), mainKeyboard(state));
+    await sendMessage(env, chatId, imageEditUsageText(state), await userMainKeyboard(env, userId, state));
     return;
   }
 
   const fileId = getLargestPhotoFileId(message);
   if (!fileId) {
-    await sendMessage(env, chatId, imageErrorText(state), mainKeyboard(state));
+    await sendMessage(env, chatId, imageErrorText(state), await userMainKeyboard(env, userId, state));
     return;
   }
 
@@ -1168,7 +1168,7 @@ async function handleImageEditCommand(env, chatId, userId, messageId, caption, m
     });
   } catch (error) {
     await deleteMessage(env, chatId, waitMessage?.message_id).catch(() => null);
-    await sendMessage(env, chatId, error?.message || imageErrorText(state), mainKeyboard(state));
+    await sendMessage(env, chatId, error?.message || imageErrorText(state), await userMainKeyboard(env, userId, state));
   }
 }
 
@@ -1662,7 +1662,7 @@ async function handlePaymentScreenshot(env, chatId, userId, state) {
   const pending = await getPendingPayment(env, userId);
 
   if (!pending || !pendingPackage(pending)) {
-    await upsertMenu(env, chatId, userId, state, t(state.language, "screenshotNoPackage"), mainKeyboard(state));
+    await upsertMenu(env, chatId, userId, state, t(state.language, "screenshotNoPackage"), await userMainKeyboard(env, userId, state));
     return;
   }
 
@@ -1679,7 +1679,7 @@ async function handlePaymentScreenshot(env, chatId, userId, state) {
       "",
       t(state.language, "keepUsing")
     ].join("\n"),
-    mainKeyboard(state)
+    await userMainKeyboard(env, userId, state)
   );
 }
 
@@ -1730,7 +1730,7 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
   let statusMessage = null;
 
   if (!isDemo && isLockedVoice(voiceName) && !(await isAdmin(env, userId))) {
-    await replaceMenu(env, chatId, userId, state, "این صدا فعلاً قفل است و فقط دموی آن برای کاربران عادی قابل پخش است.", mainKeyboard(state));
+    await replaceMenu(env, chatId, userId, state, "این صدا فعلاً قفل است و فقط دموی آن برای کاربران عادی قابل پخش است.", await userMainKeyboard(env, userId, state));
     return;
   }
 
@@ -1762,7 +1762,7 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
       statusMessage = null;
     }
 
-    await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+    await replaceMenu(env, chatId, userId, state, startText(state), await userMainKeyboard(env, userId, state));
 
     const outputFileSequence = isDemo ? null : await getNextTtsFileSequence(env, userId);
     const outputFileName = isDemo ? null : buildTtsAudioFileName(outputFileSequence);
@@ -1783,7 +1783,7 @@ async function makeAndSendAudio(env, chatId, userId, inputMessageId, text, state
     if (statusMessage && statusMessage.message_id) {
       await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
     }
-    await upsertMenu(env, chatId, userId, state, t(state.language, "ttsError") + ": " + safeError(error) + "\n\n" + startText(state), mainKeyboard(state));
+    await upsertMenu(env, chatId, userId, state, t(state.language, "ttsError") + ": " + safeError(error) + "\n\n" + startText(state), await userMainKeyboard(env, userId, state));
   }
 }
 
@@ -1793,7 +1793,7 @@ export async function sendFreshMainMenu(env, chatId, userId) {
     await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
     return;
   }
-  await replaceMenu(env, chatId, userId, state, startText(state), mainKeyboard(state));
+  await replaceMenu(env, chatId, userId, state, startText(state), await userMainKeyboard(env, userId, state));
 }
 
 async function replaceMenu(env, chatId, userId, state, text, keyboard) {
