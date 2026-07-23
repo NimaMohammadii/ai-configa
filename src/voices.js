@@ -23,8 +23,26 @@ export const VOICES = {
   Aurora: "eUdJpUEN3EslrgE24PKx",
   Allison: "1wGbFxmAM3Fgw63G1zZJ",
   Mason: "fXhoW006nc5Wf8xkGVSy",
+  Aria: "evlmNgTfQhTg1om8fCgp",
+  Selena: "h60rOzgfLmYsntfqgGu2",
+  Vespera: "FvmvwvObRqIHojkEGh5N",
+  Elara: "tTQzD8U9VSnJgfwC6HbY",
+  Atlas: "3OUAuH7CeDSQhCCijs1Y",
+  Mira: "rEVYTKPqwSMhytFPayIb",
+  Zoya: "eXpIbVcVbLo8ZJQDlDnl",
+  Kiara: "8DzKSPdgEQPaK5vKG0Rs",
   Orion: "qDuRKMlYmrm8trt5QyBn",
+  Ryder: "7EzWGsX10sAS4c9m9cPf",
 };
+
+export const LOCKED_VOICE_NAMES = ["Vespera"];
+export const LOCKED_VOICES = Object.fromEntries(LOCKED_VOICE_NAMES.map((name) => [name, VOICES[name]]));
+
+export function isLockedVoice(voiceNameOrId) {
+  const value = String(voiceNameOrId || "").trim();
+  return LOCKED_VOICE_NAMES.includes(value) || Object.values(LOCKED_VOICES).includes(value);
+}
+
 
 export const VOICE_NAMES = Object.keys(VOICES);
 export const VOICES_PER_PAGE = 8;
