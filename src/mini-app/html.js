@@ -57,7 +57,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260724-voices-02"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260724-voices-03"/>
 </head>
 <body>
   <main class="app">
@@ -71,7 +71,7 @@ export const MINI_APP_HTML = `<!doctype html>
               <span id="voiceLabel">Liam</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-            <div class="voice-menu"><div id="myVoiceRows" class="my-voice-rows">${VOICE_ROWS}</div><div id="myVoicesEmpty" class="my-voices-empty">Add voices to your list</div><button class="voice-library-open" data-action="open-voices-page" type="button"><span>Voices</span><small id="voiceMenuCount">1 / 6</small><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+            <div class="voice-menu"><div id="myVoiceRows" class="my-voice-rows">${VOICE_ROWS}</div><div id="myVoicesEmpty" class="my-voices-empty">Add voices to your list</div><button class="voice-library-open" data-action="open-voices-page" type="button"><span id="voiceLibraryOpenLabel">More voices</span><small id="voiceMenuCount">1 / 6</small><svg class="voice-library-mic" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><linearGradient id="voiceLibraryMicShine" x1="7" y1="2.8" x2="17" y2="21" gradientUnits="userSpaceOnUse"><stop stop-color="currentColor" stop-opacity="1"/><stop offset=".52" stop-color="currentColor" stop-opacity=".78"/><stop offset="1" stop-color="currentColor" stop-opacity=".38"/></linearGradient></defs><rect x="8.1" y="3.1" width="7.8" height="11.8" rx="3.9" stroke="url(#voiceLibraryMicShine)" stroke-width="1.55"/><path d="M5.75 11.2a6.25 6.25 0 0 0 12.5 0M12 17.65v2.95M9.2 20.6h5.6" stroke="currentColor" stroke-width="1.55" stroke-linecap="round"/><path d="M10.35 5.65h3.3M10.35 8.05h3.3" stroke="currentColor" stroke-width=".95" stroke-linecap="round" opacity=".42"/></svg></button></div>
           </div><button id="modeToggle" class="mode-toggle" data-action="toggle-creation-mode" type="button" aria-label="Switch to image creation" aria-pressed="false"><svg class="mode-image-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><circle cx="8.3" cy="9" r="1.55" stroke="currentColor" stroke-width="1.55"/><path d="m5.8 17 4.15-4.15a1.4 1.4 0 0 1 1.98 0l1.55 1.55 1.25-1.25a1.4 1.4 0 0 1 1.98 0L19 15.45" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.2 2.7v3M16.7 4.2h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><svg class="mode-voice-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button></div>
         </div>
         <div class="tts-area dialogue-editor" id="dialogueEditor">
@@ -155,6 +155,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260724-voices-02"></script>
+  <script type="module" src="/mini-app/app.js?v=20260724-voices-03"></script>
 </body>
 </html>`;
