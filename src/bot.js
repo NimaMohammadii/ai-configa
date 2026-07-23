@@ -4,12 +4,7 @@ import {
   adminChannelPostPromptText,
   adminChannelPostsKeyboard,
   adminChannelPostsText,
-  adminCreatorsKeyboard,
-  adminCreatorsText,
   adminCreditPromptText,
-  adminDailyRewardKeyboard,
-  adminDailyRewardPromptText,
-  adminDailyRewardText,
   adminBuyersKeyboard,
   adminBuyersText,
   adminMainKeyboard,
@@ -58,10 +53,6 @@ import {
   adminWelcomeAudioKeyboard,
   adminWelcomeAudioPromptText,
   adminWelcomeAudioText,
-  creatorAcceptedMessage,
-  creatorAdminRequestText,
-  creatorRejectedMessage,
-  creatorReviewKeyboard,
   adminOnlineKeyboard,
   adminOnlineText,
   adminMessagePromptText,
@@ -83,7 +74,6 @@ import {
   deleteImageExploreItem,
   getAdminAction,
   getAllUserIds,
-  reviewCreatorApplication,
   getChannelPostLanguageSettings,
   isAdmin,
   resetUser,
@@ -111,12 +101,10 @@ import {
   getWelcomeAudio,
   hasTrackedUser,
   trackUser,
-  submitCreatorApplication,
   tryAdminLogin,
 } from "./admin.js";
 import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
-import { claimDailyReward, dailyRewardMessage, setDailyRewardCredits } from "./daily-reward.js";
 import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
 import { getDemoText } from "./demo-texts.js";
 import { enqueueImageJob } from "./image-jobs.js";
@@ -229,10 +217,6 @@ export async function handleMessage(message, env) {
     return;
   }
 
-  if (isCreatorCommand(text)) {
-    await handleCreatorCommand(env, chatId, userId, messageId, text, state, message.from);
-    return;
-  }
 
   if (text === "/debug") {
     await deleteMessage(env, chatId, messageId).catch(() => null);
@@ -280,92 +264,6 @@ export async function handleMessage(message, env) {
 }
 
 
-function isCreatorCommand(text) {
-  return /^\/creator(?:@\w+)?(?:\s|$)/i.test(String(text || ""));
-}
-
-function creatorCommandHandle(text) {
-  return String(text || "").replace(/^\/creator(?:@\w+)?/i, "").trim();
-}
-
-function creatorCommandUsageText(lang) {
-  if (normalizeLang(lang) === "fa") {
-    return [
-      "🎬 <b>درخواست Creator</b>",
-      "",
-      "آیدی یا لینک <b>پیج اینستاگرام</b> / <b>کانالت</b> رو بعد از دستور بفرست.",
-      "هر روز هم اگه زیر پست‌هات مارو تگ کنی، <b>799 کردیت</b> بهت می‌دیم.",
-      "",
-      "<b>نمونه:</b>",
-      "<code>/Creator @yourpage</code>",
-    ].join("\n");
-  }
-  return [
-    "🎬 <b>Creator Request</b>",
-    "",
-    "Send your <b>Instagram page</b> or <b>channel</b> ID/link after the command.",
-    "Tag us under your posts and we’ll give you <b>799 credits</b> every day.",
-    "",
-    "<b>Example:</b>",
-    "<code>/Creator @yourpage</code>",
-  ].join("\n");
-}
-
-function creatorCommandSubmittedText(lang) {
-  if (normalizeLang(lang) === "fa") {
-    return [
-      "✅ <b>درخواست Creator ثبت شد</b>",
-      "",
-      "<b>وضعیت:</b> منتظر بررسی ادمین باش",
-      "<b>بعدش چی؟</b> نتیجه رو از همین ربات بهت می‌گیم.",
-      "هر روز هم اگه زیر پست‌هات مارو تگ کنی، <b>799 کردیت</b> می‌گیری.",
-    ].join("\n");
-  }
-  return [
-    "✅ <b>Creator request submitted</b>",
-    "",
-    "<b>Status:</b> Pending admin review",
-    "<b>Next:</b> We’ll send the review result from this bot.",
-    "Tag us under your posts and we’ll give you <b>799 credits</b> every day.",
-  ].join("\n");
-}
-
-async function handleCreatorCommand(env, chatId, userId, messageId, text, state, user) {
-  await deleteMessage(env, chatId, messageId).catch(() => null);
-  const handle = creatorCommandHandle(text);
-  if (!handle) {
-    const prompt = await sendMessage(env, chatId, creatorCommandUsageText(state.language));
-    await setMenuMessageId(env, userId, prompt?.message_id || null);
-    return;
-  }
-  const app = await submitCreatorApplication(env, user || { id: userId }, normalizeLang(state.language || user?.language_code || "en"), handle);
-  await notifyCreatorAdmins(env, app);
-  const submittedText = creatorCommandSubmittedText(state.language);
-  if (state?.menuMessageId) {
-    try {
-      await editMessage(env, chatId, state.menuMessageId, submittedText);
-      await setMenuMessageId(env, userId, state.menuMessageId);
-      return;
-    } catch (error) {
-      if (isMessageNotModifiedError(error)) {
-        await setMenuMessageId(env, userId, state.menuMessageId);
-        return;
-      }
-    }
-  }
-  const submitted = await sendMessage(env, chatId, submittedText);
-  await setMenuMessageId(env, userId, submitted?.message_id || null);
-}
-
-async function notifyCreatorAdmins(env, application) {
-  const adminIds = [];
-  if (env.ADMIN_TOKEN && /^\d+$/.test(String(env.ADMIN_TOKEN))) adminIds.push(String(env.ADMIN_TOKEN));
-  const admins = await env.DB.prepare("SELECT user_id FROM admin_users").all().catch(() => ({ results: [] }));
-  for (const admin of admins?.results || []) {
-    if (admin.user_id) adminIds.push(String(admin.user_id));
-  }
-  await Promise.all(Array.from(new Set(adminIds)).map((adminId) => sendMessage(env, adminId, creatorAdminRequestText(application), creatorReviewKeyboard(application.user_id)).catch((error) => console.error("send creator admin message failed", error?.message || error))));
-}
 
 export async function handleCallback(query, env) {
   const data = query.data || "";
@@ -566,27 +464,6 @@ export async function handleCallback(query, env) {
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminWheelUsersText(env, page), await adminWheelUsersKeyboard(env, page));
-    return;
-  }
-
-  if (data.startsWith("admin_creators:")) {
-    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    await clearAdminAction(env, userId);
-    const page = Number(data.split(":")[1] || 0);
-    await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, await adminCreatorsText(env, page), await adminCreatorsKeyboard(env, page));
-    return;
-  }
-
-  if (data.startsWith("admin_creator_accept:") || data.startsWith("admin_creator_reject:")) {
-    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    const approved = data.startsWith("admin_creator_accept:");
-    const targetUserId = data.slice((approved ? "admin_creator_accept:" : "admin_creator_reject:").length);
-    const result = await reviewCreatorApplication(env, targetUserId, userId, approved);
-    await answerCallback(env, query.id, approved ? "Creator accepted" : "Creator rejected", false);
-    const lang = result.application?.language || "en";
-    await sendMessage(env, targetUserId, approved ? creatorAcceptedMessage(lang) : creatorRejectedMessage(lang)).catch(() => null);
-    await editCurrentMenu(env, chatId, userId, messageId, (approved ? "✅ Accepted creator. " : "❌ Rejected creator. ") + "User was notified.", { inline_keyboard: [[{ text: "🎬 Creators", callback_data: "admin_creators:0" }, { text: "← Admin", callback_data: "admin_main" }]] });
     return;
   }
 
@@ -981,22 +858,6 @@ export async function handleCallback(query, env) {
   }
 
 
-  if (data === "admin_daily_reward") {
-    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    await clearAdminAction(env, userId);
-    await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, await adminDailyRewardText(env), adminDailyRewardKeyboard());
-    return;
-  }
-
-  if (data === "admin_daily_reward_prompt") {
-    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    await answerCallback(env, query.id);
-    await setAdminAction(env, userId, "daily_reward_credits", { chatId, messageId });
-    await editCurrentMenu(env, chatId, userId, messageId, adminDailyRewardPromptText(), adminCancelKeyboard("admin_daily_reward"));
-    return;
-  }
-
   if (data === "admin_initial_start") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
@@ -1075,11 +936,6 @@ export async function handleCallback(query, env) {
     return;
   }
 
-  if (data === "daily_reward") {
-    const result = await claimDailyReward(env, userId);
-    await answerCallback(env, query.id, dailyRewardMessage(state.language, result), true);
-    return;
-  }
 
   if (data === "buy_credits") {
     await answerCallback(env, query.id);
@@ -1447,19 +1303,6 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     await setInitialStartCredits(env, credits);
     await clearAdminAction(env, adminId);
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminInitialStartText(env)) + "\n\n✅ Initial start credits updated.", adminInitialStartKeyboard());
-    return true;
-  }
-
-  if (action.action === "daily_reward_credits") {
-    const credits = Number.parseInt(String(text).trim(), 10);
-    if (!Number.isFinite(credits) || credits <= 0) {
-      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminDailyRewardPromptText() + "\n\nInvalid amount. Send a positive number like <code>120</code>.", adminCancelKeyboard("admin_daily_reward"));
-      return true;
-    }
-
-    await setDailyRewardCredits(env, credits);
-    await clearAdminAction(env, adminId);
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminDailyRewardText(env)) + "\n\n✅ Daily gift updated.", adminDailyRewardKeyboard());
     return true;
   }
 

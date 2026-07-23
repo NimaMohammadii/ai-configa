@@ -1,7 +1,6 @@
-import { addCredits, ensureCreditUsageLogTable, getBalance } from "./credits.js";
+import { ensureCreditUsageLogTable, getBalance } from "./credits.js";
 import { LANGUAGES, normalizeLang } from "./i18n.js";
 import { requireDb } from "./state.js";
-import { getDailyRewardCredits } from "./daily-reward.js";
 import { getInitialStartCredits } from "./start-bonus.js";
 import { getMandatoryFaMembershipSettings } from "./mandatory-channel.js";
 import { ensureTtsHistoryTable } from "./tts-history.js";
@@ -131,11 +130,11 @@ export function adminMainKeyboard() {
       [{ text: "💳 Buyers", callback_data: "admin_buyers:0" }, { text: "↩️ Return Users", callback_data: "admin_returns" }],
       [{ text: "🟢 Online Users", callback_data: "admin_online:0" }, { text: "🌍 Users by Language", callback_data: "admin_language_stats" }],
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
-      [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }, { text: "🎁 Daily Reward", callback_data: "admin_daily_reward" }],
+      [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }],
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
-      [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }, { text: "🎬 Creators", callback_data: "admin_creators:0" }],
+      [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }],
       [{ text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
       [{ text: "💸 Image Pricing", callback_data: "admin_image_pricing" }, { text: "🐙 Explore Prompts", callback_data: "admin_image_explore" }],
       [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
@@ -253,40 +252,6 @@ function formatImageOfferDuration(seconds) {
   return minutes + "m " + secs + "s";
 }
 
-
-export async function adminDailyRewardText(env) {
-  const credits = await getDailyRewardCredits(env);
-  const due = await countDueDailyRewards(env);
-  return [
-    "🎁 <b>Daily Reward Settings</b>",
-    "",
-    "Current gift: <b>" + formatNumber(credits) + " credits</b>",
-    "Users ready to claim now: <b>" + formatNumber(due) + "</b>",
-    "",
-    "Use <b>Change Gift Credits</b> to set the daily gift amount.",
-    "Daily reward reminder notifications are currently disabled."
-  ].join("\n");
-}
-
-export function adminDailyRewardKeyboard() {
-  return {
-    inline_keyboard: [
-      [{ text: "✏️ Change Gift Credits", callback_data: "admin_daily_reward_prompt" }],
-      [{ text: "← Back", callback_data: "admin_main" }],
-    ],
-  };
-}
-
-export function adminDailyRewardPromptText() {
-  return [
-    "🎁 <b>Change Daily Gift Credits</b>",
-    "",
-    "Send the new positive credit amount.",
-    "Example: <code>120</code>",
-    "",
-    "Your message will be deleted after processing."
-  ].join("\n");
-}
 
 export async function adminInitialStartText(env) {
   const credits = await getInitialStartCredits(env);
@@ -424,14 +389,6 @@ function formatDuration(totalSeconds) {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return formatNumber(hours) + "h" + (rest ? " " + formatNumber(rest) + "m" : "");
-}
-
-export async function countDueDailyRewards(env) {
-  requireDb(env);
-  const row = await env.DB.prepare(
-    "SELECT COUNT(*) AS total FROM daily_rewards WHERE last_claimed_at IS NOT NULL AND datetime(last_claimed_at, '+24 hours') <= CURRENT_TIMESTAMP"
-  ).first();
-  return Number(row?.total || 0);
 }
 
 export async function getLanguageSettings(env) {
@@ -749,109 +706,6 @@ export async function getAdminUsersPage(env, page = 0, limit = 8) {
     limit: Number(limit),
     users: users.results || [],
   };
-}
-
-export const CREATOR_SIGNUP_BONUS = 2500;
-
-export async function ensureCreatorApplicationsTable(env) {
-  requireDb(env);
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS creator_applications (user_id TEXT PRIMARY KEY, username TEXT, first_name TEXT, last_name TEXT, language TEXT, creator_handle TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', bonus_granted INTEGER NOT NULL DEFAULT 0, reviewed_by TEXT, reviewed_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
-  ).run();
-  await env.DB.prepare(
-    "CREATE INDEX IF NOT EXISTS idx_creator_applications_status_created ON creator_applications (status, created_at DESC)"
-  ).run();
-}
-
-export async function submitCreatorApplication(env, user, language, creatorHandle) {
-  await ensureCreatorApplicationsTable(env);
-  const handle = String(creatorHandle || "").trim().slice(0, 180);
-  if (!handle) throw new Error("Enter your page ID or channel link.");
-  await env.DB.prepare(
-    "INSERT INTO creator_applications (user_id, username, first_name, last_name, language, creator_handle, status, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
-    "ON CONFLICT(user_id) DO UPDATE SET username = excluded.username, first_name = excluded.first_name, last_name = excluded.last_name, language = excluded.language, creator_handle = excluded.creator_handle, status = 'pending', reviewed_by = NULL, reviewed_at = NULL, updated_at = CURRENT_TIMESTAMP"
-  ).bind(String(user.id), user.username || null, user.first_name || null, user.last_name || null, language || null, handle).run();
-  return getCreatorApplication(env, user.id);
-}
-
-export async function getCreatorApplication(env, userId) {
-  await ensureCreatorApplicationsTable(env);
-  return env.DB.prepare("SELECT * FROM creator_applications WHERE user_id = ?").bind(String(userId)).first();
-}
-
-export async function reviewCreatorApplication(env, targetUserId, adminId, approved) {
-  await ensureCreatorApplicationsTable(env);
-  const row = await getCreatorApplication(env, targetUserId);
-  if (!row) throw new Error("Creator application not found");
-  const status = approved ? "accepted" : "rejected";
-  let balance = null;
-  if (approved && Number(row.bonus_granted || 0) !== 1) {
-    balance = await addCredits(env, targetUserId, CREATOR_SIGNUP_BONUS);
-  }
-  await env.DB.prepare(
-    "UPDATE creator_applications SET status = ?, bonus_granted = CASE WHEN ? = 'accepted' THEN 1 ELSE bonus_granted END, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-  ).bind(status, status, String(adminId), String(targetUserId)).run();
-  return { application: await getCreatorApplication(env, targetUserId), balance };
-}
-
-export async function getCreatorsPage(env, page = 0, limit = 8) {
-  await ensureCreatorApplicationsTable(env);
-  const offset = Number(page) * Number(limit);
-  const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM creator_applications WHERE status = 'accepted'").first();
-  const rows = await env.DB.prepare("SELECT * FROM creator_applications WHERE status = 'accepted' ORDER BY datetime(updated_at) DESC LIMIT ? OFFSET ?").bind(Number(limit), Number(offset)).all();
-  return { total: Number(countRow?.total || 0), page: Number(page), limit: Number(limit), users: rows.results || [] };
-}
-
-export async function adminCreatorsText(env, page = 0) {
-  const data = await getCreatorsPage(env, page);
-  return ["🎬 <b>Content Creators</b>", "", "Accepted creators: <b>" + formatNumber(data.total) + "</b>", "Page: <b>" + (data.page + 1) + "</b>", "", data.users.length ? "Accepted creator users:" : "No accepted creators yet."].join("\n");
-}
-
-export async function adminCreatorsKeyboard(env, page = 0) {
-  const data = await getCreatorsPage(env, page);
-  const rows = data.users.map((user) => [{ text: userLabel(user) + " • " + String(user.creator_handle || ""), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
-  const nav = [];
-  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_creators:" + (data.page - 1) });
-  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_creators:" + (data.page + 1) });
-  if (nav.length) rows.push(nav);
-  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
-  return { inline_keyboard: rows };
-}
-
-export function creatorAdminRequestText(app) {
-  return ["🎬 <b>Creator Application</b>", "", "User: " + escapeHtml(userLabel(app)), "User ID: <code>" + escapeHtml(app.user_id) + "</code>", "Language: <b>" + escapeHtml(app.language || "en") + "</b>", "Creator ID / Link: <code>" + escapeHtml(app.creator_handle || "") + "</code>", "Status: <b>" + escapeHtml(app.status || "pending") + "</b>"].join("\n");
-}
-
-export function creatorReviewKeyboard(userId) {
-  return { inline_keyboard: [[{ text: "✅ Accept", callback_data: "admin_creator_accept:" + userId }, { text: "❌ Reject", callback_data: "admin_creator_reject:" + userId }]] };
-}
-
-export function creatorAcceptedMessage(lang, bonus = CREATOR_SIGNUP_BONUS) {
-  if (normalizeLang(lang) === "fa") {
-    return [
-      "✅ <b>درخواست شما پذیرفته شد</b>",
-      "",
-      "<b>نقش:</b> تولیدکننده محتوای Vexa",
-      "<b>شروع:</b> از همین حالا می‌توانید فعالیت را آغاز کنید.",
-      "<b>هدیه:</b> " + formatNumber(bonus) + " کردیت به حساب شما اضافه شد.",
-      "",
-      "برای ادامه همکاری، محتواهای خود را طبق شرایط Creator آماده و منتشر کنید.",
-    ].join("\n");
-  }
-  return [
-    "✅ <b>Your request was accepted</b>",
-    "",
-    "<b>Role:</b> Vexa content creator",
-    "<b>Start:</b> You can begin right away.",
-    "<b>Bonus:</b> " + formatNumber(bonus) + " credits were added to your account.",
-    "",
-    "To continue the collaboration, prepare and publish your content according to the Creator terms.",
-  ].join("\n");
-}
-
-export function creatorRejectedMessage(lang) {
-  if (normalizeLang(lang) === "fa") return "❌ درخواست تولیدکننده محتوای شما فعلاً تأیید نشد. می‌توانید دوباره با یک پیج یا کانال مناسب‌تر تلاش کنید، یا برای پیگیری با /support پیام بدهید.";
-  return "❌ Your creator application wasn’t approved this time. You can try again with another page or channel, or contact /support if you’d like us to review it with you.";
 }
 
 export async function getAdminMiniAppUsersPage(env, page = 0, limit = 8) {
@@ -1181,7 +1035,6 @@ export async function resetUser(env, userId) {
     env.DB.prepare("DELETE FROM pending_payments WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM tts_history WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM credit_usage_log WHERE user_id = ?").bind(id),
-    env.DB.prepare("DELETE FROM daily_rewards WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM fa_join_bonuses WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM initial_start_bonuses WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM user_credits WHERE user_id = ?").bind(id),
