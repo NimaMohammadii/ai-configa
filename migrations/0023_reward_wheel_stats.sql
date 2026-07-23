@@ -10,3 +10,5 @@ ALTER TABLE mini_app_wheel_spins ADD COLUMN spin_count INTEGER NOT NULL DEFAULT 
 ALTER TABLE mini_app_wheel_spins ADD COLUMN total_reward INTEGER NOT NULL DEFAULT 0;
 UPDATE mini_app_wheel_spins SET spin_count = 1 WHERE spin_count = 0 AND reward > 0;
 UPDATE mini_app_wheel_spins SET total_reward = reward WHERE total_reward = 0 AND reward > 0;
+ALTER TABLE mini_app_wheel_spins ADD COLUMN reward_discount_percent INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE mini_app_wheel_spins ADD COLUMN reward_discount_expires_at INTEGER NOT NULL DEFAULT 0;

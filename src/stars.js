@@ -15,9 +15,11 @@ export function getStarPackage(id) {
   return STAR_PACKAGES[id] || null;
 }
 
-export function createCustomStarPackage(credits) {
+export function createCustomStarPackage(credits, discount = null) {
   const cleanCredits = Math.max(1, Math.floor(Number(credits || 0)));
-  const stars = Math.max(1, Math.ceil(cleanCredits / CUSTOM_STARS_CREDITS_PER_STAR));
+  const baseStars = Math.max(1, Math.ceil(cleanCredits / CUSTOM_STARS_CREDITS_PER_STAR));
+  const discountPercent = Number(discount?.percent || 0);
+  const stars = discountPercent > 0 ? Math.max(1, Math.ceil(baseStars * (100 - discountPercent) / 100)) : baseStars;
   const usd = (cleanCredits / 1000) * CUSTOM_STARS_USD_PER_1000_CREDITS;
   return {
     id: `custom_${cleanCredits}_${stars}`,
@@ -26,6 +28,9 @@ export function createCustomStarPackage(credits) {
     totalCredits: cleanCredits,
     usd,
     stars,
+    originalStars: baseStars,
+    discountPercent,
+    discountExpiresAt: Number(discount?.expiresAt || 0),
     label: `${formatNumber(cleanCredits)} • ${formatUsd(usd)}$ • ${stars} ⭐️`,
     description: `${formatNumber(cleanCredits)} Vexa credits`,
     invoiceLabel: `${formatNumber(cleanCredits)} credits`,
@@ -37,18 +42,40 @@ export function getStarPackageFromPayload(payload) {
   if (String(payload || "").startsWith("stars_custom:")) {
     const [, credits, stars] = String(payload).split(":");
     const pack = createCustomStarPackage(credits);
-    return Number(stars) === pack.stars ? pack : null;
+    if (Number(stars) === pack.stars) return pack;
+    if (Number(stars) > 0 && Number(stars) < Number(pack.stars)) {
+      const percent = Math.round((1 - Number(stars) / Number(pack.stars)) * 100);
+      const discounted = createCustomStarPackage(credits, { percent });
+      return Number(stars) === discounted.stars ? discounted : null;
+    }
+    return null;
   }
 
   if (String(payload || "").startsWith("stars:")) {
     return getStarPackage(String(payload).slice("stars:".length));
   }
 
+  if (String(payload || "").startsWith("stars_discount:")) {
+    const [, id, stars] = String(payload).split(":");
+    const pack = getStarPackage(id);
+    if (!pack || Number(stars) >= Number(pack.stars)) return null;
+    const percent = Math.round((1 - Number(stars) / Number(pack.stars)) * 100);
+    return applyStarPackageDiscount(pack, { percent });
+  }
+
   return null;
+}
+
+export function applyStarPackageDiscount(pack, discount = null) {
+  const percent = Number(discount?.percent || 0);
+  if (!pack || !percent) return pack;
+  const stars = Math.max(1, Math.ceil(Number(pack.stars || 0) * (100 - percent) / 100));
+  return { ...pack, stars, originalStars: pack.stars, discountPercent: percent, discountExpiresAt: Number(discount?.expiresAt || 0), label: `${formatNumber(pack.totalCredits)} • ${formatUsd(pack.usd)}$ • ${stars} ⭐️` };
 }
 
 export function starInvoicePayload(pack) {
   if (pack?.custom) return `stars_custom:${pack.totalCredits}:${pack.stars}`;
+  if (Number(pack?.discountPercent || 0) > 0) return `stars_discount:${pack.id}:${pack.stars}`;
   return "stars:" + pack.id;
 }
 

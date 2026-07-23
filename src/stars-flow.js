@@ -1,5 +1,6 @@
 import { trackUser } from "./admin.js";
-import { getStarPackage, applySuccessfulStarsPayment, createCustomStarPackage, getStarPackageFromPayload, starInvoicePayload } from "./stars.js";
+import { getStarPackage, applySuccessfulStarsPayment, createCustomStarPackage, getStarPackageFromPayload, starInvoicePayload, applyStarPackageDiscount } from "./stars.js";
+import { getActiveWheelPurchaseDiscount } from "./reward-wheel.js";
 import { starsPackageInvoiceText, starsPackagesKeyboard, starsPackagesText, buyCreditsTextClean, customStarsPromptText, customStarsCancelKeyboard, customStarsInvoiceText, customStarsInvoiceKeyboard } from "./stars-ui.js";
 import { getState } from "./state.js";
 import { answerCallback, answerPreCheckout, editMessage, sendMessage, sendStarsInvoice, deleteMessage } from "./telegram-actions.js";
@@ -47,7 +48,7 @@ export async function handleStarsCallback(query, env) {
       await answerCallback(env, query.id, "Send a credit amount first", true);
       return;
     }
-    const pack = createCustomStarPackage(pending.credits);
+    const pack = createCustomStarPackage(pending.credits, await getActiveWheelPurchaseDiscount(env, userId));
     await clearPendingCustomStars(env, userId);
     await answerCallback(env, query.id);
     await sendStarsInvoice(env, chatId, pack, starInvoicePayload(pack));
@@ -56,7 +57,7 @@ export async function handleStarsCallback(query, env) {
   }
 
   const packageId = data.slice("stars_package:".length);
-  const pack = getStarPackage(packageId);
+  const pack = applyStarPackageDiscount(getStarPackage(packageId), await getActiveWheelPurchaseDiscount(env, userId));
   if (!pack) {
     await answerCallback(env, query.id, t(state.language, "invalidPackage"), true);
     return;
@@ -92,7 +93,7 @@ export async function handleStarsTextInput(message, env) {
     return true;
   }
 
-  const pack = createCustomStarPackage(credits);
+  const pack = createCustomStarPackage(credits, await getActiveWheelPurchaseDiscount(env, userId));
   await setPendingCustomStars(env, userId, pending.message_id, pack.totalCredits);
   await editOrSend(env, chatId, Number(pending.message_id), customStarsInvoiceText(pack, state), customStarsInvoiceKeyboard(state));
   return true;

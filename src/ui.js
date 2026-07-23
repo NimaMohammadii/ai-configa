@@ -109,10 +109,12 @@ export function tomanPackagesKeyboard(state = {}) {
   return { inline_keyboard: [[{ text: t(lang, "cancel"), callback_data: "cancel_payment" }]] };
 }
 
-export function createCustomTomanPackage(credits) {
+export function createCustomTomanPackage(credits, discount = null) {
   const cleanCredits = Math.max(1, Math.floor(Number(credits || 0)));
   const calculatedAmountValue = Math.ceil((cleanCredits / 1000) * TOMAN_PRICE_PER_1000);
-  const amountValue = Math.max(TOMAN_MIN_PURCHASE_AMOUNT, calculatedAmountValue);
+  const baseAmountValue = Math.max(TOMAN_MIN_PURCHASE_AMOUNT, calculatedAmountValue);
+  const discountPercent = Number(discount?.percent || 0);
+  const amountValue = discountPercent > 0 ? Math.max(1, Math.ceil(baseAmountValue * (100 - discountPercent) / 100)) : baseAmountValue;
   return {
     id: `custom_${cleanCredits}_${amountValue}`,
     credits: cleanCredits,
@@ -120,7 +122,11 @@ export function createCustomTomanPackage(credits) {
     amount: formatNumber(amountValue),
     amountValue,
     calculatedAmountValue,
-    minimumApplied: amountValue > calculatedAmountValue,
+    originalAmountValue: baseAmountValue,
+    discountPercent,
+    discountAmountValue: baseAmountValue - amountValue,
+    discountExpiresAt: Number(discount?.expiresAt || 0),
+    minimumApplied: baseAmountValue > calculatedAmountValue,
     label: `${formatNumber(cleanCredits)} • ${formatNumber(amountValue)} تومان`,
     custom: true,
   };
@@ -133,7 +139,7 @@ export function customTomanInstructionText(pack, state = {}) {
     lang === "fa" ? "🇮🇷 <b>پرداخت با تومان</b>" : t(lang, "buyTomanTitle"),
     "",
     `${t(lang, "package")}: <b>${formatNumber(totalCredits)} credits</b>`,
-    `${t(lang, "amount")}: <b>${pack.amount} تومان</b>`,
+    paymentAmountLine(pack, lang),
     "",
     t(lang, "transfer"),
     `<code>${CARD_NUMBER}</code>`,
@@ -174,6 +180,14 @@ function voiceButton(name, selectedVoice) {
   if (!name) return { text: " ", callback_data: "noop" };
   const label = name === selectedVoice ? "✔️ " + name : name;
   return { text: label, callback_data: `voice:${name}` };
+}
+
+function paymentAmountLine(pack, lang) {
+  if (Number(pack.discountPercent || 0) > 0) {
+    const suffix = lang === "fa" ? `با ${Number(pack.discountPercent).toLocaleString("en-US")}٪ تخفیف گردونه محاسبه شده` : `calculated with ${Number(pack.discountPercent).toLocaleString("en-US")}% wheel discount`;
+    return `${t(lang, "amount")}: <s>${formatNumber(pack.originalAmountValue)} تومان</s> → <b>${pack.amount} تومان</b> (${suffix})`;
+  }
+  return `${t(lang, "amount")}: <b>${pack.amount} تومان</b>`;
 }
 
 function formatNumber(value) {
