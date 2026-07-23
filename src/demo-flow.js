@@ -5,7 +5,7 @@ import { trackUser } from "./admin.js";
 import { normalizeLang, t } from "./i18n.js";
 import { getState, saveState, setMenuMessageId } from "./state.js";
 import { answerCallback, deleteMessage, sendDemoAudio, sendDemoDocument, sendMessage, sendPlainMessage } from "./telegram-actions.js";
-import { languageKeyboard, languageText, mainKeyboard, startText } from "./ui.js";
+import { languageKeyboard, languageText, userMainKeyboard, startText } from "./ui.js";
 import { VOICES } from "./voices.js";
 
 export function isDemoCallback(data) {
@@ -67,7 +67,7 @@ async function makeAndSendDemo(env, chatId, userId, state) {
       await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
     }
 
-    await sendMessage(env, chatId, t(lang, "ttsError") + ": " + safeError(error) + "\n\n" + startText(state), mainKeyboard(state));
+    await sendMessage(env, chatId, t(lang, "ttsError") + ": " + safeError(error) + "\n\n" + startText(state), await userMainKeyboard(env, userId, state));
   }
 }
 
@@ -79,7 +79,7 @@ async function sendFreshMainMenu(env, chatId, userId) {
     return;
   }
 
-  const menu = await sendMessage(env, chatId, startText(state), mainKeyboard(state));
+  const menu = await sendMessage(env, chatId, startText(state), await userMainKeyboard(env, userId, state));
   await setMenuMessageId(env, userId, menu?.message_id || null);
 }
 

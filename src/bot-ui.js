@@ -1,7 +1,7 @@
 import { handleCallback as baseHandleCallback, handleMessage as baseHandleMessage } from "./bot.js";
 import { getState } from "./state.js";
 import { editMessage } from "./telegram-actions.js";
-import { mainKeyboard, startText } from "./ui-main.js";
+import { userMainKeyboard, startText } from "./ui.js";
 
 export async function handleMessage(message, env) {
   await baseHandleMessage(message, env);
@@ -20,7 +20,7 @@ async function refreshMainMenu(chatId, userId, env) {
   if (!chatId || !userId) return;
   const state = await getState(env, userId).catch(() => null);
   if (!state || !state.language || !state.menuMessageId) return;
-  await editMessage(env, chatId, state.menuMessageId, startText(state), mainKeyboard(state)).catch(() => null);
+  await editMessage(env, chatId, state.menuMessageId, startText(state), await userMainKeyboard(env, userId, state)).catch(() => null);
 }
 
 function shouldRefresh(data) {
