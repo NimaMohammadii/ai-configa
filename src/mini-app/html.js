@@ -2,7 +2,12 @@ import { VOICE_NAMES, VOICES } from "../voices.js";
 
 const VOICE_ROWS = VOICE_NAMES.map((name) => {
   const voiceId = VOICES[name];
-  return `<div class="voice-option" data-voice-row="${voiceId}"><span class="voice-avatar" aria-hidden="true"><span class="voice-avatar-image"></span></span><button class="voice-select${name === "Liam" ? " active" : ""}" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span>${name}</span></button><button class="voice-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Play ${name} demo"><span class="voice-preview-icon">▶</span></button></div>`;
+  return `<div class="voice-option" data-voice-row="${voiceId}" data-voice-row-name="${name}"><span class="voice-avatar" aria-hidden="true"><span class="voice-avatar-image"></span></span><button class="voice-select${name === "Liam" ? " active" : ""}" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span>${name}</span></button><button class="voice-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Play ${name} demo"><span class="voice-preview-icon">▶</span></button></div>`;
+}).join("");
+
+const VOICE_LIBRARY_CARDS = VOICE_NAMES.map((name) => {
+  const voiceId = VOICES[name];
+  return `<article class="voice-library-card" data-library-voice="${voiceId}" data-library-name="${name}"><button class="voice-library-main" data-action="select-library-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span class="voice-library-avatar" aria-hidden="true"></span><span class="voice-library-copy"><strong>${name}</strong><small>Tap to use</small></span></button><div class="voice-library-actions"><button class="voice-library-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Preview ${name}"><span class="voice-preview-icon">▶</span></button><button class="voice-library-save" data-action="toggle-saved-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button" aria-label="Add ${name}"><span class="voice-save-plus">+</span><span class="voice-save-check">✓</span></button></div></article>`;
 }).join("");
 
 export const MINI_APP_HTML = `<!doctype html>
@@ -15,7 +20,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260722-tags-01"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260724-voices-01"/>
 </head>
 <body>
   <main class="app">
@@ -29,7 +34,7 @@ export const MINI_APP_HTML = `<!doctype html>
               <span id="voiceLabel">Liam</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-            <div class="voice-menu">${VOICE_ROWS}</div>
+            <div class="voice-menu"><div id="myVoiceRows" class="my-voice-rows">${VOICE_ROWS}</div><div id="myVoicesEmpty" class="my-voices-empty">Add voices to your list</div><button class="voice-library-open" data-action="open-voices-page" type="button"><span>Voices</span><small id="voiceMenuCount">1 / 6</small><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           </div><button id="modeToggle" class="mode-toggle" data-action="toggle-creation-mode" type="button" aria-label="Switch to image creation" aria-pressed="false"><svg class="mode-image-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><circle cx="8.3" cy="9" r="1.55" stroke="currentColor" stroke-width="1.55"/><path d="m5.8 17 4.15-4.15a1.4 1.4 0 0 1 1.98 0l1.55 1.55 1.25-1.25a1.4 1.4 0 0 1 1.98 0L19 15.45" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.2 2.7v3M16.7 4.2h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><svg class="mode-voice-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button></div>
         </div>
         <div class="tts-area dialogue-editor" id="dialogueEditor">
@@ -109,8 +114,10 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <section id="explorePage" class="explore-page" aria-hidden="true"><div class="explore-page-head"><h2>Explore</h2><small id="explorePageCount">0 cards</small></div><label class="explore-search"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.1" stroke="currentColor" stroke-width="1.8"/><path d="m15.4 15.4 4.1 4.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="exploreSearch" type="search" autocomplete="off" placeholder="Search tags like Portrait, Fashion, Night"/></label><div id="explorePageGrid" class="explore-page-grid"></div><div id="exploreEmpty" class="explore-empty" aria-hidden="true">No matching images</div></section>
 
+  <section id="voicesPage" class="voices-page" aria-hidden="true"><header class="voices-page-head"><div><span>VOICE LIBRARY</span><h2>Voices</h2></div><div class="voices-page-count"><strong id="savedVoiceCount">1</strong><span>/ 6 saved</span></div></header><section class="saved-voices-strip"><div class="saved-voices-copy"><strong>Your voices</strong><small>Available in the quick menu</small></div><div id="savedVoiceAvatars" class="saved-voice-avatars"></div></section><div class="voice-library-grid">${VOICE_LIBRARY_CARDS}</div></section>
+
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260723-start-section-01"></script>
+  <script type="module" src="/mini-app/app.js?v=20260724-voices-01"></script>
 </body>
 </html>`;
