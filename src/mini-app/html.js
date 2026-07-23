@@ -5,9 +5,37 @@ const VOICE_ROWS = VOICE_NAMES.map((name) => {
   return `<div class="voice-option" data-voice-row="${voiceId}" data-voice-row-name="${name}"><span class="voice-avatar" aria-hidden="true"><span class="voice-avatar-image"></span></span><button class="voice-select${name === "Liam" ? " active" : ""}" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span>${name}</span></button><button class="voice-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Play ${name} demo"><span class="voice-preview-icon">▶</span></button></div>`;
 }).join("");
 
+const VOICE_DESCRIPTIONS = {
+  Liam: "Warm, calm and naturally conversational",
+  Noah: "Deep, steady and quietly confident",
+  Ava: "Bright, clear and effortlessly friendly",
+  Nora: "Soft, expressive and emotionally warm",
+  Alex: "Balanced, modern and highly versatile",
+  Ella: "Gentle, polished and naturally elegant",
+  Chloe: "Youthful, lively and full of character",
+  Alexandra: "Smooth, refined and professionally composed",
+  Laura: "Warm, reassuring and easy to listen to",
+  Maxon: "Bold, cinematic and naturally powerful",
+  Jessica: "Clear, upbeat and confidently engaging",
+  Austin: "Relaxed, authentic and conversational",
+  priyanka: "Rich, expressive and beautifully melodic",
+  horatius: "Deep, dramatic and storyteller-like",
+  Nova: "Modern, energetic and distinctly bright",
+  James: "Mature, grounded and professionally calm",
+  Xavier: "Confident, smooth and cinematic",
+  Lucas: "Natural, friendly and gently expressive",
+  Lana: "Soft, intimate and emotionally detailed",
+  Amanda: "Warm, polished and naturally inviting",
+  Scarlett: "Elegant, vivid and full of emotion",
+  Aurora: "Airy, calming and softly cinematic",
+  Allison: "Clear, composed and professionally warm",
+  Mason: "Strong, relaxed and naturally trustworthy",
+  Orion: "Deep, futuristic and unmistakably bold",
+};
+
 const VOICE_LIBRARY_CARDS = VOICE_NAMES.map((name) => {
   const voiceId = VOICES[name];
-  return `<article class="voice-library-card" data-library-voice="${voiceId}" data-library-name="${name}"><button class="voice-library-main" data-action="select-library-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span class="voice-library-avatar" aria-hidden="true"></span><span class="voice-library-copy"><strong>${name}</strong><small>Tap to use</small></span></button><div class="voice-library-actions"><button class="voice-library-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Preview ${name}"><span class="voice-preview-icon">▶</span></button><button class="voice-library-save" data-action="toggle-saved-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button" aria-label="Add ${name}"><span class="voice-save-plus">+</span><span class="voice-save-check">✓</span></button></div></article>`;
+  return `<article class="voice-library-card" data-library-voice="${voiceId}" data-library-name="${name}"><button class="voice-library-main" data-action="select-library-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span class="voice-library-avatar" aria-hidden="true"></span><span class="voice-library-copy"><span class="voice-library-name"><strong>${name}</strong><em class="voice-library-state">Add</em></span><small class="voice-library-description">${VOICE_DESCRIPTIONS[name] || "Natural, expressive and versatile"}</small></span></button><div class="voice-library-actions"><button class="voice-library-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Preview ${name}"><span class="voice-preview-icon">▶</span></button><button class="voice-library-save" data-action="toggle-saved-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button" aria-label="Add ${name}"><span class="voice-save-plus" aria-hidden="true"></span><span class="voice-save-check" aria-hidden="true">✓</span></button></div></article>`;
 }).join("");
 
 export const MINI_APP_HTML = `<!doctype html>
@@ -20,7 +48,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260724-voices-01"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260724-voices-02"/>
 </head>
 <body>
   <main class="app">
@@ -118,6 +146,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260724-voices-01"></script>
+  <script type="module" src="/mini-app/app.js?v=20260724-voices-02"></script>
 </body>
 </html>`;
