@@ -925,8 +925,17 @@ export async function adminBuyersKeyboard(env, page = 0) {
 }
 
 export async function getAllUserIds(env) {
+  return getUserIdsByLanguage(env, "all");
+}
+
+export async function getUserIdsByLanguage(env, language = "all") {
   requireDb(env);
-  const users = await env.DB.prepare("SELECT user_id FROM bot_users").all();
+  const normalized = language === "all" ? "all" : normalizeLang(language);
+  const query = normalized === "all"
+    ? "SELECT user_id FROM bot_users"
+    : "SELECT b.user_id FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id WHERE COALESCE(s.language, 'en') = ?";
+  const statement = env.DB.prepare(query);
+  const users = normalized === "all" ? await statement.all() : await statement.bind(normalized).all();
   return (users.results || []).map((user) => String(user.user_id));
 }
 
@@ -1786,13 +1795,13 @@ export function getChannelPostLanguageSettings(language = "fa") {
   return CHANNEL_POST_LANGUAGE_SETTINGS[normalized] || CHANNEL_POST_LANGUAGE_SETTINGS.fa;
 }
 
-export async function buildMiniAppUrl(env) {
+export async function buildMiniAppUrl(env, section = "home") {
   const configuredDeepLink = String(env.CHANNEL_POST_MINI_APP_DEEP_LINK || "").trim();
   if (configuredDeepLink) {
     if (!/^https:\/\/t\.me\//i.test(configuredDeepLink)) {
       throw new Error("CHANNEL_POST_MINI_APP_DEEP_LINK must be a https://t.me Mini App link.");
     }
-    return configuredDeepLink;
+    return appendMiniAppSection(configuredDeepLink, section);
   }
 
   const bot = await tgJson(env, "getMe");
@@ -1804,10 +1813,32 @@ export async function buildMiniAppUrl(env) {
     if (!/^[A-Za-z0-9_-]+$/.test(shortName)) {
       throw new Error("CHANNEL_POST_MINI_APP_SHORT_NAME is invalid.");
     }
-    return "https://t.me/" + username + "/" + shortName;
+    return appendMiniAppSection("https://t.me/" + username + "/" + shortName, section);
   }
 
-  return "https://t.me/" + username + "?startapp";
+  return appendMiniAppSection("https://t.me/" + username + "?startapp", section);
+}
+
+function appendMiniAppSection(url, section = "home") {
+  const target = normalizeMiniAppSection(section);
+  if (!target || target === "home") return url;
+  if (/([?&])startapp($|[=&])/i.test(url)) {
+    return url.replace(/([?&])startapp(?:=[^&]*)?/i, "$1startapp=" + encodeURIComponent(target));
+  }
+  const separator = url.includes("?") ? "&" : "?";
+  return url + separator + "startapp=" + encodeURIComponent(target);
+}
+
+export const MINI_APP_BROADCAST_SECTIONS = {
+  home: "Home",
+  wheel: "Reward Wheel",
+  image: "Image Generator",
+  explore: "Explore",
+  tts: "Text to Speech",
+};
+
+export function normalizeMiniAppSection(section = "home") {
+  return MINI_APP_BROADCAST_SECTIONS[section] ? section : "home";
 }
 
 export function channelPostMiniAppKeyboard(miniAppUrl) {
@@ -1816,14 +1847,64 @@ export function channelPostMiniAppKeyboard(miniAppUrl) {
   };
 }
 
-export function adminBroadcastPromptText() {
+export function adminBroadcastPromptText(options = {}) {
+  const config = normalizeBroadcastConfig(options);
   return [
     "📣 <b>Broadcast Message</b>",
     "",
-    "Send the message text or an audio file for all users.",
-    "Progress is updated live with sent, failed, and skipped counts.",
+    "Language: <b>" + broadcastLanguageLabel(config.language) + "</b>",
+    "Mini App button: <b>" + (config.button ? "ON" : "OFF") + "</b>",
+    "Open section: <b>" + MINI_APP_BROADCAST_SECTIONS[config.section] + "</b>",
+    "",
+    "Send text, photo with caption, or photo-only content.",
     "Your message will be deleted after sending."
   ].join("\n");
+}
+
+export function adminBroadcastKeyboard(options = {}) {
+  const config = normalizeBroadcastConfig(options);
+  const rows = [[{ text: "🌍 Language: " + broadcastLanguageLabel(config.language), callback_data: "admin_broadcast_lang" }]];
+  rows.push([{ text: config.button ? "✅ Mini App Button: ON" : "Mini App Button: OFF", callback_data: "admin_broadcast_button" }]);
+  if (config.button) rows.push([{ text: "📱 Opens: " + MINI_APP_BROADCAST_SECTIONS[config.section], callback_data: "admin_broadcast_section" }]);
+  rows.push([{ text: "Cancel", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export function adminBroadcastLanguageKeyboard(options = {}) {
+  const config = normalizeBroadcastConfig(options);
+  const rows = [[{ text: (config.language === "all" ? "✅ " : "") + "All languages", callback_data: "admin_broadcast_lang_set:all" }]];
+  for (const [code, label] of Object.entries(LANGUAGES)) {
+    rows.push([{ text: (config.language === code ? "✅ " : "") + label + " (" + code + ")", callback_data: "admin_broadcast_lang_set:" + code }]);
+  }
+  rows.push([{ text: "← Back", callback_data: "admin_broadcast" }]);
+  return { inline_keyboard: rows };
+}
+
+export function adminBroadcastSectionKeyboard(options = {}) {
+  const config = normalizeBroadcastConfig(options);
+  const rows = Object.entries(MINI_APP_BROADCAST_SECTIONS).map(([key, label]) => [{ text: (config.section === key ? "✅ " : "") + label, callback_data: "admin_broadcast_section_set:" + key }]);
+  rows.push([{ text: "← Back", callback_data: "admin_broadcast" }]);
+  return { inline_keyboard: rows };
+}
+
+export function normalizeBroadcastConfig(options = {}) {
+  return {
+    language: options.language === "all" ? "all" : normalizeLang(options.language || "all"),
+    button: options.button === true || options.button === "1",
+    section: normalizeMiniAppSection(options.section || "home"),
+  };
+}
+
+export function encodeBroadcastConfig(config) {
+  return JSON.stringify(normalizeBroadcastConfig(config));
+}
+
+export function decodeBroadcastConfig(value) {
+  try { return normalizeBroadcastConfig(JSON.parse(value || "{}")); } catch { return normalizeBroadcastConfig(); }
+}
+
+function broadcastLanguageLabel(language) {
+  return language === "all" ? "All languages" : (LANGUAGES[normalizeLang(language)] + " (" + normalizeLang(language) + ")");
 }
 
 export function adminCancelKeyboard(backData = "admin_main") {
