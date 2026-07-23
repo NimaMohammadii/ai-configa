@@ -1761,7 +1761,7 @@ export function adminChannelPostsText() {
     "Configured channels:",
     ...Object.entries(CHANNEL_POST_LANGUAGE_SETTINGS).map(([code, settings]) => "• <b>" + settings.label + "</b> (<code>" + code + "</code>): <b>" + escapeHtml(settings.channel) + "</b>"),
     "",
-    "Button text: <b>Open Mini App</b>"
+    "Button text: <b>Open Mini App 🐙</b>"
   ].join("\n");
 }
 
@@ -1784,7 +1784,7 @@ export function adminChannelPostPromptText(language = "fa") {
     "",
     "Send the text, photo, or photo with caption that you want to publish.",
     "Photo-only posts are allowed, and photo captions will be kept.",
-    "It will be posted with an inline button named <b>Open Mini App</b> below it.",
+    "It will be posted with an inline button named <b>Open Mini App 🐙</b> below it.",
     "",
     "Your message will be deleted after processing."
   ].join("\n");
@@ -1843,7 +1843,7 @@ export function normalizeMiniAppSection(section = "home") {
 
 export function channelPostMiniAppKeyboard(miniAppUrl) {
   return {
-    inline_keyboard: [[{ text: "Open Mini App", url: miniAppUrl }]],
+    inline_keyboard: [[{ text: "Open Mini App 🐙", url: miniAppUrl }]],
   };
 }
 

@@ -111,6 +111,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260722-08"></script>
+  <script type="module" src="/mini-app/app.js?v=20260723-start-section-01"></script>
 </body>
 </html>`;
