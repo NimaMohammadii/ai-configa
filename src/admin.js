@@ -70,6 +70,38 @@ export async function trackMiniAppOpen(env, user) {
   ).run();
 }
 
+export const MINI_APP_TRACKED_SECTIONS = {
+  home: "Home",
+  wheel: "Reward Wheel",
+  image: "Image Generator",
+  explore: "Explore",
+  tts: "Text to Speech",
+};
+
+export function normalizeTrackedMiniAppSection(section = "home") {
+  return MINI_APP_TRACKED_SECTIONS[section] ? section : "home";
+}
+
+export async function ensureMiniAppSectionOpenTable(env) {
+  requireDb(env);
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS mini_app_section_opens (user_id TEXT NOT NULL, section TEXT NOT NULL, open_count INTEGER NOT NULL DEFAULT 0, last_opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, section))"
+  ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_mini_app_section_opens_section ON mini_app_section_opens (section, open_count DESC, last_opened_at DESC)").run();
+}
+
+export async function trackMiniAppSectionOpen(env, user, section = "home") {
+  requireDb(env);
+  if (!user || !user.id) return;
+  const cleanSection = normalizeTrackedMiniAppSection(section);
+  await ensureMiniAppSectionOpenTable(env);
+  await trackUser(env, user);
+  await env.DB.prepare(
+    "INSERT INTO mini_app_section_opens (user_id, section, open_count, last_opened_at, created_at) VALUES (?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id, section) DO UPDATE SET open_count = COALESCE(mini_app_section_opens.open_count, 0) + 1, last_opened_at = CURRENT_TIMESTAMP"
+  ).bind(String(user.id), cleanSection).run();
+}
+
 export async function isAdmin(env, userId) {
   requireDb(env);
   if (!userId) return false;
@@ -132,7 +164,7 @@ export function adminMainKeyboard() {
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }],
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
-      [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }],
+      [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }, { text: "📂 Section Opens", callback_data: "admin_section_opens" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
       [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }],
       [{ text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
@@ -758,6 +790,48 @@ function miniAppUserLabel(user) {
   return userLabel(user) + " • 📱 " + formatNumber(user.mini_app_open_count || 0);
 }
 
+export async function getAdminSectionOpenSummary(env) {
+  requireDb(env);
+  await ensureMiniAppSectionOpenTable(env);
+  const rows = await env.DB.prepare(
+    "SELECT section, COUNT(*) AS user_count, COALESCE(SUM(open_count), 0) AS total_opens, MAX(last_opened_at) AS last_opened_at " +
+    "FROM mini_app_section_opens GROUP BY section"
+  ).all();
+  const bySection = Object.fromEntries((rows.results || []).map((row) => [row.section, row]));
+  return Object.entries(MINI_APP_TRACKED_SECTIONS).map(([section, label]) => {
+    const row = bySection[section] || {};
+    return { section, label, user_count: Number(row.user_count || 0), total_opens: Number(row.total_opens || 0), last_opened_at: row.last_opened_at || null };
+  });
+}
+
+export async function adminSectionOpensText(env) {
+  const rows = await getAdminSectionOpenSummary(env);
+  return [
+    "📂 <b>Mini App Section Opens</b>",
+    "",
+    "Shows which mini app sections users have opened and how many total opens were recorded.",
+    "",
+    ...rows.map((row) => "• <b>" + escapeHtml(row.label) + "</b>: <b>" + formatNumber(row.user_count) + " users</b> · <b>" + formatNumber(row.total_opens) + " opens</b>" + (row.last_opened_at ? " · last: <b>" + escapeHtml(formatTehranTime(row.last_opened_at)) + "</b>" : "")),
+  ].join("\n");
+}
+
+export function adminSectionOpensKeyboard() {
+  return { inline_keyboard: [[{ text: "← Back", callback_data: "admin_main" }]] };
+}
+
+async function getUserMiniAppSectionOpens(env, userId) {
+  await ensureMiniAppSectionOpenTable(env);
+  const rows = await env.DB.prepare(
+    "SELECT section, open_count, last_opened_at FROM mini_app_section_opens WHERE user_id = ? ORDER BY open_count DESC, datetime(last_opened_at) DESC"
+  ).bind(String(userId)).all();
+  return rows.results || [];
+}
+
+function formatMiniAppSectionOpenSummary(rows = []) {
+  if (!rows.length) return "No section opens yet";
+  return rows.map((row) => (MINI_APP_TRACKED_SECTIONS[row.section] || row.section) + ": " + formatNumber(row.open_count || 0)).join(" · ");
+}
+
 
 export async function getAdminWheelUsersPage(env, page = 0, limit = 8) {
   requireDb(env);
@@ -954,7 +1028,8 @@ export async function getAdminUserDetails(env, userId) {
   const balance = await getBalance(env, userId);
   const purchases = await getUserPurchaseSummary(env, userId);
   const usage = await getUserUsageSummary(env, userId);
-  return { ...user, balance, purchases, usage };
+  const sectionOpens = await getUserMiniAppSectionOpens(env, userId);
+  return { ...user, balance, purchases, usage, sectionOpens };
 }
 
 async function getUserUsageSummary(env, userId) {
@@ -1046,6 +1121,7 @@ export async function resetUser(env, userId) {
     env.DB.prepare("DELETE FROM credit_usage_log WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM fa_join_bonuses WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM initial_start_bonuses WHERE user_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM mini_app_section_opens WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM user_credits WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM user_state WHERE user_id = ?").bind(id),
     env.DB.prepare("DELETE FROM admin_actions WHERE admin_id = ? OR target_user_id = ?").bind(id, id),
@@ -1123,6 +1199,7 @@ export async function adminUserText(env, userId) {
     "Last return: <b>" + escapeHtml(formatTehranTime(user.last_returned_at)) + "</b>",
     "Mini app opens: <b>" + Number(user.mini_app_open_count || 0).toLocaleString("en-US") + "</b>",
     "Last mini app open: <b>" + escapeHtml(formatTehranTime(user.last_mini_app_opened_at)) + "</b>",
+    "Section opens: <b>" + escapeHtml(formatMiniAppSectionOpenSummary(user.sectionOpens)) + "</b>",
     "Wheel spins: <b>" + Number(user.wheel_spin_count || 0).toLocaleString("en-US") + "</b>",
     "Last wheel prize: <b>" + Number(user.wheel_last_reward || 0).toLocaleString("en-US") + " credits</b>",
     "Total wheel prizes: <b>" + Number(user.wheel_total_reward || 0).toLocaleString("en-US") + " credits</b>",
@@ -1765,22 +1842,25 @@ export function adminChannelPostsText() {
   ].join("\n");
 }
 
-export function adminChannelPostsKeyboard() {
+export function adminChannelPostsKeyboard(section = "home") {
+  const cleanSection = normalizeMiniAppSection(section);
   return {
     inline_keyboard: [
-      [{ text: "🇮🇷 Send Persian Post", callback_data: "admin_channel_post_prompt:fa" }],
+      [{ text: "📱 Opens: " + MINI_APP_BROADCAST_SECTIONS[cleanSection], callback_data: "admin_channel_post_section:fa:" + cleanSection }],
+      [{ text: "🇮🇷 Send Persian Post", callback_data: "admin_channel_post_prompt:fa:" + cleanSection }],
       [{ text: "← Back", callback_data: "admin_main" }],
     ],
   };
 }
 
-export function adminChannelPostPromptText(language = "fa") {
+export function adminChannelPostPromptText(language = "fa", section = "home") {
   const settings = getChannelPostLanguageSettings(language);
   return [
     "📢 <b>Send Channel Post</b>",
     "",
     "Language: <b>" + settings.label + "</b>",
     "Channel: <b>" + escapeHtml(settings.channel) + "</b>",
+    "Open section: <b>" + MINI_APP_BROADCAST_SECTIONS[normalizeMiniAppSection(section)] + "</b>",
     "",
     "Send the text, photo, or photo with caption that you want to publish.",
     "Photo-only posts are allowed, and photo captions will be kept.",
@@ -1839,6 +1919,13 @@ export const MINI_APP_BROADCAST_SECTIONS = {
 
 export function normalizeMiniAppSection(section = "home") {
   return MINI_APP_BROADCAST_SECTIONS[section] ? section : "home";
+}
+
+export function adminChannelPostSectionKeyboard(language = "fa", section = "home") {
+  const cleanSection = normalizeMiniAppSection(section);
+  const rows = Object.entries(MINI_APP_BROADCAST_SECTIONS).map(([key, label]) => [{ text: (cleanSection === key ? "✅ " : "") + label, callback_data: "admin_channel_post_section_set:" + language + ":" + key }]);
+  rows.push([{ text: "← Back", callback_data: "admin_channel_posts" }]);
+  return { inline_keyboard: rows };
 }
 
 export function channelPostMiniAppKeyboard(miniAppUrl) {

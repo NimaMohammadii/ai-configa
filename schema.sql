@@ -108,6 +108,18 @@ CREATE TABLE IF NOT EXISTS credit_usage_log (
 CREATE INDEX IF NOT EXISTS idx_bot_users_return_count ON bot_users (return_count DESC, last_returned_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bot_users_mini_app_open_count ON bot_users (mini_app_open_count DESC, last_mini_app_opened_at DESC);
 
+CREATE TABLE IF NOT EXISTS mini_app_section_opens (
+  user_id TEXT NOT NULL,
+  section TEXT NOT NULL,
+  open_count INTEGER NOT NULL DEFAULT 0,
+  last_opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, section)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mini_app_section_opens_section
+  ON mini_app_section_opens (section, open_count DESC, last_opened_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_credit_usage_log_created ON credit_usage_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_credit_usage_log_user_created ON credit_usage_log (user_id, created_at DESC);
 

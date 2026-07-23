@@ -7,6 +7,7 @@ import {
   encodeBroadcastConfig,
   adminCancelKeyboard,
   adminChannelPostPromptText,
+  adminChannelPostSectionKeyboard,
   adminChannelPostsKeyboard,
   adminChannelPostsText,
   adminCreditPromptText,
@@ -50,6 +51,8 @@ import {
   adminWheelUsersKeyboard,
   adminWheelUsersText,
   adminMiniAppLockPromptText,
+  adminSectionOpensKeyboard,
+  adminSectionOpensText,
   adminStatsKeyboard,
   adminStatsText,
   adminVoiceProfilePromptText,
@@ -639,6 +642,14 @@ export async function handleCallback(query, env) {
     return;
   }
 
+  if (data === "admin_section_opens") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminSectionOpensText(env), adminSectionOpensKeyboard());
+    return;
+  }
+
   if (data === "admin_mini_app_access") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
@@ -949,12 +960,34 @@ export async function handleCallback(query, env) {
     return;
   }
 
+  if (data.startsWith("admin_channel_post_section:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const parts = data.split(":");
+    const language = parts[1] || "fa";
+    const section = parts[2] || "home";
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, adminChannelPostsText(), adminChannelPostSectionKeyboard(language, section));
+    return;
+  }
+
+  if (data.startsWith("admin_channel_post_section_set:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const parts = data.split(":");
+    const language = parts[1] || "fa";
+    const section = parts[2] || "home";
+    await answerCallback(env, query.id, "Section updated");
+    await editCurrentMenu(env, chatId, userId, messageId, adminChannelPostsText(), adminChannelPostsKeyboard(section));
+    return;
+  }
+
   if (data.startsWith("admin_channel_post_prompt:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    const language = data.split(":")[1] || "fa";
+    const parts = data.split(":");
+    const language = parts[1] || "fa";
+    const section = parts[2] || "home";
     await answerCallback(env, query.id);
-    await setAdminAction(env, userId, "channel_post", { targetUserId: language, chatId, messageId });
-    await editCurrentMenu(env, chatId, userId, messageId, adminChannelPostPromptText(language), adminCancelKeyboard("admin_channel_posts"));
+    await setAdminAction(env, userId, "channel_post", { targetUserId: JSON.stringify({ language, section }), chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminChannelPostPromptText(language, section), adminCancelKeyboard("admin_channel_posts"));
     return;
   }
 
@@ -1213,18 +1246,21 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
   }
 
   if (action.action === "channel_post") {
-    const language = action.target_user_id || "fa";
+    let channelPostConfig;
+    try { channelPostConfig = JSON.parse(action.target_user_id || "{}"); } catch { channelPostConfig = { language: action.target_user_id || "fa", section: "home" }; }
+    const language = channelPostConfig.language || "fa";
+    const section = channelPostConfig.section || "home";
     const settings = getChannelPostLanguageSettings(language);
 
     try {
-      const miniAppUrl = await buildMiniAppUrl(env);
+      const miniAppUrl = await buildMiniAppUrl(env, section);
       await copyMessage(env, settings.channel, chatId, inputMessageId, undefined, channelPostMiniAppKeyboard(miniAppUrl));
       await deleteMessage(env, chatId, inputMessageId).catch(() => null);
       await clearAdminAction(env, adminId);
       await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostsText() + "\n\n✅ Post sent to " + settings.channel + ".", adminChannelPostsKeyboard());
     } catch (error) {
       await deleteMessage(env, chatId, inputMessageId).catch(() => null);
-      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostPromptText(language) + "\n\n❌ " + escapeForAdminError(error), adminCancelKeyboard("admin_channel_posts"));
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostPromptText(language, section) + "\n\n❌ " + escapeForAdminError(error), adminCancelKeyboard("admin_channel_posts"));
     }
     return true;
   }
@@ -1414,16 +1450,19 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   }
 
   if (action.action === "channel_post") {
-    const language = action.target_user_id || "fa";
+    let channelPostConfig;
+    try { channelPostConfig = JSON.parse(action.target_user_id || "{}"); } catch { channelPostConfig = { language: action.target_user_id || "fa", section: "home" }; }
+    const language = channelPostConfig.language || "fa";
+    const section = channelPostConfig.section || "home";
     const settings = getChannelPostLanguageSettings(language);
 
     try {
-      const miniAppUrl = await buildMiniAppUrl(env);
+      const miniAppUrl = await buildMiniAppUrl(env, section);
       await sendPlainMessage(env, settings.channel, text, channelPostMiniAppKeyboard(miniAppUrl));
       await clearAdminAction(env, adminId);
       await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostsText() + "\n\n✅ Post sent to " + settings.channel + ".", adminChannelPostsKeyboard());
     } catch (error) {
-      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostPromptText(language) + "\n\n❌ " + escapeForAdminError(error), adminCancelKeyboard("admin_channel_posts"));
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostPromptText(language, section) + "\n\n❌ " + escapeForAdminError(error), adminCancelKeyboard("admin_channel_posts"));
     }
     return true;
   }
