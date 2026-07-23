@@ -30,7 +30,16 @@ const VOICE_DESCRIPTIONS = {
   Aurora: "Airy, calming and softly cinematic",
   Allison: "Clear, composed and professionally warm",
   Mason: "Strong, relaxed and naturally trustworthy",
+  Aria: "Fresh, bright and emotionally magnetic",
+  Selena: "Elegant, intimate and softly premium",
+  Vespera: "Locked premium voice with cinematic mystery",
+  Elara: "Radiant, crisp and full of modern charm",
+  Atlas: "Bold, grounded and commandingly modern",
+  Mira: "Tender, honest and warmly memorable",
+  Zoya: "Playful, colorful and instantly engaging",
+  Kiara: "Trendy, sparkling and emotionally close",
   Orion: "Deep, futuristic and unmistakably bold",
+  Ryder: "Stylish, energetic and confidently bold",
 };
 
 const VOICE_LIBRARY_CARDS = VOICE_NAMES.map((name) => {
