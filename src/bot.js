@@ -1,5 +1,10 @@
 import {
   adminBroadcastPromptText,
+  adminBroadcastKeyboard,
+  adminBroadcastLanguageKeyboard,
+  adminBroadcastSectionKeyboard,
+  decodeBroadcastConfig,
+  encodeBroadcastConfig,
   adminCancelKeyboard,
   adminChannelPostPromptText,
   adminChannelPostsKeyboard,
@@ -73,7 +78,7 @@ import {
   deleteMiniAppButtonIcon,
   deleteImageExploreItem,
   getAdminAction,
-  getAllUserIds,
+  getUserIdsByLanguage,
   getChannelPostLanguageSettings,
   isAdmin,
   resetUser,
@@ -877,9 +882,62 @@ export async function handleCallback(query, env) {
 
   if (data === "admin_broadcast") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const action = await getAdminAction(env, userId);
+    const config = action?.action === "broadcast" ? decodeBroadcastConfig(action.target_user_id) : decodeBroadcastConfig();
     await answerCallback(env, query.id);
-    await setAdminAction(env, userId, "broadcast", { chatId, messageId });
-    await editCurrentMenu(env, chatId, userId, messageId, adminBroadcastPromptText(), adminCancelKeyboard("admin_main"));
+    await setAdminAction(env, userId, "broadcast", { targetUserId: encodeBroadcastConfig(config), chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminBroadcastPromptText(config), adminBroadcastKeyboard(config));
+    return;
+  }
+
+  if (data === "admin_broadcast_lang") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const action = await getAdminAction(env, userId);
+    const config = decodeBroadcastConfig(action?.target_user_id);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, adminBroadcastPromptText(config), adminBroadcastLanguageKeyboard(config));
+    return;
+  }
+
+  if (data.startsWith("admin_broadcast_lang_set:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const language = data.split(":")[1] || "all";
+    const action = await getAdminAction(env, userId);
+    const config = { ...decodeBroadcastConfig(action?.target_user_id), language };
+    await answerCallback(env, query.id, "Language updated");
+    await setAdminAction(env, userId, "broadcast", { targetUserId: encodeBroadcastConfig(config), chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminBroadcastPromptText(config), adminBroadcastKeyboard(config));
+    return;
+  }
+
+  if (data === "admin_broadcast_button") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const action = await getAdminAction(env, userId);
+    const current = decodeBroadcastConfig(action?.target_user_id);
+    const config = { ...current, button: !current.button };
+    await answerCallback(env, query.id, config.button ? "Button enabled" : "Button disabled");
+    await setAdminAction(env, userId, "broadcast", { targetUserId: encodeBroadcastConfig(config), chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminBroadcastPromptText(config), adminBroadcastKeyboard(config));
+    return;
+  }
+
+  if (data === "admin_broadcast_section") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const action = await getAdminAction(env, userId);
+    const config = decodeBroadcastConfig(action?.target_user_id);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, adminBroadcastPromptText(config), adminBroadcastSectionKeyboard(config));
+    return;
+  }
+
+  if (data.startsWith("admin_broadcast_section_set:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const section = data.split(":")[1] || "home";
+    const action = await getAdminAction(env, userId);
+    const config = { ...decodeBroadcastConfig(action?.target_user_id), section };
+    await answerCallback(env, query.id, "Section updated");
+    await setAdminAction(env, userId, "broadcast", { targetUserId: encodeBroadcastConfig(config), chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminBroadcastPromptText(config), adminBroadcastKeyboard(config));
     return;
   }
 
@@ -1148,6 +1206,12 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
     return true;
   }
 
+  if (action.action === "broadcast") {
+    await runBroadcast(env, adminId, action, { kind: "copy", fromChatId: chatId, messageId: inputMessageId });
+    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+    return true;
+  }
+
   if (action.action === "channel_post") {
     const language = action.target_user_id || "fa";
     const settings = getChannelPostLanguageSettings(language);
@@ -1369,7 +1433,8 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
 }
 
 async function runBroadcast(env, adminId, action, payload) {
-  const userIds = await getAllUserIds(env);
+  const config = decodeBroadcastConfig(action.target_user_id);
+  const userIds = await getUserIdsByLanguage(env, config.language);
   let sent = 0;
   let failed = 0;
   let skipped = 0;
@@ -1388,9 +1453,9 @@ async function runBroadcast(env, adminId, action, payload) {
 
     try {
       if (payload.kind === "copy") {
-        await copyMessage(env, id, payload.fromChatId, payload.messageId);
+        await copyMessage(env, id, payload.fromChatId, payload.messageId, undefined, await broadcastReplyMarkup(env, config));
       } else {
-        await sendPlainMessage(env, id, payload.text);
+        await sendPlainMessage(env, id, payload.text, await broadcastReplyMarkup(env, config));
       }
       sent++;
     } catch {
@@ -1404,6 +1469,12 @@ async function runBroadcast(env, adminId, action, payload) {
 
   await clearAdminAction(env, adminId);
   await editBroadcastProgress(env, menuChatId, adminId, menuMessageId, total, sent, failed, skipped, true);
+}
+
+async function broadcastReplyMarkup(env, config) {
+  if (!config.button) return null;
+  const url = await buildMiniAppUrl(env, config.section);
+  return channelPostMiniAppKeyboard(url);
 }
 
 async function editBroadcastProgress(env, chatId, adminId, messageId, total, sent, failed, skipped, done) {
