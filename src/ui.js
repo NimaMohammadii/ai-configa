@@ -17,7 +17,7 @@ export const TOMAN_PACKAGES = {
 };
 
 export function languageText() {
-  return ["🌎 <b>Choose your language</b>", "", "Please select your language to continue"].join("\n");
+  return ["🌎 <b>Choose your language and Region</b>", "", "Please select your language to continue"].join("\n");
 }
 
 export function languageKeyboard() {
