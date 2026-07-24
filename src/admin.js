@@ -1915,6 +1915,7 @@ export const MINI_APP_BROADCAST_SECTIONS = {
   wheel: "Reward Wheel",
   image: "Image Generator",
   explore: "Explore",
+  voices: "Voice Library",
   tts: "Text to Speech",
 };
 
