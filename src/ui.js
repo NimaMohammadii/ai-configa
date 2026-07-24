@@ -7,13 +7,19 @@ export const CREDIT_PRICE_PER_1000_USD = 0.24;
 export const CREDIT_PER_CHARACTER = 1;
 export const TOMAN_PRICE_PER_1000 = 38000;
 export const TOMAN_MIN_PURCHASE_AMOUNT = 60000;
-export const MORE_VOICES_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-  <rect x="8.5" y="2.5" width="7" height="13" rx="3.5" stroke="currentColor" stroke-width="2"/>
-  <path d="M5.5 11.5V12.5C5.5 16.09 8.41 19 12 19C15.59 19 18.5 16.09 18.5 12.5V11.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-  <path d="M12 19V22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-  <path d="M9.5 22H14.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+export const MORE_VOICES_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="more-voices-mic" x1="7.25" y1="2.75" x2="17.35" y2="21.45" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.48" stop-color="#D7D7D7"/>
+      <stop offset="1" stop-color="#8F8F8F"/>
+    </linearGradient>
+  </defs>
+  <path d="M12 3.1c-2.02 0-3.65 1.64-3.65 3.65v4.3c0 2.02 1.63 3.65 3.65 3.65s3.65-1.63 3.65-3.65v-4.3c0-2.01-1.63-3.65-3.65-3.65Z" stroke="url(#more-voices-mic)" stroke-width="1.65"/>
+  <path d="M6 10.8v.45a6 6 0 0 0 12 0v-.45M12 17.25v3.65M9.1 20.9h5.8" stroke="url(#more-voices-mic)" stroke-width="1.65" stroke-linecap="round"/>
+  <path d="M10.4 6.35h3.2M10.4 8.85h3.2" stroke="#FFFFFF" stroke-opacity=".5" stroke-width="1.1" stroke-linecap="round"/>
 </svg>`;
-export const MINIMAL_MIC_ICON = "🎙️";
+export const MINIMAL_MIC_ICON = MORE_VOICES_ICON_SVG;
 
 export const TOMAN_PACKAGES = {
   vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: "🧪 Vexa Test — 400 Credit" },
