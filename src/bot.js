@@ -1252,6 +1252,14 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
     return true;
   }
 
+  if (action.action === "message") {
+    await copyMessage(env, action.target_user_id, chatId, inputMessageId).catch(() => null);
+    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+    await clearAdminAction(env, adminId);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), await adminUserText(env, action.target_user_id), adminUserKeyboard(action.target_user_id, action.page || 0));
+    return true;
+  }
+
   if (action.action === "broadcast") {
     await runBroadcast(env, adminId, action, { kind: "copy", fromChatId: chatId, messageId: inputMessageId });
     await deleteMessage(env, chatId, inputMessageId).catch(() => null);
