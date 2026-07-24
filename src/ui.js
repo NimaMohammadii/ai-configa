@@ -7,13 +7,7 @@ export const CREDIT_PRICE_PER_1000_USD = 0.24;
 export const CREDIT_PER_CHARACTER = 1;
 export const TOMAN_PRICE_PER_1000 = 38000;
 export const TOMAN_MIN_PURCHASE_AMOUNT = 60000;
-export const MORE_VOICES_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-  <rect x="8.5" y="2.5" width="7" height="13" rx="3.5" stroke="currentColor" stroke-width="2"/>
-  <path d="M5.5 11.5V12.5C5.5 16.09 8.41 19 12 19C15.59 19 18.5 16.09 18.5 12.5V11.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-  <path d="M12 19V22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-  <path d="M9.5 22H14.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-</svg>`;
-export const MINIMAL_MIC_ICON = "🎙️";
+export const MINIMAL_MIC_ICON = "⟐";
 
 export const TOMAN_PACKAGES = {
   vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: "🧪 Vexa Test — 400 Credit" },
