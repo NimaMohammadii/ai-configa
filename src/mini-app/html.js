@@ -40,6 +40,18 @@ const VOICE_DESCRIPTIONS = {
   Kiara: "Trendy, sparkling and emotionally close",
   Orion: "Deep, futuristic and unmistakably bold",
   Ryder: "Stylish, energetic and confidently bold",
+  Lyra: "Trendy, bright and softly expressive",
+  Zane: "Cool, crisp and confidently modern",
+  Knox: "Deep, sleek and naturally magnetic",
+  Jaxon: "Urban, energetic and full of attitude",
+  Ace: "Sharp, bold and made for punchy lines",
+  Cruz: "Smooth, warm and casually confident",
+  Neo: "Fresh, futuristic and cleanly expressive",
+  Skye: "Dreamy, youthful and emotionally clear",
+  Kairo: "Deep, stylish and instantly premium",
+  Sia: "Good for conversation; warm, natural and easygoing",
+  Milo: "Good for conversation; relaxed, friendly and natural",
+  Rhea: "Good for conversation; soft, expressive and relatable",
 };
 
 const VOICE_LIBRARY_CARDS = VOICE_NAMES.map((name) => {
