@@ -7,6 +7,7 @@ export const CREDIT_PRICE_PER_1000_USD = 0.24;
 export const CREDIT_PER_CHARACTER = 1;
 export const TOMAN_PRICE_PER_1000 = 38000;
 export const TOMAN_MIN_PURCHASE_AMOUNT = 60000;
+export const MINIMAL_MIC_ICON = "⟐";
 
 export const TOMAN_PACKAGES = {
   vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: "🧪 Vexa Test — 400 Credit" },
@@ -56,7 +57,7 @@ export function mainKeyboard(state) {
     rows.push(row);
   }
 
-  rows.push([{ text: "🎙️ صداهای بیشتر", web_app: { url: "https://ai-configa.vexaagent.workers.dev/mini-app?section=voices" } }]);
+  rows.push([{ text: `${MINIMAL_MIC_ICON} ${t(lang, "moreVoices")}`, web_app: { url: "https://ai-configa.vexaagent.workers.dev/mini-app?section=voices" } }]);
 
   rows.push([{ text: t(lang, "demo"), callback_data: "demo" }]);
   rows.push([
