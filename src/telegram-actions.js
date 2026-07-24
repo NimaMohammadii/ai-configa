@@ -21,11 +21,13 @@ export async function sendMessage(env, chatId, text, replyMarkup = null) {
   return result;
 }
 
-export async function sendPlainMessage(env, chatId, text, replyMarkup = null) {
-  const result = await tgJson(env, "sendMessage", withOptionalReplyMarkup({
+export async function sendPlainMessage(env, chatId, text, replyMarkup = null, options = {}) {
+  const payload = {
     chat_id: chatId,
     text,
-  }, replyMarkup));
+  };
+  if (Array.isArray(options.entities) && options.entities.length) payload.entities = options.entities;
+  const result = await tgJson(env, "sendMessage", withOptionalReplyMarkup(payload, replyMarkup));
   rememberBotMessage(chatId, result?.message_id);
   return result;
 }
