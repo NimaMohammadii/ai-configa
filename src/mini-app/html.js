@@ -44,7 +44,7 @@ const VOICE_DESCRIPTIONS = {
 
 const VOICE_LIBRARY_CARDS = VOICE_NAMES.map((name) => {
   const voiceId = VOICES[name];
-  return `<article class="voice-library-card" data-library-voice="${voiceId}" data-library-name="${name}"><button class="voice-library-main" data-action="select-library-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span class="voice-library-avatar" aria-hidden="true"></span><span class="voice-library-copy"><span class="voice-library-name"><strong>${name}</strong><em class="voice-library-state">Add</em></span><small class="voice-library-description">${VOICE_DESCRIPTIONS[name] || "Natural, expressive and versatile"}</small></span></button><div class="voice-library-actions"><button class="voice-library-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Preview ${name}"><span class="voice-preview-icon">▶</span></button><button class="voice-library-save" data-action="toggle-saved-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button" aria-label="Add ${name}"><span class="voice-save-plus" aria-hidden="true"></span><span class="voice-save-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M9 4.8h6m-8.6 3h11.2m-9.8 0 .7 10.5c.1 1.25 1.05 2.2 2.28 2.2h4.44c1.23 0 2.18-.95 2.28-2.2l.7-10.5M10.2 11.2v5.1M13.8 11.2v5.1" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button></div></article>`;
+  return `<article class="voice-library-card" data-library-voice="${voiceId}" data-library-name="${name}"><button class="voice-library-main" data-action="select-library-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span class="voice-library-avatar" aria-hidden="true"></span><span class="voice-library-copy"><span class="voice-library-name"><strong>${name}</strong><em class="voice-library-state">Add</em></span><small class="voice-library-description">${VOICE_DESCRIPTIONS[name] || "Natural, expressive and versatile"}</small></span></button><div class="voice-library-actions"><button class="voice-library-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Preview ${name}"><span class="voice-preview-icon">▶</span></button><button class="voice-library-save" data-action="toggle-saved-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button" aria-label="Add ${name}"><span class="voice-save-plus" aria-hidden="true"></span><span class="voice-save-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7.5 8.25h9l-.5 9.1a1.8 1.8 0 0 1-1.8 1.7H9.8a1.8 1.8 0 0 1-1.8-1.7l-.5-9.1Z" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/><path d="M6 5.85h12M9.4 5.85V4.9c0-.75.6-1.35 1.35-1.35h2.5c.75 0 1.35.6 1.35 1.35v.95M10.3 11.1v4.75M13.7 11.1v4.75" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/></svg></span></button></div></article>`;
 }).join("");
 
 export const MINI_APP_HTML = `<!doctype html>
@@ -57,7 +57,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260724-voices-02"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260724-voices-03"/>
 </head>
 <body>
   <main class="app">
@@ -155,6 +155,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260724-voices-02"></script>
+  <script type="module" src="/mini-app/app.js?v=20260724-voices-03"></script>
 </body>
 </html>`;
