@@ -2,6 +2,7 @@ import { requireDb } from "./state.js";
 import { VOICES } from "./voices.js";
 
 export const MAX_SAVED_VOICES = 6;
+export const DEFAULT_SAVED_VOICES = ["Milo", "Sia", "Jaxon", "Lyra", "Atlas", "Jessica"];
 
 export async function getUserVoices(env, userId, fallbackVoice = "Nora") {
   requireDb(env);
@@ -9,12 +10,13 @@ export async function getUserVoices(env, userId, fallbackVoice = "Nora") {
 
   const owner = String(userId);
   let voices = await readUserVoices(env, owner);
-  const initialVoice = VOICES[fallbackVoice] ? fallbackVoice : "Nora";
+  const defaultVoices = DEFAULT_SAVED_VOICES.filter((voice) => Boolean(VOICES[voice])).slice(0, MAX_SAVED_VOICES);
 
   if (!voices.length) {
-    await env.DB.prepare(
-      "INSERT OR IGNORE INTO mini_app_user_voices (user_id, voice, position, created_at, updated_at) VALUES (?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
-    ).bind(owner, initialVoice).run();
+    const insertDefaultVoice = env.DB.prepare(
+      "INSERT OR IGNORE INTO mini_app_user_voices (user_id, voice, position, created_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+    );
+    await env.DB.batch(defaultVoices.map((voice, position) => insertDefaultVoice.bind(owner, voice, position)));
     voices = await readUserVoices(env, owner);
   }
 
