@@ -171,7 +171,7 @@ export async function handleMessage(message, env) {
 
   if (!text) return;
 
-  if (await handleAdminPendingInput(env, chatId, userId, messageId, text)) {
+  if (await handleAdminPendingInput(env, chatId, userId, messageId, text, message)) {
     return;
   }
 
@@ -1312,7 +1312,7 @@ async function handleAdminAudioInput(env, chatId, adminId, inputMessageId, audio
   return false;
 }
 
-async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, text) {
+async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, text, message = null) {
   if (!(await isAdmin(env, adminId))) return false;
 
   const action = await getAdminAction(env, adminId);
@@ -1451,14 +1451,16 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   }
 
   if (action.action === "message") {
-    await sendPlainMessage(env, action.target_user_id, text).catch(() => null);
+    const richText = getRichTextPayload(message, text);
+    await sendPlainMessage(env, action.target_user_id, richText.text, null, { entities: richText.entities }).catch(() => null);
     await clearAdminAction(env, adminId);
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), await adminUserText(env, action.target_user_id), adminUserKeyboard(action.target_user_id, action.page || 0));
     return true;
   }
 
   if (action.action === "broadcast") {
-    await runBroadcast(env, adminId, action, { kind: "text", text });
+    const richText = getRichTextPayload(message, text);
+    await runBroadcast(env, adminId, action, { kind: "text", text: richText.text, entities: richText.entities });
     return true;
   }
 
@@ -1471,7 +1473,8 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
 
     try {
       const miniAppUrl = await buildMiniAppUrl(env, section);
-      await sendPlainMessage(env, settings.channel, text, channelPostMiniAppKeyboard(miniAppUrl));
+      const richText = getRichTextPayload(message, text);
+      await sendPlainMessage(env, settings.channel, richText.text, channelPostMiniAppKeyboard(miniAppUrl), { entities: richText.entities });
       await clearAdminAction(env, adminId);
       await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostsText() + "\n\n✅ Post sent to " + settings.channel + ".", adminChannelPostsKeyboard());
     } catch (error) {
@@ -1482,6 +1485,30 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
 
   await clearAdminAction(env, adminId);
   return true;
+}
+
+function getRichTextPayload(message, fallbackText) {
+  const rawText = typeof message?.text === "string" ? message.text : String(fallbackText || "");
+  const entities = Array.isArray(message?.entities) ? message.entities : [];
+  return { text: rawText.trim(), entities: trimMessageEntities(rawText, entities) };
+}
+
+function trimMessageEntities(text, entities) {
+  if (!Array.isArray(entities) || !entities.length) return undefined;
+  const leading = String(text || "").match(/^\s*/)?.[0]?.length || 0;
+  const trailingStart = String(text || "").replace(/\s+$/u, "").length;
+  const trimmedLength = Math.max(0, trailingStart - leading);
+  const adjusted = entities.map((entity) => {
+    const start = Number(entity.offset);
+    const length = Number(entity.length);
+    if (!Number.isFinite(start) || !Number.isFinite(length) || length <= 0) return null;
+    const end = start + length;
+    const clippedStart = Math.max(start, leading);
+    const clippedEnd = Math.min(end, trailingStart);
+    if (clippedEnd <= clippedStart) return null;
+    return { ...entity, offset: clippedStart - leading, length: Math.min(clippedEnd - clippedStart, trimmedLength) };
+  }).filter(Boolean);
+  return adjusted.length ? adjusted : undefined;
 }
 
 async function runBroadcast(env, adminId, action, payload) {
@@ -1516,7 +1543,7 @@ async function runBroadcast(env, adminId, action, payload) {
       if (payload.kind === "copy") {
         await copyMessage(env, id, payload.fromChatId, payload.messageId, undefined, await broadcastReplyMarkup(env, config));
       } else {
-        await sendPlainMessage(env, id, payload.text, await broadcastReplyMarkup(env, config));
+        await sendPlainMessage(env, id, payload.text, await broadcastReplyMarkup(env, config), { entities: payload.entities });
       }
       sent++;
     } catch {
