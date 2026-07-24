@@ -953,6 +953,18 @@ export async function handleCallback(query, env) {
     return;
   }
 
+  if (data === "admin_broadcast_cancel") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const action = await getAdminAction(env, userId);
+    if (action?.action !== "broadcast_sending") {
+      await answerCallback(env, query.id, "Broadcast is not sending", true);
+      return;
+    }
+    await setAdminAction(env, userId, "broadcast_cancelled", { targetUserId: action.target_user_id, chatId, messageId });
+    await answerCallback(env, query.id, "Cancelling broadcast…");
+    return;
+  }
+
   if (data === "admin_channel_posts") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
@@ -1474,10 +1486,14 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
 
 async function runBroadcast(env, adminId, action, payload) {
   const config = decodeBroadcastConfig(action.target_user_id);
+  const sendingToken = JSON.stringify({ ...config, id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8) });
+  await setAdminAction(env, adminId, "broadcast_sending", { targetUserId: sendingToken, chatId: action.chat_id, messageId: Number(action.message_id) });
+
   const userIds = await getUserIdsByLanguage(env, config.language);
   let sent = 0;
   let failed = 0;
   let skipped = 0;
+  let cancelled = false;
   const total = userIds.length;
   const menuChatId = action.chat_id;
   const menuMessageId = Number(action.message_id);
@@ -1485,6 +1501,11 @@ async function runBroadcast(env, adminId, action, payload) {
   await editBroadcastProgress(env, menuChatId, adminId, menuMessageId, total, sent, failed, skipped, false);
 
   for (let index = 0; index < userIds.length; index++) {
+    if (await isBroadcastCancelled(env, adminId, sendingToken)) {
+      cancelled = true;
+      break;
+    }
+
     const id = userIds[index];
     if (String(id) === String(adminId)) {
       skipped++;
@@ -1508,7 +1529,12 @@ async function runBroadcast(env, adminId, action, payload) {
   }
 
   await clearAdminAction(env, adminId);
-  await editBroadcastProgress(env, menuChatId, adminId, menuMessageId, total, sent, failed, skipped, true);
+  await editBroadcastProgress(env, menuChatId, adminId, menuMessageId, total, sent, failed, skipped, true, cancelled);
+}
+
+async function isBroadcastCancelled(env, adminId, sendingToken) {
+  const current = await getAdminAction(env, adminId).catch(() => null);
+  return current?.action !== "broadcast_sending" || current?.target_user_id !== sendingToken;
 }
 
 async function broadcastReplyMarkup(env, config) {
@@ -1517,17 +1543,23 @@ async function broadcastReplyMarkup(env, config) {
   return channelPostMiniAppKeyboard(url);
 }
 
-async function editBroadcastProgress(env, chatId, adminId, messageId, total, sent, failed, skipped, done) {
+async function editBroadcastProgress(env, chatId, adminId, messageId, total, sent, failed, skipped, done, cancelled = false) {
   const processed = sent + failed + skipped;
   const text = [
-    done ? "✅ <b>Broadcast completed</b>" : "📣 <b>Broadcast sending…</b>",
+    done ? (cancelled ? "🛑 <b>Broadcast cancelled</b>" : "✅ <b>Broadcast completed</b>") : "📣 <b>Broadcast sending…</b>",
     "",
     "Processed: <b>" + processed + "/" + total + "</b>",
     "Sent: <b>" + sent + "</b>",
     "Failed: <b>" + failed + "</b>",
-    "Skipped: <b>" + skipped + "</b>"
-  ].join("\n");
-  await editCurrentMenu(env, chatId, adminId, messageId, text, done ? adminMainKeyboard() : null).catch(() => null);
+    "Skipped: <b>" + skipped + "</b>",
+    cancelled ? "" : null,
+    cancelled ? "No more users will receive this broadcast." : null
+  ].filter((line) => line !== null).join("\n");
+  await editCurrentMenu(env, chatId, adminId, messageId, text, done ? adminMainKeyboard() : broadcastCancelKeyboard()).catch(() => null);
+}
+
+function broadcastCancelKeyboard() {
+  return { inline_keyboard: [[{ text: "🛑 Cancel Broadcast", callback_data: "admin_broadcast_cancel" }]] };
 }
 
 function escapeForAdminError(error) {
