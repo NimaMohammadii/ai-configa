@@ -33,6 +33,18 @@ export const VOICES = {
   Kiara: "8DzKSPdgEQPaK5vKG0Rs",
   Orion: "qDuRKMlYmrm8trt5QyBn",
   Ryder: "7EzWGsX10sAS4c9m9cPf",
+  Lyra: "k9KXsQFJqzAoomTCOrJB",
+  Zane: "G4IAP30yc6c1gK0csDfu",
+  Knox: "Q0Et7LOU7VpeoeCRQAVS",
+  Jaxon: "rPNcQ53R703tTmtue1AT",
+  Ace: "FG5LWkFkrS271U9F0p13",
+  Cruz: "id7LQ3n0ft94moeTT1ER",
+  Neo: "QHn1B5TtjcHcHQhihK04",
+  Skye: "cbqdgvVi3C6sgxIWpqIh",
+  Kairo: "NvA7c85NkZVpFBAHHQQ3",
+  Sia: "uYXf8XasLslADfZ2MB4u",
+  Milo: "av1BMOR1GPgThz9p4fLo",
+  Rhea: "a1KZUXKFVFDOb33I1uqr",
 };
 
 export const LOCKED_VOICE_NAMES = ["Vespera"];

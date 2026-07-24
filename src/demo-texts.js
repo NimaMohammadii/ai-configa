@@ -396,6 +396,55 @@ export const DEMO_TEXTS = {
     es: "[audaz] Cuando la voz llega con estilo, una línea breve se vuelve icónica",
     hi: "[दमदार] स्टाइल वाली आवाज़ छोटी पंक्ति को भी आइकॉनिक बना देती है",
   },
+
+  Lyra: {
+    en: "[giggles] This voice turns tiny ideas into bright moments people remember",
+    fa: "[giggles] این صدا ایده‌های کوچیک رو به لحظه‌های روشن و موندگار تبدیل می‌کنه",
+  },
+  Zane: {
+    en: "[speaks softly] Clean words, calm rhythm, and a modern voice that stays with you",
+    fa: "[speaks softly] کلمه‌های تمیز، ریتم آروم، و صدایی مدرن که تو ذهن می‌مونه",
+  },
+  Knox: {
+    en: "[sighs] A deep tone can make even one simple line feel cinematic",
+    fa: "[sighs] یه لحن عمیق حتی یک خط ساده رو هم سینمایی و خاص می‌کنه",
+  },
+  Jaxon: {
+    en: "[shouts] Bring the energy in fast, then let the last word land clean",
+    fa: "[shouts] انرژی رو سریع بیار بالا، بعد بذار کلمه آخر تمیز بشینه",
+  },
+  Ace: {
+    en: "[angry] When the message needs impact, this voice cuts straight through",
+    fa: "[angry] وقتی پیام باید ضربه بزنه، این صدا مستقیم و محکم عبور می‌کنه",
+  },
+  Cruz: {
+    en: "[laughs] Keep it smooth, keep it real, and every sentence feels closer",
+    fa: "[laughs] روان و واقعی نگهش دار، تا هر جمله نزدیک‌تر حس بشه",
+  },
+  Neo: {
+    en: "[gasps] A fresh futuristic sound can make short text feel brand new",
+    fa: "[gasps] یه صدای تازه و آینده‌نگر متن کوتاه رو کاملاً نو نشون می‌ده",
+  },
+  Skye: {
+    en: "[whispers] Soft words can still shine when the voice carries real emotion",
+    fa: "[whispers] کلمه‌های آروم هم وقتی صدا احساس واقعی داشته باشه می‌درخشن",
+  },
+  Kairo: {
+    en: "[speaks softly] Give your story a premium pulse with calm confident style",
+    fa: "[speaks softly] به داستانت با استایل آروم و مطمئن، حس پریمیوم بده",
+  },
+  Sia: {
+    en: "[giggles] Hey, your turn now; I’m listening, so tell me what happened next",
+    fa: "[giggles] خب نوبت توئه؛ گوش می‌دم، بگو بعدش چی شد",
+  },
+  Milo: {
+    en: "[laughs] That actually makes sense; let’s talk it through one step at a time",
+    fa: "[laughs] راستش منطقیه؛ بیا قدم‌به‌قدم درباره‌ش حرف بزنیم",
+  },
+  Rhea: {
+    en: "[speaks softly] I get you; say it your way, and I’ll follow the feeling",
+    fa: "[speaks softly] می‌فهممت؛ به روش خودت بگو، من حسش رو دنبال می‌کنم",
+  },
   Orion: {
     en: "A sharp confident voice can carry your message with power and style",
     ru: "Четкий уверенный голос передает сообщение с силой и стилем",
