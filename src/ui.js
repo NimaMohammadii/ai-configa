@@ -7,7 +7,7 @@ export const CREDIT_PRICE_PER_1000_USD = 0.24;
 export const CREDIT_PER_CHARACTER = 1;
 export const TOMAN_PRICE_PER_1000 = 38000;
 export const TOMAN_MIN_PURCHASE_AMOUNT = 60000;
-export const MINIMAL_MIC_ICON = "⟐";
+export const MINIMAL_MIC_ICON = "🪼";
 
 export const TOMAN_PACKAGES = {
   vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: "🧪 Vexa Test — 400 Credit" },
@@ -17,7 +17,7 @@ export const TOMAN_PACKAGES = {
 };
 
 export function languageText() {
-  return ["🌐 <b>Choose your language</b>", "", "Please select your language to continue"].join("\n");
+  return ["🌎 <b>Choose your language</b>", "", "Please select your language to continue"].join("\n");
 }
 
 export function languageKeyboard() {
