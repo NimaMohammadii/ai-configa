@@ -81,7 +81,6 @@ import {
   deleteMiniAppButtonIcon,
   deleteImageExploreItem,
   getAdminAction,
-  getUserIdsByLanguage,
   getChannelPostLanguageSettings,
   isAdmin,
   resetUser,
@@ -116,6 +115,7 @@ import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
 import { getDemoText } from "./demo-texts.js";
 import { enqueueImageJob } from "./image-jobs.js";
+import { enqueueBroadcastJob } from "./broadcast-jobs.js";
 import { buildImageHistoryFile, getUserImageHistory, sendImageHistoryDocuments } from "./image-history.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
@@ -1261,7 +1261,12 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
   }
 
   if (action.action === "broadcast") {
-    await runBroadcast(env, adminId, action, { kind: "copy", fromChatId: chatId, messageId: inputMessageId });
+    await runBroadcast(env, adminId, action, {
+      kind: "photo",
+      fileId: getLargestPhotoFileId(message),
+      caption: String(message.caption || ""),
+      captionEntities: Array.isArray(message.caption_entities) ? message.caption_entities : undefined,
+    });
     await deleteMessage(env, chatId, inputMessageId).catch(() => null);
     return true;
   }
@@ -1313,7 +1318,6 @@ async function handleAdminAudioInput(env, chatId, adminId, inputMessageId, audio
 
   if (action.action === "broadcast") {
     await runBroadcast(env, adminId, action, { kind: "copy", fromChatId: chatId, messageId: inputMessageId });
-    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
     return true;
   }
 
@@ -1523,78 +1527,21 @@ async function runBroadcast(env, adminId, action, payload) {
   const config = decodeBroadcastConfig(action.target_user_id);
   const sendingToken = JSON.stringify({ ...config, id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8) });
   await setAdminAction(env, adminId, "broadcast_sending", { targetUserId: sendingToken, chatId: action.chat_id, messageId: Number(action.message_id) });
-
-  const userIds = await getUserIdsByLanguage(env, config.language);
-  let sent = 0;
-  let failed = 0;
-  let skipped = 0;
-  let cancelled = false;
-  const total = userIds.length;
-  const menuChatId = action.chat_id;
-  const menuMessageId = Number(action.message_id);
-
-  await editBroadcastProgress(env, menuChatId, adminId, menuMessageId, total, sent, failed, skipped, false);
-
-  for (let index = 0; index < userIds.length; index++) {
-    if (await isBroadcastCancelled(env, adminId, sendingToken)) {
-      cancelled = true;
-      break;
-    }
-
-    const id = userIds[index];
-    if (String(id) === String(adminId)) {
-      skipped++;
-      continue;
-    }
-
-    try {
-      if (payload.kind === "copy") {
-        await copyMessage(env, id, payload.fromChatId, payload.messageId, undefined, await broadcastReplyMarkup(env, config));
-      } else {
-        await sendPlainMessage(env, id, payload.text, await broadcastReplyMarkup(env, config), { entities: payload.entities });
-      }
-      sent++;
-    } catch {
-      failed++;
-    }
-
-    if ((index + 1) % 10 === 0 || index + 1 === userIds.length) {
-      await editBroadcastProgress(env, menuChatId, adminId, menuMessageId, total, sent, failed, skipped, false);
-    }
-  }
-
-  await clearAdminAction(env, adminId);
-  await editBroadcastProgress(env, menuChatId, adminId, menuMessageId, total, sent, failed, skipped, true, cancelled);
-}
-
-async function isBroadcastCancelled(env, adminId, sendingToken) {
-  const current = await getAdminAction(env, adminId).catch(() => null);
-  return current?.action !== "broadcast_sending" || current?.target_user_id !== sendingToken;
+  await enqueueBroadcastJob(env, {
+    token: sendingToken,
+    adminId,
+    chatId: action.chat_id,
+    menuMessageId: Number(action.message_id),
+    config,
+    payload,
+    replyMarkup: await broadcastReplyMarkup(env, config),
+  });
 }
 
 async function broadcastReplyMarkup(env, config) {
   if (!config.button) return null;
   const url = await buildMiniAppUrl(env, config.section);
   return channelPostMiniAppKeyboard(url);
-}
-
-async function editBroadcastProgress(env, chatId, adminId, messageId, total, sent, failed, skipped, done, cancelled = false) {
-  const processed = sent + failed + skipped;
-  const text = [
-    done ? (cancelled ? "🛑 <b>Broadcast cancelled</b>" : "✅ <b>Broadcast completed</b>") : "📣 <b>Broadcast sending…</b>",
-    "",
-    "Processed: <b>" + processed + "/" + total + "</b>",
-    "Sent: <b>" + sent + "</b>",
-    "Failed: <b>" + failed + "</b>",
-    "Skipped: <b>" + skipped + "</b>",
-    cancelled ? "" : null,
-    cancelled ? "No more users will receive this broadcast." : null
-  ].filter((line) => line !== null).join("\n");
-  await editCurrentMenu(env, chatId, adminId, messageId, text, done ? adminMainKeyboard() : broadcastCancelKeyboard()).catch(() => null);
-}
-
-function broadcastCancelKeyboard() {
-  return { inline_keyboard: [[{ text: "🛑 Cancel Broadcast", callback_data: "admin_broadcast_cancel" }]] };
 }
 
 function escapeForAdminError(error) {

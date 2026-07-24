@@ -4,6 +4,7 @@ import { handleMessage } from "./bot-secure.js";
 import { handleMiniAppRequest, isMiniAppRequest } from "./mini-app/server.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { processPendingImageJobs } from "./image-jobs.js";
+import { processPendingBroadcastJobs } from "./broadcast-jobs.js";
 import { shouldProcessMessageOnce } from "./message-dedupe.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
@@ -12,7 +13,7 @@ import { handleSupportMessage } from "./support-flow-strict.js";
 
 export default {
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(processPendingImageJobs(env).catch(logError));
+    ctx.waitUntil(processScheduledJobs(env).catch(logError));
   },
 
   async fetch(request, env, ctx) {
@@ -65,6 +66,11 @@ export default {
     return new Response("OK");
   },
 };
+
+async function processScheduledJobs(env) {
+  await processPendingBroadcastJobs(env);
+  await processPendingImageJobs(env);
+}
 
 async function handleMessageWithSupport(message, env) {
   if (await handleSupportMessage(message, env)) return;

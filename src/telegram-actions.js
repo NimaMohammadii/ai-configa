@@ -125,6 +125,18 @@ export function sendPhoto(env, chatId, imageBuffer, filename = "vexa-image.png",
   return tgForm(env, "sendPhoto", form);
 }
 
+export function sendPhotoFileId(env, chatId, fileId, caption = "", replyMarkup = null, options = {}) {
+  const payload = {
+    chat_id: chatId,
+    photo: fileId,
+  };
+  if (caption) payload.caption = caption;
+  if (Array.isArray(options.entities) && options.entities.length) {
+    payload.caption_entities = options.entities;
+  }
+  return tgJson(env, "sendPhoto", withOptionalReplyMarkup(payload, replyMarkup));
+}
+
 export async function sendTextDocument(env, chatId, content, filename, caption = "") {
   if (content?.type === "image-history-archive") {
     const archive = await buildImageHistoryArchive(env, content.userId, content.rows || []);
