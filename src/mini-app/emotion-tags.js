@@ -89,6 +89,10 @@ export const EMOTION_TAGS_JS = String.raw`
   trigger.setAttribute('aria-label','Open emotion tags');
   trigger.setAttribute('aria-expanded','false');
   trigger.innerHTML='<span class="emotion-trigger-icon">'+icon()+'</span><span>Emotions</span>';
+  trigger.hidden=true;
+  trigger.style.display='none';
+  trigger.setAttribute('aria-hidden','true');
+  trigger.tabIndex=-1;
   historyButton.parentNode.insertBefore(trigger,historyButton);
 
   var panel=document.createElement('div');
