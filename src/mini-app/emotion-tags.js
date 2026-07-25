@@ -93,7 +93,7 @@ export const EMOTION_TAGS_JS = String.raw`
   trigger.style.display='none';
   trigger.setAttribute('aria-hidden','true');
   trigger.tabIndex=-1;
-  historyButton.parentNode.insertBefore(trigger,historyButton);
+
 
   var panel=document.createElement('div');
   panel.id='emotionPanel';
