@@ -75,7 +75,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260724-voices-05"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260725-enhance-01"/>
 </head>
 <body>
   <main class="app">
@@ -121,7 +121,7 @@ export const MINI_APP_HTML = `<!doctype html>
           </div>
           <div class="tts-generate-row">
             <button id="convertButton" class="tts-generate" data-action="generate-tts" type="button">Generate Voice</button>
-            <span class="char-count-wrap"><button class="char-warning" id="ttsCharWarning" data-action="open-char-limit" type="button" aria-label="Text length warning"><span>!</span></button><span class="char-count" id="ttsCharCount">0 / 5,000 characters</span></span>
+            <span class="char-count-wrap"><button id="enhanceButton" class="tts-enhance" data-action="enhance-tts" type="button" aria-label="Enhance text with emotion tags"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2.8l1.25 4.15a5.1 5.1 0 0 0 3.4 3.4L20.8 11.6l-4.15 1.25a5.1 5.1 0 0 0-3.4 3.4L12 20.4l-1.25-4.15a5.1 5.1 0 0 0-3.4-3.4L3.2 11.6l4.15-1.25a5.1 5.1 0 0 0 3.4-3.4L12 2.8Z" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/></svg><span>Enhance</span></button><button class="char-warning" id="ttsCharWarning" data-action="open-char-limit" type="button" aria-label="Text length warning"><span>!</span></button><span class="char-count" id="ttsCharCount">0 / 5,000 characters</span></span>
           </div>
           <audio id="ttsAudio" class="tts-hidden-audio"></audio>
           <audio id="voicePreviewAudio" class="tts-hidden-audio"></audio>
@@ -173,6 +173,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260724-voices-03"></script>
+  <script type="module" src="/mini-app/app.js?v=20260725-enhance-01"></script>
 </body>
 </html>`;
