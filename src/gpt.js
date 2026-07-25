@@ -1,7 +1,9 @@
 const GPT_TIMEOUT_MS = 45000;
 const GPT_IMAGE_TIMEOUT_MS = 150000;
-const GPT_MODEL = "gpt-4o-mini";
+const GPT_MODEL = "gpt-5.6-terra";
 const MAX_ENHANCE_CHARS = 5000;
+
+const ELEVENLABS_ENHANCE_PROMPT = "# Instructions\n## 1. Role and Goal\nYou are an AI assistant specializing in enhancing dialogue text for speech generation.\nYour **PRIMARY GOAL** is to dynamically integrate **audio tags** (e.g., [laughing], [sighs]) into dialogue, making it more expressive and engaging for auditory experiences, while **STRICTLY** preserving the original text and meaning.\nIt is imperative that you follow these system instructions to the fullest.\n## 2. Core Directives\nFollow these directives meticulously to ensure high-quality output.\n### Positive Imperatives (DO):\n* DO integrate **audio tags** from the \"Audio Tags\" list (or similar contextually appropriate **audio tags**) to add expression, emotion, and realism to the dialogue. These tags MUST describe something auditory.\n* DO ensure that all **audio tags** are contextually appropriate and genuinely enhance the emotion or subtext of the dialogue line they are associated with.\n* DO strive for a diverse range of emotional expressions (e.g., energetic, relaxed, casual, surprised, thoughtful) across the dialogue, reflecting the nuances of human conversation.\n* DO place **audio tags** strategically to maximize impact, typically immediately before the dialogue segment they modify or immediately after. (e.g., [annoyed] This is hard. or This is hard. [sighs]).\n* DO ensure **audio tags** contribute to the enjoyment and engagement of spoken dialogue.\n### Negative Imperatives (DO NOT):\n* DO NOT alter, add, or remove any words from the original dialogue text itself. Your role is to *prepend* **audio tags**, not to *edit* the speech. **This also applies to any narrative text provided; you must *never* place original text inside brackets or modify it in any way.**\n* DO NOT create **audio tags** from existing narrative descriptions. **Audio tags** are *new additions* for expression, not reformatting of the original text. (e.g., if the text says \"He laughed loudly,\" do not change it to \"[laughing loudly] He laughed.\" Instead, add a tag if appropriate, e.g., \"He laughed loudly [chuckles].\")\n* DO NOT use tags such as [standing], [grinning], [pacing], [music].\n* DO NOT use tags for anything other than the voice such as music or sound effects.\n* DO NOT invent new dialogue lines.\n* DO NOT select **audio tags** that contradict or alter the original meaning or intent of the dialogue.\n* DO NOT introduce or imply any sensitive topics, including but not limited to: politics, religion, child exploitation, profanity, hate speech, or other NSFW content.\n## 3. Workflow\n1. **Analyze Dialogue**: Carefully read and understand the mood, context, and emotional tone of **EACH** line of dialogue provided in the input.\n2. **Select Tag(s)**: Based on your analysis, choose one or more suitable **audio tags**. Ensure they are relevant to the dialogue's specific emotions and dynamics.\n3. **Integrate Tag(s)**: Place the selected **audio tag(s)** in square brackets strategically before or after the relevant dialogue segment, or at a natural pause if it enhances clarity.\n4. **Add Emphasis:** You cannot change the text at all, but you can add emphasis by making some words capital, adding a question mark or adding an exclamation mark where it makes sense, or adding ellipses as well too.\n5. **Verify Appropriateness**: Review the enhanced dialogue to confirm:\n    * The **audio tag** fits naturally.\n    * It enhances meaning without altering it.\n    * It adheres to all Core Directives.\n## 4. Output Format\n* Present ONLY the enhanced dialogue text in a conversational format.\n* **Audio tags** **MUST** be enclosed in square brackets (e.g., [laughing]).\n* The output should maintain the narrative flow of the original dialogue.\n## 5. Audio Tags (Non-Exhaustive)\nUse these as a guide. You can infer similar, contextually appropriate **audio tags**.\n**Directions:**\n* [happy]\n* [sad]\n* [excited]\n* [angry]\n* [whisper]\n* [annoyed]\n* [appalled]\n* [thoughtful]\n* [surprised]\n* *(and similar emotional/delivery directions)*\n**Non-verbal:**\n* [laughing]\n* [chuckles]\n* [sighs]\n* [clears throat]\n* [short pause]\n* [long pause]\n* [exhales sharply]\n* [inhales deeply]\n* *(and similar non-verbal sounds)*\n## 6. Examples of Enhancement\n**Input**:\n\"Are you serious? I can't believe you did that!\"\n**Enhanced Output**:\n\"[appalled] Are you serious? [sighs] I can't believe you did that!\"\n---\n**Input**:\n\"That's amazing, I didn't know you could sing!\"\n**Enhanced Output**:\n\"[laughing] That's amazing, [singing] I didn't know you could sing!\"\n---\n**Input**:\n\"I guess you're right. It's just... difficult.\"\n**Enhanced Output**:\n\"I guess you're right. [sighs] It's just... [muttering] difficult.\"\n# Instructions Summary\n1. Add audio tags from the audio tags list. These must describe something auditory but only for the voice.\n2. Enhance emphasis without altering meaning or text.\n3. Reply ONLY with the enhanced text.";
 
 const GPT_IMAGE_MODEL = "gpt-image-2";
 const GPT_IMAGE_SIZE = "1024x1024";
@@ -191,7 +193,6 @@ export async function enhanceTextWithEmotion(env, text, language = "en") {
     },
     body: JSON.stringify({
       model: GPT_MODEL,
-      temperature: 0.55,
       messages: [
         { role: "system", content: buildSystemPrompt(language) },
         { role: "user", content: cleanText },
@@ -205,61 +206,12 @@ export async function enhanceTextWithEmotion(env, text, language = "en") {
   }
 
   const data = await response.json();
-  const output = data?.choices?.[0]?.message?.content || "";
-  return cleanEnhancedText(output) || cleanText;
+  const output = cleanEnhancedText(data?.choices?.[0]?.message?.content || "");
+  return output && preservesOriginalSpeech(cleanText, output) ? output : cleanText;
 }
 
-function buildSystemPrompt(language) {
-  const allowedAudioTags = [
-    "[whispers]",
-    "[laughs]",
-    "[sighs]",
-    "[excited]",
-    "[sad]",
-    "[angry]",
-    "[pauses]",
-    "[slow]",
-    "[sarcastic]",
-    "[curious]",
-    "[tired]",
-    "[nervous]",
-    "[frustrated]",
-    "[shouting]",
-    "[quietly]",
-    "[loudly]",
-    "[awe]",
-    "[dramatic tone]",
-    "[gasps]",
-    "[gulps]",
-    "[stammers]",
-    "[rushed]",
-  ];
-
-  return [
-    "You prepare scripts for ElevenLabs v3 text-to-speech.",
-    "Analyze the entire user text before adding any audio tag.",
-    "Keep the same language, same meaning, and same message.",
-    "Do not translate unless the user explicitly asks.",
-    "Return only the final script. No explanations, no markdown, no quotes.",
-    "Use only these audio tags: " + allowedAudioTags.join(", ") + ".",
-    "Add a tag only when the text clearly supports that exact emotion, reaction, pace, or delivery style.",
-    "Never invent emotions or make neutral text sound excited, sad, angry, scary, funny, or dramatic unless the words imply it.",
-    "For neutral or informational text, keep tags minimal or use no tags at all; prefer punctuation cleanup over fake emotion.",
-    "Choose the shortest accurate tag for each moment, and place it close to the words it should affect.",
-    "For happy, energetic, or promotional text, use [excited], [loudly], or [rushed] only if the wording truly has that energy.",
-    "For sad or exhausted text, use [sad], [sighs], [tired], [slow], or [pauses] only where the sadness or fatigue is explicit or strongly implied.",
-    "For secret, scary, intimate, or low-volume text, use [whispers], [quietly], [nervous], [gasps], or [pauses] only when context supports it.",
-    "For funny text, use [laughs] or [sarcastic] only when humor or sarcasm is present.",
-    "For angry or intense text, use [angry], [frustrated], [shouting], [loudly], or [dramatic tone] carefully and only when justified.",
-    "For uncertainty or hesitation, use [curious], [nervous], [stammers], [gulps], or [pauses] only when the text implies it.",
-    "Do not put a tag before every sentence. Avoid decorative, random, or excessive tags.",
-    "Keep punctuation natural for speech. Add ellipses only when they improve delivery.",
-    "Example input: سلام عزیزم با خوشحالی چطوری چیکار میکنی",
-    "Example output: سلام عزیزم! [excited] با خوشحالی می‌پرسم... چطوری؟ چیکار می‌کنی؟",
-    "Example input: جلسه فردا ساعت ده برگزار می‌شود",
-    "Example output: جلسه فردا ساعت ده برگزار می‌شود.",
-    "Language code: " + String(language || "en"),
-  ].join("\n");
+function buildSystemPrompt() {
+  return ELEVENLABS_ENHANCE_PROMPT;
 }
 
 function cleanEnhancedText(value) {
@@ -267,6 +219,12 @@ function cleanEnhancedText(value) {
     .replace(/^```[a-zA-Z]*\s*/g, "")
     .replace(/```$/g, "")
     .trim();
+}
+
+function preservesOriginalSpeech(original, enhanced) {
+  const speechOnly = String(enhanced || "").replace(/\[[^\]\r\n]{1,120}\]/g, "");
+  const normalize = (value) => String(value || "").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  return normalize(original) === normalize(speechOnly);
 }
 
 async function fetchWithTimeout(
