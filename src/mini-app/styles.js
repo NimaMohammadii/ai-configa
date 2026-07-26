@@ -111,8 +111,14 @@ html,body,.view,.image-workspace,.voice-menu,.history-list{scrollbar-width:none;
 .credits-balance{bottom:24px}
 @media(max-width:370px){.credits-page-head{min-height:207px;margin-bottom:2px}.credits-page-head h2{font-size:32px}.credits-page-head p{font-size:11px}.credits-balance{bottom:21px}}
 
-/* Keep Reels independent from transient iOS/Telegram visualViewport values. */
-.explore-reels-page{inset:auto;top:0;left:0;right:0;height:100dvh;min-height:320px}
-.explore-reel{height:var(--reel-page-height,100dvh);min-height:var(--reel-page-height,100dvh);flex-basis:var(--reel-page-height,100dvh)}
+/* Keep the iOS WebView layer small: only the current Reel and its neighbors exist. */
+html.explore-reels-open{height:var(--app-viewport-height,100dvh)!important;min-height:var(--app-viewport-height,100dvh)!important;overflow:hidden!important}
+html.explore-reels-open body{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:auto!important;height:var(--app-viewport-height,100dvh)!important;min-height:var(--app-viewport-height,100dvh)!important;overflow:hidden!important}
+.explore-reels-page{inset:auto;top:0;left:0;right:0;height:var(--app-viewport-height,100dvh);min-height:320px;contain:layout paint size}
+.explore-reels-feed{display:block;overflow:hidden;contain:layout paint size;will-change:auto;transform:none!important}
+.explore-reel{position:absolute;inset:0;height:100%!important;min-height:0!important;flex:none;visibility:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden;will-change:transform}
+.explore-reel-media{animation:reelMediaInSafe .42s cubic-bezier(.16,.86,.22,1) both;-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
+.explore-reel-action{backdrop-filter:none;-webkit-backdrop-filter:none}
 .explore-reel-action,.explore-reel-sound{touch-action:manipulation}
+@keyframes reelMediaInSafe{from{opacity:.35;transform:scale(1.045)}to{opacity:1;transform:scale(1.018)}}
 `;
