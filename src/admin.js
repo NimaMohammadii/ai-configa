@@ -293,10 +293,10 @@ export async function adminInitialStartText(env) {
     "",
     "Current new-user gift: <b>" + formatNumber(credits) + " credits</b>",
     "",
-    "This gift is sent once to new non-Persian users after their menu is shown.",
-    "Persian users still receive their onboarding credit through the channel-join flow.",
+    "This gift is sent exactly once to every new user, regardless of their selected language.",
+    "Persian users receive the same gift after completing the channel-join step.",
     "",
-    "Use <b>Change Initial Credits</b> to set the amount for all languages, including the Persian channel-join amount shown in admin settings."
+    "Changing language never grants the gift again. Use <b>Change Initial Credits</b> to set the single amount for all languages."
   ].join("\n");
 }
 
