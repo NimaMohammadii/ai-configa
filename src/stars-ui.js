@@ -1,4 +1,4 @@
-import { STAR_PACKAGES, CUSTOM_STARS_CREDITS_PER_STAR, CUSTOM_STARS_USD_PER_1000_CREDITS } from "./stars.js";
+import { STAR_PACKAGES, CUSTOM_STARS_USD_PER_1000_CREDITS } from "./stars.js";
 import { t } from "./i18n.js";
 
 export function starsPackagesText(state = {}) {
@@ -34,7 +34,7 @@ export function customStarsInvoiceText(pack, state = {}) {
     `Estimated value: <b>$${formatUsd(pack.usd)}</b>`,
     starsAmountLine(pack, lang),
     "",
-    `Rate: <b>1,000 credits = 11 ⭐️</b>`,
+    lang === "fa" ? `نرخ: <b>هر ۱٬۰۰۰ کردیت = ۱۱ ⭐️</b>` : `Rate: <b>1,000 credits = 11 ⭐️</b>`,
     lang === "fa" ? "برای دریافت فاکتور پرداخت تایید کن" : "Confirm to receive the payment invoice",
   ].join("\n");
 }
