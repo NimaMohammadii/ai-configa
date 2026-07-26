@@ -3,13 +3,12 @@ import { requireDb } from "./state.js";
 
 const STAR_USD_PER_50 = 0.76;
 export const CUSTOM_STARS_CREDITS_PER_STAR = 85;
-export const CUSTOM_STARS_USD_PER_1000_CREDITS = 0.18;
-export const CUSTOM_STARS_DISPLAY_USD_PER_1000_CREDITS = 0.18;
+export const CUSTOM_STARS_USD_PER_1000_CREDITS = 0.16;
 
 export const STAR_PACKAGES = {
-  s400: createStarPackage("s400", 400, 0, 0.072, 5),
-  s1000: createStarPackage("s1000", 1000, 0, 0.18, 12),
-  s33000: createStarPackage("s33000", 33000, 11000, 7.92, 518),
+  s400: createStarPackage("s400", 400, 0, 0.08, 6),
+  s1000: createStarPackage("s1000", 1000, 0, 0.16, 12),
+  s33000: createStarPackage("s33000", 33000, 11000, 6.8, 462),
 };
 
 export function getStarPackage(id) {
@@ -136,6 +135,5 @@ function formatNumber(value) {
 }
 
 function formatUsd(value) {
-  const displayValue = Math.floor((Number(value) + Number.EPSILON) * 100) / 100;
-  return displayValue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return Number(value).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
