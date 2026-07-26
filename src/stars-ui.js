@@ -1,4 +1,4 @@
-import { STAR_PACKAGES, CUSTOM_STARS_CREDITS_PER_STAR, CUSTOM_STARS_DISPLAY_USD_PER_1000_CREDITS } from "./stars.js";
+import { STAR_PACKAGES, CUSTOM_STARS_CREDITS_PER_STAR, CUSTOM_STARS_USD_PER_1000_CREDITS } from "./stars.js";
 import { t } from "./i18n.js";
 
 export function starsPackagesText(state = {}) {
@@ -19,8 +19,8 @@ export function customStarsPromptText(state = {}) {
     t(lang, "audioCreditRule"),
     "",
     lang === "fa"
-      ? `هر <b>1000 کردیت</b> برابر <b>$${formatUsd(CUSTOM_STARS_DISPLAY_USD_PER_1000_CREDITS)}</b> است`
-      : `Every <b>1,000 credits</b> costs <b>$${formatUsd(CUSTOM_STARS_DISPLAY_USD_PER_1000_CREDITS)}</b>`,
+      ? `هر <b>1000 کردیت</b> برابر <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b> است`
+      : `Every <b>1,000 credits</b> costs <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b>`,
     lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست" : "Send your custom credit amount in this chat",
   ].join("\n");
 }
@@ -34,8 +34,8 @@ export function customStarsInvoiceText(pack, state = {}) {
     `Estimated value: <b>$${formatUsd(pack.usd)}</b>`,
     starsAmountLine(pack, lang),
     "",
-    `Rate: <b>85 credits = 1 ⭐️</b>`,
-    lang === "fa" ? "هر ۸۵ کردیت برابر ۱ استارز است. برای دریافت فاکتور پرداخت تایید کن" : "Every 85 credits equals 1 Telegram Star. Confirm to receive the payment invoice",
+    `Rate: <b>${CUSTOM_STARS_CREDITS_PER_STAR} credits = 1 ⭐️</b>`,
+    lang === "fa" ? "برای دریافت فاکتور پرداخت تایید کن" : "Confirm to receive the payment invoice",
   ].join("\n");
 }
 
@@ -124,6 +124,5 @@ function formatNumber(value) {
 }
 
 function formatUsd(value) {
-  const displayValue = Math.floor((Number(value) + Number.EPSILON) * 100) / 100;
-  return displayValue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return Number(value).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
