@@ -26,10 +26,33 @@ export async function setInitialStartCredits(env, credits) {
 export async function grantInitialStartBonusOnce(env, userId, language) {
   requireDb(env);
   await ensureInitialStartStorage(env);
+  const normalizedUserId = String(userId);
+
+  const existing = await env.DB.prepare(
+    "SELECT credits FROM initial_start_bonuses WHERE user_id = ?"
+  ).bind(normalizedUserId).first();
+  if (existing) {
+    return { granted: false, credits: Number(existing.credits) };
+  }
+
+  // Persian onboarding used to keep its one-time grant in a separate table.
+  // Treat that legacy row as the same welcome gift so changing languages can
+  // never make an existing user eligible for a second grant.
+  const legacyFaBonus = await env.DB.prepare(
+    "SELECT credits FROM fa_join_bonuses WHERE user_id = ?"
+  ).bind(normalizedUserId).first();
+  if (legacyFaBonus) {
+    const legacyCredits = Number(legacyFaBonus.credits);
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO initial_start_bonuses (user_id, credits, language, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
+    ).bind(normalizedUserId, legacyCredits, language || "fa").run();
+    return { granted: false, credits: legacyCredits };
+  }
+
   const credits = await getInitialStartCredits(env);
   const inserted = await env.DB.prepare(
     "INSERT OR IGNORE INTO initial_start_bonuses (user_id, credits, language, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
-  ).bind(String(userId), credits, language || null).run();
+  ).bind(normalizedUserId, credits, language || null).run();
 
   if (Number(inserted?.meta?.changes || 0) > 0) {
     const balance = await addCredits(env, userId, credits);

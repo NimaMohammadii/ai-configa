@@ -1,12 +1,9 @@
-import { addCredits } from "./credits.js";
-import { getInitialStartCredits } from "./start-bonus.js";
+import { grantInitialStartBonusOnce } from "./start-bonus.js";
 import { requireDb } from "./state.js";
 import { tgJson } from "./telegram-api.js";
 
 export const FA_REQUIRED_CHANNEL_URL = "https://t.me/VexaOrder";
 export const FA_REQUIRED_CHANNEL = "@VexaOrder";
-export const FA_JOIN_BONUS_CREDITS = 100;
-
 const MEMBER_STATUSES = new Set(["creator", "administrator", "member"]);
 
 export function faJoinText() {
@@ -14,7 +11,7 @@ export function faJoinText() {
     "🔒 <b>برای استفاده از وکسا، عضو کانال شو</b>",
     "",
     "برای استفاده از ربات اول عضو کانال زیر شو.",
-    "بعد از عضویت، <b>۱۰۰ کردیت رایگان</b> هدیه می‌گیری",
+    "بعد از عضویت، <b>هدیه شروع</b> که ادمین تعیین کرده را می‌گیری",
     "",
     "بعد از عضویت، دکمه «عضو شدم» را بزن."
   ].join("\n");
@@ -79,17 +76,6 @@ export async function isFaChannelMember(env, userId) {
 }
 
 export async function grantFaJoinBonusOnce(env, userId) {
-  requireDb(env);
-
-  const credits = await getInitialStartCredits(env);
-  const inserted = await env.DB.prepare(
-    "INSERT OR IGNORE INTO fa_join_bonuses (user_id, credits, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)"
-  ).bind(String(userId), credits).run();
-
-  if (Number(inserted?.meta?.changes || 0) > 0) {
-    await addCredits(env, userId, credits);
-    return true;
-  }
-
-  return false;
+  const result = await grantInitialStartBonusOnce(env, userId, "fa");
+  return result.granted;
 }
