@@ -96,4 +96,13 @@ html,body,.view,.image-workspace,.voice-menu,.history-list{scrollbar-width:none;
 .credits-balance{bottom:17px}
 .credits-footnote span{color:#fff;text-shadow:none}
 @media(max-width:370px){.credits-page-head{min-height:210px;margin-bottom:6px;padding-top:calc(18px + env(safe-area-inset-top));background-size:100% auto;background-position:center center}.credits-page-head h2{font-size:30px}.credits-balance{bottom:14px}}
+
+
+/* credits hero spacing v3 */
+.credits-page-head{min-height:214px;margin-bottom:2px}
+.credits-page-head>div:first-child>span{font-size:10px}
+.credits-page-head h2{font-size:35px}
+.credits-page-head p{font-size:12px}
+.credits-balance{bottom:24px}
+@media(max-width:370px){.credits-page-head{min-height:207px;margin-bottom:2px}.credits-page-head h2{font-size:32px}.credits-page-head p{font-size:11px}.credits-balance{bottom:21px}}
 `;
