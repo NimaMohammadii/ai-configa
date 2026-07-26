@@ -164,6 +164,7 @@ export function adminMainKeyboard() {
       [{ text: "🟢 Online Users", callback_data: "admin_online:0" }, { text: "🌍 Users by Language", callback_data: "admin_language_stats" }],
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }],
+      [{ text: "🔊 API Eleven", callback_data: "admin_eleven_api" }],
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }, { text: "📂 Section Opens", callback_data: "admin_section_opens" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
@@ -175,6 +176,50 @@ export function adminMainKeyboard() {
       [{ text: "Pin Text for All Users", callback_data: "admin_pin_all" }],
     ],
   };
+}
+
+export const ELEVEN_API_OPTIONS = ["ELEVEN_API", "ELEVEN_API_1A", "ELEVEN_API_2v", "ELEVEN_API_3x"];
+
+export async function getElevenApiSetting(env) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = 'eleven_api_key_name'").first();
+  return ELEVEN_API_OPTIONS.includes(row?.value) ? row.value : "ELEVEN_API";
+}
+
+export async function setElevenApiSetting(env, keyName) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  if (!ELEVEN_API_OPTIONS.includes(keyName)) throw new Error("Invalid ElevenLabs API selection");
+  await env.DB.prepare(
+    "INSERT INTO app_settings (key, value, updated_at) VALUES ('eleven_api_key_name', ?, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP"
+  ).bind(keyName).run();
+}
+
+export async function adminElevenApiText(env) {
+  const selected = await getElevenApiSetting(env);
+  const lines = [
+    "🔊 <b>API Eleven</b>",
+    "",
+    "Active API: <code>" + selected + "</code>",
+    "",
+    "Select which ElevenLabs API key is used for all text-to-speech requests:",
+  ];
+  for (const keyName of ELEVEN_API_OPTIONS) {
+    lines.push((env[keyName] ? "✅" : "⚠️") + " <code>" + keyName + "</code> — " + (env[keyName] ? "configured" : "missing from env"));
+  }
+  return lines.join("\n");
+}
+
+export async function adminElevenApiKeyboard(env) {
+  const selected = await getElevenApiSetting(env);
+  const rows = ELEVEN_API_OPTIONS.map((keyName, index) => [{
+    text: (selected === keyName ? "✔️ " : "") + keyName + (env[keyName] ? "" : " ⚠️"),
+    callback_data: "admin_eleven_api_set:" + index,
+  }]);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
 }
 
 

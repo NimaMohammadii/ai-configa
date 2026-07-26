@@ -141,6 +141,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('eleven_api_key_name', 'ELEVEN_API');
+
 
 CREATE TABLE IF NOT EXISTS fa_join_bonuses (
   user_id TEXT PRIMARY KEY,

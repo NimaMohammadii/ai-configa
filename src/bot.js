@@ -11,6 +11,8 @@ import {
   adminChannelPostsKeyboard,
   adminChannelPostsText,
   adminCreditPromptText,
+  adminElevenApiKeyboard,
+  adminElevenApiText,
   adminBuyersKeyboard,
   adminBuyersText,
   adminMainKeyboard,
@@ -81,11 +83,13 @@ import {
   deleteMiniAppButtonIcon,
   deleteImageExploreItem,
   getAdminAction,
+  ELEVEN_API_OPTIONS,
   getChannelPostLanguageSettings,
   isAdmin,
   resetUser,
   resolveStartLanguage,
   setAdminAction,
+  setElevenApiSetting,
   setLanguageSetting,
   setMiniAppAccessSettings,
   setMiniAppButtonIcon,
@@ -338,6 +342,26 @@ export async function handleCallback(query, env) {
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminMainText(env), adminMainKeyboard());
+    return;
+  }
+
+  if (data === "admin_eleven_api") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminElevenApiText(env), await adminElevenApiKeyboard(env));
+    return;
+  }
+
+  if (data.startsWith("admin_eleven_api_set:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const index = Number(data.slice("admin_eleven_api_set:".length));
+    const keyName = ELEVEN_API_OPTIONS[index];
+    if (!keyName) return answerCallback(env, query.id, "Invalid API selection", true);
+    if (!env[keyName]) return answerCallback(env, query.id, keyName + " is missing from env", true);
+    await setElevenApiSetting(env, keyName);
+    await answerCallback(env, query.id, "ElevenLabs API changed to " + keyName);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminElevenApiText(env), await adminElevenApiKeyboard(env));
     return;
   }
 
