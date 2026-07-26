@@ -75,7 +75,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260726-credit-hero-01"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260726-credits-shop-02"/>
 </head>
 <body>
   <main class="app">
@@ -174,7 +174,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <section id="creditsPage" class="credits-page" aria-hidden="true">
     <div class="credits-page-scroll">
-      <figure id="creditsHero" class="credits-hero" aria-hidden="true"><img id="creditsHeroImage" alt=""/></figure>
       <header class="credits-page-head">
         <div><span>TELEGRAM STARS</span><h2>Buy credits</h2><p>Top up instantly and keep creating.</p></div>
         <div class="credits-balance"><small>YOUR BALANCE</small><strong id="creditsPageBalance">—</strong><span>credits</span></div>
@@ -201,6 +200,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260726-credit-hero-01"></script>
+  <script type="module" src="/mini-app/app.js?v=20260726-credits-shop-02"></script>
 </body>
 </html>`;
