@@ -34,7 +34,7 @@ export function customStarsInvoiceText(pack, state = {}) {
     `Estimated value: <b>$${formatUsd(pack.usd)}</b>`,
     starsAmountLine(pack, lang),
     "",
-    `Rate: <b>${CUSTOM_STARS_CREDITS_PER_STAR} credits = 1 ⭐️</b>`,
+    `Rate: <b>1,000 credits = 11 ⭐️</b>`,
     lang === "fa" ? "برای دریافت فاکتور پرداخت تایید کن" : "Confirm to receive the payment invoice",
   ].join("\n");
 }
@@ -124,5 +124,6 @@ function formatNumber(value) {
 }
 
 function formatUsd(value) {
-  return Number(value).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const displayValue = Math.floor((Number(value) + Number.EPSILON) * 100) / 100;
+  return displayValue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
