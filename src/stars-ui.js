@@ -1,4 +1,4 @@
-import { STAR_PACKAGES, CUSTOM_STARS_CREDITS_PER_STAR, CUSTOM_STARS_USD_PER_1000_CREDITS } from "./stars.js";
+import { STAR_PACKAGES, CUSTOM_STARS_CREDITS_PER_STAR, CUSTOM_STARS_DISPLAY_USD_PER_1000_CREDITS } from "./stars.js";
 import { t } from "./i18n.js";
 
 export function starsPackagesText(state = {}) {
@@ -19,8 +19,8 @@ export function customStarsPromptText(state = {}) {
     t(lang, "audioCreditRule"),
     "",
     lang === "fa"
-      ? `هر <b>1000 کردیت</b> برابر <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b> است`
-      : `Every <b>1,000 credits</b> costs <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b>`,
+      ? `هر <b>1000 کردیت</b> برابر <b>$${formatUsd(CUSTOM_STARS_DISPLAY_USD_PER_1000_CREDITS)}</b> است`
+      : `Every <b>1,000 credits</b> costs <b>$${formatUsd(CUSTOM_STARS_DISPLAY_USD_PER_1000_CREDITS)}</b>`,
     lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست" : "Send your custom credit amount in this chat",
   ].join("\n");
 }
