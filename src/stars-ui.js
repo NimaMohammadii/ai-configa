@@ -34,7 +34,7 @@ export function customStarsInvoiceText(pack, state = {}) {
     `Estimated value: <b>$${formatUsd(pack.usd)}</b>`,
     starsAmountLine(pack, lang),
     "",
-    `Rate: <b>42.5 credits = 1 ⭐️</b>`,
+    `Rate: <b>about 90.91 credits = 1 ⭐️</b>`,
     lang === "fa" ? "برای دریافت فاکتور پرداخت تایید کن" : "Confirm to receive the payment invoice",
   ].join("\n");
 }
