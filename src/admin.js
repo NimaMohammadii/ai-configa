@@ -167,6 +167,7 @@ export function adminMainKeyboard() {
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }, { text: "📂 Section Opens", callback_data: "admin_section_opens" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
+      [{ text: "🛍 Credit Page Image", callback_data: "admin_credit_page_image" }],
       [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }],
       [{ text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
       [{ text: "💸 Image Pricing", callback_data: "admin_image_pricing" }, { text: "🐙 Explore Prompts", callback_data: "admin_image_explore" }],
@@ -1425,6 +1426,44 @@ export async function getWelcomeAudios(env) {
     if (fileId) result[code] = { fileId, fileType: values["welcome_audio_file_type_" + code] || "audio", language: code };
   }
   return result;
+}
+
+export async function adminCreditPageImageText(env) {
+  const image = await getCreditPageImage(env);
+  return [
+    "🛍 <b>Credit Purchase Page Image</b>",
+    "",
+    image ? "✅ An image is currently configured." : "❌ No image is configured.",
+    "Upload a photo to display it at the very top of the mini app credit purchase page."
+  ].join("\n");
+}
+
+export function adminCreditPageImageKeyboard(hasImage = false) {
+  const rows = [[{ text: hasImage ? "🔄 Replace Image" : "⬆️ Upload Image", callback_data: "admin_credit_page_image_upload" }]];
+  if (hasImage) rows.push([{ text: "🗑 Delete Image", callback_data: "admin_credit_page_image_delete" }]);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export function adminCreditPageImagePromptText() {
+  return ["🛍 <b>Upload Credit Page Image</b>", "", "Send one photo now.", "It will be shown across the top of the credit purchase page and replace the current image."].join("\n");
+}
+
+export async function setCreditPageImage(env, fileId) {
+  await setAppSetting(env, "credit_page_image_file_id", String(fileId));
+}
+
+export async function deleteCreditPageImage(env) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  await env.DB.prepare("DELETE FROM app_settings WHERE key = 'credit_page_image_file_id'").run();
+}
+
+export async function getCreditPageImage(env) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = 'credit_page_image_file_id'").first();
+  return row?.value ? { fileId: row.value } : null;
 }
 
 const MINI_APP_ICON_TARGETS = [

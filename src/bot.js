@@ -43,6 +43,9 @@ import {
   adminMandatoryMembershipText,
   adminMiniAppAccessKeyboard,
   adminMiniAppAccessText,
+  adminCreditPageImageKeyboard,
+  adminCreditPageImagePromptText,
+  adminCreditPageImageText,
   adminMiniAppIconsKeyboard,
   adminMiniAppIconsText,
   adminMiniAppIconPromptText,
@@ -79,6 +82,7 @@ import {
   deleteWelcomeAudio,
   deleteVoiceProfile,
   deleteMiniAppButtonIcon,
+  deleteCreditPageImage,
   deleteImageExploreItem,
   getAdminAction,
   getChannelPostLanguageSettings,
@@ -89,6 +93,8 @@ import {
   setLanguageSetting,
   setMiniAppAccessSettings,
   setMiniAppButtonIcon,
+  setCreditPageImage,
+  getCreditPageImage,
   getImagePricingSettings,
   getImageExploreItems,
   setImageCreditCost,
@@ -660,6 +666,31 @@ export async function handleCallback(query, env) {
   }
 
 
+  if (data === "admin_credit_page_image") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    const image = await getCreditPageImage(env);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminCreditPageImageText(env), adminCreditPageImageKeyboard(Boolean(image)));
+    return;
+  }
+
+  if (data === "admin_credit_page_image_upload") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "credit_page_image", { chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminCreditPageImagePromptText(), adminCancelKeyboard("admin_credit_page_image"));
+    return;
+  }
+
+  if (data === "admin_credit_page_image_delete") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await deleteCreditPageImage(env);
+    await answerCallback(env, query.id, "Credit page image deleted", false);
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminCreditPageImageText(env)) + "\n\n🗑 Image deleted.", adminCreditPageImageKeyboard(false));
+    return;
+  }
+
   if (data === "admin_mini_app_icons") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
@@ -1228,6 +1259,17 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
     return true;
   }
 
+  if (action.action === "credit_page_image") {
+    const fileId = getLargestPhotoFileId(message);
+    if (!fileId) return false;
+
+    await setCreditPageImage(env, fileId);
+    await deleteMessage(env, chatId, inputMessageId).catch(() => null);
+    await clearAdminAction(env, adminId);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminCreditPageImageText(env)) + "\n\n✅ Credit page image updated.", adminCreditPageImageKeyboard(true));
+    return true;
+  }
+
   if (action.action === "mini_app_icon") {
     const fileId = getLargestPhotoFileId(message);
     if (!fileId) return false;
@@ -1347,6 +1389,11 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
 
   if (action.action === "image_explore_image") {
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageExploreUploadText() + "\n\nPlease send a photo, not text.", adminCancelKeyboard("admin_image_explore"));
+    return true;
+  }
+
+  if (action.action === "credit_page_image") {
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminCreditPageImagePromptText() + "\n\nPlease send a photo, not text.", adminCancelKeyboard("admin_credit_page_image"));
     return true;
   }
 
