@@ -110,4 +110,9 @@ html,body,.view,.image-workspace,.voice-menu,.history-list{scrollbar-width:none;
 .credits-page-head p{font-size:12px}
 .credits-balance{bottom:24px}
 @media(max-width:370px){.credits-page-head{min-height:207px;margin-bottom:2px}.credits-page-head h2{font-size:32px}.credits-page-head p{font-size:11px}.credits-balance{bottom:21px}}
+
+/* Keep Reels independent from transient iOS/Telegram visualViewport values. */
+.explore-reels-page{inset:auto;top:0;left:0;right:0;height:100dvh;min-height:320px}
+.explore-reel{height:var(--reel-page-height,100dvh);min-height:var(--reel-page-height,100dvh);flex-basis:var(--reel-page-height,100dvh)}
+.explore-reel-action,.explore-reel-sound{touch-action:manipulation}
 `;
