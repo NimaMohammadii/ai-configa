@@ -2,13 +2,13 @@ import { addCredits } from "./credits.js";
 import { requireDb } from "./state.js";
 
 const STAR_USD_PER_50 = 0.76;
-export const CUSTOM_STARS_CREDITS_PER_STAR = 1000 / 11;
-export const CUSTOM_STARS_USD_PER_1000_CREDITS = 0.165;
+export const CUSTOM_STARS_CREDITS_PER_STAR = 1000 / 12;
+export const CUSTOM_STARS_USD_PER_1000_CREDITS = 0.178;
 
 export const STAR_PACKAGES = {
-  s400: createStarPackage("s400", 400, 0, 0.066, 5),
-  s1000: createStarPackage("s1000", 1000, 0, 0.165, 11),
-  s33000: createStarPackage("s33000", 33000, 11000, 7.26, 484),
+  s400: createStarPackage("s400", 400, 0, 0.0712, 5),
+  s1000: createStarPackage("s1000", 1000, 0, 0.178, 12),
+  s33000: createStarPackage("s33000", 33000, 11000, 7.832, 528),
 };
 
 export function getStarPackage(id) {
