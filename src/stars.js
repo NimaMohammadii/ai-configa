@@ -11,8 +11,15 @@ export const STAR_PACKAGES = {
   s33000: createStarPackage("s33000", 33000, 11000, 7.832, 528),
 };
 
+export const MINI_APP_STAR_PACKAGES = Object.freeze({
+  mini_3000: createStarPackage("mini_3000", 3000, 0, 0.5, 36),
+  mini_10000: createStarPackage("mini_10000", 10000, 600, 1.6, 118),
+  mini_18000: createStarPackage("mini_18000", 18000, 2200, 3.2, 216),
+  mini_30000: createStarPackage("mini_30000", 30000, 6000, 5.3, 360),
+});
+
 export function getStarPackage(id) {
-  return STAR_PACKAGES[id] || null;
+  return STAR_PACKAGES[id] || MINI_APP_STAR_PACKAGES[id] || null;
 }
 
 export function createCustomStarPackage(credits, discount = null) {
