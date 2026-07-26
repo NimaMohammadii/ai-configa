@@ -34,8 +34,8 @@ export function customStarsInvoiceText(pack, state = {}) {
     `Estimated value: <b>$${formatUsd(pack.usd)}</b>`,
     starsAmountLine(pack, lang),
     "",
-    `Rate: <b>about 90.91 credits = 1 ⭐️</b>`,
-    lang === "fa" ? "برای دریافت فاکتور پرداخت تایید کن" : "Confirm to receive the payment invoice",
+    `Rate: <b>85 credits = 1 ⭐️</b>`,
+    lang === "fa" ? "هر ۸۵ کردیت برابر ۱ استارز است. برای دریافت فاکتور پرداخت تایید کن" : "Every 85 credits equals 1 Telegram Star. Confirm to receive the payment invoice",
   ].join("\n");
 }
 
