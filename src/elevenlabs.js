@@ -1,5 +1,6 @@
 const ELEVEN_TIMEOUT_MS = 80000;
 const MAX_TTS_CHARS = 5000;
+const ELEVEN_API_OPTIONS = ["ELEVEN_API", "ELEVEN_API_1A", "ELEVEN_API_2v", "ELEVEN_API_3x"];
 
 const ELEVEN_ERROR_MESSAGES = {
   en: {
@@ -115,7 +116,8 @@ const ELEVEN_ERROR_MESSAGES = {
 };
 
 export async function textToDialogue(env, inputs, lang = "en") {
-  if (!env.ELEVEN_API) {
+  const apiKey = await getSelectedElevenApiKey(env);
+  if (!apiKey) {
     throw new Error(elevenError(lang, "missingApi"));
   }
 
@@ -142,7 +144,7 @@ export async function textToDialogue(env, inputs, lang = "en") {
     headers: {
       "Accept": "audio/mpeg",
       "Content-Type": "application/json",
-      "xi-api-key": env.ELEVEN_API,
+      "xi-api-key": apiKey,
     },
     body: JSON.stringify({
       inputs: cleanInputs,
@@ -159,7 +161,8 @@ export async function textToDialogue(env, inputs, lang = "en") {
 }
 
 export async function textToSpeech(env, text, voiceId, lang = "en") {
-  if (!env.ELEVEN_API) {
+  const apiKey = await getSelectedElevenApiKey(env);
+  if (!apiKey) {
     throw new Error(elevenError(lang, "missingApi"));
   }
 
@@ -177,7 +180,7 @@ export async function textToSpeech(env, text, voiceId, lang = "en") {
     headers: {
       "Accept": "audio/mpeg",
       "Content-Type": "application/json",
-      "xi-api-key": env.ELEVEN_API,
+      "xi-api-key": apiKey,
     },
     body: JSON.stringify({
       text: cleanText,
@@ -191,6 +194,18 @@ export async function textToSpeech(env, text, voiceId, lang = "en") {
   }
 
   return await response.arrayBuffer();
+}
+
+export async function getSelectedElevenApiKey(env) {
+  let keyName = "ELEVEN_API";
+  if (env.DB) {
+    await env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    ).run();
+    const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = 'eleven_api_key_name'").first();
+    if (ELEVEN_API_OPTIONS.includes(row?.value)) keyName = row.value;
+  }
+  return String(env[keyName] || "").trim();
 }
 
 async function fetchWithTimeout(url, options, lang) {
