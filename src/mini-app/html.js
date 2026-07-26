@@ -75,14 +75,14 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260725-enhance-stability-03"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260726-credits-shop-01"/>
 </head>
 <body>
   <main class="app">
     <section id="flow" class="view active">
       <div class="tts-page">
         <div class="tts-head">
-          <div class="credit-tools"><div class="credit-pill"><span id="balance">—</span><span>credits</span></div><button id="wheelOpenButton" class="wheel-open-button" data-action="open-wheel" type="button" aria-label="Open daily reward wheel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.75v4.1M12 16.15v4.1M3.75 12h4.1M16.15 12h4.1M6.16 6.16l2.9 2.9M14.94 14.94l2.9 2.9M17.84 6.16l-2.9 2.9M9.06 14.94l-2.9 2.9" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/><circle cx="12" cy="12" r="2.15" fill="currentColor"/></svg><span class="wheel-ready-dot" aria-hidden="true"></span></button></div>
+          <div class="credit-tools"><button class="credit-pill" data-action="open-credits-page" type="button" aria-label="Buy credits"><span id="balance">—</span><span>credits</span></button><button id="wheelOpenButton" class="wheel-open-button" data-action="open-wheel" type="button" aria-label="Open daily reward wheel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.75v4.1M12 16.15v4.1M3.75 12h4.1M16.15 12h4.1M6.16 6.16l2.9 2.9M14.94 14.94l2.9 2.9M17.84 6.16l-2.9 2.9M9.06 14.94l-2.9 2.9" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/><circle cx="12" cy="12" r="2.15" fill="currentColor"/></svg><span class="wheel-ready-dot" aria-hidden="true"></span></button></div>
           <div class="mode-tools"><div id="voiceWrap" class="voice-wrap">
             <button class="voice-btn" data-action="toggle-voice" type="button">
               <span id="voiceButtonAvatar" class="voice-button-avatar" aria-hidden="true"></span>
@@ -171,8 +171,35 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <section id="voicesPage" class="voices-page" aria-hidden="true"><button class="keyboard-dismiss voices-keyboard-dismiss" data-action="dismiss-keyboard" type="button" aria-label="Hide keyboard"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><header class="voices-page-head"><div><span>VOICE LIBRARY</span><h2>Voices</h2></div><div class="voices-page-count"><strong id="savedVoiceCount">1</strong><span>/ 6 saved</span></div></header><label class="voice-library-search" for="voiceLibrarySearch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3" stroke="currentColor" stroke-width="1.9"/><path d="m15.5 15.5 4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg><input id="voiceLibrarySearch" type="search" autocomplete="off" placeholder="Search voices..."/></label><section class="saved-voices-strip"><div class="saved-voices-copy"><strong>Your voices</strong><small>Available in the quick menu</small></div><div id="savedVoiceAvatars" class="saved-voice-avatars"></div></section><div class="voice-library-grid">${VOICE_LIBRARY_CARDS}</div></section>
 
+
+  <section id="creditsPage" class="credits-page" aria-hidden="true">
+    <div class="credits-page-scroll">
+      <header class="credits-page-head">
+        <div><span>TELEGRAM STARS</span><h2>Buy credits</h2><p>Top up instantly and keep creating.</p></div>
+        <div class="credits-balance"><small>YOUR BALANCE</small><strong id="creditsPageBalance">—</strong><span>credits</span></div>
+      </header>
+      <section class="credits-custom">
+        <div class="credits-section-copy"><div><span>FLEXIBLE AMOUNT</span><h3>Choose your amount</h3></div><small>1,000 credits = 12 Stars</small></div>
+        <label class="credits-amount-field" for="customCreditsInput"><input id="customCreditsInput" type="number" inputmode="numeric" min="1" max="1000000" step="1" value="1000" autocomplete="off"/><span>credits</span></label>
+        <input id="customCreditsRange" class="credits-amount-range" type="range" min="1000" max="100000" step="1000" value="1000" aria-label="Credit amount"/>
+        <div class="credits-custom-summary"><div><strong id="customStarsValue">12 Stars</strong><small>Telegram Stars</small></div><div><strong id="customUsdValue">$0.17</strong><small>estimated value</small></div></div>
+        <button id="customCreditsBuy" class="credits-primary-button" data-action="buy-custom-credits" type="button"><span>Continue with 12 Stars</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </section>
+      <section class="credits-packs-section">
+        <div class="credits-packs-head"><div><span>READY TO BUY</span><h3>Credit packs</h3></div><small>Bonus included</small></div>
+        <div class="credits-pack-list">
+          <button class="credits-pack" data-action="buy-credit-package" data-package-id="mini_3000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>3,000</strong><small>credits</small></span><span class="credits-pack-total">3,000 total credits</span></span><span class="credits-pack-price"><strong>36 <i>★</i></strong><small>$0.5</small></span></button>
+          <button class="credits-pack featured" data-action="buy-credit-package" data-package-id="mini_10000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>10,000 <b>+ 600</b></strong><em>600 BONUS</em></span><span class="credits-pack-total">10,600 total credits</span></span><span class="credits-pack-price"><strong>118 <i>★</i></strong><small>$1.6</small></span></button>
+          <button class="credits-pack" data-action="buy-credit-package" data-package-id="mini_18000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>18,000 <b>+ 2,200</b></strong><em>2,200 BONUS</em></span><span class="credits-pack-total">20,200 total credits</span></span><span class="credits-pack-price"><strong>216 <i>★</i></strong><small>$3.2</small></span></button>
+          <button class="credits-pack" data-action="buy-credit-package" data-package-id="mini_30000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>30,000 <b>+ 6,000</b></strong><em>6,000 BONUS</em></span><span class="credits-pack-total">36,000 total credits</span></span><span class="credits-pack-price"><strong>360 <i>★</i></strong><small>$5.3</small></span></button>
+        </div>
+      </section>
+      <p class="credits-footnote"><span>★</span> Secure payment powered by Telegram Stars</p>
+    </div>
+  </section>
+
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260725-enhance-stability-03"></script>
+  <script type="module" src="/mini-app/app.js?v=20260726-credits-shop-01"></script>
 </body>
 </html>`;
