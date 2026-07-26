@@ -136,5 +136,6 @@ function formatNumber(value) {
 }
 
 function formatUsd(value) {
-  return Number(value).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const displayValue = Math.floor((Number(value) + Number.EPSILON) * 100) / 100;
+  return displayValue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
