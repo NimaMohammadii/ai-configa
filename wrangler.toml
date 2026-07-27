@@ -13,5 +13,9 @@ binding = "DB"
 database_name = "ai-configa-db"
 database_id = "33c8cf30-4daa-498a-8706-d457869f5d25"
 
+[[r2_buckets]]
+binding = "EXPLORE_MEDIA"
+bucket_name = "ai-configa-explore-media"
+
 [triggers]
 crons = ["* * * * *"]

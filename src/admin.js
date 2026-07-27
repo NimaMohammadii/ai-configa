@@ -1654,7 +1654,7 @@ export async function moveImageExploreItemToPosition(env, itemId, position) {
 
 export async function getImageExploreItems(env) {
   const items = await readImageExploreItems(env);
-  return items.filter((item) => item.prompt || item.fileId).sort((a, b) => a.order - b.order).slice(0, 50);
+  return items.filter((item) => item.prompt || item.fileId || item.storageKey).sort((a, b) => a.order - b.order).slice(0, 50);
 }
 
 async function readImageExploreItems(env) {
@@ -1667,6 +1667,7 @@ async function readImageExploreItems(env) {
     id: String(item.id || index + 1),
     prompt: String(item.prompt || ""),
     fileId: String(item.fileId || ""),
+    storageKey: String(item.storageKey || ""),
     mediaType: item.mediaType === "video" ? "video" : "image",
     order: Number(item.order || index + 1),
     size: normalizeImageExploreSize(item.size),
@@ -1687,17 +1688,29 @@ export async function addImageExplorePrompt(env, prompt) {
   const clean = String(prompt || "").trim();
   const items = await readImageExploreItems(env);
   const id = String(Date.now());
-  items.push({ id, prompt: clean, fileId: "", mediaType: "image", size: "1024x1024", tags: [], order: items.length + 1 });
+  items.push({ id, prompt: clean, fileId: "", storageKey: "", mediaType: "image", size: "1024x1024", tags: [], order: items.length + 1 });
   await saveImageExploreItems(env, items);
   return id;
 }
 
-export async function setImageExploreImage(env, itemId, fileId, mediaType = "image") {
+export async function setImageExploreImage(env, itemId, fileId, mediaType = "image", storageKey = "") {
   const items = await readImageExploreItems(env);
   const item = items.find((entry) => entry.id === String(itemId));
   if (!item) throw new Error("Explore card not found");
+  if (item.storageKey && item.storageKey !== String(storageKey || "") && env.EXPLORE_MEDIA) {
+    await env.EXPLORE_MEDIA.delete(item.storageKey).catch(() => null);
+  }
   item.fileId = String(fileId);
+  item.storageKey = String(storageKey || "");
   item.mediaType = mediaType === "video" ? "video" : "image";
+  await saveImageExploreItems(env, items);
+}
+
+export async function setImageExploreStorageKey(env, itemId, storageKey) {
+  const items = await readImageExploreItems(env);
+  const item = items.find((entry) => entry.id === String(itemId));
+  if (!item) throw new Error("Explore card not found");
+  item.storageKey = String(storageKey || "");
   await saveImageExploreItems(env, items);
 }
 
@@ -1725,7 +1738,12 @@ export async function toggleImageExploreTag(env, itemId, tag) {
 }
 
 export async function deleteImageExploreItem(env, itemId) {
-  const items = (await readImageExploreItems(env)).filter((item) => item.id !== String(itemId)).map((item, index) => ({ ...item, order: index + 1 }));
+  const current = await readImageExploreItems(env);
+  const deleted = current.find((item) => item.id === String(itemId));
+  if (deleted?.storageKey && env.EXPLORE_MEDIA) {
+    await env.EXPLORE_MEDIA.delete(deleted.storageKey).catch(() => null);
+  }
+  const items = current.filter((item) => item.id !== String(itemId)).map((item, index) => ({ ...item, order: index + 1 }));
   await saveImageExploreItems(env, items);
 }
 

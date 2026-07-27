@@ -116,6 +116,7 @@ import {
 } from "./admin.js";
 import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
+import { storeTelegramExploreMedia } from "./explore-media.js";
 import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
 import { getDemoText } from "./demo-texts.js";
 import { enqueueImageJob } from "./image-jobs.js";
@@ -1249,7 +1250,8 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
     const fileId = getLargestPhotoFileId(message);
     if (!fileId) return false;
     const itemId = action.action === "image_explore_prompt" ? await addImageExplorePrompt(env, "") : action.target_user_id;
-    await setImageExploreImage(env, itemId, fileId);
+    const storageKey = await storeTelegramExploreMedia(env, itemId, fileId, "image").catch(() => "");
+    await setImageExploreImage(env, itemId, fileId, "image", storageKey);
     await deleteMessage(env, chatId, inputMessageId).catch(() => null);
     await setAdminAction(env, adminId, "image_explore_tags", { targetUserId: itemId, chatId: action.chat_id || chatId, messageId: Number(action.message_id) });
     const item = (await getImageExploreItems(env)).find((entry) => entry.id === itemId);
@@ -1342,7 +1344,8 @@ async function handleAdminExploreVideoInput(env, chatId, adminId, message) {
   }
 
   const itemId = action.action === "image_explore_prompt" ? await addImageExplorePrompt(env, "") : action.target_user_id;
-  await setImageExploreImage(env, itemId, video.file_id, "video");
+  const storageKey = await storeTelegramExploreMedia(env, itemId, video.file_id, "video").catch(() => "");
+  await setImageExploreImage(env, itemId, video.file_id, "video", storageKey);
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
   await setAdminAction(env, adminId, "image_explore_tags", { targetUserId: itemId, chatId: action.chat_id || chatId, messageId: Number(action.message_id) });
   const item = (await getImageExploreItems(env)).find((entry) => entry.id === itemId);
