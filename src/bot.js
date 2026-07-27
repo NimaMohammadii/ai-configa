@@ -1328,6 +1328,18 @@ async function handleAdminExploreVideoInput(env, chatId, adminId, message) {
   if (!video?.file_id || !(await isAdmin(env, adminId))) return false;
   const action = await getAdminAction(env, adminId);
   if (!action || (action.action !== "image_explore_image" && action.action !== "image_explore_prompt")) return false;
+  if (Number(video.file_size || 0) > 20 * 1024 * 1024) {
+    await deleteMessage(env, chatId, message.message_id).catch(() => null);
+    await editCurrentMenu(
+      env,
+      action.chat_id || chatId,
+      adminId,
+      Number(action.message_id),
+      adminImageExploreUploadText() + "\n\n❌ Video is too large. Telegram allows Explore videos up to 20 MB. Compress it and send it again.",
+      adminCancelKeyboard("admin_image_explore"),
+    );
+    return true;
+  }
 
   const itemId = action.action === "image_explore_prompt" ? await addImageExplorePrompt(env, "") : action.target_user_id;
   await setImageExploreImage(env, itemId, video.file_id, "video");
