@@ -888,7 +888,7 @@ export async function getAdminWheelUsersPage(env, page = 0, limit = 8) {
     "SELECT COUNT(*) AS total FROM mini_app_wheel_spins WHERE COALESCE(spin_count, 0) > 0"
   ).first();
   const users = await env.DB.prepare(
-    "SELECT w.user_id, u.username, u.first_name, u.last_name, u.last_seen_at, w.last_spin_at, w.reward, COALESCE(w.spin_count, 0) AS spin_count, COALESCE(w.total_reward, 0) AS total_reward " +
+    "SELECT w.user_id, u.username, u.first_name, u.last_name, u.last_seen_at, w.last_spin_at, w.reward, COALESCE(w.reward_discount_percent, 0) AS reward_discount_percent, COALESCE(w.spin_count, 0) AS spin_count, COALESCE(w.total_reward, 0) AS total_reward " +
     "FROM mini_app_wheel_spins w LEFT JOIN bot_users u ON u.user_id = w.user_id " +
     "WHERE COALESCE(w.spin_count, 0) > 0 " +
     "ORDER BY w.last_spin_at DESC, w.updated_at DESC LIMIT ? OFFSET ?"
@@ -930,7 +930,10 @@ export async function adminWheelUsersKeyboard(env, page = 0) {
 }
 
 function wheelUserLabel(user) {
-  return userLabel(user) + " • 🎡 #" + formatNumber(user.spin_count || 0) + " • 🏆 " + formatNumber(user.total_reward || 0);
+  const prize = Number(user.reward_discount_percent || 0) > 0
+    ? formatNumber(user.reward_discount_percent) + "% OFF"
+    : formatNumber(user.reward || 0) + " credits";
+  return userLabel(user) + " • 🎡 #" + formatNumber(user.spin_count || 0) + " • 🏆 " + prize;
 }
 
 export async function adminImageUsersText(env, page = 0) {
@@ -1065,7 +1068,7 @@ export async function getAdminUserDetails(env, userId) {
 
   const user = await env.DB.prepare(
     "SELECT b.user_id, b.username, b.first_name, b.last_name, b.last_seen_at, b.created_at, COALESCE(b.return_count, 0) AS return_count, b.last_returned_at, COALESCE(b.mini_app_open_count, 0) AS mini_app_open_count, b.last_mini_app_opened_at, s.language, " +
-    "COALESCE(w.spin_count, 0) AS wheel_spin_count, COALESCE(w.reward, 0) AS wheel_last_reward, COALESCE(w.total_reward, 0) AS wheel_total_reward, w.last_spin_at AS wheel_last_spin_at " +
+    "COALESCE(w.spin_count, 0) AS wheel_spin_count, COALESCE(w.reward, 0) AS wheel_last_reward, COALESCE(w.total_reward, 0) AS wheel_total_reward, COALESCE(w.reward_discount_percent, 0) AS wheel_last_discount_percent, w.last_spin_at AS wheel_last_spin_at " +
     "FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id LEFT JOIN mini_app_wheel_spins w ON w.user_id = b.user_id WHERE b.user_id = ?"
   ).bind(String(userId)).first();
 
@@ -1247,7 +1250,7 @@ export async function adminUserText(env, userId) {
     "Last mini app open: <b>" + escapeHtml(formatTehranTime(user.last_mini_app_opened_at)) + "</b>",
     "Section opens: <b>" + escapeHtml(formatMiniAppSectionOpenSummary(user.sectionOpens)) + "</b>",
     "Wheel spins: <b>" + Number(user.wheel_spin_count || 0).toLocaleString("en-US") + "</b>",
-    "Last wheel prize: <b>" + Number(user.wheel_last_reward || 0).toLocaleString("en-US") + " credits</b>",
+    "Last wheel prize: <b>" + (Number(user.wheel_last_discount_percent || 0) > 0 ? Number(user.wheel_last_discount_percent).toLocaleString("en-US") + "% OFF" : Number(user.wheel_last_reward || 0).toLocaleString("en-US") + " credits") + "</b>",
     "Total wheel prizes: <b>" + Number(user.wheel_total_reward || 0).toLocaleString("en-US") + " credits</b>",
     "Last wheel spin: <b>" + escapeHtml(formatUnixTehranTime(user.wheel_last_spin_at)) + "</b>",
     "Last seen: <b>" + escapeHtml(formatTehranTime(user.last_seen_at)) + "</b>",
