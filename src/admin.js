@@ -1667,6 +1667,7 @@ async function readImageExploreItems(env) {
     id: String(item.id || index + 1),
     prompt: String(item.prompt || ""),
     fileId: String(item.fileId || ""),
+    mediaType: item.mediaType === "video" ? "video" : "image",
     order: Number(item.order || index + 1),
     size: normalizeImageExploreSize(item.size),
     tags: normalizeImageExploreTags(item.tags),
@@ -1686,16 +1687,17 @@ export async function addImageExplorePrompt(env, prompt) {
   const clean = String(prompt || "").trim();
   const items = await readImageExploreItems(env);
   const id = String(Date.now());
-  items.push({ id, prompt: clean, fileId: "", size: "1024x1024", tags: [], order: items.length + 1 });
+  items.push({ id, prompt: clean, fileId: "", mediaType: "image", size: "1024x1024", tags: [], order: items.length + 1 });
   await saveImageExploreItems(env, items);
   return id;
 }
 
-export async function setImageExploreImage(env, itemId, fileId) {
+export async function setImageExploreImage(env, itemId, fileId, mediaType = "image") {
   const items = await readImageExploreItems(env);
   const item = items.find((entry) => entry.id === String(itemId));
   if (!item) throw new Error("Explore card not found");
   item.fileId = String(fileId);
+  item.mediaType = mediaType === "video" ? "video" : "image";
   await saveImageExploreItems(env, items);
 }
 
@@ -1727,25 +1729,31 @@ export async function deleteImageExploreItem(env, itemId) {
   await saveImageExploreItems(env, items);
 }
 
-export async function adminImageExploreText(env) {
+export async function adminImageExploreText(env, page = 0) {
   const items = await getImageExploreItems(env);
+  const totalPages = Math.max(1, Math.ceil(items.length / 10));
+  const safePage = Math.max(0, Math.min(Number(page) || 0, totalPages - 1));
   return [
     "🐙 <b>Image Explore References</b>",
     "",
-    "Upload visual reference cards for the mini app Explore row. Users provide their own image; no card prompt is shown or required.",
+    "Upload photos or videos for the mini app Explore section. Photo cards can be used as visual references.",
     "",
-    items.length ? "Cards:" : "No cards yet.",
-    ...items.map((item, index) => "#" + (index + 1) + " · " + imageExploreSizeLabel(item.size) + (item.fileId ? " · 🖼 Ready" : " · <i>Needs image</i>") + " · 🏷 " + imageExploreTagsLabel(item.tags))
+    items.length ? "Cards · page " + (safePage + 1) + "/" + totalPages + ":" : "No cards yet.",
+    ...items.slice(safePage * 10, safePage * 10 + 10).map((item, index) => "#" + (safePage * 10 + index + 1) + " · " + imageExploreSizeLabel(item.size) + (item.fileId ? (item.mediaType === "video" ? " · 🎬 Ready" : " · 🖼 Ready") : " · <i>Needs media</i>") + " · 🏷 " + imageExploreTagsLabel(item.tags))
   ].join("\n");
 }
 
-export function adminImageExploreKeyboard(items = []) {
+export function adminImageExploreKeyboard(items = [], page = 0) {
+  const totalPages = Math.max(1, Math.ceil(items.length / 10));
+  const safePage = Math.max(0, Math.min(Number(page) || 0, totalPages - 1));
+  const pageItems = items.slice(safePage * 10, safePage * 10 + 10);
   const rows = [[{ text: "Add", callback_data: "admin_image_explore_add" }]];
-  items.forEach((item, index) => {
-    const position = index === 0 ? "bottom" : "top";
-    const edgeText = index === 0 ? "Last" : "First";
+  pageItems.forEach((item, index) => {
+    const absoluteIndex = safePage * 10 + index;
+    const position = absoluteIndex === 0 ? "bottom" : "top";
+    const edgeText = absoluteIndex === 0 ? "Last" : "First";
     rows.push([
-      { text: String(index + 1), callback_data: "admin_image_explore_noop" },
+      { text: String(absoluteIndex + 1), callback_data: "admin_image_explore_noop" },
       { text: "Upload", callback_data: "admin_image_explore_upload:" + item.id },
       { text: "Delete", callback_data: "admin_image_explore_delete:" + item.id },
       { text: imageExploreSizeShortLabel(item.size), callback_data: "admin_image_explore_size:" + item.id },
@@ -1753,16 +1761,20 @@ export function adminImageExploreKeyboard(items = []) {
       { text: "Move", callback_data: "admin_image_explore_move:" + item.id }
     ]);
   });
+  const nav = [];
+  if (safePage > 0) nav.push({ text: "← Prev", callback_data: "admin_image_explore:" + (safePage - 1) });
+  if (safePage + 1 < totalPages) nav.push({ text: "Next →", callback_data: "admin_image_explore:" + (safePage + 1) });
+  if (nav.length) rows.push(nav);
   rows.push([{ text: "← Back", callback_data: "admin_main" }]);
   return { inline_keyboard: rows };
 }
 
 export function adminImageExplorePromptText() {
-  return "🐙 <b>Add Explore Reference</b>\n\nSend one photo. It will be used as a visual reference; no text prompt is needed.";
+  return "🐙 <b>Add Explore Media</b>\n\nSend one photo or video. Photos can be used as visual references; videos will play in Explore.";
 }
 
 export function adminImageExploreUploadText() {
-  return "🖼 <b>Upload Explore Card Image</b>\n\nSend one photo for this card.";
+  return "🖼 <b>Upload Explore Media</b>\n\nSend one photo or video for this card.";
 }
 
 export function adminImageExploreTagsText(item = null) {

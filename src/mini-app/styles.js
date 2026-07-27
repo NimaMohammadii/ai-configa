@@ -119,4 +119,9 @@ html,body,.view,.image-workspace,.voice-menu,.history-list{scrollbar-width:none;
 .explore-reel-action{backdrop-filter:none;-webkit-backdrop-filter:none}
 .explore-reel-action,.explore-reel-sound{touch-action:manipulation}
 @keyframes reelMediaInSafe{from{opacity:.35;transform:scale(1.045)}to{opacity:1;transform:scale(1.018)}}
+
+/* Explore supports both uploaded photos and videos. */
+.image-explore-card video,.explore-page-card video{display:block;width:100%;height:100%;object-fit:cover}
+.explore-video-card .explore-generate-mark{display:none}
+.explore-reel video.explore-reel-media{width:100%;height:100%;object-fit:cover}
 `;
