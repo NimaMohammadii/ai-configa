@@ -2,29 +2,36 @@ import { getImageExploreItems, setImageExploreStorageKey } from "./admin.js";
 import { tgJson } from "./telegram-api.js";
 
 const EXPLORE_MEDIA_PATH = "/mini-app/api/explore-image/";
+const EXPLORE_POSTER_PATH = "/mini-app/api/explore-poster/";
 
 export function isExploreMediaRequest(request) {
   const url = new URL(request.url);
-  return (request.method === "GET" || request.method === "HEAD") && url.pathname.startsWith(EXPLORE_MEDIA_PATH);
+  return (request.method === "GET" || request.method === "HEAD")
+    && (url.pathname.startsWith(EXPLORE_MEDIA_PATH) || url.pathname.startsWith(EXPLORE_POSTER_PATH));
 }
 
 export async function handleExploreMediaRequest(request, env) {
   const url = new URL(request.url);
-  const itemId = decodeURIComponent(url.pathname.slice(EXPLORE_MEDIA_PATH.length));
+  const isPoster = url.pathname.startsWith(EXPLORE_POSTER_PATH);
+  const pathPrefix = isPoster ? EXPLORE_POSTER_PATH : EXPLORE_MEDIA_PATH;
+  const itemId = decodeURIComponent(url.pathname.slice(pathPrefix.length));
   const item = (await getImageExploreItems(env)).find((entry) => entry.id === itemId);
-  if (!item || (!item.fileId && !item.storageKey)) return new Response("Not Found", { status: 404 });
+  const fileId = isPoster ? item?.posterFileId : item?.fileId;
+  const storageKey = isPoster ? item?.posterStorageKey : item?.storageKey;
+  const mediaType = isPoster ? "image" : item?.mediaType;
+  if (!item || (!fileId && !storageKey)) return new Response("Not Found", { status: 404 });
   if (env.EXPLORE_MEDIA) {
-    let storageKey = item.storageKey;
-    if (!storageKey && item.fileId) {
-      storageKey = await storeTelegramExploreMedia(env, item.id, item.fileId, item.mediaType).catch(() => "");
-      if (storageKey) await setImageExploreStorageKey(env, item.id, storageKey).catch(() => null);
+    let resolvedStorageKey = storageKey;
+    if (!isPoster && !resolvedStorageKey && fileId) {
+      resolvedStorageKey = await storeTelegramExploreMedia(env, item.id, fileId, mediaType).catch(() => "");
+      if (resolvedStorageKey) await setImageExploreStorageKey(env, item.id, resolvedStorageKey).catch(() => null);
     }
-    if (storageKey) {
-      const response = await serveExploreMediaFromR2(request, env.EXPLORE_MEDIA, storageKey, item.mediaType);
+    if (resolvedStorageKey) {
+      const response = await serveExploreMediaFromR2(request, env.EXPLORE_MEDIA, resolvedStorageKey, mediaType);
       if (response) return response;
     }
   }
-  return proxyTelegramExploreFile(request, env, item.fileId, item.mediaType);
+  return proxyTelegramExploreFile(request, env, fileId, mediaType);
 }
 
 export async function storeTelegramExploreMedia(env, itemId, fileId, mediaType = "image") {
