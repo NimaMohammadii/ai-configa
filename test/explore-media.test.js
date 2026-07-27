@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { proxyTelegramExploreFile, serveExploreMediaFromR2, storeTelegramExploreMedia } from "../src/explore-media.js";
+import { isExploreMediaRequest, proxyTelegramExploreFile, serveExploreMediaFromR2, storeTelegramExploreMedia } from "../src/explore-media.js";
+
+test("Explore poster requests are routed through the media handler", () => {
+  assert.equal(isExploreMediaRequest(new Request("https://example.com/mini-app/api/explore-poster/item-1")), true);
+});
 
 test("Explore video proxy forwards byte ranges and preserves partial response headers", async (t) => {
   const originalFetch = globalThis.fetch;
