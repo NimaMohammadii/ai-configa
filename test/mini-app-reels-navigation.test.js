@@ -32,7 +32,20 @@ test("Reels audio stays muted outside the active Reels page", () => {
   );
   assert.match(
     MINI_APP_JS,
-    /function pauseExploreReelVideos\(\).*?video\.muted=true;video\.defaultMuted=true;video\.volume=0;video\.setAttribute\('muted',''\).*?video\.pause\(\)/s,
+    /function stopExploreReelVideo\(video,release\).*?video\.muted=true;video\.defaultMuted=true;video\.volume=0;video\.setAttribute\('muted',''\).*?video\.pause\(\)/s,
+  );
+  assert.match(MINI_APP_JS, /var exploreReelVideoRegistry=new Set\(\)/);
+  assert.match(
+    MINI_APP_JS,
+    /function stopExploreReelVideo\(video,release\).*?video\.removeAttribute\('src'\).*?video\.load\(\)/s,
+  );
+  assert.match(
+    MINI_APP_JS,
+    /function renderExploreReels\(\).*?releaseExploreReelVideos\(\).*?feed\.innerHTML=/s,
+  );
+  assert.match(
+    MINI_APP_JS,
+    /function setExploreReelsPage\(open\).*?if\(!open\)releaseExploreReelVideos\(\)/s,
   );
 });
 
