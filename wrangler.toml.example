@@ -8,3 +8,7 @@ preview_urls = true
 binding = "DB"
 database_name = "ai-configa-db"
 database_id = "PASTE_REAL_D1_DATABASE_ID_HERE"
+
+[[r2_buckets]]
+binding = "EXPLORE_MEDIA"
+bucket_name = "ai-configa-explore-media"

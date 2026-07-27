@@ -7,7 +7,7 @@ test("Reels explicitly start only the visible video", () => {
   assert.match(MINI_APP_JS, /function syncExploreReelPlayback\(\)/);
   assert.match(MINI_APP_JS, /Number\(reel\.getAttribute\('data-reel-offset'\)\)===0/);
   assert.match(MINI_APP_JS, /playing=video\.play\(\)/);
-  assert.match(MINI_APP_JS, /video\.preload='auto'/);
+  assert.match(MINI_APP_JS, /var preload=active\|\|exploreReelsIsOpen\(\)&&offset===1\?'auto':'metadata'/);
   assert.match(MINI_APP_JS, /video.loop=true/);
   assert.match(MINI_APP_JS, /var exploreReelAudioEnabled=readExploreReelAudioState()/);
   assert.match(MINI_APP_JS, /data-action="toggle-explore-reel-audio"/);
@@ -24,11 +24,11 @@ test("Reels explicitly start only the visible video", () => {
 test("Reels audio stays muted outside the active Reels page", () => {
   assert.match(
     MINI_APP_JS,
-    /class="explore-reel-media" src=".*?" muted loop autoplay/s,
+    /class="explore-reel-media" src=".*?" muted loop playsinline/s,
   );
   assert.match(
     MINI_APP_JS,
-    /var muted=!exploreReelAudioEnabled\|\|!isActiveExploreReelVideo\(video\)/,
+    /var active=isActiveExploreReelVideo\(video\);var muted=!exploreReelAudioEnabled\|\|!active/,
   );
   assert.match(
     MINI_APP_JS,
