@@ -55,7 +55,7 @@ export async function processPendingBroadcastJobs(env) {
   }
 
   const action = await getAdminAction(env, job.admin_id).catch(() => null);
-  if (action?.target_user_id !== job.token || action.action !== "broadcast_sending") {
+  if (action?.target_user_id === job.token && action.action === "broadcast_cancelled") {
     await finishBroadcastJob(env, job, true);
     return true;
   }
