@@ -21,6 +21,21 @@ test("Reels explicitly start only the visible video", () => {
   assert.match(MINI_APP_JS, /setExploreReelsPage\(true\);syncExploreReelPlayback\(\)/);
 });
 
+test("Reels audio stays muted outside the active Reels page", () => {
+  assert.match(
+    MINI_APP_JS,
+    /class="explore-reel-media" src=".*?" muted loop autoplay/s,
+  );
+  assert.match(
+    MINI_APP_JS,
+    /var muted=!exploreReelAudioEnabled\|\|!isActiveExploreReelVideo\(video\)/,
+  );
+  assert.match(
+    MINI_APP_JS,
+    /function pauseExploreReelVideos\(\).*?video\.muted=true;video\.defaultMuted=true;video\.volume=0;video\.setAttribute\('muted',''\).*?video\.pause\(\)/s,
+  );
+});
+
 test("the Reels voice profile navigates without previewing and returns to the same Reel", () => {
   assert.match(MINI_APP_JS, /data-action="open-reel-voice"/);
   assert.doesNotMatch(MINI_APP_JS, /explore-reel-sound" data-action="preview-voice"/);
