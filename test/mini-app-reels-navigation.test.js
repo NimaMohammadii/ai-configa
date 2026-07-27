@@ -25,3 +25,17 @@ test("the Reels voice profile navigates without previewing and returns to the sa
   assert.match(MINI_APP_JS, /if\(returnToReels\)restoreExploreReels\(\)/);
   assert.doesNotMatch(MINI_APP_JS, /function restoreExploreReels\(\)\{[^}]*exploreReelIndex=0/);
 });
+
+test("the Voices BackButton replaces the underlying Explore handlers", () => {
+  const setVoicesPage = MINI_APP_JS.match(
+    /function setVoicesPage\(open\)\{.*?\n  function openVoicesPage\(\)/s,
+  )?.[0];
+
+  assert.ok(setVoicesPage, "setVoicesPage should be present");
+  assert.match(setVoicesPage, /offClick\(closeExplorePage\)/);
+  assert.match(setVoicesPage, /offClick\(closeExploreReels\)/);
+  assert.match(
+    setVoicesPage,
+    /offClick\(closeExploreReels\).*?onClick\(closeVoicesPage\)/s,
+  );
+});
