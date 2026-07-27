@@ -44,7 +44,8 @@ export async function proxyTelegramExploreFile(request, env, fileId, mediaType =
     const value = upstream.headers.get(name);
     if (value) headers.set(name, value);
   }
-  if (!headers.has("content-type")) {
+  const contentType = String(headers.get("content-type") || "").toLowerCase();
+  if (!contentType || (mediaType === "video" && (contentType === "application/octet-stream" || contentType === "binary/octet-stream"))) {
     headers.set("content-type", mediaType === "video" ? "video/mp4" : "image/jpeg");
   }
   if (mediaType === "video" && !headers.has("accept-ranges")) {

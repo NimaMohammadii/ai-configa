@@ -38,3 +38,31 @@ test("Explore video proxy forwards byte ranges and preserves partial response he
   assert.equal(response.headers.get("accept-ranges"), "bytes");
   assert.equal(await response.text(), "partial-video");
 });
+
+test("Explore video proxy exposes generic Telegram files as MP4", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let call = 0;
+  globalThis.fetch = async () => {
+    call += 1;
+    if (call === 1) return Response.json({ ok: true, result: { file_path: "videos/demo.mp4" } });
+    return new Response("video", {
+      headers: {
+        "content-type": "application/octet-stream",
+        "content-length": "5",
+      },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const response = await proxyTelegramExploreFile(
+    new Request("https://example.com/mini-app/api/explore-image/1"),
+    { BOT_TOKEN: "secret" },
+    "video-file",
+    "video",
+  );
+
+  assert.equal(response.headers.get("content-type"), "video/mp4");
+  assert.equal(response.headers.get("accept-ranges"), "bytes");
+});
