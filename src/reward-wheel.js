@@ -8,7 +8,7 @@ export const WHEEL_PRIZES = [
   { type: "discount", discountPercent: 30, weight: 2 },
   { type: "credits", credits: 2100, weight: 2 },
   { type: "credits", credits: 150, weight: 24 },
-  { type: "credits", credits: 400, weight: 24 },
+  { type: "credits", credits: 250, weight: 24 },
   { type: "discount", discountPercent: 15, weight: 24 },
   { type: "credits", credits: 80, weight: 24 },
 ];
