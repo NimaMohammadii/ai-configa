@@ -150,6 +150,10 @@ export async function handleMessage(message, env) {
 
   const state = await getState(env, userId);
 
+  if (await handleAdminExploreVideoInput(env, chatId, userId, message)) {
+    return;
+  }
+
   if (audioAttachment && await handleAdminAudioInput(env, chatId, userId, messageId, audioAttachment)) {
     return;
   }
@@ -571,12 +575,13 @@ export async function handleCallback(query, env) {
     await editCurrentMenu(env, chatId, userId, messageId, (await adminImagePricingText(env)) + "\n\n⛔ Discount canceled.", adminImagePricingKeyboard(settings));
     return;
   }
-  if (data === "admin_image_explore") {
+  if (data === "admin_image_explore" || /^admin_image_explore:\d+$/.test(data)) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
+    const page = data.includes(":") ? Number(data.split(":")[1]) || 0 : 0;
     const items = await getImageExploreItems(env);
-    await editCurrentMenu(env, chatId, userId, messageId, await adminImageExploreText(env), adminImageExploreKeyboard(items));
+    await editCurrentMenu(env, chatId, userId, messageId, await adminImageExploreText(env, page), adminImageExploreKeyboard(items, page));
     return;
   }
 
@@ -1316,6 +1321,21 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
   }
 
   return false;
+}
+
+async function handleAdminExploreVideoInput(env, chatId, adminId, message) {
+  const video = message?.video || message?.video_note || (String(message?.document?.mime_type || "").startsWith("video/") ? message.document : null);
+  if (!video?.file_id || !(await isAdmin(env, adminId))) return false;
+  const action = await getAdminAction(env, adminId);
+  if (!action || (action.action !== "image_explore_image" && action.action !== "image_explore_prompt")) return false;
+
+  const itemId = action.action === "image_explore_prompt" ? await addImageExplorePrompt(env, "") : action.target_user_id;
+  await setImageExploreImage(env, itemId, video.file_id, "video");
+  await deleteMessage(env, chatId, message.message_id).catch(() => null);
+  await setAdminAction(env, adminId, "image_explore_tags", { targetUserId: itemId, chatId: action.chat_id || chatId, messageId: Number(action.message_id) });
+  const item = (await getImageExploreItems(env)).find((entry) => entry.id === itemId);
+  await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageExploreTagsText(item) + "\n\n✅ Video uploaded. Now choose tags.", adminImageExploreTagsKeyboard(itemId, item?.tags || []));
+  return true;
 }
 
 function getLargestPhotoFileId(message) {
