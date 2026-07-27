@@ -19,6 +19,9 @@ test("Reels explicitly start only the visible video", () => {
   assert.match(MINI_APP_JS, /video\.addEventListener\('playing',function\(\)\{markExploreReelReady\(video\);warmNextExploreReelVideo\(video\)/);
   assert.match(MINI_APP_JS, /class="explore-reel-cover"/);
   assert.match(MINI_APP_JS, /poster=".*?"/s);
+  assert.match(MINI_APP_JS, /function prepareExploreCardPoster\(video\)/);
+  assert.match(MINI_APP_JS, /video\.currentTime=\.001/);
+  assert.match(MINI_APP_JS, /requestAnimationFrame\(prepareExploreCardPosters\)/);
   assert.match(MINI_APP_JS, /function retryExploreReelSource\(video\)/);
   assert.match(MINI_APP_JS, /video\.addEventListener\('ended'/);
   assert.match(MINI_APP_JS, /video\._reelPlayRetry=setTimeout/);
