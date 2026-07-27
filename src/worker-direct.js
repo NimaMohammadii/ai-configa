@@ -10,6 +10,7 @@ import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, handleStarsTextInput, isStarsCallback } from "./stars-flow.js";
 import { handleSupportMessage } from "./support-flow-strict.js";
+import { handleExploreMediaRequest, isExploreMediaRequest } from "./explore-media.js";
 
 export default {
   async scheduled(event, env, ctx) {
@@ -17,6 +18,10 @@ export default {
   },
 
   async fetch(request, env, ctx) {
+    if (isExploreMediaRequest(request)) {
+      return handleExploreMediaRequest(request, env);
+    }
+
     if (isMiniAppRequest(request)) {
       return handleMiniAppRequest(request, env);
     }
