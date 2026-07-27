@@ -126,4 +126,12 @@ html,body,.view,.image-workspace,.voice-menu,.history-list{scrollbar-width:none;
 .image-explore-card video,.explore-page-card video{display:block;width:100%;height:100%;object-fit:cover}
 .explore-video-card .explore-generate-mark{display:none}
 .explore-reel video.explore-reel-media{width:100%;height:100%;object-fit:cover}
+.explore-reel.media-waiting video.explore-reel-media{opacity:0;animation:none}
+.explore-reel.media-ready video.explore-reel-media{opacity:1;animation:reelMediaInSafe .42s cubic-bezier(.16,.86,.22,1) both}
+.explore-reel-cover{position:absolute;inset:0;z-index:1;overflow:hidden;background:#0a0a0a;opacity:1;visibility:visible;transition:opacity .28s ease,visibility 0s linear .28s;pointer-events:none}
+.explore-reel-cover img{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover;transform:scale(1.018)}
+.explore-reel-loader{position:absolute;z-index:0;left:50%;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;border:2px solid rgba(255,255,255,.18);border-top-color:rgba(255,255,255,.82);border-radius:50%;animation:exploreReelLoading .72s linear infinite}
+.explore-reel.media-ready .explore-reel-cover{opacity:0;visibility:hidden}
+.explore-reel-shade{z-index:2}
+@keyframes exploreReelLoading{to{transform:rotate(360deg)}}
 `;

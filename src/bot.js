@@ -1370,7 +1370,12 @@ async function handleAdminExploreVideoInput(env, chatId, adminId, message) {
 
   const itemId = action.action === "image_explore_prompt" ? await addImageExplorePrompt(env, "") : action.target_user_id;
   const storageKey = await storeTelegramExploreMedia(env, itemId, video.file_id, "video").catch(() => "");
-  await setImageExploreImage(env, itemId, video.file_id, "video", storageKey);
+  const thumbnail = video.thumbnail || video.thumb || null;
+  const posterFileId = String(thumbnail?.file_id || "");
+  const posterStorageKey = posterFileId
+    ? await storeTelegramExploreMedia(env, itemId + "-poster", posterFileId, "image").catch(() => "")
+    : "";
+  await setImageExploreImage(env, itemId, video.file_id, "video", storageKey, posterFileId, posterStorageKey);
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
   await clearAdminAction(env, adminId);
   const item = (await getImageExploreItems(env)).find((entry) => entry.id === itemId);
