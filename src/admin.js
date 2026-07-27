@@ -1669,7 +1669,6 @@ async function readImageExploreItems(env) {
     fileId: String(item.fileId || ""),
     storageKey: String(item.storageKey || ""),
     mediaType: item.mediaType === "video" ? "video" : "image",
-    voice: VOICE_NAMES.includes(String(item.voice || "")) ? String(item.voice) : "",
     order: Number(item.order || index + 1),
     size: normalizeImageExploreSize(item.size),
     tags: normalizeImageExploreTags(item.tags),
@@ -1689,7 +1688,7 @@ export async function addImageExplorePrompt(env, prompt) {
   const clean = String(prompt || "").trim();
   const items = await readImageExploreItems(env);
   const id = String(Date.now());
-  items.push({ id, prompt: clean, fileId: "", storageKey: "", mediaType: "image", voice: "", size: "1024x1024", tags: [], order: items.length + 1 });
+  items.push({ id, prompt: clean, fileId: "", storageKey: "", mediaType: "image", size: "1024x1024", tags: [], order: items.length + 1 });
   await saveImageExploreItems(env, items);
   return id;
 }
@@ -1713,17 +1712,6 @@ export async function setImageExploreStorageKey(env, itemId, storageKey) {
   if (!item) throw new Error("Explore card not found");
   item.storageKey = String(storageKey || "");
   await saveImageExploreItems(env, items);
-}
-
-export async function setImageExploreVoice(env, itemId, voice) {
-  const items = await readImageExploreItems(env);
-  const item = items.find((entry) => entry.id === String(itemId));
-  if (!item) throw new Error("Explore card not found");
-  const cleanVoice = String(voice || "").trim();
-  if (!VOICE_NAMES.includes(cleanVoice)) throw new Error("Voice not found");
-  item.voice = cleanVoice;
-  await saveImageExploreItems(env, items);
-  return cleanVoice;
 }
 
 export async function setImageExploreTags(env, itemId, tags) {
@@ -1769,7 +1757,7 @@ export async function adminImageExploreText(env, page = 0) {
     "Upload photos or videos for the mini app Explore section. Photo cards can be used as visual references.",
     "",
     items.length ? "Cards · page " + (safePage + 1) + "/" + totalPages + ":" : "No cards yet.",
-    ...items.slice(safePage * 10, safePage * 10 + 10).map((item, index) => "#" + (safePage * 10 + index + 1) + " · " + imageExploreSizeLabel(item.size) + (item.fileId ? (item.mediaType === "video" ? " · 🎬 Ready · 🔊 " + (item.voice || "Not selected") : " · 🖼 Ready") : " · <i>Needs media</i>") + " · 🏷 " + imageExploreTagsLabel(item.tags))
+    ...items.slice(safePage * 10, safePage * 10 + 10).map((item, index) => "#" + (safePage * 10 + index + 1) + " · " + imageExploreSizeLabel(item.size) + (item.fileId ? (item.mediaType === "video" ? " · 🎬 Ready" : " · 🖼 Ready") : " · <i>Needs media</i>") + " · 🏷 " + imageExploreTagsLabel(item.tags))
   ].join("\n");
 }
 
@@ -1790,7 +1778,6 @@ export function adminImageExploreKeyboard(items = [], page = 0) {
       { text: edgeText, callback_data: "admin_image_explore_position:" + item.id + ":" + position },
       { text: "Move", callback_data: "admin_image_explore_move:" + item.id }
     ]);
-    if (item.mediaType === "video") rows.push([{ text: "🔊 Voice: " + (item.voice || "Select"), callback_data: "admin_image_explore_voice:" + item.id }]);
   });
   const nav = [];
   if (safePage > 0) nav.push({ text: "← Prev", callback_data: "admin_image_explore:" + (safePage - 1) });
@@ -1806,22 +1793,6 @@ export function adminImageExplorePromptText() {
 
 export function adminImageExploreUploadText() {
   return "🖼 <b>Upload Explore Media</b>\n\nSend one photo or video for this card.";
-}
-
-export function adminImageExploreVoiceText(item = null) {
-  return "🔊 <b>Choose Video Voice</b>\n\nSelect the voice used in this video.\n\nSelected: <b>" + escapeHtml(item?.voice || "None") + "</b>";
-}
-
-export function adminImageExploreVoiceKeyboard(itemId, selectedVoice = "") {
-  const rows = [];
-  for (let index = 0; index < VOICE_NAMES.length; index += 4) {
-    rows.push(VOICE_NAMES.slice(index, index + 4).map((voice) => ({
-      text: (voice === selectedVoice ? "✅ " : "") + voice,
-      callback_data: "admin_image_explore_set_voice:" + itemId + ":" + voice,
-    })));
-  }
-  rows.push([{ text: "← Back", callback_data: "admin_image_explore" }]);
-  return { inline_keyboard: rows };
 }
 
 export function adminImageExploreTagsText(item = null) {

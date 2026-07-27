@@ -32,8 +32,6 @@ import {
   adminImageExploreTagsText,
   adminImageExploreTagsKeyboard,
   adminImageExploreMoveText,
-  adminImageExploreVoiceText,
-  adminImageExploreVoiceKeyboard,
   adminInitialStartKeyboard,
   adminInitialStartPromptText,
   adminInitialStartText,
@@ -105,7 +103,6 @@ import {
   imageExploreSizeLabel,
   setImageExploreImage,
   setImageExplorePosition,
-  setImageExploreVoice,
   toggleImageExploreTag,
   moveImageExploreItemToPosition,
   setWelcomeAudio,
@@ -614,28 +611,6 @@ export async function handleCallback(query, env) {
   }
 
 
-
-  if (data.startsWith("admin_image_explore_voice:")) {
-    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    const itemId = data.slice("admin_image_explore_voice:".length);
-    const item = (await getImageExploreItems(env)).find((entry) => entry.id === itemId);
-    if (!item || item.mediaType !== "video") return answerCallback(env, query.id, "Video not found", true);
-    await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, adminImageExploreVoiceText(item), adminImageExploreVoiceKeyboard(itemId, item.voice));
-    return;
-  }
-
-  if (data.startsWith("admin_image_explore_set_voice:")) {
-    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    const [, itemId, voice] = data.match(/^admin_image_explore_set_voice:([^:]+):([^:]+)$/) || [];
-    if (!itemId || !voice) return answerCallback(env, query.id, "Invalid voice", true);
-    await setImageExploreVoice(env, itemId, voice);
-    await answerCallback(env, query.id, "Video voice saved", false);
-    await setAdminAction(env, userId, "image_explore_tags", { targetUserId: itemId, chatId, messageId });
-    const item = (await getImageExploreItems(env)).find((entry) => entry.id === itemId);
-    await editCurrentMenu(env, chatId, userId, messageId, adminImageExploreTagsText(item) + "\n\n✅ Video voice set to " + voice + ". Now choose tags.", adminImageExploreTagsKeyboard(itemId, item?.tags || []));
-    return;
-  }
 
   if (data.startsWith("admin_image_explore_tag:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
@@ -1372,9 +1347,9 @@ async function handleAdminExploreVideoInput(env, chatId, adminId, message) {
   const storageKey = await storeTelegramExploreMedia(env, itemId, video.file_id, "video").catch(() => "");
   await setImageExploreImage(env, itemId, video.file_id, "video", storageKey);
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
-  await clearAdminAction(env, adminId);
+  await setAdminAction(env, adminId, "image_explore_tags", { targetUserId: itemId, chatId: action.chat_id || chatId, messageId: Number(action.message_id) });
   const item = (await getImageExploreItems(env)).find((entry) => entry.id === itemId);
-  await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageExploreVoiceText(item) + "\n\n✅ Video uploaded. Now choose its voice.", adminImageExploreVoiceKeyboard(itemId, item?.voice || ""));
+  await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageExploreTagsText(item) + "\n\n✅ Video uploaded. Now choose tags.", adminImageExploreTagsKeyboard(itemId, item?.tags || []));
   return true;
 }
 
