@@ -9,8 +9,11 @@ test("Reels explicitly start only the visible video", () => {
   assert.match(MINI_APP_JS, /playing=video\.play\(\)/);
   assert.match(MINI_APP_JS, /video\.preload='auto'/);
   assert.match(MINI_APP_JS, /video.loop=true/);
-  assert.match(MINI_APP_JS, /video.muted=false;video.defaultMuted=false;video.volume=1/);
-  assert.doesNotMatch(MINI_APP_JS, /explore-reel-media" src="'+escapeHtml(item.mediaUrl||item.imageUrl)+'" muted loop/);
+  assert.match(MINI_APP_JS, /var exploreReelAudioEnabled=readExploreReelAudioState()/);
+  assert.match(MINI_APP_JS, /data-action="toggle-explore-reel-audio"/);
+  assert.match(MINI_APP_JS, /function toggleExploreReelAudio\(button\)/);
+  assert.match(MINI_APP_JS, /video.muted=muted;video.defaultMuted=muted/);
+  assert.match(MINI_APP_JS, /saveExploreReelAudioState\(exploreReelAudioEnabled\)/);
   assert.match(MINI_APP_JS, /video\.networkState===0/);
   assert.match(MINI_APP_JS, /\['loadedmetadata','loadeddata','canplay','canplaythrough'\]/);
   assert.match(MINI_APP_JS, /video\.addEventListener\('ended'/);
