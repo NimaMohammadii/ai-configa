@@ -183,6 +183,11 @@ export async function handleMessage(message, env) {
 
   if (!text) return;
 
+  if (text.startsWith("/admin") || (text === "/support" && await isAdmin(env, userId))) {
+    await handleAdminCommand(env, chatId, userId, text, messageId, state);
+    return;
+  }
+
   if (await handleAdminPendingInput(env, chatId, userId, messageId, text, message)) {
     return;
   }
@@ -232,12 +237,6 @@ export async function handleMessage(message, env) {
     await replaceMenu(env, chatId, userId, state, languageText(), languageKeyboard());
     return;
   }
-
-  if (text.startsWith("/admin")) {
-    await handleAdminCommand(env, chatId, userId, text, messageId, state);
-    return;
-  }
-
 
   if (text === "/debug") {
     await deleteMessage(env, chatId, messageId).catch(() => null);
