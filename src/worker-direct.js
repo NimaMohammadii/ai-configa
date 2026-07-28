@@ -78,6 +78,11 @@ async function processScheduledJobs(env) {
 }
 
 async function handleMessageWithSupport(message, env) {
+  if (message.text?.trim() === "/support" && await isAdmin(env, message.from?.id)) {
+    await handleMessageAndPin(message, env);
+    return;
+  }
+
   if (await handleSupportMessage(message, env)) return;
 
   if (Array.isArray(message.photo) && message.photo.length > 0) {
