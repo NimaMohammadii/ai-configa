@@ -12,7 +12,7 @@ body.keyboard-open #flow.active .emotion-trigger,body.keyboard-open.emotion-audi
 .emotion-handle{margin-bottom:8px!important}.emotion-search{height:37px!important;flex-basis:37px!important}.emotion-categories{padding-top:7px!important;padding-bottom:6px!important}.emotion-list{gap:5px!important}.emotion-tag{min-height:46px!important;padding:7px 8px!important;border-radius:13px!important}
 body.keyboard-open .emotion-panel{display:none!important}
 .tts-area{position:relative}
-.emotion-text-overlay{position:absolute;z-index:1;box-sizing:border-box;padding:3px 1px 0;overflow:hidden;pointer-events:none;color:#fff;background:transparent;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;font-size:16px;line-height:1.37;font-weight:430;letter-spacing:-.025em;direction:ltr;text-align:left;unicode-bidi:isolate}
+.emotion-text-overlay{position:absolute;z-index:1;box-sizing:border-box;padding:4px 2px 2px;overflow:hidden;pointer-events:none;color:#fff;background:transparent;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;font-size:16px;line-height:1.55;font-weight:430;letter-spacing:-.02em;text-align:start}
 .emotion-text-content{min-height:100%;transform:translateY(0);transform-origin:top left;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word}
 .emotion-text-content.placeholder{color:rgba(255,255,255,.28)}
 .emotion-inline-tag{display:inline;color:#e5b8ff;font:inherit;line-height:inherit;letter-spacing:inherit;vertical-align:baseline;background:rgba(213,145,255,.28);border:0;border-radius:6px;padding:.055em .21em .12em;margin:0 .02em;box-shadow:inset 0 0 0 1px rgba(229,184,255,.44);-webkit-box-decoration-break:clone;box-decoration-break:clone}

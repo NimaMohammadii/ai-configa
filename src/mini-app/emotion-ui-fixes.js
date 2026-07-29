@@ -22,6 +22,10 @@ export const EMOTION_UI_FIXES_JS = String.raw`
     var input=entry.input;
     var content=entry.content;
     var value=String(input.value||'');
+    var direction=input.getAttribute('dir');
+    direction=direction==='rtl'||direction==='ltr'?direction:'auto';
+    entry.overlay.setAttribute('dir',direction);
+    content.setAttribute('dir',direction);
     var placeholder=String(input.getAttribute('placeholder')||'');
     var displayValue=value||placeholder;
     var parts=value?value.split(/(\[[^\]\r\n]{1,80}\])/g):[displayValue];
