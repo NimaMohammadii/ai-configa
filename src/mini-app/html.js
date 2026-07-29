@@ -75,7 +75,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260729-audio-fine-tune-07"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260729-clip-timeline-08"/>
 </head>
 <body>
   <main class="app">
@@ -122,18 +122,18 @@ export const MINI_APP_HTML = `<!doctype html>
           </div>
           <section id="ttsAudioEditor" class="tts-audio-editor" aria-hidden="true">
             <header class="tts-audio-editor-head"><div><strong>Fine tune</strong><span id="ttsAudioSelectionTime">0:00 — 0:00</span></div><button data-action="close-audio-editor" type="button" aria-label="Close audio editor"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></button></header>
-            <div id="ttsAudioTimeline" class="tts-audio-timeline">
-              <canvas id="ttsAudioCanvas" aria-hidden="true"></canvas>
-              <div id="ttsAudioSelection" class="tts-audio-selection" aria-hidden="true"></div>
-              <button id="ttsAudioStartHandle" class="tts-audio-handle start" data-audio-handle="start" type="button" aria-label="Trim start"><i></i></button>
-              <button id="ttsAudioEndHandle" class="tts-audio-handle end" data-audio-handle="end" type="button" aria-label="Trim end"><i></i></button>
+            <div id="ttsAudioTimeline" class="tts-audio-timeline" aria-label="Audio clip timeline">
+              <div id="ttsAudioClipLane" class="tts-audio-clip-lane"></div>
+              <div id="ttsAudioPlayhead" class="tts-audio-playhead" aria-hidden="true"><i></i></div>
             </div>
+            <div class="tts-audio-timeline-meta"><span>Tap to select · drag to move</span><strong id="ttsAudioClipCount">1 clip</strong></div>
             <div class="tts-audio-editor-actions">
               <div class="tts-audio-editor-tools">
                 <button id="ttsAudioPreview" data-action="preview-audio-edit" type="button" aria-label="Preview edit"><svg class="play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6.2v11.6L17 12 8 6.2Z" fill="currentColor"/></svg><svg class="pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 6h3v12h-3zM13.5 6h3v12h-3z" fill="currentColor"/></svg></button>
                 <button id="ttsAudioUndo" data-action="undo-audio-edit" type="button" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 8H5V4M5.4 8.1A8 8 0 1 1 4.2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               </div>
               <div class="tts-audio-editor-operations">
+                <button id="ttsAudioSplit" data-action="split-audio-edit" type="button">Split</button>
                 <button id="ttsAudioTrim" data-action="trim-audio-edit" type="button">Trim</button>
                 <button id="ttsAudioDelete" data-action="delete-audio-edit" type="button">Delete</button>
                 <button id="ttsAudioSave" class="primary" data-action="save-audio-edit" type="button">Done</button>
@@ -223,6 +223,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260729-audio-fine-tune-07"></script>
+  <script type="module" src="/mini-app/app.js?v=20260729-clip-timeline-08"></script>
 </body>
 </html>`;
