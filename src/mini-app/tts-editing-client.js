@@ -302,13 +302,10 @@ export const TTS_EDITING_JS = `
     context.clearRect(0,0,rect.width,rect.height);
     var channels=[];
     for(var channel=0;channel<buffer.numberOfChannels;channel++)channels.push(buffer.getChannelData(channel));
-    var bars=Math.max(12,Math.floor(rect.width/4));
+    var bars=Math.max(14,Math.floor(rect.width/4.6));
     var step=Math.max(1,Math.floor(buffer.length/bars));
-    var sampleStep=Math.max(1,Math.floor(step/18));
-    var center=rect.height/2;
-    var isActive=clip.id===fineTune.activeId;
-    context.lineWidth=2.4;
-    context.lineCap='round';
+    var sampleStep=Math.max(1,Math.floor(step/20));
+    var peaks=[];
     for(var bar=0;bar<bars;bar++){
       var from=bar*step;
       var to=Math.min(buffer.length,from+step);
@@ -316,12 +313,24 @@ export const TTS_EDITING_JS = `
       for(var frame=from;frame<to;frame+=sampleStep){
         for(var current=0;current<channels.length;current++)peak=Math.max(peak,Math.abs(channels[current][frame]||0));
       }
-      var normalized=Math.min(1,Math.pow(peak,0.72)*1.35);
-      var height=Math.max(3,normalized*(rect.height-17));
-      var x=(bar+.5)*rect.width/bars;
-      var position=bar/Math.max(1,bars-1);
+      peaks.push(Math.min(1,Math.pow(peak,0.68)*1.42));
+    }
+    var center=rect.height/2;
+    var isActive=clip.id===fineTune.activeId;
+    context.lineWidth=Math.max(2.2,Math.min(2.8,rect.width/bars*.58));
+    context.lineCap='round';
+    for(var currentBar=0;currentBar<bars;currentBar++){
+      var previous=peaks[Math.max(0,currentBar-1)];
+      var currentPeak=peaks[currentBar];
+      var next=peaks[Math.min(bars-1,currentBar+1)];
+      var smoothPeak=previous*.22+currentPeak*.56+next*.22;
+      var edge=Math.sin(Math.PI*(currentBar+.5)/bars);
+      var envelope=.82+.18*Math.pow(edge,.7);
+      var height=Math.max(4,Math.min(rect.height-14,(4+smoothPeak*(rect.height-18))*envelope));
+      var x=(currentBar+.5)*rect.width/bars;
+      var position=currentBar/Math.max(1,bars-1);
       var selected=isActive&&position>=fineTune.start&&position<=fineTune.end;
-      context.strokeStyle=selected?'#fff':(isActive?'rgba(255,255,255,.5)':'rgba(255,255,255,.26)');
+      context.strokeStyle=selected?'#fff':(isActive?'rgba(255,255,255,.58)':'rgba(255,255,255,.3)');
       context.beginPath();
       context.moveTo(Math.round(x),Math.round(center-height/2));
       context.lineTo(Math.round(x),Math.round(center+height/2));
@@ -596,7 +605,7 @@ export const TTS_EDITING_JS = `
     }
     target=Math.max(0,Math.min(fineTune.clips.length-1,target));
     fineTune.dragTargetIndex=target;
-    dragged.style.transform='translate3d('+String(delta)+'px,-2px,0) scale(1.025)';
+    dragged.style.transform='translate3d('+String(delta)+'px,-2px,0) scale(.965)';
     var shift=draggedLayout.width+fineTune.dragGap;
     var nodes=lane.querySelectorAll('[data-audio-clip-id]');
     for(var current=0;current<nodes.length;current++){
@@ -616,7 +625,7 @@ export const TTS_EDITING_JS = `
     lane.classList.remove('is-reordering');
     var nodes=lane.querySelectorAll('[data-audio-clip-id]');
     for(var index=0;index<nodes.length;index++){
-      nodes[index].classList.remove('dragging');
+      nodes[index].classList.remove('dragging','pressed');
       nodes[index].style.transform='';
     }
   }
@@ -626,6 +635,9 @@ export const TTS_EDITING_JS = `
     if(fineTune.dragPointerId!==null&&event&&event.pointerId!==fineTune.dragPointerId)return;
     var handle=q(fineTune.drag==='start'?'ttsAudioStartHandle':'ttsAudioEndHandle');
     if(handle)handle.classList.remove('dragging');
+    var pressedLane=q('ttsAudioClipLane');
+    var pressedNode=pressedLane&&pressedLane.querySelector('[data-audio-clip-id="'+fineTune.dragClipId+'"]');
+    if(pressedNode)pressedNode.classList.remove('pressed');
     var changed=false;
     if(fineTune.drag==='clip'&&fineTune.dragMoved){
       var from=fineTune.dragOriginIndex;
@@ -1070,6 +1082,7 @@ export const TTS_EDITING_JS = `
     fineTune.dragPointerId=event.pointerId;
     var currentLane=q('ttsAudioClipLane');
     var currentNode=currentLane&&currentLane.querySelector('[data-audio-clip-id="'+clipId+'"]');
+    if(currentNode)currentNode.classList.add('pressed');
     try{if(currentNode&&currentNode.setPointerCapture)currentNode.setPointerCapture(event.pointerId)}catch(error){}
   },true);
 
