@@ -239,8 +239,9 @@ export const TTS_EDITING_JS = `
         closeEdit(true);
       },520);
     }catch(error){
-      if(selectionText())selectionText().textContent='Could not regenerate · try again';
-      toast(error&&error.message?error.message:'Could not regenerate this section');
+      var message=error&&error.message?error.message:'Could not regenerate this section';
+      if(selectionText())selectionText().textContent=message;
+      toast(message);
       setBusy(false);
     }
   }
