@@ -21,10 +21,12 @@ export const TTS_EDITING_CSS = `
 .tts-edit-inline-active .tts-generate:not(:disabled):active{transform:scale(.975)}
 .tts-edit-inline-active .tts-generate:disabled{opacity:.24!important}
 .tts-edit-inline-active .tts-generate.tts-edit-loading{opacity:1!important}
-.tts-generate-copy{grid-area:1/1;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
-.tts-regenerate-cost{display:none;align-items:center;gap:3px;color:inherit;font:inherit;font-variant-numeric:tabular-nums;line-height:inherit;letter-spacing:inherit;white-space:nowrap;pointer-events:none}
-.tts-regenerate-cost strong,.tts-regenerate-cost small{min-width:0;color:inherit;font:inherit;font-size:inherit;font-weight:inherit;line-height:inherit;letter-spacing:inherit;opacity:1}
-.tts-edit-inline-active .tts-regenerate-cost{display:inline-flex}
+.tts-generate-copy{grid-area:1/1;width:max-content;max-width:100%;display:flex;flex-flow:row nowrap;align-items:center;justify-content:center;gap:6px;line-height:1;white-space:nowrap;justify-self:center;align-self:center}
+.tts-generate-copy>.tts-generate-label{display:inline-block;flex:0 0 auto;line-height:1;white-space:nowrap}
+.tts-regenerate-cost{display:none;flex:0 0 auto;color:inherit;font:inherit;font-variant-numeric:tabular-nums;line-height:1;letter-spacing:inherit;white-space:nowrap;pointer-events:none}
+.tts-regenerate-cost strong,.tts-regenerate-cost small{display:inline;color:inherit;font:inherit;font-size:inherit;font-weight:inherit;line-height:1;letter-spacing:inherit;white-space:nowrap;opacity:1}
+.tts-regenerate-cost strong+small{margin-left:3px}
+.tts-edit-inline-active .tts-regenerate-cost{display:inline-block}
 .tts-edit-inline-active .tts-generate.tts-edit-loading .tts-regenerate-cost{display:none}
 .tts-regenerate-cost strong.is-changing{animation:ttsEditCreditTick .34s cubic-bezier(.16,1,.3,1)}
 @keyframes ttsEditCreditTick{0%{opacity:.2;transform:translateY(5px) scale(.86);filter:blur(2px)}65%{opacity:1;transform:translateY(-1px) scale(1.06);filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
