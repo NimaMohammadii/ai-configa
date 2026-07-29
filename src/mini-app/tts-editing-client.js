@@ -180,7 +180,7 @@ export const TTS_EDITING_JS = `
     for(var index=0;index<fineTune.clips.length;index++){
       if(fineTune.clips[index].id===fineTune.activeId)return fineTune.clips[index];
     }
-    return fineTune.clips[0]||null;
+    return null;
   }
 
   function clipIndexById(id){
@@ -208,6 +208,7 @@ export const TTS_EDITING_JS = `
     var padding=multiple?8:0;
     var available=Math.max(260,(timeline.clientWidth||300)-gaps-padding);
     lane.classList.toggle('has-multiple-clips',multiple);
+    timeline.classList.toggle('is-scroll-mode',!fineTune.activeId);
     for(var index=0;index<fineTune.clips.length;index++){
       var clip=fineTune.clips[index];
       var node=document.createElement('div');
@@ -249,7 +250,21 @@ export const TTS_EDITING_JS = `
 
   function syncAudioSelection(){
     var clip=activeAudioClip();
-    if(!clip)return;
+    var time=q('ttsAudioSelectionTime');
+    var split=q('ttsAudioSplit');
+    var trim=q('ttsAudioTrim');
+    var remove=q('ttsAudioDelete');
+    var undo=q('ttsAudioUndo');
+    var preview=q('ttsAudioPreview');
+    if(!clip){
+      if(time)time.textContent='Scroll or tap a clip';
+      if(split)split.disabled=true;
+      if(trim)trim.disabled=true;
+      if(remove)remove.disabled=true;
+      if(preview)preview.disabled=true;
+      if(undo)undo.disabled=!fineTune.undo.length;
+      return;
+    }
     fineTune.activeId=clip.id;
     fineTune.start=Math.max(0,Math.min(fineTune.end,fineTune.start));
     fineTune.end=Math.max(fineTune.start,Math.min(1,fineTune.end));
@@ -263,14 +278,10 @@ export const TTS_EDITING_JS = `
       selection.style.width=String((fineTune.end-fineTune.start)*100)+'%';
     }
     var duration=clip.buffer.duration||0;
-    var time=q('ttsAudioSelectionTime');
     if(time)time.textContent=formatAudioTime(fineTune.start*duration)+' — '+formatAudioTime(fineTune.end*duration);
     var almostWhole=fineTune.start<.001&&fineTune.end>.999;
     var tooShort=(fineTune.end-fineTune.start)*duration<.05;
-    var split=q('ttsAudioSplit');
-    var trim=q('ttsAudioTrim');
-    var remove=q('ttsAudioDelete');
-    var undo=q('ttsAudioUndo');
+    if(preview)preview.disabled=false;
     if(split)split.disabled=almostWhole||tooShort;
     if(trim)trim.disabled=almostWhole||tooShort;
     if(remove)remove.disabled=tooShort||(almostWhole&&fineTune.clips.length===1);
@@ -599,6 +610,29 @@ export const TTS_EDITING_JS = `
     haptic('light');
   }
 
+  function deselectAudioClip(){
+    if(!fineTune.activeId||fineTune.busy)return;
+    stopAudioPreview();
+    fineTune.activeId='';
+    fineTune.start=0;
+    fineTune.end=1;
+    renderAudioTimeline();
+    syncAudioSelection();
+    haptic('light');
+  }
+
+  function startAudioTimelinePan(event,clipId){
+    var timeline=q('ttsAudioTimeline');
+    if(!timeline)return;
+    fineTune.drag='pan';
+    fineTune.dragClipId=clipId||'';
+    fineTune.dragStartX=event.clientX;
+    fineTune.dragMoved=false;
+    fineTune.dragPointerId=event.pointerId;
+    fineTune.dragScrollStart=timeline.scrollLeft;
+    try{if(timeline.setPointerCapture)timeline.setPointerCapture(event.pointerId)}catch(error){}
+  }
+
   function beginAudioClipDrag(){
     if(fineTune.drag!=='clip'||fineTune.dragMoved||!fineTune.dragClipId)return;
     var lane=q('ttsAudioClipLane');
@@ -693,7 +727,15 @@ export const TTS_EDITING_JS = `
     var pressedNode=pressedLane&&pressedLane.querySelector('[data-audio-clip-id="'+fineTune.dragClipId+'"]');
     if(pressedNode)pressedNode.classList.remove('pressed');
     var changed=false;
-    if(fineTune.drag==='clip'&&fineTune.dragMoved){
+    var selected=false;
+    if(fineTune.drag==='pan'){
+      var panTimeline=q('ttsAudioTimeline');
+      if(panTimeline)panTimeline.classList.remove('is-panning');
+      if(!fineTune.dragMoved&&fineTune.dragClipId&&(!event||event.type!=='pointercancel')){
+        selectAudioClip(fineTune.dragClipId);
+        selected=true;
+      }
+    }else if(fineTune.drag==='clip'&&fineTune.dragMoved){
       var from=fineTune.dragOriginIndex;
       var to=event&&event.type==='pointercancel'?from:fineTune.dragTargetIndex;
       clearAudioDragStyles();
@@ -721,7 +763,8 @@ export const TTS_EDITING_JS = `
     fineTune.dragScrollStart=0;
     fineTune.dragGap=0;
     fineTune.dragLayout=[];
-    haptic(changed?'medium':'light');
+    if(changed)haptic('medium');
+    else if(!selected&&fineTune.dragMoved)haptic('light');
   }
 
   function stopAudioPreview(){
@@ -1124,7 +1167,19 @@ export const TTS_EDITING_JS = `
     if(!fineTune.open||fineTune.busy)return;
     var handle=event.target&&event.target.closest?event.target.closest('[data-audio-handle]'):null;
     var clipNode=event.target&&event.target.closest?event.target.closest('[data-audio-clip-id]'):null;
-    if(!clipNode)return;
+    var timelineNode=event.target&&event.target.closest?event.target.closest('#ttsAudioTimeline'):null;
+    var editorAction=event.target&&event.target.closest?event.target.closest('[data-action],button,input'):null;
+    if(!clipNode){
+      if(timelineNode){
+        event.preventDefault();
+        event.stopPropagation();
+        deselectAudioClip();
+        startAudioTimelinePan(event,'');
+      }else if(!editorAction){
+        deselectAudioClip();
+      }
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     var clipId=clipNode.getAttribute('data-audio-clip-id');
@@ -1132,6 +1187,10 @@ export const TTS_EDITING_JS = `
       fineTune.drag=handle.getAttribute('data-audio-handle');
       handle.classList.add('dragging');
       updateAudioHandle(event.clientX,fineTune.drag);
+      return;
+    }
+    if(!fineTune.activeId){
+      startAudioTimelinePan(event,clipId);
       return;
     }
     if(fineTune.clips.length<2){
@@ -1155,6 +1214,17 @@ export const TTS_EDITING_JS = `
     event.preventDefault();
     if(fineTune.drag==='start'||fineTune.drag==='end'){
       updateAudioHandle(event.clientX,fineTune.drag);
+      return;
+    }
+    if(fineTune.drag==='pan'){
+      var panDelta=event.clientX-fineTune.dragStartX;
+      if(!fineTune.dragMoved&&Math.abs(panDelta)<5)return;
+      fineTune.dragMoved=true;
+      var panTimeline=q('ttsAudioTimeline');
+      if(panTimeline){
+        panTimeline.classList.add('is-panning');
+        panTimeline.scrollLeft=fineTune.dragScrollStart-panDelta;
+      }
       return;
     }
     if(!fineTune.dragMoved&&Math.abs(event.clientX-fineTune.dragStartX)<7)return;
