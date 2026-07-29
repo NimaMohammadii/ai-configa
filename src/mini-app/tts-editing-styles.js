@@ -10,9 +10,9 @@ export const TTS_EDITING_CSS = `
 .dialogue-editor .dialogue-input-wrap{position:relative;isolation:isolate;min-height:102px;padding:0;margin:0;border-radius:17px!important;background:transparent;box-shadow:none!important;transform:translateZ(0);transition:min-height .3s cubic-bezier(.22,1,.36,1),padding .3s cubic-bezier(.22,1,.36,1),margin .3s cubic-bezier(.22,1,.36,1)}
 .dialogue-editor .dialogue-input-wrap::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:inherit;opacity:0;transform:translateZ(0) scale(.985);background:linear-gradient(180deg,rgba(200,102,255,.075),rgba(200,102,255,.025));box-shadow:inset 0 0 0 1px rgba(200,102,255,.46),inset 0 1px 0 rgba(255,255,255,.055),0 12px 34px rgba(92,24,132,.12);transition:opacity .2s ease,transform .3s cubic-bezier(.22,1,.36,1);will-change:opacity,transform}
 .dialogue-editor .dialogue-text{position:relative;z-index:1}
-.tts-inline-edit .dialogue-input-wrap{min-height:122px;padding:10px 12px 9px;margin:2px 0 4px}
-.tts-inline-edit .dialogue-input-wrap::before{opacity:1;transform:translateZ(0) scale(1)}
-.tts-inline-edit .dialogue-input-wrap:focus-within::before{background:linear-gradient(180deg,rgba(200,102,255,.105),rgba(200,102,255,.035));box-shadow:inset 0 0 0 1px rgba(211,126,255,.72),inset 0 1px 0 rgba(255,255,255,.075),0 14px 38px rgba(104,28,148,.17)}
+.tts-inline-edit .dialogue-input-wrap{padding:0;margin:0}
+.tts-inline-edit .dialogue-input-wrap::before{content:none}
+.tts-inline-edit .dialogue-input-wrap:focus-within::before{content:none}
 .tts-inline-edit .dialogue-text{color:#faf6ff!important;caret-color:#da79ff;text-shadow:0 0 18px rgba(200,102,255,.07);transition:color .22s ease,text-shadow .22s ease}
 .tts-inline-edit .dialogue-text::selection{background:rgba(200,102,255,.9);color:#fff;text-shadow:none}
 .tts-inline-edit .dialogue-text::-moz-selection{background:rgba(200,102,255,.9);color:#fff;text-shadow:none}
