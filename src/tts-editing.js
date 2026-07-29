@@ -81,52 +81,46 @@ export async function regenerateTtsSelection(env, input) {
     throw httpError("This voice does not have accurate edit timing.", 409);
   }
 
-  const startTime = Number(alignment.character_start_times_seconds[start]);
-  const endTime = Number(alignment.character_end_times_seconds[end - 1]);
+  const window = findRegenerationWindow(oldChars, start, end, replacementChars.length);
+  const windowStart = window.start;
+  const windowEnd = window.end;
+  const regenerationText =
+    oldChars.slice(windowStart, start).join("") +
+    replacement +
+    oldChars.slice(end, windowEnd).join("");
+  const regenerationChars = Array.from(regenerationText);
+
+  const startTime = Number(alignment.character_start_times_seconds[windowStart]);
+  const endTime = Number(alignment.character_end_times_seconds[windowEnd - 1]);
   if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) {
-    throw httpError("Could not locate that section in the audio.", 409);
+    throw httpError("Could not locate a natural sentence boundary in the audio.", 409);
   }
 
   const cost = replacementChars.length;
   const balance = await getBalance(env, userId);
   if (balance < cost) throw httpError("Not enough credits.", 402);
 
-  const previousText = oldChars.slice(Math.max(0, start - 320), start).join("");
-  const nextText = oldChars.slice(end, Math.min(oldChars.length, end + 320)).join("");
   const voiceId = String(input.voiceId || "");
   if (!voiceId) throw httpError("Voice not found.", 404);
 
-  let generated;
-  try {
-    generated = await textToSpeechWithTimestamps(
-      env,
-      replacement,
-      voiceId,
-      String(row.language || "en"),
-      { previousText, nextText }
-    );
-  } catch (error) {
-    if (error?.elevenStatus !== 400 && error?.elevenStatus !== 422) throw error;
-    console.warn("ElevenLabs rejected edit context; retrying the selected text without context", error.elevenDetails || error.message);
-    generated = await textToSpeechWithTimestamps(
-      env,
-      replacement,
-      voiceId,
-      String(row.language || "en")
-    );
-  }
+  const generated = await textToSpeechWithTimestamps(
+    env,
+    regenerationText,
+    voiceId,
+    String(row.language || "en")
+  );
 
   const replacementAlignment = normalizeAlignment(generated.alignment);
-  if (!alignmentMatches(replacementAlignment, replacementChars)) {
-    throw httpError("The regenerated audio timing was incomplete. Try again.", 502);
+  if (!alignmentMatches(replacementAlignment, regenerationChars)) {
+    throw httpError("The regenerated sentence timing was incomplete. Try again.", 502);
   }
 
   const newText = oldChars.slice(0, start).join("") + replacement + oldChars.slice(end).join("");
   const newAlignment = mergeAlignments(
     alignment,
     replacementAlignment,
-    start,
-    end,
+    windowStart,
+    windowEnd,
     startTime,
     endTime
   );
@@ -138,6 +132,8 @@ export async function regenerateTtsSelection(env, input) {
     language: String(row.language || "en"),
     start,
     end,
+    regenerationStart: windowStart,
+    regenerationEnd: windowEnd,
   });
   if (!spent?.ok) throw httpError("Not enough credits.", 402);
 
@@ -161,6 +157,8 @@ export async function regenerateTtsSelection(env, input) {
     revision: expectedRevision,
     start,
     end,
+    regenerationStart: windowStart,
+    regenerationEnd: windowEnd,
     startTime,
     endTime,
     replacement,
@@ -264,6 +262,56 @@ async function ensureEditingStorage(env) {
   await env.DB.prepare(
     "DELETE FROM tts_edit_sessions WHERE datetime(expires_at) <= datetime('now')"
   ).run().catch(() => null);
+}
+
+function findRegenerationWindow(chars, start, end, replacementLength) {
+  const maxWindow = 900;
+  const availableContext = Math.max(
+    0,
+    Math.min(MAX_EDIT_CHARS - replacementLength, maxWindow - replacementLength)
+  );
+  const leftBudget = Math.floor(availableContext / 2);
+  const rightBudget = availableContext - leftBudget;
+  return {
+    start: findSentenceStart(chars, start, leftBudget),
+    end: findSentenceEnd(chars, end, rightBudget),
+  };
+}
+
+function findSentenceStart(chars, start, budget) {
+  if (start <= 0 || budget <= 0) return start;
+  const minimum = Math.max(0, start - budget);
+  for (let index = start - 1; index >= minimum; index -= 1) {
+    if (!isSentenceBoundary(chars[index])) continue;
+    let boundary = index + 1;
+    while (boundary < start && isWhitespace(chars[boundary])) boundary += 1;
+    return boundary;
+  }
+  if (minimum === 0) return 0;
+  let boundary = minimum;
+  while (boundary < start && !isWhitespace(chars[boundary - 1])) boundary += 1;
+  while (boundary < start && isWhitespace(chars[boundary])) boundary += 1;
+  return boundary;
+}
+
+function findSentenceEnd(chars, end, budget) {
+  if (end >= chars.length || budget <= 0) return end;
+  const maximum = Math.min(chars.length, end + budget);
+  for (let index = end; index < maximum; index += 1) {
+    if (isSentenceBoundary(chars[index])) return index + 1;
+  }
+  if (maximum === chars.length) return chars.length;
+  let boundary = maximum;
+  while (boundary > end && !isWhitespace(chars[boundary - 1])) boundary -= 1;
+  return boundary > end ? boundary : end;
+}
+
+function isSentenceBoundary(character) {
+  return ".!?؟。！？\n\r".includes(String(character || ""));
+}
+
+function isWhitespace(character) {
+  return /\s/u.test(String(character || ""));
 }
 
 function mergeAlignments(original, replacement, start, end, startTime, endTime) {
