@@ -92,11 +92,6 @@ export const MINI_APP_HTML = `<!doctype html>
             <div class="voice-menu"><div id="myVoiceRows" class="my-voice-rows">${VOICE_ROWS}</div><div id="myVoicesEmpty" class="my-voices-empty">Add voices to your list</div><button class="voice-library-open" data-action="open-voices-page" type="button"><span>Voices</span><small id="voiceMenuCount">1 / 6</small><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           </div><button id="modeToggle" class="mode-toggle" data-action="toggle-creation-mode" type="button" aria-label="Switch to image creation" aria-pressed="false"><svg class="mode-image-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><circle cx="8.3" cy="9" r="1.55" stroke="currentColor" stroke-width="1.55"/><path d="m5.8 17 4.15-4.15a1.4 1.4 0 0 1 1.98 0l1.55 1.55 1.25-1.25a1.4 1.4 0 0 1 1.98 0L19 15.45" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.2 2.7v3M16.7 4.2h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><svg class="mode-voice-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button></div>
         </div>
-        <div id="ttsEditModeHeader" class="tts-edit-mode-header" aria-hidden="true">
-          <button class="tts-edit-mode-close" data-action="edit-tts" type="button" aria-label="Exit edit mode"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 6-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-          <div class="tts-edit-mode-title"><span class="tts-edit-mode-mark" aria-hidden="true"><i></i><i></i><i></i></span><div><strong>Edit voice</strong><small>Rewrite only the part you want to regenerate</small></div></div>
-          <span class="tts-edit-mode-badge">EDITING</span>
-        </div>
         <div class="tts-area dialogue-editor" id="dialogueEditor">
           <section class="dialogue-turn active" data-dialogue-turn data-dialogue-id="1" data-voice="${VOICES.Liam}" data-voice-name="Liam">
             <div class="dialogue-speaker-row">
@@ -113,7 +108,6 @@ export const MINI_APP_HTML = `<!doctype html>
             <button class="add-speaker" data-action="add-speaker" type="button"><span aria-hidden="true"></span><strong>+ Add speaker</strong><span aria-hidden="true"></span></button>
           </section>
         </div>
-        <div id="ttsEditBar" class="tts-edit-bar" aria-live="polite"><div class="tts-edit-bar-copy"><span class="tts-edit-pulse" aria-hidden="true"></span><div><strong id="ttsEditStatusText">Select any part and rewrite it</strong><small>Only the changed section will be regenerated</small></div></div><span id="ttsEditSelection" class="tts-edit-selection">No changes yet</span></div>
         <button class="keyboard-dismiss" data-action="dismiss-keyboard" type="button" aria-label="Hide keyboard"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <div class="tts-bottom">
           <div class="player-history-row">
@@ -172,6 +166,21 @@ export const MINI_APP_HTML = `<!doctype html>
     </section>
   </main>
 
+  <div id="ttsEditOverlay" class="tts-edit-overlay" aria-hidden="true">
+    <button class="tts-edit-backdrop" data-action="close-tts-edit" type="button" tabindex="-1" aria-label="Close voice editor"></button>
+    <section class="tts-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="ttsEditTitle">
+      <header class="tts-edit-dialog-head">
+        <div><h2 id="ttsEditTitle">Edit voice</h2><p>Select a part and type its replacement</p></div>
+        <button id="ttsEditClose" class="tts-edit-dialog-close" data-action="close-tts-edit" type="button" aria-label="Close editor"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      </header>
+      <div class="tts-edit-text-wrap"><textarea id="ttsEditText" class="tts-edit-text" spellcheck="true" autocomplete="off" aria-label="Edit generated text"></textarea></div>
+      <div class="tts-edit-dialog-foot">
+        <span id="ttsEditSelection" class="tts-edit-selection">Select text to replace</span>
+        <button id="ttsEditRegenerate" class="tts-edit-regenerate" data-action="regenerate-tts" type="button" disabled><span class="tts-edit-regenerate-label">Regenerate</span><span class="tts-edit-regenerate-loader" aria-hidden="true"><i></i><i></i><i></i></span></button>
+      </div>
+    </section>
+  </div>
+
   <div id="rewardWheelSheet" class="wheel-sheet" aria-hidden="true"><button class="wheel-backdrop" data-action="close-wheel" type="button" aria-label="Close reward wheel"></button><section class="wheel-panel" role="dialog" aria-modal="true" aria-labelledby="wheelTitle"><header class="wheel-panel-head"><div><span>DAILY REWARD</span><h2 id="wheelTitle">Spin & win</h2></div><button data-action="close-wheel" type="button" aria-label="Close reward wheel"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="wheel-stage"><span class="wheel-pointer" aria-hidden="true"></span><div id="wheelRotor" class="wheel-rotor"><span class="wheel-prize" style="--wheel-angle:0deg">30% OFF</span><span class="wheel-prize" style="--wheel-angle:60deg">2,100</span><span class="wheel-prize" style="--wheel-angle:120deg">150</span><span class="wheel-prize" style="--wheel-angle:180deg">250</span><span class="wheel-prize" style="--wheel-angle:240deg">15% OFF</span><span class="wheel-prize" style="--wheel-angle:300deg">80</span><i class="wheel-hub" aria-hidden="true"></i></div></div><p id="wheelResult" class="wheel-result" aria-live="polite">Your daily reward is ready</p><button id="wheelSpinButton" class="wheel-spin-button" data-action="spin-wheel" type="button"><span>Spin the wheel</span></button><small id="wheelCountdown" class="wheel-countdown"></small></section></div>
 
   <section id="explorePage" class="explore-page" aria-hidden="true"><div class="explore-page-head"><div class="explore-page-title"><h2>Explore</h2><button class="explore-reels-open-button" data-action="open-explore-reels" type="button" aria-label="Open reels view"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4.5" y="3.5" width="15" height="17" rx="5" stroke="currentColor" stroke-width="1.7"/><path d="m9.7 8.2 5.5 3.8-5.5 3.8V8.2Z" fill="currentColor"/></svg><span>Reels</span><i aria-hidden="true"></i></button></div><small id="explorePageCount">0 cards</small></div><label class="explore-search"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.1" stroke="currentColor" stroke-width="1.8"/><path d="m15.4 15.4 4.1 4.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="exploreSearch" type="search" autocomplete="off" placeholder="Search tags like Portrait, Fashion, Night"/></label><div id="explorePageGrid" class="explore-page-grid"></div><div id="exploreEmpty" class="explore-empty" aria-hidden="true">No matching images</div></section>
@@ -209,6 +218,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260729-tts-edit-mode-fix-02"></script>
+  <script type="module" src="/mini-app/app.js?v=20260729-tts-edit-overlay-03"></script>
 </body>
 </html>`;
