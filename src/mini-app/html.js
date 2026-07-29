@@ -75,14 +75,14 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260729-speaker-glass-edit-frame-15"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260729-edit-mode-status-16"/>
 </head>
 <body>
   <main class="app">
     <section id="flow" class="view active">
       <div class="tts-page">
         <div class="tts-head">
-          <div class="credit-tools"><div id="creditPill" class="credit-pill" role="button" tabindex="0" aria-label="Buy credits"><span id="balance">—</span><span>credits</span></div><button id="wheelOpenButton" class="wheel-open-button" data-action="open-wheel" type="button" aria-label="Open daily reward wheel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.75v4.1M12 16.15v4.1M3.75 12h4.1M16.15 12h4.1M6.16 6.16l2.9 2.9M14.94 14.94l2.9 2.9M17.84 6.16l-2.9 2.9M9.06 14.94l-2.9 2.9" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/><circle cx="12" cy="12" r="2.15" fill="currentColor"/></svg><span class="wheel-ready-dot" aria-hidden="true"></span></button></div>
+          <div class="credit-tools"><div id="creditPill" class="credit-pill" role="button" tabindex="0" aria-label="Buy credits"><span id="balance">—</span><span>credits</span></div><button id="wheelOpenButton" class="wheel-open-button" data-action="open-wheel" type="button" aria-label="Open daily reward wheel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.75v4.1M12 16.15v4.1M3.75 12h4.1M16.15 12h4.1M6.16 6.16l2.9 2.9M14.94 14.94l2.9 2.9M17.84 6.16l-2.9 2.9M9.06 14.94l-2.9 2.9" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/><circle cx="12" cy="12" r="2.15" fill="currentColor"/></svg><span class="wheel-ready-dot" aria-hidden="true"></span></button><span id="editModeIndicator" class="edit-mode-indicator" aria-hidden="true">EDIT MODE</span></div>
           <div class="mode-tools"><div id="voiceWrap" class="voice-wrap">
             <button class="voice-btn" data-action="toggle-voice" type="button">
               <span id="voiceButtonAvatar" class="voice-button-avatar" aria-hidden="true"></span>
@@ -225,6 +225,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260729-real-waveform-11"></script>
+  <script type="module" src="/mini-app/app.js?v=20260729-edit-mode-status-16"></script>
 </body>
 </html>`;
