@@ -31,7 +31,13 @@ export const TTS_EDITING_JS = `
     dragClipId:'',
     dragStartX:0,
     dragMoved:false,
-    dragSnapshot:null
+    dragSnapshot:null,
+    dragPointerId:null,
+    dragOriginIndex:-1,
+    dragTargetIndex:-1,
+    dragScrollStart:0,
+    dragGap:0,
+    dragLayout:[]
   };
 
   function q(id){return document.getElementById(id)}
@@ -150,6 +156,12 @@ export const TTS_EDITING_JS = `
     fineTune.dragClipId='';
     fineTune.dragMoved=false;
     fineTune.dragSnapshot=null;
+    fineTune.dragPointerId=null;
+    fineTune.dragOriginIndex=-1;
+    fineTune.dragTargetIndex=-1;
+    fineTune.dragScrollStart=0;
+    fineTune.dragGap=0;
+    fineTune.dragLayout=[];
     var panel=audioEditPanel();
     if(panel){
       panel.classList.remove('open','loading','busy');
@@ -189,8 +201,12 @@ export const TTS_EDITING_JS = `
     if(!lane||!timeline)return;
     lane.innerHTML='';
     var total=Math.max(.001,totalClipDuration());
-    var gaps=Math.max(0,fineTune.clips.length-1)*2;
-    var available=Math.max(260,(timeline.clientWidth||300)-gaps);
+    var multiple=fineTune.clips.length>1;
+    var gap=multiple?5:0;
+    var gaps=Math.max(0,fineTune.clips.length-1)*gap;
+    var padding=multiple?8:0;
+    var available=Math.max(260,(timeline.clientWidth||300)-gaps-padding);
+    lane.classList.toggle('has-multiple-clips',multiple);
     for(var index=0;index<fineTune.clips.length;index++){
       var clip=fineTune.clips[index];
       var node=document.createElement('div');
@@ -520,45 +536,124 @@ export const TTS_EDITING_JS = `
     haptic('light');
   }
 
-  function reorderAudioClip(clientX,clientY){
-    if(!fineTune.dragClipId)return;
-    var target=document.elementFromPoint(clientX,clientY);
-    var targetClip=target&&target.closest?target.closest('[data-audio-clip-id]'):null;
-    if(!targetClip)return;
-    var targetId=targetClip.getAttribute('data-audio-clip-id');
-    var from=clipIndexById(fineTune.dragClipId);
-    var to=clipIndexById(targetId);
-    if(from<0||to<0||from===to)return;
-    if(!fineTune.dragMoved){
-      rememberAudioState(fineTune.dragSnapshot);
-      fineTune.dragSnapshot=null;
-      fineTune.dragMoved=true;
-    }
-    var moved=fineTune.clips.splice(from,1)[0];
-    fineTune.clips.splice(to,0,moved);
-    renderAudioTimeline();
+  function beginAudioClipDrag(){
+    if(fineTune.drag!=='clip'||fineTune.dragMoved||!fineTune.dragClipId)return;
     var lane=q('ttsAudioClipLane');
-    var node=lane&&lane.querySelector('[data-audio-clip-id="'+fineTune.dragClipId+'"]');
-    if(node)node.classList.add('dragging');
+    var timeline=q('ttsAudioTimeline');
+    var dragged=lane&&lane.querySelector('[data-audio-clip-id="'+fineTune.dragClipId+'"]');
+    if(!lane||!dragged)return;
+    stopAudioPreview();
+    fineTune.dragOriginIndex=clipIndexById(fineTune.dragClipId);
+    fineTune.dragTargetIndex=fineTune.dragOriginIndex;
+    fineTune.dragScrollStart=timeline?timeline.scrollLeft:0;
+    fineTune.dragGap=parseFloat(window.getComputedStyle(lane).columnGap||window.getComputedStyle(lane).gap)||0;
+    fineTune.dragLayout=[];
+    var nodes=lane.querySelectorAll('[data-audio-clip-id]');
+    for(var index=0;index<nodes.length;index++){
+      var rect=nodes[index].getBoundingClientRect();
+      fineTune.dragLayout.push({
+        id:nodes[index].getAttribute('data-audio-clip-id'),
+        index:index,
+        center:rect.left+rect.width/2,
+        width:rect.width
+      });
+    }
+    lane.classList.add('is-reordering');
+    dragged.classList.add('dragging');
+    fineTune.dragMoved=true;
     haptic('light');
   }
 
-  function finishAudioPointer(){
+  function autoScrollAudioTimeline(clientX){
+    var timeline=q('ttsAudioTimeline');
+    if(!timeline)return 0;
+    var rect=timeline.getBoundingClientRect();
+    var edge=Math.min(48,Math.max(30,rect.width*.16));
+    var amount=0;
+    if(clientX<rect.left+edge)amount=-Math.pow((rect.left+edge-clientX)/edge,1.35)*13;
+    else if(clientX>rect.right-edge)amount=Math.pow((clientX-(rect.right-edge))/edge,1.35)*13;
+    if(amount)timeline.scrollLeft+=amount;
+    return timeline.scrollLeft-fineTune.dragScrollStart;
+  }
+
+  function updateAudioClipDrag(clientX){
+    if(!fineTune.dragMoved||!fineTune.dragLayout.length)return;
+    var lane=q('ttsAudioClipLane');
+    var dragged=lane&&lane.querySelector('[data-audio-clip-id="'+fineTune.dragClipId+'"]');
+    if(!lane||!dragged)return;
+    var scrollDelta=autoScrollAudioTimeline(clientX);
+    var delta=clientX-fineTune.dragStartX+scrollDelta;
+    var origin=fineTune.dragOriginIndex;
+    var draggedLayout=fineTune.dragLayout[origin];
+    if(!draggedLayout)return;
+    var projectedCenter=draggedLayout.center+delta-scrollDelta;
+    var target=0;
+    for(var index=0;index<fineTune.dragLayout.length;index++){
+      var item=fineTune.dragLayout[index];
+      if(item.index===origin)continue;
+      var center=item.center-scrollDelta;
+      if(projectedCenter>center)target++;
+    }
+    target=Math.max(0,Math.min(fineTune.clips.length-1,target));
+    fineTune.dragTargetIndex=target;
+    dragged.style.transform='translate3d('+String(delta)+'px,-2px,0) scale(1.025)';
+    var shift=draggedLayout.width+fineTune.dragGap;
+    var nodes=lane.querySelectorAll('[data-audio-clip-id]');
+    for(var current=0;current<nodes.length;current++){
+      var node=nodes[current];
+      if(node===dragged)continue;
+      var nodeIndex=clipIndexById(node.getAttribute('data-audio-clip-id'));
+      var offset=0;
+      if(target>origin&&nodeIndex>origin&&nodeIndex<=target)offset=-shift;
+      else if(target<origin&&nodeIndex>=target&&nodeIndex<origin)offset=shift;
+      node.style.transform=offset?'translate3d('+String(offset)+'px,0,0)':'';
+    }
+  }
+
+  function clearAudioDragStyles(){
+    var lane=q('ttsAudioClipLane');
+    if(!lane)return;
+    lane.classList.remove('is-reordering');
+    var nodes=lane.querySelectorAll('[data-audio-clip-id]');
+    for(var index=0;index<nodes.length;index++){
+      nodes[index].classList.remove('dragging');
+      nodes[index].style.transform='';
+    }
+  }
+
+  function finishAudioPointer(event){
     if(!fineTune.drag)return;
+    if(fineTune.dragPointerId!==null&&event&&event.pointerId!==fineTune.dragPointerId)return;
     var handle=q(fineTune.drag==='start'?'ttsAudioStartHandle':'ttsAudioEndHandle');
     if(handle)handle.classList.remove('dragging');
+    var changed=false;
     if(fineTune.drag==='clip'&&fineTune.dragMoved){
-      fineTune.dirty=true;
-      fineTune.buffer=composeAudioClips(fineTune.clips);
-      invalidateAudioPreview();
-      renderAudioTimeline();
-      syncAudioSelection();
+      var from=fineTune.dragOriginIndex;
+      var to=event&&event.type==='pointercancel'?from:fineTune.dragTargetIndex;
+      clearAudioDragStyles();
+      if(from>=0&&to>=0&&from!==to){
+        rememberAudioState(fineTune.dragSnapshot);
+        var moved=fineTune.clips.splice(from,1)[0];
+        fineTune.clips.splice(to,0,moved);
+        fineTune.dirty=true;
+        fineTune.buffer=composeAudioClips(fineTune.clips);
+        invalidateAudioPreview();
+        renderAudioTimeline([moved.id]);
+        syncAudioSelection();
+        changed=true;
+      }
     }
     fineTune.drag='';
     fineTune.dragClipId='';
     fineTune.dragMoved=false;
     fineTune.dragSnapshot=null;
-    haptic('light');
+    fineTune.dragPointerId=null;
+    fineTune.dragOriginIndex=-1;
+    fineTune.dragTargetIndex=-1;
+    fineTune.dragScrollStart=0;
+    fineTune.dragGap=0;
+    fineTune.dragLayout=[];
+    haptic(changed?'medium':'light');
   }
 
   function stopAudioPreview(){
@@ -972,6 +1067,10 @@ export const TTS_EDITING_JS = `
     fineTune.dragStartX=event.clientX;
     fineTune.dragMoved=false;
     fineTune.dragSnapshot=snapshotAudioState();
+    fineTune.dragPointerId=event.pointerId;
+    var currentLane=q('ttsAudioClipLane');
+    var currentNode=currentLane&&currentLane.querySelector('[data-audio-clip-id="'+clipId+'"]');
+    try{if(currentNode&&currentNode.setPointerCapture)currentNode.setPointerCapture(event.pointerId)}catch(error){}
   },true);
 
   document.addEventListener('pointermove',function(event){
@@ -981,11 +1080,9 @@ export const TTS_EDITING_JS = `
       updateAudioHandle(event.clientX,fineTune.drag);
       return;
     }
-    if(Math.abs(event.clientX-fineTune.dragStartX)<6)return;
-    var lane=q('ttsAudioClipLane');
-    var node=lane&&lane.querySelector('[data-audio-clip-id="'+fineTune.dragClipId+'"]');
-    if(node)node.classList.add('dragging');
-    reorderAudioClip(event.clientX,event.clientY);
+    if(!fineTune.dragMoved&&Math.abs(event.clientX-fineTune.dragStartX)<7)return;
+    if(!fineTune.dragMoved)beginAudioClipDrag();
+    updateAudioClipDrag(event.clientX);
   },{capture:true,passive:false});
 
   document.addEventListener('pointerup',finishAudioPointer,true);
