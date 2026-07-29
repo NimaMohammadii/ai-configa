@@ -91,7 +91,7 @@ export const TTS_EDITING_CSS = `
 @keyframes ttsAudioEditorSpin{to{transform:rotate(360deg)}}
 @keyframes ttsClipIn{0%{opacity:.5;transform:scale(.9) translateY(2px)}68%{opacity:1;transform:scale(1.012) translateY(0)}100%{opacity:1;transform:scale(1)}}
 .tts-audio-clip.entering{animation:ttsClipIn .34s cubic-bezier(.16,1,.3,1)}
-@media(max-width:390px){.tts-audio-editor.open{padding:8px}.tts-audio-editor-actions{gap:4px}.tts-audio-editor-actions button{height:33px;padding:0 6px;font-size:8.8px}.tts-audio-editor-tools,.tts-audio-editor-operations{gap:3px}.tts-audio-editor-tools button{width:28px}}
+@media(max-width:390px){.tts-audio-editor.open{padding:11px}.tts-audio-editor-actions{gap:8px}.tts-audio-editor-actions button{height:36px;padding:0 6px;font-size:8.8px}.tts-audio-editor-tools{gap:7px}.tts-audio-editor-operations{gap:5px}.tts-audio-editor-tools button{width:38px;height:38px}.tts-audio-editor-tools button:first-child{width:48px;height:48px}}
 @media(prefers-reduced-motion:reduce){.wave-fine-tune,.tts-audio-editor,.tts-audio-editor-head>button,.tts-audio-editor-actions button,.tts-audio-clip{transition-duration:.01ms!important}.tts-audio-clip.entering{animation:none}}
 
 `;
