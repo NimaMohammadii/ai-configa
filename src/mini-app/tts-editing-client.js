@@ -27,6 +27,7 @@ export const TTS_EDITING_JS = `
     undo:[],
     previewUrl:'',
     previewEnd:0,
+    previewFrame:0,
     drag:'',
     dragClipId:'',
     dragStartX:0,
@@ -377,9 +378,13 @@ export const TTS_EDITING_JS = `
     syncAudioSelection();
   }
 
+  function cloneAudioClips(clips){
+    return clips.map(function(clip){return{id:clip.id,buffer:clip.buffer}});
+  }
+
   function snapshotAudioState(){
     return{
-      clips:fineTune.clips.slice(),
+      clips:cloneAudioClips(fineTune.clips),
       activeId:fineTune.activeId,
       start:fineTune.start,
       end:fineTune.end,
@@ -448,7 +453,7 @@ export const TTS_EDITING_JS = `
   function undoAudioEdit(){
     if(!fineTune.undo.length||fineTune.busy)return;
     var previous=fineTune.undo.pop();
-    fineTune.clips=previous.clips.slice();
+    fineTune.clips=cloneAudioClips(previous.clips);
     fineTune.activeId=previous.activeId;
     fineTune.dirty=previous.dirty;
     fineTune.start=previous.start;
@@ -545,18 +550,42 @@ export const TTS_EDITING_JS = `
     if(!source)return;
     if(audio.src!==source){audio.src=source;audio.load()}
     audio.currentTime=0;
-    audio.play().then(function(){document.body.classList.add('tts-audio-previewing')}).catch(function(error){toast(error.message||'Could not preview audio')});
+    audio.play().then(function(){
+      document.body.classList.add('tts-audio-previewing');
+      animateAudioPlayhead();
+    }).catch(function(error){toast(error.message||'Could not preview audio')});
   }
 
   function updateAudioPlayhead(currentTime){
     var clip=activeAudioClip();
     var lane=q('ttsAudioClipLane');
+    var timeline=q('ttsAudioTimeline');
     var playhead=q('ttsAudioPlayhead');
     var node=lane&&clip&&lane.querySelector('[data-audio-clip-id="'+clip.id+'"]');
-    if(!node||!playhead||!fineTune.previewEnd)return;
+    if(!node||!timeline||!playhead||!fineTune.previewEnd)return;
     var progress=Math.max(0,Math.min(1,currentTime/fineTune.previewEnd));
     var ratio=fineTune.start+(fineTune.end-fineTune.start)*progress;
-    playhead.style.left=String(node.offsetLeft+node.offsetWidth*ratio)+'px';
+    var position=node.offsetLeft+node.offsetWidth*ratio-timeline.scrollLeft;
+    playhead.style.transform='translate3d('+String(position)+'px,0,0) translateX(-50%)';
+  }
+
+  function stopAudioPlayheadAnimation(){
+    if(fineTune.previewFrame)cancelAnimationFrame(fineTune.previewFrame);
+    fineTune.previewFrame=0;
+  }
+
+  function animateAudioPlayhead(){
+    stopAudioPlayheadAnimation();
+    var audio=q('ttsAudio');
+    function frame(){
+      if(!fineTune.open||!audio||audio.paused||audio.ended){
+        fineTune.previewFrame=0;
+        return;
+      }
+      updateAudioPlayhead(audio.currentTime);
+      fineTune.previewFrame=requestAnimationFrame(frame);
+    }
+    fineTune.previewFrame=requestAnimationFrame(frame);
   }
 
   function selectAudioClip(id){
@@ -679,6 +708,8 @@ export const TTS_EDITING_JS = `
         syncAudioSelection();
         changed=true;
       }
+    }else if(fineTune.drag==='clip'&&!fineTune.dragMoved&&(!event||event.type!=='pointercancel')){
+      selectAudioClip(fineTune.dragClipId);
     }
     fineTune.drag='';
     fineTune.dragClipId='';
@@ -696,6 +727,7 @@ export const TTS_EDITING_JS = `
   function stopAudioPreview(){
     var audio=q('ttsAudio');
     if(audio)audio.pause();
+    stopAudioPlayheadAnimation();
     document.body.classList.remove('tts-audio-previewing');
   }
 
@@ -1102,7 +1134,10 @@ export const TTS_EDITING_JS = `
       updateAudioHandle(event.clientX,fineTune.drag);
       return;
     }
-    selectAudioClip(clipId);
+    if(fineTune.clips.length<2){
+      if(clipId!==fineTune.activeId)selectAudioClip(clipId);
+      return;
+    }
     fineTune.drag='clip';
     fineTune.dragClipId=clipId;
     fineTune.dragStartX=event.clientX;
@@ -1142,8 +1177,9 @@ export const TTS_EDITING_JS = `
       if(fineTune.open&&fineTune.previewEnd>0)updateAudioPlayhead(editAudio.currentTime);
       if(fineTune.open&&fineTune.previewEnd>0&&editAudio.currentTime>=fineTune.previewEnd)editAudio.pause();
     });
-    editAudio.addEventListener('pause',function(){document.body.classList.remove('tts-audio-previewing')});
-    editAudio.addEventListener('ended',function(){document.body.classList.remove('tts-audio-previewing')});
+    editAudio.addEventListener('play',animateAudioPlayhead);
+    editAudio.addEventListener('pause',function(){stopAudioPlayheadAnimation();document.body.classList.remove('tts-audio-previewing')});
+    editAudio.addEventListener('ended',function(){stopAudioPlayheadAnimation();document.body.classList.remove('tts-audio-previewing')});
   }
 
   document.addEventListener('click',function(event){
