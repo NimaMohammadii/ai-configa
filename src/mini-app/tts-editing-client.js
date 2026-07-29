@@ -352,7 +352,7 @@ export const TTS_EDITING_JS = `
       heights.push(Math.max(2,Math.min(waveHeight,(2+smoothPeak*(waveHeight-2))*envelope)));
     }
     var center=rect.height/2;
-    var inset=Math.min(10,Math.max(7,rect.width*.025));
+    var inset=1;
     var width=Math.max(1,rect.width-inset*2);
     var spacing=width/Math.max(1,points-1);
     function paintWave(fill){
