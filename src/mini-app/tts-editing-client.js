@@ -107,7 +107,10 @@ export const TTS_EDITING_JS = `
       panel.classList.remove('loading');
       setAudioReady(true);
       syncAudioSelection();
-      requestAnimationFrame(drawAudioWaveform);
+      requestAnimationFrame(function(){
+        drawAudioWaveform();
+        setTimeout(function(){panel.scrollIntoView({behavior:'smooth',block:'nearest'})},80);
+      });
       haptic('light');
     }catch(error){
       fineTune.busy=false;
