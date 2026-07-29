@@ -196,6 +196,70 @@ export async function textToSpeech(env, text, voiceId, lang = "en") {
   return await response.arrayBuffer();
 }
 
+export async function textToSpeechWithTimestamps(env, text, voiceId, lang = "en", context = {}) {
+  const apiKey = await getSelectedElevenApiKey(env);
+  if (!apiKey) {
+    throw new Error(elevenError(lang, "missingApi"));
+  }
+
+  const cleanText = String(text || "");
+  if (!cleanText.trim()) {
+    throw new Error(elevenError(lang, "emptyText"));
+  }
+  if (Array.from(cleanText).length > MAX_TTS_CHARS) {
+    throw new Error(elevenError(lang, "textTooLong"));
+  }
+
+  const body = {
+    text: cleanText,
+    model_id: "eleven_v3",
+  };
+  const previousText = String(context?.previousText || "");
+  const nextText = String(context?.nextText || "");
+  if (previousText) body.previous_text = previousText;
+  if (nextText) body.next_text = nextText;
+
+  const response = await fetchWithTimeout(
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps?output_format=mp3_44100_128`,
+    {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "xi-api-key": apiKey,
+      },
+      body: JSON.stringify(body),
+    },
+    lang
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(toFriendlyElevenLabsError(response.status, errorBody, lang));
+  }
+
+  const payload = await response.json();
+  const audioBase64 = String(payload?.audio_base64 || "");
+  if (!audioBase64) {
+    throw new Error(elevenError(lang, "generic"));
+  }
+
+  return {
+    audio: base64ToArrayBuffer(audioBase64),
+    alignment: payload?.alignment || payload?.normalized_alignment || null,
+    normalizedAlignment: payload?.normalized_alignment || null,
+  };
+}
+
+function base64ToArrayBuffer(value) {
+  const binary = atob(String(value || ""));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes.buffer;
+}
+
 export async function getSelectedElevenApiKey(env) {
   let keyName = "ELEVEN_API";
   if (env.DB) {
