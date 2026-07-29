@@ -235,7 +235,10 @@ export async function textToSpeechWithTimestamps(env, text, voiceId, lang = "en"
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(toFriendlyElevenLabsError(response.status, errorBody, lang));
+    const error = new Error(toFriendlyElevenLabsError(response.status, errorBody, lang));
+    error.elevenStatus = response.status;
+    error.elevenDetails = String(errorBody || "").slice(0, 800);
+    throw error;
   }
 
   const payload = await response.json();
