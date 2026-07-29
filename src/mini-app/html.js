@@ -120,9 +120,13 @@ export const MINI_APP_HTML = `<!doctype html>
           </div>
           <section id="ttsAudioEditor" class="tts-audio-editor" aria-hidden="true">
             <header class="tts-audio-editor-head"><div><strong>Fine tune</strong><span id="ttsAudioSelectionTime">0:00 — 0:00</span></div><button data-action="close-audio-editor" type="button" aria-label="Close audio editor"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></button></header>
-            <div id="ttsAudioTimeline" class="tts-audio-timeline" aria-label="Audio clip timeline">
-              <div id="ttsAudioClipLane" class="tts-audio-clip-lane"></div>
-              <div id="ttsAudioPlayhead" class="tts-audio-playhead" aria-hidden="true"><i></i></div>
+            <div class="tts-audio-timeline-shell">
+              <div id="ttsAudioTimeline" class="tts-audio-timeline" aria-label="Audio clip timeline">
+                <div id="ttsAudioClipLane" class="tts-audio-clip-lane"></div>
+                <div id="ttsAudioPlayhead" class="tts-audio-playhead" aria-hidden="true"><i></i></div>
+              </div>
+              <i class="tts-audio-edge-fade start" aria-hidden="true"></i>
+              <i class="tts-audio-edge-fade end" aria-hidden="true"></i>
             </div>
             <div class="tts-audio-editor-actions">
               <div class="tts-audio-editor-tools">
