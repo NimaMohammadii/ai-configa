@@ -15,13 +15,11 @@ export const TTS_EDITING_JS = `
   };
 
   function q(id){return document.getElementById(id)}
-  function sourceEditor(){return document.querySelector('[data-dialogue-text]')}
-  function modalEditor(){return q('ttsEditText')}
-  function overlay(){return q('ttsEditOverlay')}
+  function editor(){return document.querySelector('[data-dialogue-text]')}
   function editButton(){return q('ttsEditButton')}
-  function regenerateButton(){return q('ttsEditRegenerate')}
-  function selectionText(){return q('ttsEditSelection')}
-  function appRoot(){return document.querySelector('.app')}
+  function generateButton(){return q('convertButton')}
+  function generateLabel(){var button=generateButton();return button&&button.querySelector('.tts-generate-label')}
+  function editSurface(){return q('dialogueEditor')}
   function initData(){var tg=window.Telegram&&window.Telegram.WebApp;return tg&&tg.initData?tg.initData:''}
 
   async function api(path,body){
@@ -54,74 +52,81 @@ export const TTS_EDITING_JS = `
     state.ready=!!ready;
     var button=editButton();
     if(!button)return;
-    button.disabled=!state.ready;
+    button.disabled=!state.ready||state.busy;
     button.classList.toggle('is-ready',state.ready);
-    button.setAttribute('aria-disabled',state.ready?'false':'true');
+    button.setAttribute('aria-disabled',button.disabled?'true':'false');
   }
 
-  function lockBackground(locked){
-    var app=appRoot();
-    if(app){
-      try{app.inert=!!locked}catch(error){}
-      if(locked)app.setAttribute('aria-hidden','true');
-      else app.removeAttribute('aria-hidden');
+  function setMode(active){
+    var input=editor();
+    var surface=editSurface();
+    var edit=editButton();
+    var generate=generateButton();
+    var label=generateLabel();
+    document.body.classList.toggle('tts-edit-inline-active',!!active);
+    if(surface)surface.classList.toggle('tts-inline-edit',!!active);
+    if(edit){
+      edit.classList.toggle('active',!!active);
+      edit.setAttribute('aria-pressed',active?'true':'false');
+      edit.setAttribute('aria-label',active?'Cancel voice edit':'Edit generated voice');
     }
-    document.body.classList.toggle('tts-edit-overlay-active',!!locked);
+    if(label)label.textContent=active?'Regenerate':'Generate Voice';
+    if(generate){
+      generate.classList.remove('tts-edit-loading');
+      generate.disabled=active?!hasChange():false;
+      generate.setAttribute('aria-label',active?'Regenerate selected text':'Generate Voice');
+    }
+    if(input)input.setAttribute('aria-label',active?'Edit generated text':'Text to convert to voice');
   }
 
   function openEdit(){
     if(!state.ready||state.busy||state.active)return;
-    var source=sourceEditor();
-    var input=modalEditor();
-    var layer=overlay();
-    if(!source||!input||!layer)return;
+    var input=editor();
+    if(!input)return;
+    if(String(input.value||'')!==state.baseText){
+      setReady(false);
+      toast('Generate this text before editing the voice');
+      return;
+    }
     state.active=true;
-    state.baseText=String(source.value||state.baseText||'');
-    input.value=state.baseText;
-    input.dir=source.dir||'ltr';
-    layer.setAttribute('aria-hidden','false');
-    lockBackground(true);
-    syncChange();
+    setMode(true);
     requestAnimationFrame(function(){
-      layer.classList.add('open');
-      setTimeout(function(){
-        input.focus({preventScroll:true});
-        var end=input.value.length;
-        input.setSelectionRange(end,end);
-      },190);
+      input.focus({preventScroll:true});
+      var end=input.value.length;
+      input.setSelectionRange(end,end);
     });
     haptic('light');
   }
 
-  function closeEdit(force){
-    if(!state.active||state.busy&&!force)return;
-    var layer=overlay();
-    state.active=false;
-    if(layer){
-      layer.classList.remove('open');
-      layer.setAttribute('aria-hidden','true');
+  function closeEdit(restore){
+    if(!state.active||state.busy)return;
+    var input=editor();
+    if(restore&&input&&input.value!==state.baseText){
+      input.value=state.baseText;
+      input.dispatchEvent(new Event('input',{bubbles:true}));
     }
-    lockBackground(false);
-    var input=modalEditor();
+    state.active=false;
+    setMode(false);
     if(input)input.blur();
-    if(selectionText())selectionText().textContent='Select text to replace';
+    haptic('light');
   }
 
   function setBusy(busy){
     state.busy=!!busy;
-    var button=regenerateButton();
-    if(button){
-      button.disabled=busy||!hasChange();
-      button.classList.toggle('loading',busy);
+    var input=editor();
+    var generate=generateButton();
+    var edit=editButton();
+    if(input)input.readOnly=busy;
+    if(generate){
+      generate.classList.toggle('loading',busy);
+      generate.classList.toggle('tts-edit-loading',busy);
+      generate.disabled=busy||!hasChange();
     }
-    var close=q('ttsEditClose');
-    if(close)close.disabled=busy;
-    var dialog=document.querySelector('.tts-edit-dialog');
-    if(dialog)dialog.classList.toggle('busy',busy);
+    if(edit)edit.disabled=busy||!state.ready;
   }
 
   function diff(){
-    var input=modalEditor();
+    var input=editor();
     var oldChars=Array.from(state.baseText||'');
     var newText=input?String(input.value||''):'';
     var newChars=Array.from(newText);
@@ -149,40 +154,14 @@ export const TTS_EDITING_JS = `
 
   function syncChange(){
     if(!state.active||state.busy)return;
-    var change=diff();
-    var valid=hasChange();
-    var button=regenerateButton();
-    if(button)button.disabled=!valid;
-    var status=selectionText();
-    if(!status)return;
-    if(valid){
-      status.textContent=Array.from(change.replacement).length+' characters changed';
-      status.classList.add('ready');
-      return;
-    }
-    status.classList.remove('ready');
-    if(change.newText!==state.baseText)status.textContent='Replace an existing part';
-    else status.textContent='Select text to replace';
-  }
-
-  function syncNativeSelection(){
-    if(!state.active||state.busy||hasChange())return;
-    var input=modalEditor();
-    var status=selectionText();
-    if(!input||!status)return;
-    var start=Number(input.selectionStart||0);
-    var end=Number(input.selectionEnd||0);
-    if(end<=start){status.textContent='Select text to replace';return}
-    var selected=String(input.value||'').slice(start,end).replace(/\\s+/g,' ').trim();
-    var count=Array.from(selected).length;
-    status.textContent=count?(count+' characters selected · type now'):'Select text to replace';
+    var button=generateButton();
+    if(button)button.disabled=!hasChange();
   }
 
   async function regenerate(){
     if(!state.active||state.busy||!hasChange())return;
     var change=diff();
     setBusy(true);
-    if(selectionText())selectionText().textContent='Rebuilding this part…';
     try{
       var prepared=await api('/mini-app/api/tts-regenerate',{
         historyId:state.historyId,
@@ -199,7 +178,6 @@ export const TTS_EDITING_JS = `
         Number(prepared.endTime)
       );
       var audioBase64=arrayBufferToBase64(await merged.blob.arrayBuffer());
-      if(selectionText())selectionText().textContent='Saving new voice…';
       var saved=await api('/mini-app/api/tts-edit-save',{
         token:prepared.token,
         audioBase64:audioBase64,
@@ -214,10 +192,10 @@ export const TTS_EDITING_JS = `
       state.alignment=saved.alignment||prepared.newAlignment;
       state.revision=Number(saved.revision||state.revision+1);
 
-      var source=sourceEditor();
-      if(source){
-        source.value=state.baseText;
-        source.dispatchEvent(new Event('input',{bubbles:true}));
+      var input=editor();
+      if(input){
+        input.value=state.baseText;
+        input.dispatchEvent(new Event('input',{bubbles:true}));
       }
       var audio=q('ttsAudio');
       if(audio){audio.pause();audio.src=state.audioSrc;audio.load()}
@@ -228,21 +206,16 @@ export const TTS_EDITING_JS = `
         audioSrc:state.audioSrc,
         mimeType:state.audioMime
       }}));
-      var dialog=document.querySelector('.tts-edit-dialog');
-      if(dialog)dialog.classList.add('success');
-      if(selectionText())selectionText().textContent='Voice updated';
+      setBusy(false);
+      state.active=false;
+      setMode(false);
       haptic('medium');
       toast('Voice updated · '+Number(prepared.cost||0)+' credits');
-      setTimeout(function(){
-        if(dialog)dialog.classList.remove('success');
-        setBusy(false);
-        closeEdit(true);
-      },520);
     }catch(error){
       var message=error&&error.message?error.message:'Could not regenerate this section';
-      if(selectionText())selectionText().textContent=message;
       toast(message);
       setBusy(false);
+      syncChange();
     }
   }
 
@@ -374,24 +347,24 @@ export const TTS_EDITING_JS = `
     state.audioSrc=String(data.audioSrc||'');
     state.audioMime='audio/mpeg';
     state.active=false;
+    setMode(false);
     setReady(!!(data.editable&&state.historyId&&state.alignment&&state.audioSrc));
   });
 
   window.addEventListener('vexa:tts-reset',function(){
-    if(state.active)closeEdit(true);
+    if(state.active&&!state.busy)closeEdit(true);
     setReady(false);
   });
 
   document.addEventListener('input',function(event){
-    if(state.active&&event.target===modalEditor())syncChange();
+    if(state.active&&event.target===editor())syncChange();
   });
 
-  document.addEventListener('selectionchange',syncNativeSelection);
-  document.addEventListener('keyup',function(event){if(event.target===modalEditor())syncNativeSelection()});
-  document.addEventListener('pointerup',function(event){if(event.target===modalEditor())setTimeout(syncNativeSelection,0)},{passive:true});
-
   document.addEventListener('keydown',function(event){
-    if(state.active&&event.key==='Escape'&&!state.busy){event.preventDefault();closeEdit(false)}
+    if(state.active&&event.key==='Escape'&&!state.busy){
+      event.preventDefault();
+      closeEdit(true);
+    }
   });
 
   document.addEventListener('click',function(event){
@@ -399,17 +372,15 @@ export const TTS_EDITING_JS = `
     if(!button)return;
     var action=button.getAttribute('data-action');
     if(action==='edit-tts'){
-      event.preventDefault();event.stopPropagation();
-      openEdit();
+      event.preventDefault();
+      event.stopPropagation();
+      if(state.active)closeEdit(true);
+      else openEdit();
       return;
     }
-    if(action==='close-tts-edit'){
-      event.preventDefault();event.stopPropagation();
-      closeEdit(false);
-      return;
-    }
-    if(action==='regenerate-tts'){
-      event.preventDefault();event.stopPropagation();
+    if(action==='generate-tts'&&state.active){
+      event.preventDefault();
+      event.stopPropagation();
       regenerate();
     }
   },true);
