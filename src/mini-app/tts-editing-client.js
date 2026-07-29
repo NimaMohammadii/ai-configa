@@ -16,7 +16,7 @@ export const TTS_EDITING_JS = `
 
   function q(id){return document.getElementById(id)}
   function editor(){return document.querySelector('[data-dialogue-text]')}
-  function workspace(){return q('voiceWorkspace')||document.querySelector('.voice-workspace')}
+  function workspace(){return document.querySelector('.tts-page')}
   function editButton(){return q('ttsEditButton')}
   function generateButton(){return q('convertButton')}
   function label(){var button=generateButton();return button&&button.querySelector('.tts-generate-label')}
@@ -75,13 +75,14 @@ export const TTS_EDITING_JS = `
     state.baseText=String(input.value||state.baseText||'');
     var area=workspace();
     if(area)area.classList.add('tts-edit-mode');
+    if(q('ttsEditModeHeader'))q('ttsEditModeHeader').setAttribute('aria-hidden','false');
     document.body.classList.add('tts-edit-mode-active');
     var button=editButton();
     if(button){button.classList.add('active');button.setAttribute('aria-label','Cancel voice editing')}
     if(label())label().textContent='Regenerate';
     var generate=generateButton();
     if(generate){generate.setAttribute('data-action','regenerate-tts');generate.disabled=true}
-    if(statusText())statusText().textContent='Select any part and rewrite it';
+    if(statusText())statusText().textContent='Select a phrase, then type the replacement';
     if(selectionText())selectionText().textContent='No changes yet';
     requestAnimationFrame(function(){
       if(area)area.classList.add('tts-edit-entered');
@@ -96,13 +97,14 @@ export const TTS_EDITING_JS = `
     state.active=false;
     var area=workspace();
     if(area)area.classList.remove('tts-edit-mode','tts-edit-entered','tts-edit-busy','tts-edit-success');
+    if(q('ttsEditModeHeader'))q('ttsEditModeHeader').setAttribute('aria-hidden','true');
     document.body.classList.remove('tts-edit-mode-active');
     var button=editButton();
     if(button){button.classList.remove('active');button.setAttribute('aria-label','Edit generated voice')}
     var generate=generateButton();
     if(generate){generate.setAttribute('data-action','generate-tts');generate.disabled=false;generate.classList.remove('loading')}
     if(label())label().textContent='Generate Voice';
-    if(statusText())statusText().textContent='Select any part and rewrite it';
+    if(statusText())statusText().textContent='Select a phrase, then type the replacement';
     if(selectionText())selectionText().textContent='No changes yet';
     if(input)input.dispatchEvent(new Event('input',{bubbles:true}));
   }
@@ -204,7 +206,7 @@ export const TTS_EDITING_JS = `
       toast('Voice updated · '+Number(prepared.cost||0)+' credits');
       setTimeout(function(){exitEdit(false)},650);
     }catch(error){
-      if(statusText())statusText().textContent='Select any part and rewrite it';
+      if(statusText())statusText().textContent='Select a phrase, then type the replacement';
       toast(error&&error.message?error.message:'Could not regenerate this section');
     }finally{
       setBusy(false);

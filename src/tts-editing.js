@@ -96,13 +96,25 @@ export async function regenerateTtsSelection(env, input) {
   const voiceId = String(input.voiceId || "");
   if (!voiceId) throw httpError("Voice not found.", 404);
 
-  const generated = await textToSpeechWithTimestamps(
-    env,
-    replacement,
-    voiceId,
-    String(row.language || "en"),
-    { previousText, nextText }
-  );
+  let generated;
+  try {
+    generated = await textToSpeechWithTimestamps(
+      env,
+      replacement,
+      voiceId,
+      String(row.language || "en"),
+      { previousText, nextText }
+    );
+  } catch (error) {
+    if (error?.elevenStatus !== 400 && error?.elevenStatus !== 422) throw error;
+    console.warn("ElevenLabs rejected edit context; retrying the selected text without context", error.elevenDetails || error.message);
+    generated = await textToSpeechWithTimestamps(
+      env,
+      replacement,
+      voiceId,
+      String(row.language || "en")
+    );
+  }
 
   const replacementAlignment = normalizeAlignment(generated.alignment);
   if (!alignmentMatches(replacementAlignment, replacementChars)) {
