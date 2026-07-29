@@ -41,7 +41,12 @@ export const TTS_EDITING_CSS = `
 .tts-audio-editor-head>button{width:32px;height:32px;flex:0 0 32px;margin:0;padding:0;border:1px solid rgba(255,255,255,.07);border-radius:11px;display:grid;place-items:center;color:rgba(255,255,255,.62);background:rgba(255,255,255,.04);transition:transform .22s cubic-bezier(.2,.9,.2,1),color .2s ease,background .2s ease,border-color .2s ease}
 .tts-audio-editor-head>button:active{transform:scale(.84);color:#050505;background:#fff;border-color:#fff}
 
-.tts-audio-timeline{position:relative;width:100%;height:44px;overflow-x:auto;overflow-y:hidden;border:0;border-radius:0;background:transparent;touch-action:none;user-select:none;-webkit-user-select:none;scrollbar-width:none;box-shadow:none;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}.tts-audio-timeline.is-overflowing{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%)}
+.tts-audio-timeline-shell{position:relative;width:100%;height:44px}
+.tts-audio-timeline{position:relative;width:100%;height:44px;overflow-x:auto;overflow-y:hidden;border:0;border-radius:0;background:transparent;touch-action:none;user-select:none;-webkit-user-select:none;scrollbar-width:none;box-shadow:none}
+.tts-audio-edge-fade{position:absolute;z-index:30;top:0;bottom:0;width:28px;opacity:0;pointer-events:none;transition:opacity .22s ease}
+.tts-audio-edge-fade.start{left:0;background:linear-gradient(90deg,#000 0,rgba(0,0,0,.88) 34%,rgba(0,0,0,0) 100%)}
+.tts-audio-edge-fade.end{right:0;background:linear-gradient(270deg,#000 0,rgba(0,0,0,.88) 34%,rgba(0,0,0,0) 100%)}
+.tts-audio-timeline-shell.is-overflowing .tts-audio-edge-fade{opacity:1}
 .tts-audio-timeline::-webkit-scrollbar{display:none}
 .tts-audio-timeline.is-scroll-mode{cursor:grab}
 .tts-audio-timeline.is-scroll-mode.is-panning{cursor:grabbing}
