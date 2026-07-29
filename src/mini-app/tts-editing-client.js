@@ -348,7 +348,8 @@ export const TTS_EDITING_JS = `
       var smoothPeak=previous*.24+currentPeak*.52+next*.24;
       var edge=Math.sin(Math.PI*(index+.5)/points);
       var envelope=.8+.2*Math.pow(edge,.72);
-      heights.push(Math.max(5,Math.min(rect.height-11,(5+smoothPeak*(rect.height-15))*envelope)));
+      var waveHeight=Math.min(18,Math.max(11,rect.height*.42));
+      heights.push(Math.max(2.5,Math.min(waveHeight,(2.5+smoothPeak*(waveHeight-2.5))*envelope)));
     }
     var center=rect.height/2;
     var inset=3;
@@ -377,7 +378,9 @@ export const TTS_EDITING_JS = `
       context.fill();
     }
     var isActive=clip.id===fineTune.activeId;
-    paintWave(isActive?'rgba(255,255,255,.54)':'rgba(255,255,255,.38)');
+    context.fillStyle='rgba(255,255,255,.08)';
+    context.fillRect(inset,center-.5,width,1);
+    paintWave(isActive?'rgba(255,255,255,.62)':'rgba(255,255,255,.34)');
     if(isActive){
       context.save();
       context.beginPath();
