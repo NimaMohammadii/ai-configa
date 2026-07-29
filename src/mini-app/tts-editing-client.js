@@ -943,13 +943,10 @@ export const TTS_EDITING_JS = `
       toast('Generate this text before editing the voice');
       return;
     }
-    var wasFocused=document.activeElement===input;
-    var caret=wasFocused&&Number.isFinite(input.selectionStart)?input.selectionStart:String(input.value||'').length;
     state.active=true;
     setMode(true);
     input.readOnly=false;
-    try{input.focus({preventScroll:true})}catch(error){input.focus()}
-    try{input.setSelectionRange(caret,caret)}catch(error){}
+    if(document.activeElement===input)input.blur();
     haptic('light');
   }
 
