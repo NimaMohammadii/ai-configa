@@ -215,7 +215,7 @@ export const TTS_EDITING_JS = `
     if(!originalSrc)throw new Error('Original audio is unavailable');
     var AudioContextClass=window.AudioContext||window.webkitAudioContext;
     if(!AudioContextClass)throw new Error('Audio editing is not supported on this device');
-    var context=new AudioContextClass();
+    var context;try{context=new AudioContextClass({sampleRate:24000})}catch(error){context=new AudioContextClass()}
     try{
       var originalBytes=await fetch(originalSrc).then(function(response){return response.arrayBuffer()});
       var replacementBytes=base64ToArrayBuffer(replacementBase64);
