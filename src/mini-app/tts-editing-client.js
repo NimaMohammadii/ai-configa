@@ -189,8 +189,8 @@ export const TTS_EDITING_JS = `
     if(!lane||!timeline)return;
     lane.innerHTML='';
     var total=Math.max(.001,totalClipDuration());
-    var gaps=Math.max(0,fineTune.clips.length-1)*4;
-    var available=Math.max(260,(timeline.clientWidth||300)-10-gaps);
+    var gaps=Math.max(0,fineTune.clips.length-1)*2;
+    var available=Math.max(260,(timeline.clientWidth||300)-gaps);
     for(var index=0;index<fineTune.clips.length;index++){
       var clip=fineTune.clips[index];
       var node=document.createElement('div');
@@ -214,8 +214,6 @@ export const TTS_EDITING_JS = `
       }
       lane.appendChild(node);
     }
-    var count=q('ttsAudioClipCount');
-    if(count)count.textContent=String(fineTune.clips.length)+' clip'+(fineTune.clips.length===1?'':'s')+' · '+formatAudioTime(total);
     requestAnimationFrame(function(){
       for(var current=0;current<fineTune.clips.length;current++)drawClipWaveform(fineTune.clips[current]);
     });
@@ -292,7 +290,6 @@ export const TTS_EDITING_JS = `
     var step=Math.max(1,Math.floor(buffer.length/bars));
     var sampleStep=Math.max(1,Math.floor(step/18));
     var center=rect.height/2;
-    var isActive=clip.id===fineTune.activeId;
     for(var bar=0;bar<bars;bar++){
       var from=bar*step;
       var to=Math.min(buffer.length,from+step);
@@ -303,9 +300,7 @@ export const TTS_EDITING_JS = `
       var normalized=Math.min(1,Math.pow(peak,0.72)*1.35);
       var height=Math.max(3,normalized*(rect.height-17));
       var x=(bar+.5)*rect.width/bars;
-      var position=bar/Math.max(1,bars-1);
-      var selected=isActive&&position>=fineTune.start&&position<=fineTune.end;
-      context.fillStyle=selected?'rgba(255,255,255,.9)':(isActive?'rgba(255,255,255,.28)':'rgba(255,255,255,.2)');
+      context.fillStyle='#fff';
       context.fillRect(Math.round(x)-1,Math.round(center-height/2),2,Math.round(height));
     }
   }
