@@ -43,9 +43,9 @@ export const TTS_EDITING_CSS = `
 
 .tts-audio-timeline-shell{position:relative;width:100%;height:44px}
 .tts-audio-timeline{position:relative;width:100%;height:44px;overflow-x:auto;overflow-y:hidden;border:0;border-radius:0;background:transparent;touch-action:none;user-select:none;-webkit-user-select:none;scrollbar-width:none;box-shadow:none}
-.tts-audio-edge-fade{position:absolute;z-index:30;top:0;bottom:0;width:28px;opacity:0;pointer-events:none;transition:opacity .22s ease}
-.tts-audio-edge-fade.start{left:0;background:linear-gradient(90deg,#000 0,rgba(0,0,0,.88) 34%,rgba(0,0,0,0) 100%)}
-.tts-audio-edge-fade.end{right:0;background:linear-gradient(270deg,#000 0,rgba(0,0,0,.88) 34%,rgba(0,0,0,0) 100%)}
+.tts-audio-edge-fade{position:absolute;z-index:30;top:0;bottom:0;width:22px;opacity:0;pointer-events:none;transition:opacity .22s ease}
+.tts-audio-edge-fade.start{left:0;background:linear-gradient(90deg,rgba(0,0,0,.72) 0,rgba(0,0,0,.48) 34%,rgba(0,0,0,0) 100%)}
+.tts-audio-edge-fade.end{right:0;background:linear-gradient(270deg,rgba(0,0,0,.72) 0,rgba(0,0,0,.48) 34%,rgba(0,0,0,0) 100%)}
 .tts-audio-timeline-shell.is-overflowing .tts-audio-edge-fade{opacity:1}
 .tts-audio-timeline::-webkit-scrollbar{display:none}
 .tts-audio-timeline.is-scroll-mode{cursor:grab}
@@ -57,6 +57,7 @@ export const TTS_EDITING_CSS = `
 .tts-audio-clip-lane:not(.has-multiple-clips) .tts-audio-clip{cursor:default}
 .tts-audio-clip{position:relative;flex-grow:1;flex-shrink:1;min-width:52px;height:42px;overflow:hidden;border:0;border-radius:12px;background:transparent;box-shadow:none;touch-action:none;transform-origin:center;will-change:transform;transition:transform .28s cubic-bezier(.16,1,.3,1),opacity .2s ease,background .2s ease,box-shadow .2s ease}
 .tts-audio-clip canvas{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:inherit;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 2.5%,#000 97.5%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 2.5%,#000 97.5%,transparent 100%)}
+.tts-audio-clip canvas.tts-audio-progress-wave{z-index:2;clip-path:inset(0 100% 0 0);will-change:clip-path}
 .tts-audio-clip::after{display:none}
 .tts-audio-clip.active{background:transparent;border:0;box-shadow:none}
 .tts-audio-clip-lane.has-multiple-clips .tts-audio-clip{height:36px;border:0;border-radius:10px;background:rgba(255,255,255,.025);box-shadow:inset 0 0 0 1px rgba(255,255,255,.065)}
@@ -75,6 +76,7 @@ export const TTS_EDITING_CSS = `
 .tts-audio-playhead{position:absolute;top:5px;bottom:5px;left:0;width:2px;background:var(--audio-accent);border-radius:999px;opacity:0;z-index:9;pointer-events:none;transform:translate3d(0,0,0) translateX(-50%);will-change:transform;transition:opacity .16s ease;box-shadow:0 0 9px rgba(113,54,156,.45)}
 .tts-audio-playhead i{position:absolute;top:-2px;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--audio-accent)}
 .tts-audio-previewing .tts-audio-playhead{opacity:1}
+.tts-audio-previewing .tts-audio-timeline.is-whole-preview .tts-audio-playhead{opacity:0}
 
 .tts-audio-editor-actions{display:grid;grid-template-columns:1fr;gap:11px;padding-top:12px}
 .tts-audio-editor-tools{width:100%;display:grid;grid-template-columns:42px 60px 42px;align-items:center;justify-content:center;gap:14px}
