@@ -36,10 +36,10 @@ export const TTS_EDITING_CSS = `
 .tts-audio-timeline{position:relative;width:100%;height:104px;overflow:hidden;border-radius:15px;background:#090909;border:1px solid rgba(255,255,255,.075);touch-action:none;user-select:none;-webkit-user-select:none}
 .tts-audio-timeline canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .tts-audio-selection{position:absolute;top:8px;bottom:8px;left:0;width:100%;border-top:1px solid rgba(255,255,255,.19);border-bottom:1px solid rgba(255,255,255,.19);background:rgba(255,255,255,.025);pointer-events:none}
-.tts-audio-handle{position:absolute;top:0;bottom:0;width:30px;height:100%;margin-left:-15px;padding:0;border:0;border-radius:0;background:transparent;touch-action:none;cursor:ew-resize}
+.tts-audio-handle{position:absolute;top:0;bottom:0;width:30px;height:100%;margin-left:0;padding:0;border:0;border-radius:0;background:transparent;touch-action:none;cursor:ew-resize}
 .tts-audio-handle i{position:absolute;top:10px;bottom:10px;left:50%;width:2px;margin-left:-1px;border-radius:99px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.45),0 0 12px rgba(255,255,255,.16)}
 .tts-audio-handle i::before{content:"";position:absolute;top:-1px;left:50%;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.35)}
-.tts-audio-handle.start{left:0}.tts-audio-handle.end{left:100%}
+.tts-audio-handle.start{left:0}.tts-audio-handle.start i{left:0}.tts-audio-handle.end{left:100%;margin-left:-30px}.tts-audio-handle.end i{left:100%}
 .tts-audio-handle.dragging i{width:3px;margin-left:-1.5px}
 .tts-audio-editor-actions{min-height:48px;display:flex;align-items:flex-end;justify-content:space-between;gap:9px;padding-top:10px}
 .tts-audio-editor-tools,.tts-audio-editor-operations{display:flex;align-items:center;gap:7px}
@@ -54,6 +54,8 @@ export const TTS_EDITING_CSS = `
 .tts-audio-editor-operations .primary{min-width:66px;background:#fff;border-color:#fff;color:#070707;box-shadow:0 8px 22px rgba(255,255,255,.08)}
 .tts-audio-editor.busy .tts-audio-editor-operations .primary{color:transparent;position:relative}
 .tts-audio-editor.busy .tts-audio-editor-operations .primary::after{content:"";position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px;border:2px solid rgba(0,0,0,.2);border-top-color:#080808;border-radius:50%;animation:ttsAudioEditorSpin .7s linear infinite}
+
+.tts-audio-editor-active #wavePlay,.tts-audio-editor-active #waveShare,.tts-audio-editor-active #ttsEditButton,.tts-audio-editor-active #historyButton,.tts-audio-editor-active .tts-generate-row{opacity:.28;pointer-events:none;transition:opacity .22s ease}
 
 @keyframes ttsAudioEditorSpin{to{transform:rotate(360deg)}}
 @media(max-width:390px){.wave-fine-tune{width:30px;height:30px;flex-basis:30px}.tts-audio-editor.open{padding:10px}.tts-audio-timeline{height:96px}.tts-audio-editor-actions button{height:36px;padding:0 10px}.tts-audio-editor-operations{gap:5px}}
