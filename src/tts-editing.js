@@ -96,7 +96,7 @@ export async function regenerateTtsSelection(env, input) {
     throw httpError("Could not locate a natural sentence boundary in the audio.", 409);
   }
 
-  const cost = replacementChars.length;
+  const cost = replacementChars.length + 50;
   const balance = await getBalance(env, userId);
   if (balance < cost) throw httpError("Not enough credits.", 402);
 
