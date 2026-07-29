@@ -347,12 +347,12 @@ export const TTS_EDITING_JS = `
       var next=peaks[Math.min(points-1,index+1)];
       var smoothPeak=previous*.24+currentPeak*.52+next*.24;
       var edge=Math.sin(Math.PI*(index+.5)/points);
-      var envelope=.8+.2*Math.pow(edge,.72);
+      var envelope=.18+.82*Math.pow(edge,.62);
       var waveHeight=Math.min(18,Math.max(11,rect.height*.42));
-      heights.push(Math.max(2.5,Math.min(waveHeight,(2.5+smoothPeak*(waveHeight-2.5))*envelope)));
+      heights.push(Math.max(2,Math.min(waveHeight,(2+smoothPeak*(waveHeight-2))*envelope)));
     }
     var center=rect.height/2;
-    var inset=3;
+    var inset=Math.min(10,Math.max(7,rect.width*.025));
     var width=Math.max(1,rect.width-inset*2);
     var spacing=width/Math.max(1,points-1);
     function paintWave(fill){
