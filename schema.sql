@@ -90,10 +90,28 @@ CREATE TABLE IF NOT EXISTS tts_history (
   file_type TEXT,
   telegram_message_id INTEGER,
   source TEXT NOT NULL DEFAULT 'chatbot',
+  audio_r2_key TEXT,
+  audio_mime TEXT NOT NULL DEFAULT 'audio/mpeg',
+  alignment_json TEXT NOT NULL DEFAULT '',
+  edit_revision INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_tts_history_user_created ON tts_history (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS tts_edit_sessions (
+  token TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  history_id TEXT NOT NULL,
+  expected_revision INTEGER NOT NULL,
+  new_text TEXT NOT NULL,
+  new_alignment_json TEXT NOT NULL,
+  credits INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tts_edit_sessions_expiry ON tts_edit_sessions (expires_at);
 
 
 CREATE TABLE IF NOT EXISTS credit_usage_log (
