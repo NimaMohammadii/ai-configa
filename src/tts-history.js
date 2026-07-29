@@ -24,6 +24,10 @@ async function addMissingTtsHistoryColumns(env) {
     "file_type TEXT",
     "telegram_message_id INTEGER",
     "source TEXT NOT NULL DEFAULT 'chatbot'",
+    "audio_r2_key TEXT",
+    "audio_mime TEXT NOT NULL DEFAULT 'audio/mpeg'",
+    "alignment_json TEXT NOT NULL DEFAULT ''",
+    "edit_revision INTEGER NOT NULL DEFAULT 0",
   ];
 
   for (const column of columns) {
@@ -120,7 +124,7 @@ export async function getMiniAppTtsHistory(env, userId, limit = 30) {
   const safeLimit = Math.min(50, Math.max(1, Number(limit || 30)));
   const rows = await env.DB.prepare(
     "SELECT id, text, voice, language, credits, file_sequence, source, created_at, " +
-      "CASE WHEN audio_base64 != '' OR file_id IS NOT NULL THEN 1 ELSE 0 END AS has_audio " +
+      "CASE WHEN audio_base64 != '' OR file_id IS NOT NULL OR audio_r2_key IS NOT NULL THEN 1 ELSE 0 END AS has_audio " +
     "FROM tts_history WHERE user_id = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ?"
   ).bind(String(userId), safeLimit).all();
 
@@ -134,7 +138,7 @@ export async function getMiniAppTtsHistory(env, userId, limit = 30) {
 export async function getMiniAppTtsHistoryAudio(env, userId, historyId) {
   await ensureTtsHistoryTable(env);
   return await env.DB.prepare(
-    "SELECT id, text, voice, file_sequence, audio_base64, file_id, file_type FROM tts_history WHERE id = ? AND user_id = ?"
+    "SELECT id, text, voice, file_sequence, audio_base64, file_id, file_type, audio_r2_key, audio_mime, alignment_json, edit_revision FROM tts_history WHERE id = ? AND user_id = ?"
   ).bind(String(historyId), String(userId)).first();
 }
 
