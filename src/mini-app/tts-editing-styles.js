@@ -51,7 +51,7 @@ export const TTS_EDITING_CSS = `
 .tts-audio-clip-lane.has-multiple-clips{gap:5px;padding:3px 0}
 .tts-audio-clip-lane:not(.has-multiple-clips) .tts-audio-clip{cursor:default}
 .tts-audio-clip{position:relative;flex-grow:1;flex-shrink:1;min-width:52px;height:42px;overflow:hidden;border:0;border-radius:12px;background:transparent;box-shadow:none;touch-action:none;transform-origin:center;will-change:transform;transition:transform .28s cubic-bezier(.16,1,.3,1),opacity .2s ease,background .2s ease,box-shadow .2s ease}
-.tts-audio-clip canvas{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:inherit;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 92%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 92%,transparent 100%)}
+.tts-audio-clip canvas{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:inherit;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 2.5%,#000 97.5%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 2.5%,#000 97.5%,transparent 100%)}
 .tts-audio-clip::after{display:none}
 .tts-audio-clip.active{background:transparent;border:0;box-shadow:none}
 .tts-audio-clip-lane.has-multiple-clips .tts-audio-clip{height:36px;border:0;border-radius:10px;background:rgba(255,255,255,.025);box-shadow:inset 0 0 0 1px rgba(255,255,255,.065)}
@@ -61,11 +61,11 @@ export const TTS_EDITING_CSS = `
 .tts-audio-clip-lane.is-reordering .tts-audio-clip:not(.dragging){transition:transform .22s cubic-bezier(.16,1,.3,1),opacity .2s ease}
 .tts-audio-clip.dragging{opacity:.98;background:#111!important;box-shadow:0 12px 28px rgba(0,0,0,.5),inset 0 0 0 1px rgba(113,54,156,.55)!important;z-index:20;transition:none!important}
 .tts-audio-selection{position:absolute;top:7px;bottom:7px;left:0;width:100%;border:0;border-radius:999px;background:var(--audio-accent-soft);pointer-events:none}
-.tts-audio-selection::before{content:"";position:absolute;left:8px;right:8px;top:50%;height:1px;background:rgba(113,54,156,.28);transform:translateY(-50%)}
+.tts-audio-selection::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(113,54,156,.28);transform:translateY(-50%)}
 .tts-audio-handle{position:absolute;top:0;bottom:0;width:28px;height:100%;padding:0;border:0;background:transparent;touch-action:none;cursor:ew-resize;z-index:5}
 .tts-audio-handle i{position:absolute;top:8px;bottom:8px;width:4px;border-radius:999px;background:#fff;box-shadow:0 0 0 2px rgba(113,54,156,.13),0 0 12px rgba(113,54,156,.38)}
 .tts-audio-handle i::before,.tts-audio-handle i::after{display:none}
-.tts-audio-handle.start{left:0}.tts-audio-handle.start i{left:4px}.tts-audio-handle.end{right:auto;left:100%;transform:translateX(-100%)}.tts-audio-handle.end i{right:4px}
+.tts-audio-handle.start{left:0}.tts-audio-handle.start i{left:0}.tts-audio-handle.end{right:auto;left:100%;transform:translateX(-100%)}.tts-audio-handle.end i{right:0}
 .tts-audio-handle.dragging i{width:5px;background:var(--audio-accent)}
 .tts-audio-playhead{position:absolute;top:5px;bottom:5px;left:0;width:2px;background:var(--audio-accent);border-radius:999px;opacity:0;z-index:9;pointer-events:none;transform:translate3d(0,0,0) translateX(-50%);will-change:transform;transition:opacity .16s ease;box-shadow:0 0 9px rgba(113,54,156,.45)}
 .tts-audio-playhead i{position:absolute;top:-2px;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--audio-accent)}
@@ -80,13 +80,12 @@ export const TTS_EDITING_CSS = `
 .tts-audio-editor-tools button{width:42px;height:42px;padding:0;border-radius:50%;display:grid;place-items:center}
 .tts-audio-editor-tools #ttsAudioPreview{width:60px;height:60px;border-radius:21px;background:#fff;border-color:#fff;color:#050505;box-shadow:0 11px 32px rgba(255,255,255,.1)}
 .tts-audio-editor-tools svg{width:18px;height:18px}
-.tts-audio-editor-tools #ttsAudioPreview svg{width:27px;height:27px}.tts-audio-editor-tools #ttsAudioPreview .play{transform:translateX(1px)}
+.tts-audio-editor-tools #ttsAudioPreview svg{width:27px;height:27px}.tts-audio-editor-tools #ttsAudioPreview .play,.tts-audio-editor-tools #ttsAudioPreview .pause{grid-area:1/1;display:block;transform-origin:center;will-change:opacity,transform;transition:opacity .2s ease,transform .36s cubic-bezier(.16,1,.3,1)}.tts-audio-editor-tools #ttsAudioPreview .play{opacity:1;transform:translateX(1px) scale(1) rotate(0)}.tts-audio-editor-tools #ttsAudioPreview .pause{opacity:0;transform:scale(.72) rotate(-8deg)}
 .tts-audio-editor-operations #ttsAudioDelete:not(:disabled){color:rgba(255,118,136,.88);border-color:rgba(255,103,124,.11)}
 .tts-audio-editor-operations .primary{background:linear-gradient(135deg,#7c3daa,#54206f);border-color:rgba(133,73,173,.68);color:#fff;font-weight:840;box-shadow:0 8px 24px rgba(77,29,105,.28)}
 .tts-audio-previewing .tts-audio-editor-tools #ttsAudioPreview{background:var(--audio-accent);border-color:var(--audio-accent);color:#fff;box-shadow:0 10px 30px rgba(74,27,104,.3)}
-.tts-audio-previewing .tts-audio-editor-tools .play{display:none}
-.tts-audio-editor-tools .pause{display:none}
-.tts-audio-previewing .tts-audio-editor-tools .pause{display:block}
+.tts-audio-previewing .tts-audio-editor-tools #ttsAudioPreview .play{opacity:0;transform:translateX(1px) scale(.72) rotate(8deg)}
+.tts-audio-previewing .tts-audio-editor-tools #ttsAudioPreview .pause{opacity:1;transform:scale(1) rotate(0)}
 .tts-audio-editor.busy .tts-audio-editor-operations .primary{color:transparent;position:relative}
 .tts-audio-editor.busy .tts-audio-editor-operations .primary::after{content:"";position:absolute;left:50%;top:50%;width:13px;height:13px;margin:-6.5px;border:2px solid rgba(0,0,0,.2);border-top-color:#09050c;border-radius:50%;animation:ttsAudioEditorSpin .7s linear infinite}
 .tts-audio-editor.open .tts-audio-editor-head,.tts-audio-editor.open .tts-audio-timeline,.tts-audio-editor.open .tts-audio-editor-tools,.tts-audio-editor.open .tts-audio-editor-operations{animation:ttsAudioControlIn .42s cubic-bezier(.16,1,.3,1) both}
