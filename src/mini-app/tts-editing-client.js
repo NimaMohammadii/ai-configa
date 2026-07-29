@@ -223,6 +223,7 @@ export const TTS_EDITING_JS = `
     var available=Math.max(260,(timeline.clientWidth||300)-gaps-padding);
     lane.classList.toggle('has-multiple-clips',multiple);
     timeline.classList.toggle('is-scroll-mode',!fineTune.activeId);
+    timeline.classList.toggle('is-whole-preview',!fineTune.activeId);
     for(var index=0;index<fineTune.clips.length;index++){
       var clip=fineTune.clips[index];
       var node=document.createElement('div');
@@ -233,8 +234,13 @@ export const TTS_EDITING_JS = `
       node.setAttribute('aria-label','Audio clip '+String(index+1)+' of '+String(fineTune.clips.length));
       node.style.flex='0 0 '+String(Math.max(52,available*(clip.buffer.duration||0)/total))+'px';
       var canvas=document.createElement('canvas');
+      canvas.className='tts-audio-waveform';
       canvas.setAttribute('aria-hidden','true');
       node.appendChild(canvas);
+      var progressCanvas=document.createElement('canvas');
+      progressCanvas.className='tts-audio-progress-wave';
+      progressCanvas.setAttribute('aria-hidden','true');
+      node.appendChild(progressCanvas);
       if(clip.id===fineTune.activeId){
         var selection=document.createElement('div');
         selection.id='ttsAudioSelection';
@@ -278,7 +284,7 @@ export const TTS_EDITING_JS = `
       if(split)split.disabled=true;
       if(trim)trim.disabled=true;
       if(remove)remove.disabled=true;
-      if(preview)preview.disabled=true;
+      if(preview)preview.disabled=!fineTune.clips.length;
       if(undo)undo.disabled=!fineTune.undo.length;
       if(redo)redo.disabled=!fineTune.redo.length;
       if(reset)reset.disabled=!fineTune.dirty;
@@ -321,18 +327,26 @@ export const TTS_EDITING_JS = `
     if(!clip)return;
     var lane=q('ttsAudioClipLane');
     var node=lane&&lane.querySelector('[data-audio-clip-id="'+clip.id+'"]');
-    var canvas=node&&node.querySelector('canvas');
+    var canvas=node&&node.querySelector('.tts-audio-waveform');
+    var progressCanvas=node&&node.querySelector('.tts-audio-progress-wave');
     var buffer=clip.buffer;
     if(!canvas||!node||!buffer)return;
     var rect=node.getBoundingClientRect();
     if(rect.width<20||rect.height<20)return;
     var ratio=Math.min(3,window.devicePixelRatio||1);
-    canvas.width=Math.round(rect.width*ratio);
-    canvas.height=Math.round(rect.height*ratio);
-    var context=canvas.getContext('2d');
+    function prepareCanvas(target){
+      if(!target)return null;
+      target.width=Math.round(rect.width*ratio);
+      target.height=Math.round(rect.height*ratio);
+      var targetContext=target.getContext('2d');
+      if(!targetContext)return null;
+      targetContext.setTransform(ratio,0,0,ratio,0,0);
+      targetContext.clearRect(0,0,rect.width,rect.height);
+      return targetContext;
+    }
+    var context=prepareCanvas(canvas);
+    var progressContext=prepareCanvas(progressCanvas);
     if(!context)return;
-    context.setTransform(ratio,0,0,ratio,0,0);
-    context.clearRect(0,0,rect.width,rect.height);
     var channels=[];
     for(var channel=0;channel<buffer.numberOfChannels;channel++)channels.push(buffer.getChannelData(channel));
     var points=Math.max(28,Math.min(96,Math.floor(rect.width/3)));
@@ -363,39 +377,45 @@ export const TTS_EDITING_JS = `
     var inset=1;
     var width=Math.max(1,rect.width-inset*2);
     var spacing=width/Math.max(1,points-1);
-    function paintWave(fill){
-      context.beginPath();
-      context.moveTo(inset,center-heights[0]/2);
+    function paintWave(target,fill){
+      if(!target)return;
+      target.beginPath();
+      target.moveTo(inset,center-heights[0]/2);
       for(var top=1;top<points;top++){
         var topPreviousX=inset+(top-1)*spacing;
         var topX=inset+top*spacing;
         var topMiddle=(topPreviousX+topX)/2;
-        context.quadraticCurveTo(topPreviousX,center-heights[top-1]/2,topMiddle,center-(heights[top-1]+heights[top])/4);
+        target.quadraticCurveTo(topPreviousX,center-heights[top-1]/2,topMiddle,center-(heights[top-1]+heights[top])/4);
       }
-      context.lineTo(inset+width,center-heights[points-1]/2);
-      context.lineTo(inset+width,center+heights[points-1]/2);
+      target.lineTo(inset+width,center-heights[points-1]/2);
+      target.lineTo(inset+width,center+heights[points-1]/2);
       for(var bottom=points-2;bottom>=0;bottom--){
         var bottomNextX=inset+(bottom+1)*spacing;
         var bottomX=inset+bottom*spacing;
         var bottomMiddle=(bottomNextX+bottomX)/2;
-        context.quadraticCurveTo(bottomNextX,center+heights[bottom+1]/2,bottomMiddle,center+(heights[bottom+1]+heights[bottom])/4);
+        target.quadraticCurveTo(bottomNextX,center+heights[bottom+1]/2,bottomMiddle,center+(heights[bottom+1]+heights[bottom])/4);
       }
-      context.lineTo(inset,center+heights[0]/2);
-      context.closePath();
-      context.fillStyle=fill;
-      context.fill();
+      target.lineTo(inset,center+heights[0]/2);
+      target.closePath();
+      target.fillStyle=fill;
+      target.fill();
     }
     var isActive=clip.id===fineTune.activeId;
     context.fillStyle='rgba(255,255,255,.08)';
     context.fillRect(inset,center-.5,width,1);
-    paintWave(isActive?'rgba(255,255,255,.76)':'rgba(255,255,255,.46)');
+    paintWave(context,isActive?'rgba(255,255,255,.76)':'rgba(255,255,255,.46)');
     if(isActive){
       context.save();
       context.beginPath();
       context.rect(rect.width*fineTune.start,0,rect.width*(fineTune.end-fineTune.start),rect.height);
       context.clip();
-      paintWave('#fff');
+      paintWave(context,'#fff');
       context.restore();
+    }
+    if(progressCanvas){
+      progressCanvas.style.opacity=isActive?'0':'1';
+      progressCanvas.style.clipPath='inset(0 100% 0 0)';
+      if(!isActive)paintWave(progressContext,'#71369c');
     }
   }
 
@@ -594,8 +614,8 @@ export const TTS_EDITING_JS = `
   function ensureAudioPreview(){
     if(fineTune.previewUrl)return fineTune.previewUrl;
     var clip=activeAudioClip();
-    if(!clip)return'';
-    var preview=sliceAudioBuffer(clip.buffer,fineTune.start,fineTune.end);
+    var preview=clip?sliceAudioBuffer(clip.buffer,fineTune.start,fineTune.end):composeAudioClips(fineTune.clips);
+    if(!preview)return'';
     for(var channel=0;channel<preview.numberOfChannels;channel++)fadeAudioEdges(preview.getChannelData(channel),preview.sampleRate);
     fineTune.previewEnd=preview.duration;
     fineTune.previewUrl=URL.createObjectURL(encodeWav(preview));
@@ -603,7 +623,7 @@ export const TTS_EDITING_JS = `
   }
 
   function previewAudioEdit(){
-    if(!activeAudioClip()||fineTune.busy)return;
+    if(!fineTune.clips.length||fineTune.busy)return;
     var audio=q('ttsAudio');
     if(!audio)return;
     if(document.body.classList.contains('tts-audio-previewing')&&!audio.paused){
@@ -625,9 +645,26 @@ export const TTS_EDITING_JS = `
     var lane=q('ttsAudioClipLane');
     var timeline=q('ttsAudioTimeline');
     var playhead=q('ttsAudioPlayhead');
-    var node=lane&&clip&&lane.querySelector('[data-audio-clip-id="'+clip.id+'"]');
-    if(!node||!timeline||!playhead||!fineTune.previewEnd)return;
+    if(!lane||!timeline||!playhead||!fineTune.previewEnd)return;
     var progress=Math.max(0,Math.min(1,currentTime/fineTune.previewEnd));
+    if(!clip){
+      var elapsed=0;
+      var total=Math.max(.001,totalClipDuration());
+      for(var index=0;index<fineTune.clips.length;index++){
+        var currentClip=fineTune.clips[index];
+        var duration=currentClip.buffer.duration||0;
+        var start=elapsed/total;
+        var end=(elapsed+duration)/total;
+        var local=Math.max(0,Math.min(1,(progress-start)/Math.max(.0001,end-start)));
+        var currentNode=lane.querySelector('[data-audio-clip-id="'+currentClip.id+'"]');
+        var progressWave=currentNode&&currentNode.querySelector('.tts-audio-progress-wave');
+        if(progressWave)progressWave.style.clipPath='inset(0 '+String((1-local)*100)+'% 0 0)';
+        elapsed+=duration;
+      }
+      return;
+    }
+    var node=lane.querySelector('[data-audio-clip-id="'+clip.id+'"]');
+    if(!node)return;
     var ratio=fineTune.start+(fineTune.end-fineTune.start)*progress;
     var position=node.offsetLeft+node.offsetWidth*ratio-timeline.scrollLeft;
     playhead.style.transform='translate3d('+String(position)+'px,0,0) translateX(-50%)';
@@ -665,7 +702,7 @@ export const TTS_EDITING_JS = `
 
   function deselectAudioClip(){
     if(!fineTune.activeId||fineTune.busy)return;
-    stopAudioPreview();
+    invalidateAudioPreview();
     fineTune.activeId='';
     fineTune.start=0;
     fineTune.end=1;
