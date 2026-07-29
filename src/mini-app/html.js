@@ -108,6 +108,7 @@ export const MINI_APP_HTML = `<!doctype html>
             <button class="add-speaker" data-action="add-speaker" type="button"><span aria-hidden="true"></span><strong>+ Add speaker</strong><span aria-hidden="true"></span></button>
           </section>
         </div>
+        <div id="ttsEditBar" class="tts-edit-bar" aria-live="polite"><div class="tts-edit-bar-copy"><span class="tts-edit-pulse" aria-hidden="true"></span><div><strong id="ttsEditStatusText">Select any part and rewrite it</strong><small>Only the changed section will be regenerated</small></div></div><span id="ttsEditSelection" class="tts-edit-selection">No changes yet</span></div>
         <button class="keyboard-dismiss" data-action="dismiss-keyboard" type="button" aria-label="Hide keyboard"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <div class="tts-bottom">
           <div class="player-history-row">
@@ -117,6 +118,7 @@ export const MINI_APP_HTML = `<!doctype html>
             <span class="wave-time" id="waveTime">0:00</span>
             <button id="waveShare" class="wave-share" data-action="share-tts" type="button" aria-label="Share audio"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 13.5v4A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
+            <button id="ttsEditButton" class="tts-edit-button" data-action="edit-tts" type="button" aria-label="Edit generated voice" aria-disabled="true" disabled><svg width="25" height="25" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5.2 16.8-.65 2.65 2.65-.65L17.9 8.1a1.55 1.55 0 0 0 0-2.2l-.8-.8a1.55 1.55 0 0 0-2.2 0L5.2 14.8v2Z" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/><path d="m13.55 6.45 4 4M9.4 19.2h9.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button>
             <button id="historyButton" class="history-button" data-action="open-history" type="button" aria-label="Open history"><svg width="27" height="27" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.6 8.2A8.2 8.2 0 1 1 4 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4.6 8.2V4.6M4.6 8.2H8.2M12 7.8v4.6l3.1 1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
           <div class="tts-generate-row">
@@ -202,6 +204,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260726-credits-spacing-06"></script>
+  <script type="module" src="/mini-app/app.js?v=20260729-partial-tts-edit-01"></script>
 </body>
 </html>`;
