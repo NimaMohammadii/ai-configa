@@ -24,8 +24,8 @@ export const TTS_EDITING_CSS = `
 
 @media(max-width:390px){.player-history-row{gap:7px}.tts-edit-button,.history-button{width:48px;height:48px;flex-basis:48px;border-radius:13px}}
 @media(prefers-reduced-motion:reduce){.tts-edit-button,.dialogue-editor .dialogue-input-wrap,.dialogue-editor .dialogue-input-wrap::before,.tts-edit-inline-active .tts-generate{transition-duration:.01ms!important}}
-.wave-fine-tune{width:34px;height:34px;flex:0 0 34px;padding:0;border-radius:50%;display:grid;place-items:center;color:rgba(255,255,255,.82);background:rgba(255,255,255,.055);border:0;transition:transform .22s cubic-bezier(.2,.9,.2,1),background .2s ease,color .2s ease,opacity .2s ease}
-.wave-fine-tune:active:not(:disabled){transform:scale(.86);color:#000;background:#fff}
+.wave-fine-tune{width:30px;height:30px;flex:0 0 30px;padding:0;border-radius:9px;display:grid;place-items:center;color:rgba(255,255,255,.76);background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.065);transition:transform .22s cubic-bezier(.2,.9,.2,1),background .2s ease,color .2s ease,border-color .2s ease,opacity .2s ease}
+.wave-fine-tune:active:not(:disabled){transform:scale(.86);color:#fff;background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.14)}
 .wave-fine-tune:disabled{opacity:.2;pointer-events:none}
 
 .tts-audio-editor{width:100%;max-height:0;margin:0;overflow:hidden;opacity:0;transform:translateY(8px) scale(.99);border:0;border-radius:0;background:#000;padding:0 10px;pointer-events:none;transition:max-height .48s cubic-bezier(.16,1,.3,1),margin .4s cubic-bezier(.16,1,.3,1),padding .4s cubic-bezier(.16,1,.3,1),opacity .24s ease,transform .44s cubic-bezier(.16,1,.3,1)}
@@ -88,7 +88,7 @@ export const TTS_EDITING_CSS = `
 @keyframes ttsAudioEditorSpin{to{transform:rotate(360deg)}}
 @keyframes ttsClipIn{0%{opacity:.5;transform:scale(.9) translateY(2px)}68%{opacity:1;transform:scale(1.012) translateY(0)}100%{opacity:1;transform:scale(1)}}
 .tts-audio-clip.entering{animation:ttsClipIn .34s cubic-bezier(.16,1,.3,1)}
-@media(max-width:390px){.wave-fine-tune{width:30px;height:30px;flex-basis:30px}.tts-audio-editor.open{padding:8px}.tts-audio-editor-actions{gap:4px}.tts-audio-editor-actions button{height:33px;padding:0 6px;font-size:8.8px}.tts-audio-editor-tools,.tts-audio-editor-operations{gap:3px}.tts-audio-editor-tools button{width:28px}}
+@media(max-width:390px){.tts-audio-editor.open{padding:8px}.tts-audio-editor-actions{gap:4px}.tts-audio-editor-actions button{height:33px;padding:0 6px;font-size:8.8px}.tts-audio-editor-tools,.tts-audio-editor-operations{gap:3px}.tts-audio-editor-tools button{width:28px}}
 @media(prefers-reduced-motion:reduce){.wave-fine-tune,.tts-audio-editor,.tts-audio-editor-head>button,.tts-audio-editor-actions button,.tts-audio-clip{transition-duration:.01ms!important}.tts-audio-clip.entering{animation:none}}
 
 `;
