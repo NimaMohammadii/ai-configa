@@ -22,9 +22,9 @@ export const TTS_EDITING_CSS = `
 .tts-edit-inline-active .tts-generate:disabled{opacity:.24!important}
 .tts-edit-inline-active .tts-generate.tts-edit-loading{opacity:1!important}
 
-@media(max-width:390px){.player-history-row{gap:7px}.tts-edit-button,.history-button{width:48px;height:48px;flex-basis:48px;border-radius:13px}}
+@media(max-width:390px){.player-history-row{gap:7px}.tts-edit-button{width:48px;height:48px;flex-basis:48px;border-radius:13px}}
 @media(prefers-reduced-motion:reduce){.tts-edit-button,.dialogue-editor .dialogue-input-wrap,.dialogue-editor .dialogue-input-wrap::before,.tts-edit-inline-active .tts-generate{transition-duration:.01ms!important}}
-.wave-fine-tune{width:30px;height:30px;flex:0 0 30px;padding:0;border-radius:9px;display:grid;place-items:center;color:rgba(255,255,255,.76);background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.065);transition:transform .22s cubic-bezier(.2,.9,.2,1),background .2s ease,color .2s ease,border-color .2s ease,opacity .2s ease}
+.wave-fine-tune{width:32px;height:32px;flex:0 0 32px;padding:0;border-radius:10px;display:grid;place-items:center;color:rgba(255,255,255,.86);background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.075);transition:transform .22s cubic-bezier(.2,.9,.2,1),background .2s ease,color .2s ease,border-color .2s ease,opacity .2s ease}
 .wave-fine-tune:active:not(:disabled){transform:scale(.86);color:#fff;background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.14)}
 .wave-fine-tune:disabled{opacity:.2;pointer-events:none}
 
