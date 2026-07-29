@@ -302,12 +302,12 @@ export const TTS_EDITING_JS = `
     context.clearRect(0,0,rect.width,rect.height);
     var channels=[];
     for(var channel=0;channel<buffer.numberOfChannels;channel++)channels.push(buffer.getChannelData(channel));
-    var bars=Math.max(14,Math.floor(rect.width/4.6));
-    var step=Math.max(1,Math.floor(buffer.length/bars));
-    var sampleStep=Math.max(1,Math.floor(step/20));
+    var points=Math.max(28,Math.min(96,Math.floor(rect.width/3)));
+    var step=Math.max(1,Math.floor(buffer.length/points));
+    var sampleStep=Math.max(1,Math.floor(step/22));
     var peaks=[];
-    for(var bar=0;bar<bars;bar++){
-      var from=bar*step;
+    for(var point=0;point<points;point++){
+      var from=point*step;
       var to=Math.min(buffer.length,from+step);
       var peak=0;
       for(var frame=from;frame<to;frame+=sampleStep){
@@ -315,26 +315,51 @@ export const TTS_EDITING_JS = `
       }
       peaks.push(Math.min(1,Math.pow(peak,0.68)*1.42));
     }
+    var heights=[];
+    for(var index=0;index<points;index++){
+      var previous=peaks[Math.max(0,index-1)];
+      var currentPeak=peaks[index];
+      var next=peaks[Math.min(points-1,index+1)];
+      var smoothPeak=previous*.24+currentPeak*.52+next*.24;
+      var edge=Math.sin(Math.PI*(index+.5)/points);
+      var envelope=.8+.2*Math.pow(edge,.72);
+      heights.push(Math.max(3.5,Math.min(rect.height-15,(3.5+smoothPeak*(rect.height-19))*envelope)));
+    }
     var center=rect.height/2;
-    var isActive=clip.id===fineTune.activeId;
-    context.lineWidth=Math.max(2.2,Math.min(2.8,rect.width/bars*.58));
-    context.lineCap='round';
-    for(var currentBar=0;currentBar<bars;currentBar++){
-      var previous=peaks[Math.max(0,currentBar-1)];
-      var currentPeak=peaks[currentBar];
-      var next=peaks[Math.min(bars-1,currentBar+1)];
-      var smoothPeak=previous*.22+currentPeak*.56+next*.22;
-      var edge=Math.sin(Math.PI*(currentBar+.5)/bars);
-      var envelope=.82+.18*Math.pow(edge,.7);
-      var height=Math.max(4,Math.min(rect.height-14,(4+smoothPeak*(rect.height-18))*envelope));
-      var x=(currentBar+.5)*rect.width/bars;
-      var position=currentBar/Math.max(1,bars-1);
-      var selected=isActive&&position>=fineTune.start&&position<=fineTune.end;
-      context.strokeStyle=selected?'#fff':(isActive?'rgba(255,255,255,.58)':'rgba(255,255,255,.3)');
+    var inset=3;
+    var width=Math.max(1,rect.width-inset*2);
+    var spacing=width/Math.max(1,points-1);
+    function paintWave(fill){
       context.beginPath();
-      context.moveTo(Math.round(x),Math.round(center-height/2));
-      context.lineTo(Math.round(x),Math.round(center+height/2));
-      context.stroke();
+      context.moveTo(inset,center-heights[0]/2);
+      for(var top=1;top<points;top++){
+        var topPreviousX=inset+(top-1)*spacing;
+        var topX=inset+top*spacing;
+        var topMiddle=(topPreviousX+topX)/2;
+        context.quadraticCurveTo(topPreviousX,center-heights[top-1]/2,topMiddle,center-(heights[top-1]+heights[top])/4);
+      }
+      context.lineTo(inset+width,center-heights[points-1]/2);
+      context.lineTo(inset+width,center+heights[points-1]/2);
+      for(var bottom=points-2;bottom>=0;bottom--){
+        var bottomNextX=inset+(bottom+1)*spacing;
+        var bottomX=inset+bottom*spacing;
+        var bottomMiddle=(bottomNextX+bottomX)/2;
+        context.quadraticCurveTo(bottomNextX,center+heights[bottom+1]/2,bottomMiddle,center+(heights[bottom+1]+heights[bottom])/4);
+      }
+      context.lineTo(inset,center+heights[0]/2);
+      context.closePath();
+      context.fillStyle=fill;
+      context.fill();
+    }
+    var isActive=clip.id===fineTune.activeId;
+    paintWave(isActive?'rgba(255,255,255,.38)':'rgba(255,255,255,.28)');
+    if(isActive){
+      context.save();
+      context.beginPath();
+      context.rect(rect.width*fineTune.start,0,rect.width*(fineTune.end-fineTune.start),rect.height);
+      context.clip();
+      paintWave('#fff');
+      context.restore();
     }
   }
 
