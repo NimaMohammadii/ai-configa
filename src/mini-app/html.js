@@ -130,6 +130,8 @@ export const MINI_APP_HTML = `<!doctype html>
               <div class="tts-audio-editor-tools">
                 <button id="ttsAudioPreview" data-action="preview-audio-edit" type="button" aria-label="Preview edit"><svg class="play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6.2v11.6L17 12 8 6.2Z" fill="currentColor"/></svg><svg class="pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 6h3v12h-3zM13.5 6h3v12h-3z" fill="currentColor"/></svg></button>
                 <button id="ttsAudioUndo" data-action="undo-audio-edit" type="button" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 8H5V4M5.4 8.1A8 8 0 1 1 4.2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button id="ttsAudioRedo" data-action="redo-audio-edit" type="button" aria-label="Redo" disabled><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 8h4V4m-.4 4.1A8 8 0 1 0 19.8 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button id="ttsAudioReset" data-action="reset-audio-edit" type="button" aria-label="Restore original audio" disabled><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 8.2V4.5m0 3.7h3.7M5.4 8a7.8 7.8 0 1 1-1.1 6.2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8.2v4.2l2.7 1.7" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button>
               </div>
               <div class="tts-audio-editor-operations">
                 <button id="ttsAudioSplit" data-action="split-audio-edit" type="button">Split</button>
