@@ -171,6 +171,58 @@ export async function regenerateTtsSelection(env, input) {
   };
 }
 
+export async function saveManualTtsAudioEdit(env, input) {
+  await ensureEditingStorage(env);
+  const userId = String(input.userId);
+  const historyId = String(input.historyId || "");
+  const expectedRevision = Number(input.revision || 0);
+  const row = await env.DB.prepare(
+    "SELECT id, text, file_sequence, edit_revision, audio_r2_key FROM tts_history WHERE id = ? AND user_id = ? AND source = 'mini_app'"
+  ).bind(historyId, userId).first();
+
+  if (!row) throw httpError("Voice history was not found.", 404);
+  if (Number(row.edit_revision || 0) !== expectedRevision) {
+    throw httpError("This voice was already updated. Open the editor again.", 409);
+  }
+
+  const mimeType = String(input.mimeType || "audio/wav").toLowerCase();
+  if (mimeType !== "audio/wav") throw httpError("Audio fine-tuning must be saved as WAV.", 400);
+  const audio = base64ToArrayBuffer(String(input.audioBase64 || ""));
+  if (!audio.byteLength || audio.byteLength > MAX_EDIT_AUDIO_BYTES) {
+    throw httpError("The edited audio is too large.", 413);
+  }
+
+  const nextRevision = expectedRevision + 1;
+  const key = audioKey(userId, historyId, nextRevision, "wav");
+  await putAudio(env, key, audio, mimeType);
+
+  const result = await env.DB.prepare(
+    "UPDATE tts_history SET audio_base64 = '', audio_r2_key = ?, audio_mime = ?, alignment_json = '', edit_revision = ? WHERE id = ? AND user_id = ? AND edit_revision = ?"
+  ).bind(key, mimeType, nextRevision, historyId, userId, expectedRevision).run();
+
+  if (!Number(result?.meta?.changes || 0)) {
+    await audioBucket(env).delete(key).catch(() => null);
+    throw httpError("This voice was already updated.", 409);
+  }
+
+  await env.DB.prepare("DELETE FROM tts_edit_sessions WHERE history_id = ? AND user_id = ?")
+    .bind(historyId, userId)
+    .run()
+    .catch(() => null);
+  if (row.audio_r2_key && row.audio_r2_key !== key) {
+    await audioBucket(env).delete(String(row.audio_r2_key)).catch(() => null);
+  }
+
+  return {
+    id: historyId,
+    revision: nextRevision,
+    text: String(row.text || ""),
+    mimeType,
+    editable: false,
+    filename: "Vexa " + String(Number(row.file_sequence || 1)).padStart(4, "0") + " fine-tuned.wav",
+  };
+}
+
 export async function commitTtsEdit(env, input) {
   await ensureEditingStorage(env);
   const userId = String(input.userId);

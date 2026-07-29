@@ -75,7 +75,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260729-tts-natural-edit-06"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260729-audio-fine-tune-07"/>
 </head>
 <body>
   <main class="app">
@@ -115,11 +115,31 @@ export const MINI_APP_HTML = `<!doctype html>
             <button id="wavePlay" class="wave-play" data-action="play-tts" type="button" aria-label="Play audio"><span class="wave-play-shape" aria-hidden="true"><svg class="wave-play-icon" viewBox="0 0 24 24" style="stroke:none"><path d="M6.2 2.8C4.7 1.9 2.8 3 2.8 4.75v14.5c0 1.75 1.9 2.85 3.4 1.95l13.8-8.1c1.6-.95 1.6-1.25 0-2.2z"/></svg><span class="wave-pause-icon"><i></i><i></i></span></span></button>
             <div id="waveSeekWrap" class="wave-seek" style="--wave-progress:0%"><svg class="wave-svg wave-svg-base" viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true"><rect x="2.0" y="15.0" width="3.2" height="14" rx="1.6"/><rect x="9.6" y="10.0" width="3.2" height="24" rx="1.6"/><rect x="17.2" y="16.5" width="3.2" height="11" rx="1.6"/><rect x="24.8" y="7.0" width="3.2" height="30" rx="1.6"/><rect x="32.4" y="13.0" width="3.2" height="18" rx="1.6"/><rect x="40.0" y="5.0" width="3.2" height="34" rx="1.6"/><rect x="47.6" y="16.0" width="3.2" height="12" rx="1.6"/><rect x="55.2" y="8.0" width="3.2" height="28" rx="1.6"/><rect x="62.8" y="12.0" width="3.2" height="20" rx="1.6"/><rect x="70.4" y="4.0" width="3.2" height="36" rx="1.6"/><rect x="78.0" y="14.5" width="3.2" height="15" rx="1.6"/><rect x="85.6" y="9.0" width="3.2" height="26" rx="1.6"/><rect x="93.2" y="6.0" width="3.2" height="32" rx="1.6"/><rect x="100.8" y="15.5" width="3.2" height="13" rx="1.6"/><rect x="108.4" y="10.5" width="3.2" height="23" rx="1.6"/><rect x="116.0" y="3.0" width="3.2" height="38" rx="1.6"/><rect x="123.6" y="10.5" width="3.2" height="23" rx="1.6"/><rect x="131.2" y="15.5" width="3.2" height="13" rx="1.6"/><rect x="138.8" y="6.0" width="3.2" height="32" rx="1.6"/><rect x="146.4" y="9.0" width="3.2" height="26" rx="1.6"/><rect x="154.0" y="14.5" width="3.2" height="15" rx="1.6"/><rect x="161.6" y="4.0" width="3.2" height="36" rx="1.6"/><rect x="169.2" y="12.0" width="3.2" height="20" rx="1.6"/><rect x="176.8" y="8.0" width="3.2" height="28" rx="1.6"/><rect x="184.4" y="16.0" width="3.2" height="12" rx="1.6"/><rect x="192.0" y="5.0" width="3.2" height="34" rx="1.6"/><rect x="199.6" y="13.0" width="3.2" height="18" rx="1.6"/><rect x="207.2" y="7.0" width="3.2" height="30" rx="1.6"/><rect x="214.8" y="16.5" width="3.2" height="11" rx="1.6"/><rect x="222.4" y="10.0" width="3.2" height="24" rx="1.6"/><rect x="230.0" y="15.0" width="3.2" height="14" rx="1.6"/></svg><input id="waveSeek" class="wave-range" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek audio" disabled/></div>
             <span class="wave-time" id="waveTime">0:00</span>
-            <button id="waveShare" class="wave-share" data-action="share-tts" type="button" aria-label="Share audio"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 13.5v4A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="waveShare" class="wave-share" data-action="share-tts" type="button" aria-label="Share audio"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 13.5v4A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button id="waveFineTune" class="wave-fine-tune" data-action="open-audio-editor" type="button" aria-label="Fine-tune audio" disabled><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 8.25h9.5M17.5 8.25H20M4 15.75h2.5M10.5 15.75H20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="15.5" cy="8.25" r="2" stroke="currentColor" stroke-width="1.7"/><circle cx="8.5" cy="15.75" r="2" stroke="currentColor" stroke-width="1.7"/></svg></button>
             </div>
             <button id="ttsEditButton" class="tts-edit-button" data-action="edit-tts" type="button" aria-label="Edit generated voice" aria-disabled="true" disabled><svg width="25" height="25" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5.2 16.8-.65 2.65 2.65-.65L17.9 8.1a1.55 1.55 0 0 0 0-2.2l-.8-.8a1.55 1.55 0 0 0-2.2 0L5.2 14.8v2Z" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/><path d="m13.55 6.45 4 4M9.4 19.2h9.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button>
             <button id="historyButton" class="history-button" data-action="open-history" type="button" aria-label="Open history"><svg width="27" height="27" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.6 8.2A8.2 8.2 0 1 1 4 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4.6 8.2V4.6M4.6 8.2H8.2M12 7.8v4.6l3.1 1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
+          <section id="ttsAudioEditor" class="tts-audio-editor" aria-hidden="true">
+            <header class="tts-audio-editor-head"><div><strong>Fine tune</strong><span id="ttsAudioSelectionTime">0:00 — 0:00</span></div><button data-action="close-audio-editor" type="button" aria-label="Close audio editor"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></button></header>
+            <div id="ttsAudioTimeline" class="tts-audio-timeline">
+              <canvas id="ttsAudioCanvas" aria-hidden="true"></canvas>
+              <div id="ttsAudioSelection" class="tts-audio-selection" aria-hidden="true"></div>
+              <button id="ttsAudioStartHandle" class="tts-audio-handle start" data-audio-handle="start" type="button" aria-label="Trim start"><i></i></button>
+              <button id="ttsAudioEndHandle" class="tts-audio-handle end" data-audio-handle="end" type="button" aria-label="Trim end"><i></i></button>
+            </div>
+            <div class="tts-audio-editor-actions">
+              <div class="tts-audio-editor-tools">
+                <button id="ttsAudioPreview" data-action="preview-audio-edit" type="button" aria-label="Preview edit"><svg class="play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6.2v11.6L17 12 8 6.2Z" fill="currentColor"/></svg><svg class="pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 6h3v12h-3zM13.5 6h3v12h-3z" fill="currentColor"/></svg></button>
+                <button id="ttsAudioUndo" data-action="undo-audio-edit" type="button" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 8H5V4M5.4 8.1A8 8 0 1 1 4.2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              </div>
+              <div class="tts-audio-editor-operations">
+                <button id="ttsAudioTrim" data-action="trim-audio-edit" type="button">Trim</button>
+                <button id="ttsAudioDelete" data-action="delete-audio-edit" type="button">Delete</button>
+                <button id="ttsAudioSave" class="primary" data-action="save-audio-edit" type="button">Done</button>
+              </div>
+            </div>
+          </section>
           <div class="tts-generate-row">
             <button id="convertButton" class="tts-generate" data-action="generate-tts" type="button"><span class="tts-generate-label">Generate Voice</span><span class="tts-generate-wave" aria-hidden="true"><i></i><i></i><i></i></span></button>
             <span class="char-count-wrap"><button id="enhanceButton" class="tts-enhance" data-action="enhance-tts" type="button" aria-label="Enhance text with emotion tags"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2.8l1.25 4.15a5.1 5.1 0 0 0 3.4 3.4L20.8 11.6l-4.15 1.25a5.1 5.1 0 0 0-3.4 3.4L12 20.4l-1.25-4.15a5.1 5.1 0 0 0-3.4-3.4L3.2 11.6l4.15-1.25a5.1 5.1 0 0 0 3.4-3.4L12 2.8Z" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/></svg><span>Enhance</span></button><button class="char-warning" id="ttsCharWarning" data-action="open-char-limit" type="button" aria-label="Text length warning"><span>!</span></button><span class="char-count" id="ttsCharCount">0 / 5,000 characters</span></span>
@@ -203,6 +223,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260729-tts-natural-edit-06"></script>
+  <script type="module" src="/mini-app/app.js?v=20260729-audio-fine-tune-07"></script>
 </body>
 </html>`;
