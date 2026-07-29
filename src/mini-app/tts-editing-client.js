@@ -19,12 +19,19 @@ export const TTS_EDITING_JS = `
     dirty:false,
     buffer:null,
     context:null,
+    clips:[],
+    activeId:'',
+    nextClipId:1,
     start:0,
     end:1,
     undo:[],
     previewUrl:'',
     previewEnd:0,
-    drag:''
+    drag:'',
+    dragClipId:'',
+    dragStartX:0,
+    dragMoved:false,
+    dragSnapshot:null
   };
 
   function q(id){return document.getElementById(id)}
@@ -92,6 +99,9 @@ export const TTS_EDITING_JS = `
     fineTune.start=0;
     fineTune.end=1;
     fineTune.undo=[];
+    fineTune.clips=[];
+    fineTune.activeId='';
+    fineTune.nextClipId=1;
     panel.classList.add('open','loading');
     panel.setAttribute('aria-hidden','false');
     document.body.classList.add('tts-audio-editor-active');
@@ -103,12 +113,15 @@ export const TTS_EDITING_JS = `
         return response.arrayBuffer();
       });
       fineTune.buffer=await fineTune.context.decodeAudioData(bytes.slice(0));
+      var firstClip=createAudioClip(fineTune.buffer);
+      fineTune.clips=[firstClip];
+      fineTune.activeId=firstClip.id;
       fineTune.busy=false;
       panel.classList.remove('loading');
       setAudioReady(true);
-      syncAudioSelection();
       requestAnimationFrame(function(){
-        drawAudioWaveform();
+        renderAudioTimeline([firstClip.id]);
+        syncAudioSelection();
         setTimeout(function(){panel.scrollIntoView({behavior:'smooth',block:'nearest'})},80);
       });
       haptic('light');
@@ -130,8 +143,13 @@ export const TTS_EDITING_JS = `
     fineTune.busy=false;
     fineTune.dirty=false;
     fineTune.buffer=null;
+    fineTune.clips=[];
+    fineTune.activeId='';
     fineTune.undo=[];
     fineTune.drag='';
+    fineTune.dragClipId='';
+    fineTune.dragMoved=false;
+    fineTune.dragSnapshot=null;
     var panel=audioEditPanel();
     if(panel){
       panel.classList.remove('open','loading','busy');
@@ -141,8 +159,83 @@ export const TTS_EDITING_JS = `
     setAudioReady(!!(state.historyId&&state.audioSrc));
   }
 
+  function createAudioClip(buffer){
+    return{id:'clip-'+String(fineTune.nextClipId++),buffer:buffer};
+  }
+
+  function activeAudioClip(){
+    for(var index=0;index<fineTune.clips.length;index++){
+      if(fineTune.clips[index].id===fineTune.activeId)return fineTune.clips[index];
+    }
+    return fineTune.clips[0]||null;
+  }
+
+  function clipIndexById(id){
+    for(var index=0;index<fineTune.clips.length;index++){
+      if(fineTune.clips[index].id===id)return index;
+    }
+    return-1;
+  }
+
+  function totalClipDuration(){
+    var duration=0;
+    for(var index=0;index<fineTune.clips.length;index++)duration+=fineTune.clips[index].buffer.duration||0;
+    return duration;
+  }
+
+  function renderAudioTimeline(enteringIds){
+    var lane=q('ttsAudioClipLane');
+    var timeline=q('ttsAudioTimeline');
+    if(!lane||!timeline)return;
+    lane.innerHTML='';
+    var total=Math.max(.001,totalClipDuration());
+    var gaps=Math.max(0,fineTune.clips.length-1)*4;
+    var available=Math.max(260,(timeline.clientWidth||300)-10-gaps);
+    for(var index=0;index<fineTune.clips.length;index++){
+      var clip=fineTune.clips[index];
+      var node=document.createElement('div');
+      node.className='tts-audio-clip'+(clip.id===fineTune.activeId?' active':'');
+      if(enteringIds&&enteringIds.indexOf(clip.id)>=0)node.classList.add('entering');
+      node.setAttribute('data-audio-clip-id',clip.id);
+      node.setAttribute('role','button');
+      node.setAttribute('aria-label','Audio clip '+String(index+1)+' of '+String(fineTune.clips.length));
+      node.style.flex='0 0 '+String(Math.max(52,available*(clip.buffer.duration||0)/total))+'px';
+      var canvas=document.createElement('canvas');
+      canvas.setAttribute('aria-hidden','true');
+      node.appendChild(canvas);
+      if(clip.id===fineTune.activeId){
+        var selection=document.createElement('div');
+        selection.id='ttsAudioSelection';
+        selection.className='tts-audio-selection';
+        selection.setAttribute('aria-hidden','true');
+        node.appendChild(selection);
+        node.appendChild(createAudioHandle('start','Trim start'));
+        node.appendChild(createAudioHandle('end','Trim end'));
+      }
+      lane.appendChild(node);
+    }
+    var count=q('ttsAudioClipCount');
+    if(count)count.textContent=String(fineTune.clips.length)+' clip'+(fineTune.clips.length===1?'':'s')+' · '+formatAudioTime(total);
+    requestAnimationFrame(function(){
+      for(var current=0;current<fineTune.clips.length;current++)drawClipWaveform(fineTune.clips[current]);
+    });
+  }
+
+  function createAudioHandle(side,label){
+    var button=document.createElement('button');
+    button.id=side==='start'?'ttsAudioStartHandle':'ttsAudioEndHandle';
+    button.className='tts-audio-handle '+side;
+    button.setAttribute('data-audio-handle',side);
+    button.setAttribute('type','button');
+    button.setAttribute('aria-label',label);
+    button.appendChild(document.createElement('i'));
+    return button;
+  }
+
   function syncAudioSelection(){
-    if(!fineTune.buffer)return;
+    var clip=activeAudioClip();
+    if(!clip)return;
+    fineTune.activeId=clip.id;
     fineTune.start=Math.max(0,Math.min(fineTune.end,fineTune.start));
     fineTune.end=Math.max(fineTune.start,Math.min(1,fineTune.end));
     var startHandle=q('ttsAudioStartHandle');
@@ -154,18 +247,20 @@ export const TTS_EDITING_JS = `
       selection.style.left=String(fineTune.start*100)+'%';
       selection.style.width=String((fineTune.end-fineTune.start)*100)+'%';
     }
-    var duration=fineTune.buffer.duration||0;
+    var duration=clip.buffer.duration||0;
     var time=q('ttsAudioSelectionTime');
     if(time)time.textContent=formatAudioTime(fineTune.start*duration)+' — '+formatAudioTime(fineTune.end*duration);
     var almostWhole=fineTune.start<.001&&fineTune.end>.999;
     var tooShort=(fineTune.end-fineTune.start)*duration<.05;
+    var split=q('ttsAudioSplit');
     var trim=q('ttsAudioTrim');
     var remove=q('ttsAudioDelete');
     var undo=q('ttsAudioUndo');
+    if(split)split.disabled=almostWhole||tooShort;
     if(trim)trim.disabled=almostWhole||tooShort;
-    if(remove)remove.disabled=almostWhole||tooShort;
+    if(remove)remove.disabled=tooShort||(almostWhole&&fineTune.clips.length===1);
     if(undo)undo.disabled=!fineTune.undo.length;
-    drawAudioWaveform();
+    drawClipWaveform(clip);
   }
 
   function formatAudioTime(seconds){
@@ -175,12 +270,14 @@ export const TTS_EDITING_JS = `
     return String(minutes)+':'+remainder.toFixed(1).padStart(4,'0');
   }
 
-  function drawAudioWaveform(){
-    var canvas=q('ttsAudioCanvas');
-    var timeline=q('ttsAudioTimeline');
-    var buffer=fineTune.buffer;
-    if(!canvas||!timeline||!buffer)return;
-    var rect=timeline.getBoundingClientRect();
+  function drawClipWaveform(clip){
+    if(!clip)return;
+    var lane=q('ttsAudioClipLane');
+    var node=lane&&lane.querySelector('[data-audio-clip-id="'+clip.id+'"]');
+    var canvas=node&&node.querySelector('canvas');
+    var buffer=clip.buffer;
+    if(!canvas||!node||!buffer)return;
+    var rect=node.getBoundingClientRect();
     if(rect.width<20||rect.height<20)return;
     var ratio=Math.min(3,window.devicePixelRatio||1);
     canvas.width=Math.round(rect.width*ratio);
@@ -191,10 +288,11 @@ export const TTS_EDITING_JS = `
     context.clearRect(0,0,rect.width,rect.height);
     var channels=[];
     for(var channel=0;channel<buffer.numberOfChannels;channel++)channels.push(buffer.getChannelData(channel));
-    var bars=Math.max(42,Math.floor(rect.width/4));
+    var bars=Math.max(12,Math.floor(rect.width/4));
     var step=Math.max(1,Math.floor(buffer.length/bars));
     var sampleStep=Math.max(1,Math.floor(step/18));
     var center=rect.height/2;
+    var isActive=clip.id===fineTune.activeId;
     for(var bar=0;bar<bars;bar++){
       var from=bar*step;
       var to=Math.min(buffer.length,from+step);
@@ -203,66 +301,108 @@ export const TTS_EDITING_JS = `
         for(var current=0;current<channels.length;current++)peak=Math.max(peak,Math.abs(channels[current][frame]||0));
       }
       var normalized=Math.min(1,Math.pow(peak,0.72)*1.35);
-      var height=Math.max(3,normalized*(rect.height-24));
+      var height=Math.max(3,normalized*(rect.height-17));
       var x=(bar+.5)*rect.width/bars;
       var position=bar/Math.max(1,bars-1);
-      var selected=position>=fineTune.start&&position<=fineTune.end;
-      context.fillStyle=selected?'rgba(255,255,255,.82)':'rgba(255,255,255,.16)';
+      var selected=isActive&&position>=fineTune.start&&position<=fineTune.end;
+      context.fillStyle=selected?'rgba(255,255,255,.9)':(isActive?'rgba(255,255,255,.28)':'rgba(255,255,255,.2)');
       context.fillRect(Math.round(x)-1,Math.round(center-height/2),2,Math.round(height));
     }
   }
 
   function updateAudioHandle(clientX,handle){
-    var timeline=q('ttsAudioTimeline');
-    if(!timeline||!fineTune.buffer)return;
-    var rect=timeline.getBoundingClientRect();
+    var clip=activeAudioClip();
+    var lane=q('ttsAudioClipLane');
+    var node=lane&&clip&&lane.querySelector('[data-audio-clip-id="'+clip.id+'"]');
+    if(!node||!clip)return;
+    var rect=node.getBoundingClientRect();
     var position=Math.max(0,Math.min(1,(clientX-rect.left)/Math.max(1,rect.width)));
-    var minimum=Math.min(.08,Math.max(.002,.05/Math.max(.05,fineTune.buffer.duration)));
+    var minimum=Math.min(.25,Math.max(.002,.05/Math.max(.05,clip.buffer.duration)));
     if(handle==='start')fineTune.start=Math.min(fineTune.end-minimum,position);
     else fineTune.end=Math.max(fineTune.start+minimum,position);
+    invalidateAudioPreview();
     syncAudioSelection();
   }
 
-  function rememberAudioState(){
-    fineTune.undo.push({buffer:fineTune.buffer,dirty:fineTune.dirty});
+  function snapshotAudioState(){
+    return{
+      clips:fineTune.clips.slice(),
+      activeId:fineTune.activeId,
+      start:fineTune.start,
+      end:fineTune.end,
+      dirty:fineTune.dirty
+    };
+  }
+
+  function rememberAudioState(snapshot){
+    fineTune.undo.push(snapshot||snapshotAudioState());
     if(fineTune.undo.length>8)fineTune.undo.shift();
   }
 
-  function refreshEditedAudio(){
+  function refreshEditedAudio(enteringIds){
     fineTune.start=0;
     fineTune.end=1;
     fineTune.dirty=true;
-    stopAudioPreview();
-    if(fineTune.previewUrl){URL.revokeObjectURL(fineTune.previewUrl);fineTune.previewUrl=''}
+    invalidateAudioPreview();
+    fineTune.buffer=composeAudioClips(fineTune.clips);
+    renderAudioTimeline(enteringIds||[]);
     syncAudioSelection();
     haptic('light');
   }
 
-  function trimAudioEdit(){
-    if(!fineTune.buffer||fineTune.busy)return;
+  function splitAudioEdit(){
+    var clip=activeAudioClip();
+    if(!clip||fineTune.busy)return;
     if(fineTune.start<.001&&fineTune.end>.999)return;
     rememberAudioState();
-    fineTune.buffer=sliceAudioBuffer(fineTune.buffer,fineTune.start,fineTune.end);
-    refreshEditedAudio();
+    var index=clipIndexById(clip.id);
+    var pieces=[];
+    var selected;
+    if(fineTune.start>.001)pieces.push(createAudioClip(sliceAudioBuffer(clip.buffer,0,fineTune.start)));
+    selected=createAudioClip(sliceAudioBuffer(clip.buffer,fineTune.start,fineTune.end));
+    pieces.push(selected);
+    if(fineTune.end<.999)pieces.push(createAudioClip(sliceAudioBuffer(clip.buffer,fineTune.end,1)));
+    fineTune.clips.splice.apply(fineTune.clips,[index,1].concat(pieces));
+    fineTune.activeId=selected.id;
+    refreshEditedAudio(pieces.map(function(piece){return piece.id}));
+  }
+
+  function trimAudioEdit(){
+    var clip=activeAudioClip();
+    if(!clip||fineTune.busy)return;
+    if(fineTune.start<.001&&fineTune.end>.999)return;
+    rememberAudioState();
+    clip.buffer=sliceAudioBuffer(clip.buffer,fineTune.start,fineTune.end);
+    refreshEditedAudio([clip.id]);
   }
 
   function deleteAudioEdit(){
-    if(!fineTune.buffer||fineTune.busy)return;
-    if(fineTune.start<.001&&fineTune.end>.999)return;
+    var clip=activeAudioClip();
+    if(!clip||fineTune.busy)return;
+    var whole=fineTune.start<.001&&fineTune.end>.999;
+    if(whole&&fineTune.clips.length===1)return;
     rememberAudioState();
-    fineTune.buffer=deleteAudioRange(fineTune.buffer,fineTune.start,fineTune.end);
-    refreshEditedAudio();
+    var index=clipIndexById(clip.id);
+    var pieces=[];
+    if(!whole&&fineTune.start>.001)pieces.push(createAudioClip(sliceAudioBuffer(clip.buffer,0,fineTune.start)));
+    if(!whole&&fineTune.end<.999)pieces.push(createAudioClip(sliceAudioBuffer(clip.buffer,fineTune.end,1)));
+    fineTune.clips.splice.apply(fineTune.clips,[index,1].concat(pieces));
+    var next=fineTune.clips[Math.min(index,fineTune.clips.length-1)];
+    fineTune.activeId=next?next.id:'';
+    refreshEditedAudio(pieces.map(function(piece){return piece.id}));
   }
 
   function undoAudioEdit(){
     if(!fineTune.undo.length||fineTune.busy)return;
     var previous=fineTune.undo.pop();
-    fineTune.buffer=previous.buffer;
+    fineTune.clips=previous.clips.slice();
+    fineTune.activeId=previous.activeId;
     fineTune.dirty=previous.dirty;
-    fineTune.start=0;
-    fineTune.end=1;
-    stopAudioPreview();
-    if(fineTune.previewUrl){URL.revokeObjectURL(fineTune.previewUrl);fineTune.previewUrl=''}
+    fineTune.start=previous.start;
+    fineTune.end=previous.end;
+    fineTune.buffer=composeAudioClips(fineTune.clips);
+    invalidateAudioPreview();
+    renderAudioTimeline();
     syncAudioSelection();
     haptic('light');
   }
@@ -273,30 +413,43 @@ export const TTS_EDITING_JS = `
     var output=fineTune.context.createBuffer(buffer.numberOfChannels,end-start,buffer.sampleRate);
     for(var channel=0;channel<buffer.numberOfChannels;channel++){
       output.getChannelData(channel).set(buffer.getChannelData(channel).subarray(start,end));
-      fadeAudioEdges(output.getChannelData(channel),buffer.sampleRate);
     }
     return output;
   }
 
-  function deleteAudioRange(buffer,startRatio,endRatio){
-    var start=Math.max(0,Math.min(buffer.length-1,Math.round(buffer.length*startRatio)));
-    var end=Math.max(start+1,Math.min(buffer.length,Math.round(buffer.length*endRatio)));
-    var overlap=Math.min(Math.round(buffer.sampleRate*.025),start,buffer.length-end);
-    var outputLength=Math.max(1,start+(buffer.length-end)-overlap);
-    var output=fineTune.context.createBuffer(buffer.numberOfChannels,outputLength,buffer.sampleRate);
-    for(var channel=0;channel<buffer.numberOfChannels;channel++){
-      var source=buffer.getChannelData(channel);
+  function composeAudioClips(clips){
+    if(!clips.length)return null;
+    var sampleRate=clips[0].buffer.sampleRate;
+    var channels=1;
+    var overlaps=[0];
+    var outputLength=clips[0].buffer.length;
+    for(var index=0;index<clips.length;index++)channels=Math.min(2,Math.max(channels,clips[index].buffer.numberOfChannels));
+    for(var current=1;current<clips.length;current++){
+      var previous=clips[current-1].buffer;
+      var next=clips[current].buffer;
+      var overlap=Math.min(Math.round(sampleRate*.018),Math.floor(previous.length/3),Math.floor(next.length/3));
+      overlaps.push(Math.max(0,overlap));
+      outputLength+=next.length-overlap;
+    }
+    var output=fineTune.context.createBuffer(channels,Math.max(1,outputLength),sampleRate);
+    for(var channel=0;channel<channels;channel++){
       var target=output.getChannelData(channel);
-      var prefix=Math.max(0,start-overlap);
-      if(prefix)target.set(source.subarray(0,prefix),0);
-      for(var index=0;index<overlap;index++){
-        var amount=(index+1)/(overlap+1);
-        var left=source[prefix+index]||0;
-        var right=source[end+index]||0;
-        target[prefix+index]=left*Math.cos(amount*Math.PI*.5)+right*Math.sin(amount*Math.PI*.5);
+      var first=clips[0].buffer.getChannelData(Math.min(channel,clips[0].buffer.numberOfChannels-1));
+      target.set(first,0);
+      var offset=first.length;
+      for(var clipIndex=1;clipIndex<clips.length;clipIndex++){
+        var buffer=clips[clipIndex].buffer;
+        var source=buffer.getChannelData(Math.min(channel,buffer.numberOfChannels-1));
+        var width=overlaps[clipIndex];
+        var joinStart=offset-width;
+        for(var frame=0;frame<width;frame++){
+          var amount=(frame+1)/(width+1);
+          target[joinStart+frame]=(target[joinStart+frame]||0)*Math.cos(amount*Math.PI*.5)+(source[frame]||0)*Math.sin(amount*Math.PI*.5);
+        }
+        target.set(source.subarray(width),offset);
+        offset+=source.length-width;
       }
-      target.set(source.subarray(end+overlap),prefix+overlap);
-      fadeAudioEdges(target,buffer.sampleRate);
+      fadeAudioEdges(target,sampleRate);
     }
     return output;
   }
@@ -310,14 +463,25 @@ export const TTS_EDITING_JS = `
     }
   }
 
+  function invalidateAudioPreview(){
+    stopAudioPreview();
+    fineTune.previewEnd=0;
+    if(fineTune.previewUrl){URL.revokeObjectURL(fineTune.previewUrl);fineTune.previewUrl=''}
+  }
+
   function ensureAudioPreview(){
     if(fineTune.previewUrl)return fineTune.previewUrl;
-    fineTune.previewUrl=URL.createObjectURL(encodeWav(fineTune.buffer));
+    var clip=activeAudioClip();
+    if(!clip)return'';
+    var preview=sliceAudioBuffer(clip.buffer,fineTune.start,fineTune.end);
+    for(var channel=0;channel<preview.numberOfChannels;channel++)fadeAudioEdges(preview.getChannelData(channel),preview.sampleRate);
+    fineTune.previewEnd=preview.duration;
+    fineTune.previewUrl=URL.createObjectURL(encodeWav(preview));
     return fineTune.previewUrl;
   }
 
   function previewAudioEdit(){
-    if(!fineTune.buffer||fineTune.busy)return;
+    if(!activeAudioClip()||fineTune.busy)return;
     var audio=q('ttsAudio');
     if(!audio)return;
     if(document.body.classList.contains('tts-audio-previewing')&&!audio.paused){
@@ -325,10 +489,73 @@ export const TTS_EDITING_JS = `
       return;
     }
     var source=ensureAudioPreview();
+    if(!source)return;
     if(audio.src!==source){audio.src=source;audio.load()}
-    audio.currentTime=Math.min(fineTune.buffer.duration,fineTune.start*fineTune.buffer.duration);
-    fineTune.previewEnd=Math.max(audio.currentTime,fineTune.end*fineTune.buffer.duration);
+    audio.currentTime=0;
     audio.play().then(function(){document.body.classList.add('tts-audio-previewing')}).catch(function(error){toast(error.message||'Could not preview audio')});
+  }
+
+  function updateAudioPlayhead(currentTime){
+    var clip=activeAudioClip();
+    var lane=q('ttsAudioClipLane');
+    var playhead=q('ttsAudioPlayhead');
+    var node=lane&&clip&&lane.querySelector('[data-audio-clip-id="'+clip.id+'"]');
+    if(!node||!playhead||!fineTune.previewEnd)return;
+    var progress=Math.max(0,Math.min(1,currentTime/fineTune.previewEnd));
+    var ratio=fineTune.start+(fineTune.end-fineTune.start)*progress;
+    playhead.style.left=String(node.offsetLeft+node.offsetWidth*ratio)+'px';
+  }
+
+  function selectAudioClip(id){
+    if(!id||id===fineTune.activeId)return;
+    fineTune.activeId=id;
+    fineTune.start=0;
+    fineTune.end=1;
+    invalidateAudioPreview();
+    renderAudioTimeline();
+    syncAudioSelection();
+    haptic('light');
+  }
+
+  function reorderAudioClip(clientX,clientY){
+    if(!fineTune.dragClipId)return;
+    var target=document.elementFromPoint(clientX,clientY);
+    var targetClip=target&&target.closest?target.closest('[data-audio-clip-id]'):null;
+    if(!targetClip)return;
+    var targetId=targetClip.getAttribute('data-audio-clip-id');
+    var from=clipIndexById(fineTune.dragClipId);
+    var to=clipIndexById(targetId);
+    if(from<0||to<0||from===to)return;
+    if(!fineTune.dragMoved){
+      rememberAudioState(fineTune.dragSnapshot);
+      fineTune.dragSnapshot=null;
+      fineTune.dragMoved=true;
+    }
+    var moved=fineTune.clips.splice(from,1)[0];
+    fineTune.clips.splice(to,0,moved);
+    renderAudioTimeline();
+    var lane=q('ttsAudioClipLane');
+    var node=lane&&lane.querySelector('[data-audio-clip-id="'+fineTune.dragClipId+'"]');
+    if(node)node.classList.add('dragging');
+    haptic('light');
+  }
+
+  function finishAudioPointer(){
+    if(!fineTune.drag)return;
+    var handle=q(fineTune.drag==='start'?'ttsAudioStartHandle':'ttsAudioEndHandle');
+    if(handle)handle.classList.remove('dragging');
+    if(fineTune.drag==='clip'&&fineTune.dragMoved){
+      fineTune.dirty=true;
+      fineTune.buffer=composeAudioClips(fineTune.clips);
+      invalidateAudioPreview();
+      renderAudioTimeline();
+      syncAudioSelection();
+    }
+    fineTune.drag='';
+    fineTune.dragClipId='';
+    fineTune.dragMoved=false;
+    fineTune.dragSnapshot=null;
+    haptic('light');
   }
 
   function stopAudioPreview(){
@@ -338,7 +565,7 @@ export const TTS_EDITING_JS = `
   }
 
   async function saveAudioEdit(){
-    if(!fineTune.open||fineTune.busy||!fineTune.buffer)return;
+    if(!fineTune.open||fineTune.busy||!fineTune.clips.length)return;
     if(!fineTune.dirty){closeAudioEditor(false);return}
     fineTune.busy=true;
     var panel=audioEditPanel();
@@ -346,6 +573,7 @@ export const TTS_EDITING_JS = `
     setAudioReady(false);
     try{
       stopAudioPreview();
+      fineTune.buffer=composeAudioClips(fineTune.clips);
       var blob=encodeWav(fineTune.buffer);
       var audioBase64=arrayBufferToBase64(await blob.arrayBuffer());
       var saved=await api('/mini-app/api/tts-audio-edit-save',{
@@ -724,40 +952,52 @@ export const TTS_EDITING_JS = `
   document.addEventListener('pointerdown',function(event){
     if(!fineTune.open||fineTune.busy)return;
     var handle=event.target&&event.target.closest?event.target.closest('[data-audio-handle]'):null;
-    var timeline=event.target&&event.target.closest?event.target.closest('#ttsAudioTimeline'):null;
-    if(!timeline)return;
+    var clipNode=event.target&&event.target.closest?event.target.closest('[data-audio-clip-id]'):null;
+    if(!clipNode)return;
     event.preventDefault();
     event.stopPropagation();
-    if(handle)fineTune.drag=handle.getAttribute('data-audio-handle');
-    else{
-      var rect=timeline.getBoundingClientRect();
-      var position=Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width)));
-      fineTune.drag=Math.abs(position-fineTune.start)<=Math.abs(position-fineTune.end)?'start':'end';
+    var clipId=clipNode.getAttribute('data-audio-clip-id');
+    if(handle){
+      fineTune.drag=handle.getAttribute('data-audio-handle');
+      handle.classList.add('dragging');
+      updateAudioHandle(event.clientX,fineTune.drag);
+      return;
     }
-    var active=q(fineTune.drag==='start'?'ttsAudioStartHandle':'ttsAudioEndHandle');
-    if(active)active.classList.add('dragging');
-    updateAudioHandle(event.clientX,fineTune.drag);
+    selectAudioClip(clipId);
+    fineTune.drag='clip';
+    fineTune.dragClipId=clipId;
+    fineTune.dragStartX=event.clientX;
+    fineTune.dragMoved=false;
+    fineTune.dragSnapshot=snapshotAudioState();
   },true);
 
   document.addEventListener('pointermove',function(event){
     if(!fineTune.drag)return;
     event.preventDefault();
-    updateAudioHandle(event.clientX,fineTune.drag);
+    if(fineTune.drag==='start'||fineTune.drag==='end'){
+      updateAudioHandle(event.clientX,fineTune.drag);
+      return;
+    }
+    if(Math.abs(event.clientX-fineTune.dragStartX)<6)return;
+    var lane=q('ttsAudioClipLane');
+    var node=lane&&lane.querySelector('[data-audio-clip-id="'+fineTune.dragClipId+'"]');
+    if(node)node.classList.add('dragging');
+    reorderAudioClip(event.clientX,event.clientY);
   },{capture:true,passive:false});
 
-  document.addEventListener('pointerup',function(){
-    if(!fineTune.drag)return;
-    var active=q(fineTune.drag==='start'?'ttsAudioStartHandle':'ttsAudioEndHandle');
-    if(active)active.classList.remove('dragging');
-    fineTune.drag='';
-    haptic('light');
-  },true);
+  document.addEventListener('pointerup',finishAudioPointer,true);
+  document.addEventListener('pointercancel',finishAudioPointer,true);
 
-  window.addEventListener('resize',function(){if(fineTune.open)drawAudioWaveform()},{passive:true});
+  window.addEventListener('resize',function(){
+    if(!fineTune.open)return;
+    renderAudioTimeline();
+    syncAudioSelection();
+  },{passive:true});
 
   var editAudio=q('ttsAudio');
   if(editAudio){
     editAudio.addEventListener('timeupdate',function(){
+      if(fineTune.open&&fineTune.previewEnd>0)updateAudioPlayhead(editAudio.currentTime);
       if(fineTune.open&&fineTune.previewEnd>0&&editAudio.currentTime>=fineTune.previewEnd)editAudio.pause();
     });
     editAudio.addEventListener('pause',function(){document.body.classList.remove('tts-audio-previewing')});
@@ -786,6 +1026,11 @@ export const TTS_EDITING_JS = `
     if(action==='undo-audio-edit'){
       event.preventDefault();event.stopPropagation();
       undoAudioEdit();
+      return;
+    }
+    if(action==='split-audio-edit'){
+      event.preventDefault();event.stopPropagation();
+      splitAudioEdit();
       return;
     }
     if(action==='trim-audio-edit'){
