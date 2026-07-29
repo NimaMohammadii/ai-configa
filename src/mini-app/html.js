@@ -75,7 +75,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260729-balanced-timeline-10"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260729-ticket-glass-controls-12"/>
 </head>
 <body>
   <main class="app">
