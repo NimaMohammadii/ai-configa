@@ -21,12 +21,12 @@ export const TTS_EDITING_CSS = `
 .tts-edit-inline-active .tts-generate:not(:disabled):active{transform:scale(.975)}
 .tts-edit-inline-active .tts-generate:disabled{opacity:.24!important}
 .tts-edit-inline-active .tts-generate.tts-edit-loading{opacity:1!important}
-.tts-regenerate-cost{position:absolute;right:12px;top:50%;height:24px;padding:0 8px;border-radius:9px;display:flex;align-items:center;gap:4px;color:rgba(226,202,238,.92);background:linear-gradient(145deg,rgba(54,18,72,.92),rgba(23,8,31,.9));box-shadow:inset 0 1px 0 rgba(236,211,248,.13),inset 0 -1px 0 rgba(0,0,0,.2),0 5px 14px rgba(32,8,43,.16);font-variant-numeric:tabular-nums;opacity:0;visibility:hidden;transform:translateY(-50%) translateX(7px) scale(.88);transition:opacity .2s ease,transform .34s cubic-bezier(.16,1,.3,1),visibility 0s linear .25s;pointer-events:none}
-.tts-regenerate-cost strong{min-width:12px;color:#f4e9f9;font-size:10.5px;font-weight:850;line-height:1;text-align:right;letter-spacing:-.025em}
-.tts-regenerate-cost small{font-size:7px;font-weight:760;line-height:1;letter-spacing:.02em;opacity:.62}
+.tts-regenerate-cost{position:absolute;left:calc(50% + 18px);top:50%;display:flex;align-items:baseline;gap:3px;color:#361248;font-variant-numeric:tabular-nums;white-space:nowrap;opacity:0;visibility:hidden;transform:translateY(-50%) translateX(5px);transition:opacity .2s ease,transform .34s cubic-bezier(.16,1,.3,1),visibility 0s linear .25s;pointer-events:none}
+.tts-regenerate-cost strong{min-width:12px;color:#361248;font-size:10.5px;font-weight:850;line-height:1;text-align:right;letter-spacing:-.025em}
+.tts-regenerate-cost small{color:rgba(54,18,72,.58);font-size:7px;font-weight:760;line-height:1;letter-spacing:.02em}
 .tts-edit-inline-active .tts-generate-label{transform:translateX(-24px)}
-.tts-edit-inline-active .tts-regenerate-cost{opacity:1;visibility:visible;transform:translateY(-50%) translateX(0) scale(1);transition-delay:0s}
-.tts-edit-inline-active .tts-generate.tts-edit-loading .tts-regenerate-cost{opacity:0;transform:translateY(-50%) translateX(5px) scale(.9)}
+.tts-edit-inline-active .tts-regenerate-cost{opacity:1;visibility:visible;transform:translateY(-50%) translateX(0);transition-delay:0s}
+.tts-edit-inline-active .tts-generate.tts-edit-loading .tts-regenerate-cost{opacity:0;transform:translateY(-50%) translateX(5px)}
 .tts-regenerate-cost strong.is-changing{animation:ttsEditCreditTick .34s cubic-bezier(.16,1,.3,1)}
 @keyframes ttsEditCreditTick{0%{opacity:.2;transform:translateY(5px) scale(.86);filter:blur(2px)}65%{opacity:1;transform:translateY(-1px) scale(1.06);filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
 
