@@ -75,7 +75,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260729-edit-mode-status-16"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260729-edit-credit-cost-17"/>
 </head>
 <body>
   <main class="app">
@@ -143,7 +143,7 @@ export const MINI_APP_HTML = `<!doctype html>
             </div>
           </section>
           <div class="tts-generate-row">
-            <button id="convertButton" class="tts-generate" data-action="generate-tts" type="button"><span class="tts-generate-label">Generate Voice</span><span class="tts-generate-wave" aria-hidden="true"><span class="tts-generate-wave-conveyor"><span class="tts-generate-wave-set"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="tts-generate-wave-set"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span></span></button>
+            <button id="convertButton" class="tts-generate" data-action="generate-tts" type="button"><span class="tts-generate-label">Generate Voice</span><span class="tts-regenerate-cost" aria-hidden="true"><strong id="ttsRegenerateCost" data-value="50">50</strong><small>credits</small></span><span class="tts-generate-wave" aria-hidden="true"><span class="tts-generate-wave-conveyor"><span class="tts-generate-wave-set"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="tts-generate-wave-set"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span></span></button>
             <span class="char-count-wrap"><span class="tts-enhance-tools"><button id="enhanceButton" class="tts-enhance" data-action="enhance-tts" type="button" aria-label="Enhance text with emotion tags"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2.8l1.25 4.15a5.1 5.1 0 0 0 3.4 3.4L20.8 11.6l-4.15 1.25a5.1 5.1 0 0 0-3.4 3.4L12 20.4l-1.25-4.15a5.1 5.1 0 0 0-3.4-3.4L3.2 11.6l4.15-1.25a5.1 5.1 0 0 0 3.4-3.4L12 2.8Z" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/></svg><span>Enhance</span></button><button id="historyButton" class="history-button history-enhance-button" data-action="open-history" type="button" aria-label="Open history"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.6 8.2A8.2 8.2 0 1 1 4 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4.6 8.2V4.6M4.6 8.2H8.2M12 7.8v4.6l3.1 1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span><button class="char-warning" id="ttsCharWarning" data-action="open-char-limit" type="button" aria-label="Text length warning"><span>!</span></button><span class="char-count" id="ttsCharCount">0 / 5,000 characters</span></span>
           </div>
           <audio id="ttsAudio" class="tts-hidden-audio"></audio>
@@ -225,6 +225,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260729-edit-mode-status-16"></script>
+  <script type="module" src="/mini-app/app.js?v=20260729-edit-credit-cost-17"></script>
 </body>
 </html>`;
