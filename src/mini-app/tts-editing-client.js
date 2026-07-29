@@ -206,25 +206,8 @@ export const TTS_EDITING_JS = `
   function syncAudioTimelineEdges(){
     var timeline=q('ttsAudioTimeline');
     if(!timeline)return;
-    var overflowing=timeline.scrollWidth>timeline.clientWidth+2;
-    timeline.classList.toggle('is-overflowing',overflowing);
-  }
-
-  function revealActiveAudioClip(){
-    var timeline=q('ttsAudioTimeline');
-    var lane=q('ttsAudioClipLane');
-    var clip=activeAudioClip();
-    var node=lane&&clip&&lane.querySelector('[data-audio-clip-id="'+clip.id+'"]');
-    if(!timeline||!node||timeline.scrollWidth<=timeline.clientWidth+2)return;
-    var padding=22;
-    var start=timeline.scrollLeft;
-    var end=start+timeline.clientWidth;
-    var left=node.offsetLeft;
-    var right=left+node.offsetWidth;
-    var target=start;
-    if(left<start+padding)target=Math.max(0,left-padding);
-    else if(right>end-padding)target=Math.min(timeline.scrollWidth-timeline.clientWidth,right-timeline.clientWidth+padding);
-    if(Math.abs(target-start)>1)timeline.scrollTo({left:target,behavior:'smooth'});
+    var shell=timeline.closest('.tts-audio-timeline-shell');
+    if(shell)shell.classList.toggle('is-overflowing',timeline.scrollWidth>timeline.clientWidth+2);
   }
 
   function renderAudioTimeline(enteringIds){
@@ -266,7 +249,6 @@ export const TTS_EDITING_JS = `
     requestAnimationFrame(function(){
       for(var current=0;current<fineTune.clips.length;current++)drawClipWaveform(fineTune.clips[current]);
       syncAudioTimelineEdges();
-      revealActiveAudioClip();
     });
   }
 
@@ -371,10 +353,10 @@ export const TTS_EDITING_JS = `
       var previous=peaks[Math.max(0,index-1)];
       var currentPeak=peaks[index];
       var next=peaks[Math.min(points-1,index+1)];
-      var smoothPeak=previous*.24+currentPeak*.52+next*.24;
+      var smoothPeak=previous*.14+currentPeak*.72+next*.14;
       var edge=Math.sin(Math.PI*(index+.5)/points);
       var envelope=.18+.82*Math.pow(edge,.62);
-      var waveHeight=Math.min(18,Math.max(11,rect.height*.42));
+      var waveHeight=Math.min(24,Math.max(15,rect.height*.56));
       heights.push(Math.max(2,Math.min(waveHeight,(2+smoothPeak*(waveHeight-2))*envelope)));
     }
     var center=rect.height/2;
@@ -406,7 +388,7 @@ export const TTS_EDITING_JS = `
     var isActive=clip.id===fineTune.activeId;
     context.fillStyle='rgba(255,255,255,.08)';
     context.fillRect(inset,center-.5,width,1);
-    paintWave(isActive?'rgba(255,255,255,.62)':'rgba(255,255,255,.34)');
+    paintWave(isActive?'rgba(255,255,255,.76)':'rgba(255,255,255,.46)');
     if(isActive){
       context.save();
       context.beginPath();
@@ -1305,9 +1287,6 @@ export const TTS_EDITING_JS = `
 
   document.addEventListener('pointerup',finishAudioPointer,true);
   document.addEventListener('pointercancel',finishAudioPointer,true);
-
-  var audioTimeline=q('ttsAudioTimeline');
-  if(audioTimeline)audioTimeline.addEventListener('scroll',syncAudioTimelineEdges,{passive:true});
 
   window.addEventListener('resize',function(){
     if(!fineTune.open)return;
