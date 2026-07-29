@@ -313,7 +313,7 @@ export const TTS_EDITING_JS = `
       for(var frame=from;frame<to;frame+=sampleStep){
         for(var current=0;current<channels.length;current++)peak=Math.max(peak,Math.abs(channels[current][frame]||0));
       }
-      peaks.push(Math.min(1,Math.pow(peak,0.68)*1.42));
+      peaks.push(Math.min(1,Math.pow(peak,0.62)*1.62));
     }
     var heights=[];
     for(var index=0;index<points;index++){
@@ -323,7 +323,7 @@ export const TTS_EDITING_JS = `
       var smoothPeak=previous*.24+currentPeak*.52+next*.24;
       var edge=Math.sin(Math.PI*(index+.5)/points);
       var envelope=.8+.2*Math.pow(edge,.72);
-      heights.push(Math.max(3.5,Math.min(rect.height-15,(3.5+smoothPeak*(rect.height-19))*envelope)));
+      heights.push(Math.max(5,Math.min(rect.height-11,(5+smoothPeak*(rect.height-15))*envelope)));
     }
     var center=rect.height/2;
     var inset=3;
@@ -352,7 +352,7 @@ export const TTS_EDITING_JS = `
       context.fill();
     }
     var isActive=clip.id===fineTune.activeId;
-    paintWave(isActive?'rgba(255,255,255,.38)':'rgba(255,255,255,.28)');
+    paintWave(isActive?'rgba(255,255,255,.54)':'rgba(255,255,255,.38)');
     if(isActive){
       context.save();
       context.beginPath();
