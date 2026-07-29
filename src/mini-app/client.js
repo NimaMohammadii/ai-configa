@@ -7,10 +7,18 @@ export const MINI_APP_JS = `
   function exploreReelsIsOpen(){var page=document.getElementById('exploreReelsPage');return !!(page&&page.classList.contains('show'))}
   function syncAppViewport(){
     if(exploreReelsIsOpen())return;
+    var viewport=window.visualViewport;
+    var height=viewport&&viewport.height?viewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight);
     var active=document.activeElement;
     var keyboardTarget=!!(active&&active.matches&&active.matches('textarea,input,[contenteditable="true"]'));
-    if((keyboardTarget||(document.body&&document.body.classList.contains('keyboard-open')))&&appViewportHeight>=320)return;
-    var height=window.visualViewport&&window.visualViewport.height?window.visualViewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight);
+    var keyboardOpen=keyboardTarget||(document.body&&document.body.classList.contains('keyboard-open'));
+    if(keyboardOpen&&appViewportHeight>=320){
+      var offsetTop=viewport&&Number.isFinite(Number(viewport.offsetTop))?Number(viewport.offsetTop):0;
+      var keyboardInset=Math.max(0,appViewportHeight-Math.round(Number(height)+offsetTop));
+      document.documentElement.style.setProperty('--keyboard-inset',String(keyboardInset)+'px');
+      return;
+    }
+    document.documentElement.style.setProperty('--keyboard-inset','0px');
     if(!Number.isFinite(Number(height))||Number(height)<320)return;
     appViewportHeight=Math.round(Number(height));
     document.documentElement.style.setProperty('--app-viewport-height',String(appViewportHeight)+'px');
