@@ -231,6 +231,9 @@ export const TTS_EDITING_JS = `
       var sampleRate=original.sampleRate;
       var startFrame=Math.max(0,Math.min(original.length,Math.round(startTime*sampleRate)));
       var endFrame=Math.max(startFrame,Math.min(original.length,Math.round(endTime*sampleRate)));
+      var quietRadius=Math.max(1,Math.round(sampleRate*.012));
+      startFrame=findQuietFrame(original,startFrame,quietRadius);
+      endFrame=Math.max(startFrame,findQuietFrame(original,endFrame,quietRadius));
       var replacementFrames=Math.max(1,Math.round(replacement.duration*sampleRate));
       var channels=Math.min(2,Math.max(original.numberOfChannels,replacement.numberOfChannels));
       var output=context.createBuffer(channels,startFrame+replacementFrames+(original.length-endFrame),sampleRate);
@@ -251,6 +254,24 @@ export const TTS_EDITING_JS = `
     }
   }
 
+  function findQuietFrame(buffer,frame,radius){
+    var minimum=Math.max(0,frame-radius);
+    var maximum=Math.min(buffer.length-1,frame+radius);
+    var bestFrame=Math.max(minimum,Math.min(maximum,frame));
+    var bestScore=Infinity;
+    for(var candidate=minimum;candidate<=maximum;candidate++){
+      var score=0;
+      for(var channel=0;channel<buffer.numberOfChannels;channel++){
+        var samples=buffer.getChannelData(channel);
+        var current=samples[candidate]||0;
+        var previous=samples[Math.max(0,candidate-1)]||0;
+        score+=Math.abs(current)+Math.abs(current-previous)*.35;
+      }
+      if(score<bestScore){bestScore=score;bestFrame=candidate}
+    }
+    return bestFrame;
+  }
+
   function copyResampled(source,sourceRate,target,targetOffset,targetLength,targetRate){
     if(sourceRate===targetRate&&source.length===targetLength){
       target.set(source,targetOffset);
@@ -267,12 +288,12 @@ export const TTS_EDITING_JS = `
   }
 
   function softenJoin(samples,position,sampleRate){
-    var width=Math.min(Math.round(sampleRate*.004),position,samples.length-position);
+    var width=Math.min(Math.round(sampleRate*.008),position,samples.length-position);
     if(width<2)return;
     for(var index=0;index<width;index++){
       var amount=(index+1)/(width+1);
-      samples[position-width+index]*=1-amount*.82;
-      samples[position+index]*=.18+amount*.82;
+      samples[position-width+index]*=Math.cos(amount*Math.PI*.5);
+      samples[position+index]*=Math.sin(amount*Math.PI*.5);
     }
   }
 
