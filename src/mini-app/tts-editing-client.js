@@ -48,6 +48,7 @@ export const TTS_EDITING_JS = `
   function editButton(){return q('ttsEditButton')}
   function generateButton(){return q('convertButton')}
   function generateLabel(){var button=generateButton();return button&&button.querySelector('.tts-generate-label')}
+  function regenerateCost(){return q('ttsRegenerateCost')}
   function editSurface(){return q('dialogueEditor')}
   function initData(){var tg=window.Telegram&&window.Telegram.WebApp;return tg&&tg.initData?tg.initData:''}
 
@@ -415,7 +416,7 @@ export const TTS_EDITING_JS = `
     if(progressCanvas){
       progressCanvas.style.opacity=isActive?'0':'1';
       progressCanvas.style.clipPath='inset(0 100% 0 0)';
-      if(!isActive)paintWave(progressContext,'#71369c');
+      if(!isActive)paintWave(progressContext,'#361248');
     }
   }
 
@@ -912,6 +913,29 @@ export const TTS_EDITING_JS = `
     }
   }
 
+  function editCreditCost(){
+    if(!state.active)return 50;
+    return Array.from(diff().replacement||'').length+50;
+  }
+
+  function syncEditCreditCost(animate){
+    var node=regenerateCost();
+    if(!node)return;
+    var cost=editCreditCost();
+    var changed=node.getAttribute('data-value')!==String(cost);
+    node.textContent=cost.toLocaleString('en-US');
+    node.setAttribute('data-value',String(cost));
+    var generate=generateButton();
+    if(generate&&state.active)generate.setAttribute('aria-label','Regenerate edited text · '+String(cost)+' credits');
+    if(animate&&changed){
+      node.classList.remove('is-changing');
+      void node.offsetWidth;
+      node.classList.add('is-changing');
+      clearTimeout(node.creditAnimationTimer);
+      node.creditAnimationTimer=setTimeout(function(){node.classList.remove('is-changing')},360);
+    }
+  }
+
   function setMode(active){
     var input=editor();
     var surface=editSurface();
@@ -931,6 +955,7 @@ export const TTS_EDITING_JS = `
       generate.disabled=active?!hasChange():false;
       generate.setAttribute('aria-label',active?'Regenerate selected text':'Generate Voice');
     }
+    syncEditCreditCost(false);
     if(input)input.setAttribute('aria-label',active?'Edit generated text':'Text to convert to voice');
   }
 
@@ -1008,6 +1033,7 @@ export const TTS_EDITING_JS = `
     if(!state.active||state.busy)return;
     var button=generateButton();
     if(button)button.disabled=!hasChange();
+    syncEditCreditCost(true);
   }
 
   async function regenerate(){
