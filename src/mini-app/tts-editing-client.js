@@ -88,13 +88,9 @@ export const TTS_EDITING_JS = `
       toast('Generate this text before editing the voice');
       return;
     }
+    if(document.activeElement===input)input.blur();
     state.active=true;
     setMode(true);
-    requestAnimationFrame(function(){
-      input.focus({preventScroll:true});
-      var end=input.value.length;
-      input.setSelectionRange(end,end);
-    });
     haptic('light');
   }
 
