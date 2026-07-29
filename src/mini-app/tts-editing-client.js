@@ -203,6 +203,30 @@ export const TTS_EDITING_JS = `
     return duration;
   }
 
+  function syncAudioTimelineEdges(){
+    var timeline=q('ttsAudioTimeline');
+    if(!timeline)return;
+    var overflowing=timeline.scrollWidth>timeline.clientWidth+2;
+    timeline.classList.toggle('is-overflowing',overflowing);
+  }
+
+  function revealActiveAudioClip(){
+    var timeline=q('ttsAudioTimeline');
+    var lane=q('ttsAudioClipLane');
+    var clip=activeAudioClip();
+    var node=lane&&clip&&lane.querySelector('[data-audio-clip-id="'+clip.id+'"]');
+    if(!timeline||!node||timeline.scrollWidth<=timeline.clientWidth+2)return;
+    var padding=22;
+    var start=timeline.scrollLeft;
+    var end=start+timeline.clientWidth;
+    var left=node.offsetLeft;
+    var right=left+node.offsetWidth;
+    var target=start;
+    if(left<start+padding)target=Math.max(0,left-padding);
+    else if(right>end-padding)target=Math.min(timeline.scrollWidth-timeline.clientWidth,right-timeline.clientWidth+padding);
+    if(Math.abs(target-start)>1)timeline.scrollTo({left:target,behavior:'smooth'});
+  }
+
   function renderAudioTimeline(enteringIds){
     var lane=q('ttsAudioClipLane');
     var timeline=q('ttsAudioTimeline');
@@ -241,6 +265,8 @@ export const TTS_EDITING_JS = `
     }
     requestAnimationFrame(function(){
       for(var current=0;current<fineTune.clips.length;current++)drawClipWaveform(fineTune.clips[current]);
+      syncAudioTimelineEdges();
+      revealActiveAudioClip();
     });
   }
 
@@ -1279,6 +1305,9 @@ export const TTS_EDITING_JS = `
 
   document.addEventListener('pointerup',finishAudioPointer,true);
   document.addEventListener('pointercancel',finishAudioPointer,true);
+
+  var audioTimeline=q('ttsAudioTimeline');
+  if(audioTimeline)audioTimeline.addEventListener('scroll',syncAudioTimelineEdges,{passive:true});
 
   window.addEventListener('resize',function(){
     if(!fineTune.open)return;
