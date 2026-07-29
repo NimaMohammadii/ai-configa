@@ -290,6 +290,9 @@ export const TTS_EDITING_JS = `
     var step=Math.max(1,Math.floor(buffer.length/bars));
     var sampleStep=Math.max(1,Math.floor(step/18));
     var center=rect.height/2;
+    var isActive=clip.id===fineTune.activeId;
+    context.lineWidth=2.4;
+    context.lineCap='round';
     for(var bar=0;bar<bars;bar++){
       var from=bar*step;
       var to=Math.min(buffer.length,from+step);
@@ -300,8 +303,13 @@ export const TTS_EDITING_JS = `
       var normalized=Math.min(1,Math.pow(peak,0.72)*1.35);
       var height=Math.max(3,normalized*(rect.height-17));
       var x=(bar+.5)*rect.width/bars;
-      context.fillStyle='#fff';
-      context.fillRect(Math.round(x)-1,Math.round(center-height/2),2,Math.round(height));
+      var position=bar/Math.max(1,bars-1);
+      var selected=isActive&&position>=fineTune.start&&position<=fineTune.end;
+      context.strokeStyle=selected?'#fff':(isActive?'rgba(255,255,255,.5)':'rgba(255,255,255,.26)');
+      context.beginPath();
+      context.moveTo(Math.round(x),Math.round(center-height/2));
+      context.lineTo(Math.round(x),Math.round(center+height/2));
+      context.stroke();
     }
   }
 
