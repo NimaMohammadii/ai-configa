@@ -41,6 +41,10 @@ export const TTS_EDITING_CSS = `
 
 .tts-audio-timeline{position:relative;width:100%;height:64px;overflow-x:auto;overflow-y:hidden;border:0;border-radius:11px;background:#070707;touch-action:none;user-select:none;-webkit-user-select:none;scrollbar-width:none}
 .tts-audio-timeline::-webkit-scrollbar{display:none}
+.tts-audio-timeline.is-scroll-mode{cursor:grab}
+.tts-audio-timeline.is-scroll-mode.is-panning{cursor:grabbing}
+.tts-audio-timeline.is-scroll-mode .tts-audio-clip{cursor:grab}
+.tts-audio-timeline.is-scroll-mode.is-panning .tts-audio-clip{cursor:grabbing}
 .tts-audio-clip-lane{position:relative;display:flex;align-items:stretch;gap:0;width:max-content;min-width:100%;height:100%;padding:0}
 .tts-audio-clip-lane.has-multiple-clips{align-items:center;gap:6px;padding:4px}
 .tts-audio-clip-lane:not(.has-multiple-clips) .tts-audio-clip{cursor:default}
