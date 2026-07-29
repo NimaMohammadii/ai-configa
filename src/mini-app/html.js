@@ -140,7 +140,7 @@ export const MINI_APP_HTML = `<!doctype html>
             </div>
           </section>
           <div class="tts-generate-row">
-            <button id="convertButton" class="tts-generate" data-action="generate-tts" type="button"><span class="tts-generate-label">Generate Voice</span><span class="tts-generate-wave" aria-hidden="true"><span class="tts-generate-wave-track"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span></button>
+            <button id="convertButton" class="tts-generate" data-action="generate-tts" type="button"><span class="tts-generate-label">Generate Voice</span><span class="tts-generate-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></button>
             <span class="char-count-wrap"><button id="enhanceButton" class="tts-enhance" data-action="enhance-tts" type="button" aria-label="Enhance text with emotion tags"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2.8l1.25 4.15a5.1 5.1 0 0 0 3.4 3.4L20.8 11.6l-4.15 1.25a5.1 5.1 0 0 0-3.4 3.4L12 20.4l-1.25-4.15a5.1 5.1 0 0 0-3.4-3.4L3.2 11.6l4.15-1.25a5.1 5.1 0 0 0 3.4-3.4L12 2.8Z" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/></svg><span>Enhance</span></button><button class="char-warning" id="ttsCharWarning" data-action="open-char-limit" type="button" aria-label="Text length warning"><span>!</span></button><span class="char-count" id="ttsCharCount">0 / 5,000 characters</span></span>
           </div>
           <audio id="ttsAudio" class="tts-hidden-audio"></audio>
