@@ -7,6 +7,9 @@ export const MINI_APP_JS = `
   function exploreReelsIsOpen(){var page=document.getElementById('exploreReelsPage');return !!(page&&page.classList.contains('show'))}
   function syncAppViewport(){
     if(exploreReelsIsOpen())return;
+    var active=document.activeElement;
+    var keyboardTarget=!!(active&&active.matches&&active.matches('textarea,input,[contenteditable="true"]'));
+    if((keyboardTarget||(document.body&&document.body.classList.contains('keyboard-open')))&&appViewportHeight>=320)return;
     var height=window.visualViewport&&window.visualViewport.height?window.visualViewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight);
     if(!Number.isFinite(Number(height))||Number(height)<320)return;
     appViewportHeight=Math.round(Number(height));
