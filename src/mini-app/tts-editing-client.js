@@ -75,6 +75,7 @@ export const TTS_EDITING_JS = `
     state.baseText=String(input.value||state.baseText||'');
     var area=workspace();
     if(area)area.classList.add('tts-edit-mode');
+    if(q('ttsEditModeHeader'))q('ttsEditModeHeader').setAttribute('aria-hidden','false');
     document.body.classList.add('tts-edit-mode-active');
     var button=editButton();
     if(button){button.classList.add('active');button.setAttribute('aria-label','Cancel voice editing')}
@@ -96,6 +97,7 @@ export const TTS_EDITING_JS = `
     state.active=false;
     var area=workspace();
     if(area)area.classList.remove('tts-edit-mode','tts-edit-entered','tts-edit-busy','tts-edit-success');
+    if(q('ttsEditModeHeader'))q('ttsEditModeHeader').setAttribute('aria-hidden','true');
     document.body.classList.remove('tts-edit-mode-active');
     var button=editButton();
     if(button){button.classList.remove('active');button.setAttribute('aria-label','Edit generated voice')}
