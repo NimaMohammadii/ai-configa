@@ -18,14 +18,23 @@ export const EMOTION_UI_FIXES_JS = String.raw`
   syncPlayerState();
 
   var overlays=[];
+  function setOverlayDirection(entry,direction){
+    if(entry.direction===direction)return;
+    entry.overlay.setAttribute('dir',direction);
+    entry.content.setAttribute('dir',direction);
+    if(entry.direction&&entry.overlay.animate&&!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)){
+      if(entry.directionAnimation)entry.directionAnimation.cancel();
+      var offset=direction==='rtl'?'5px':'-5px';
+      entry.directionAnimation=entry.overlay.animate([{opacity:.42,transform:'translate3d('+offset+',0,0)'},{opacity:1,transform:'translate3d(0,0,0)'}],{duration:260,easing:'cubic-bezier(.16,1,.3,1)'});
+    }
+    entry.direction=direction;
+  }
   function render(entry){
     var input=entry.input;
     var content=entry.content;
     var value=String(input.value||'');
-    var direction=input.getAttribute('dir');
-    direction=direction==='rtl'||direction==='ltr'?direction:'auto';
-    entry.overlay.setAttribute('dir',direction);
-    content.setAttribute('dir',direction);
+    var inputDirection=input.getAttribute('dir');
+    var direction=value&&(inputDirection==='rtl'||inputDirection==='ltr')?inputDirection:(value?'auto':'ltr');
     var placeholder=String(input.getAttribute('placeholder')||'');
     var displayValue=value||placeholder;
     var parts=value?value.split(/(\[[^\]\r\n]{1,80}\])/g):[displayValue];
@@ -41,6 +50,7 @@ export const EMOTION_UI_FIXES_JS = String.raw`
       }else content.appendChild(document.createTextNode(part));
     });
     if(value.endsWith('\n'))content.appendChild(document.createTextNode(' '));
+    setOverlayDirection(entry,direction);
     requestAnimationFrame(function(){sync(entry)});
   }
 

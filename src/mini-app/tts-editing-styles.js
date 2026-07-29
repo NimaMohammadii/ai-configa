@@ -7,9 +7,12 @@ export const TTS_EDITING_CSS = `
 .tts-edit-button.active{color:#080808;background:#fff;border-color:#fff;box-shadow:0 9px 26px rgba(255,255,255,.1);opacity:1;transform:scale(.96)}
 .tts-edit-button.active svg{transform:rotate(-5deg)}
 
-.dialogue-editor .dialogue-input-wrap{min-height:102px;padding:0;margin:0;border-radius:0!important;background:transparent;box-shadow:inset 0 0 0 0 rgba(200,102,255,0),inset 0 1px 0 rgba(255,255,255,0),0 0 0 rgba(92,24,132,0)!important;transform:translateZ(0);transition:min-height .38s cubic-bezier(.16,1,.3,1),padding .38s cubic-bezier(.16,1,.3,1),margin .38s cubic-bezier(.16,1,.3,1),border-radius .3s ease,background .3s ease,box-shadow .34s ease}
-.tts-inline-edit .dialogue-input-wrap{min-height:122px;padding:10px 12px 9px;margin:2px 0 4px;border-radius:17px!important;background:linear-gradient(180deg,rgba(200,102,255,.075),rgba(200,102,255,.025));box-shadow:inset 0 0 0 1px rgba(200,102,255,.46),inset 0 1px 0 rgba(255,255,255,.055),0 12px 34px rgba(92,24,132,.12)!important}
-.tts-inline-edit .dialogue-input-wrap:focus-within{background:linear-gradient(180deg,rgba(200,102,255,.105),rgba(200,102,255,.035));box-shadow:inset 0 0 0 1px rgba(211,126,255,.72),inset 0 1px 0 rgba(255,255,255,.075),0 14px 38px rgba(104,28,148,.17)!important}
+.dialogue-editor .dialogue-input-wrap{position:relative;isolation:isolate;min-height:102px;padding:0;margin:0;border-radius:0!important;background:transparent;box-shadow:none!important;transform:translateZ(0);transition:min-height .3s cubic-bezier(.22,1,.36,1),padding .3s cubic-bezier(.22,1,.36,1),margin .3s cubic-bezier(.22,1,.36,1),border-radius .24s ease}
+.dialogue-editor .dialogue-input-wrap::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:inherit;opacity:0;transform:translateZ(0) scale(.985);background:linear-gradient(180deg,rgba(200,102,255,.075),rgba(200,102,255,.025));box-shadow:inset 0 0 0 1px rgba(200,102,255,.46),inset 0 1px 0 rgba(255,255,255,.055),0 12px 34px rgba(92,24,132,.12);transition:opacity .2s ease,transform .3s cubic-bezier(.22,1,.36,1);will-change:opacity,transform}
+.dialogue-editor .dialogue-text{position:relative;z-index:1}
+.tts-inline-edit .dialogue-input-wrap{min-height:122px;padding:10px 12px 9px;margin:2px 0 4px;border-radius:17px!important}
+.tts-inline-edit .dialogue-input-wrap::before{opacity:1;transform:translateZ(0) scale(1)}
+.tts-inline-edit .dialogue-input-wrap:focus-within::before{background:linear-gradient(180deg,rgba(200,102,255,.105),rgba(200,102,255,.035));box-shadow:inset 0 0 0 1px rgba(211,126,255,.72),inset 0 1px 0 rgba(255,255,255,.075),0 14px 38px rgba(104,28,148,.17)}
 .tts-inline-edit .dialogue-text{color:#faf6ff!important;caret-color:#da79ff;text-shadow:0 0 18px rgba(200,102,255,.07);transition:color .22s ease,text-shadow .22s ease}
 .tts-inline-edit .dialogue-text::selection{background:rgba(200,102,255,.9);color:#fff;text-shadow:none}
 .tts-inline-edit .dialogue-text::-moz-selection{background:rgba(200,102,255,.9);color:#fff;text-shadow:none}
@@ -20,7 +23,7 @@ export const TTS_EDITING_CSS = `
 .tts-edit-inline-active .tts-generate.tts-edit-loading{opacity:1!important}
 
 @media(max-width:390px){.player-history-row{gap:7px}.tts-edit-button,.history-button{width:48px;height:48px;flex-basis:48px;border-radius:13px}}
-@media(prefers-reduced-motion:reduce){.tts-edit-button,.dialogue-editor .dialogue-input-wrap,.tts-edit-inline-active .tts-generate{transition-duration:.01ms!important}}
+@media(prefers-reduced-motion:reduce){.tts-edit-button,.dialogue-editor .dialogue-input-wrap,.dialogue-editor .dialogue-input-wrap::before,.tts-edit-inline-active .tts-generate{transition-duration:.01ms!important}}
 .wave-fine-tune{width:34px;height:34px;flex:0 0 34px;padding:0;border-radius:50%;display:grid;place-items:center;color:rgba(255,255,255,.82);background:rgba(255,255,255,.055);border:0;transition:transform .22s cubic-bezier(.2,.9,.2,1),background .2s ease,color .2s ease,opacity .2s ease}
 .wave-fine-tune:active:not(:disabled){transform:scale(.86);color:#000;background:#fff}
 .wave-fine-tune:disabled{opacity:.2;pointer-events:none}
