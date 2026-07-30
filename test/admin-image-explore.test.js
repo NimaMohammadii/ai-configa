@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { adminImageExploreKeyboard, adminImageExploreVoiceKeyboard } from "../src/admin.js";
+import { adminImageExploreKeyboard, adminImageExploreVoiceKeyboard, adminVoiceProfilesKeyboard } from "../src/admin.js";
 
 function items(count) {
   return Array.from({ length: count }, (_, index) => ({
@@ -43,4 +43,18 @@ test("Explore videos keep an accessible voice selector after upload", () => {
   const rows = adminImageExploreKeyboard(items(11), 1).inline_keyboard;
   assert.equal(rows[1][0].callback_data, "admin_image_explore_voice:11");
   assert.equal(rows[1][1].text, "#11 Upload");
+});
+
+
+test("Admin voice profiles are paginated ten voices at a time", () => {
+  const first = adminVoiceProfilesKeyboard(0).inline_keyboard;
+  const second = adminVoiceProfilesKeyboard(1).inline_keyboard;
+
+  const firstVoiceRows = first.slice(0, -2);
+  assert.equal(firstVoiceRows.length, 10);
+  assert.ok(firstVoiceRows.every((row) => row.length === 2));
+  assert.ok(firstVoiceRows.every((row) => row[0].callback_data.startsWith("admin_voice_profile_upload:0:")));
+  assert.deepEqual(first.at(-2), [{ text: "Next →", callback_data: "admin_voice_profiles:1" }]);
+  assert.equal(second[0][0].callback_data.startsWith("admin_voice_profile_upload:1:"), true);
+  assert.equal(second.at(-2)[0].callback_data, "admin_voice_profiles:0");
 });
