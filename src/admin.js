@@ -1867,26 +1867,44 @@ export function adminImageExploreMoveText(index = null) {
   return "↕️ <b>Move Explore Card" + card + "</b>\n\nSend the destination card number. For example, send <code>3</code> to place this card at position 3 in the list.";
 }
 
-export async function adminVoiceProfilesText(env) {
+const ADMIN_VOICE_PROFILES_PAGE_SIZE = 10;
+
+function normalizeAdminVoiceProfilesPage(page = 0) {
+  const totalPages = Math.max(1, Math.ceil(VOICE_NAMES.length / ADMIN_VOICE_PROFILES_PAGE_SIZE));
+  const numericPage = Number.parseInt(String(page), 10);
+  return Math.max(0, Math.min(Number.isFinite(numericPage) ? numericPage : 0, totalPages - 1));
+}
+
+export async function adminVoiceProfilesText(env, page = 0) {
   const profiles = await getVoiceProfiles(env);
+  const totalPages = Math.max(1, Math.ceil(VOICE_NAMES.length / ADMIN_VOICE_PROFILES_PAGE_SIZE));
+  const safePage = normalizeAdminVoiceProfilesPage(page);
+  const pageVoices = VOICE_NAMES.slice(safePage * ADMIN_VOICE_PROFILES_PAGE_SIZE, safePage * ADMIN_VOICE_PROFILES_PAGE_SIZE + ADMIN_VOICE_PROFILES_PAGE_SIZE);
   const lines = [
     "🖼 <b>Voice Profiles</b>",
     "",
     "Upload a photo for each voice. The photo appears in the left circle of the mini app voice menu.",
     "",
-    "Configured voices:"
+    "Configured voices · page " + (safePage + 1) + "/" + totalPages + ":"
   ];
-  for (const name of VOICE_NAMES) {
+  for (const name of pageVoices) {
     lines.push((profiles[name]?.fileId ? "✅ " : "❌ ") + escapeHtml(name));
   }
   return lines.join("\n");
 }
 
-export function adminVoiceProfilesKeyboard() {
+export function adminVoiceProfilesKeyboard(page = 0) {
+  const totalPages = Math.max(1, Math.ceil(VOICE_NAMES.length / ADMIN_VOICE_PROFILES_PAGE_SIZE));
+  const safePage = normalizeAdminVoiceProfilesPage(page);
   const rows = [];
-  for (const name of VOICE_NAMES) {
-    rows.push([{ text: "Upload " + name, callback_data: "admin_voice_profile_upload:" + name }, { text: "Delete", callback_data: "admin_voice_profile_delete:" + name }]);
+  const pageVoices = VOICE_NAMES.slice(safePage * ADMIN_VOICE_PROFILES_PAGE_SIZE, safePage * ADMIN_VOICE_PROFILES_PAGE_SIZE + ADMIN_VOICE_PROFILES_PAGE_SIZE);
+  for (const name of pageVoices) {
+    rows.push([{ text: "Upload " + name, callback_data: "admin_voice_profile_upload:" + safePage + ":" + name }, { text: "Delete", callback_data: "admin_voice_profile_delete:" + safePage + ":" + name }]);
   }
+  const nav = [];
+  if (safePage > 0) nav.push({ text: "← Prev", callback_data: "admin_voice_profiles:" + (safePage - 1) });
+  if (safePage + 1 < totalPages) nav.push({ text: "Next →", callback_data: "admin_voice_profiles:" + (safePage + 1) });
+  if (nav.length) rows.push(nav);
   rows.push([{ text: "← Back", callback_data: "admin_main" }]);
   return { inline_keyboard: rows };
 }

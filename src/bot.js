@@ -740,29 +740,34 @@ export async function handleCallback(query, env) {
     return;
   }
 
-  if (data === "admin_voice_profiles") {
+  if (data === "admin_voice_profiles" || data.startsWith("admin_voice_profiles:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const page = data.startsWith("admin_voice_profiles:") ? Number.parseInt(data.slice("admin_voice_profiles:".length), 10) || 0 : 0;
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, await adminVoiceProfilesText(env), adminVoiceProfilesKeyboard());
+    await editCurrentMenu(env, chatId, userId, messageId, await adminVoiceProfilesText(env, page), adminVoiceProfilesKeyboard(page));
     return;
   }
 
   if (data.startsWith("admin_voice_profile_upload:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    const voiceName = data.slice("admin_voice_profile_upload:".length);
+    const [, pagePart, voicePart] = data.match(/^admin_voice_profile_upload:(\d+):(.+)$/) || [];
+    const page = Number.parseInt(pagePart || "0", 10) || 0;
+    const voiceName = voicePart || data.slice("admin_voice_profile_upload:".length);
     await answerCallback(env, query.id);
-    await setAdminAction(env, userId, "voice_profile", { targetUserId: voiceName, chatId, messageId });
-    await editCurrentMenu(env, chatId, userId, messageId, adminVoiceProfilePromptText(voiceName), adminCancelKeyboard("admin_voice_profiles"));
+    await setAdminAction(env, userId, "voice_profile", { targetUserId: voiceName, page, chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminVoiceProfilePromptText(voiceName), adminCancelKeyboard("admin_voice_profiles:" + page));
     return;
   }
 
   if (data.startsWith("admin_voice_profile_delete:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    const voiceName = data.slice("admin_voice_profile_delete:".length);
+    const [, pagePart, voicePart] = data.match(/^admin_voice_profile_delete:(\d+):(.+)$/) || [];
+    const page = Number.parseInt(pagePart || "0", 10) || 0;
+    const voiceName = voicePart || data.slice("admin_voice_profile_delete:".length);
     await deleteVoiceProfile(env, voiceName);
     await answerCallback(env, query.id, "Voice profile deleted", false);
-    await editCurrentMenu(env, chatId, userId, messageId, (await adminVoiceProfilesText(env)) + "\n\n🗑 Deleted for " + voiceName + ".", adminVoiceProfilesKeyboard());
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminVoiceProfilesText(env, page)) + "\n\n🗑 Deleted for " + voiceName + ".", adminVoiceProfilesKeyboard(page));
     return;
   }
 
@@ -1303,7 +1308,8 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
     await setVoiceProfile(env, voiceName, fileId);
     await deleteMessage(env, chatId, inputMessageId).catch(() => null);
     await clearAdminAction(env, adminId);
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminVoiceProfilesText(env)) + "\n\n✅ Profile image updated for " + voiceName + ".", adminVoiceProfilesKeyboard());
+    const page = Number(action.page || 0);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminVoiceProfilesText(env, page)) + "\n\n✅ Profile image updated for " + voiceName + ".", adminVoiceProfilesKeyboard(page));
     return true;
   }
 
