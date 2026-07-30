@@ -45,9 +45,28 @@ export const VOICES = {
   Sia: "uYXf8XasLslADfZ2MB4u",
   Milo: "av1BMOR1GPgThz9p4fLo",
   Rhea: "a1KZUXKFVFDOb33I1uqr",
+  June: "gJx1vCzNCD1EQHT212Ls",
+  Ivy: "dVTC43Yewy5fAIcmsISI",
+  Rowan: "vmVmHDKBkkCgbLVIOJRb",
+  Hazel: "KHmfNHtEjHhLK9eER20w",
+  Octavia: "3eIAPRQVsX0VrSFmqoTf",
+  Leo: "hLygPNd2gK6Azddorc5W",
+  Marina: "MGG5Irb57ATHvyIeTEYo",
+  Esme: "EST9Ui6982FZPSi7gCHi",
+  Darius: "8mBRP99B2Ng2QwsJMFQl",
+  Beckett: "bfGb7JTLUnZebZRiFYyq",
+  Silas: "Dslrhjl3ZpzrctukrQSN",
+  Morgan: "L1aJrPa7pLJEyYlh3Ilq",
+  Quinn: "qWWAqFomnJ99VwQLREfT",
+  Isla: "xFPwxsyzPJFEaL61n2ms",
+  Dante: "dtb2DcRUiZX01F9bvBi0",
+  Stella: "S9NKLs1GeSTKzXd9D0Lf",
+  Griffin: "gZR4sGJmJaoBOVzKgZ8j",
+  Ronan: "NEtfpHpuEDBEmqdtNOyt",
+  Aurelius: "mvhJVdVoTWVUtL4keT7W",
 };
 
-export const LOCKED_VOICE_NAMES = ["Vespera"];
+export const LOCKED_VOICE_NAMES = ["Vespera", "Octavia", "Marina", "Aurelius"];
 export const LOCKED_VOICES = Object.fromEntries(LOCKED_VOICE_NAMES.map((name) => [name, VOICES[name]]));
 
 export function isLockedVoice(voiceNameOrId) {

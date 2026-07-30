@@ -481,6 +481,82 @@ export const DEMO_TEXTS = {
     es: "Una voz nítida y segura lleva tu mensaje con fuerza y estilo",
     hi: "तेज़ और आत्मविश्वासी आवाज़ आपका संदेश ताकत और अंदाज़ से पहुँचाती है",
   },
+  June: {
+    en: "[warmly] A bright friendly voice can make every short update feel personal",
+    fa: "[گرم] یه صدای روشن و صمیمی می‌تونه هر پیام کوتاه رو شخصی‌تر کنه",
+  },
+  Ivy: {
+    en: "[soft smile] Keep the words light, close, and easy to remember",
+    fa: "[با لبخند آروم] کلمه‌ها رو سبک، نزدیک، و موندگار نگه دار",
+  },
+  Rowan: {
+    en: "[confident] A clean modern tone gives your message rhythm and focus",
+    fa: "[با اعتمادبه‌نفس] یه لحن تمیز و مدرن به پیامت ریتم و تمرکز می‌ده",
+  },
+  Hazel: {
+    en: "[gentle] Let the sentence breathe, then let the feeling arrive naturally",
+    fa: "[لطیف] بذار جمله نفس بکشه، بعد حسش طبیعی به گوش برسه",
+  },
+  Octavia: {
+    en: "[mysterious] Preview this rare voice and let the story open like a secret",
+    fa: "[مرموز] فقط پیش‌نمایش این صدای خاص رو گوش کن تا داستان مثل یه راز باز بشه",
+  },
+  Leo: {
+    en: "[energetic] Say it with momentum, and even a simple line feels ready",
+    fa: "[پرانرژی] با حرکت بگو تا حتی یه خط ساده هم آماده و زنده شنیده بشه",
+  },
+  Marina: {
+    en: "[dreamy] This demo-only voice floats softly through every quiet phrase",
+    fa: "[رویایی] این صدای فقط دمو، نرم از میان هر جمله آروم عبور می‌کنه",
+  },
+  Esme: {
+    en: "[brightly] Fresh words sparkle when the voice smiles through the sentence",
+    fa: "[روشن] کلمه‌های تازه وقتی صدا توی جمله لبخند بزنه، می‌درخشن",
+  },
+  Darius: {
+    en: "[narrating] A steady voice can guide the listener from the first line",
+    fa: "[روایتگر] یه صدای پایدار می‌تونه شنونده رو از همون خط اول همراه کنه",
+  },
+  Beckett: {
+    en: "[thoughtful] Slow the moment down, and the narration becomes clearer",
+    fa: "[متفکر] لحظه رو آروم‌تر کن تا روایت واضح‌تر و عمیق‌تر شنیده بشه",
+  },
+  Silas: {
+    en: "[calmly] Strong narration starts with a voice that knows where to pause",
+    fa: "[آرام] روایت قوی با صدایی شروع می‌شه که جای مکث رو می‌شناسه",
+  },
+  Morgan: {
+    en: "[smoothly] From narration to social clips, this voice keeps attention moving",
+    fa: "[روان] از روایت تا کلیپ اجتماعی، این صدا توجه رو در حرکت نگه می‌داره",
+  },
+  Quinn: {
+    en: "[playful] Make the first second pop, then let the message feel effortless",
+    fa: "[بازیگوش] ثانیه اول رو جذاب کن، بعد بذار پیام بی‌دردسر جلو بره",
+  },
+  Isla: {
+    en: "[excited whisper] A social post sounds closer when the voice feels alive",
+    fa: "[نجوای هیجان‌زده] پست اجتماعی وقتی صدا زنده باشه نزدیک‌تر حس می‌شه",
+  },
+  Dante: {
+    en: "[boldly] Give the hook weight, then land the final word with style",
+    fa: "[جسور] به شروع وزن بده، بعد کلمه آخر رو با استایل بنشون",
+  },
+  Stella: {
+    en: "[cheerful] A clear upbeat voice helps short clips feel instantly shareable",
+    fa: "[شاد] یه صدای شفاف و سرحال، کلیپ کوتاه رو سریع قابل اشتراک می‌کنه",
+  },
+  Griffin: {
+    en: "[grounded] Keep it direct, polished, and strong enough to hold attention",
+    fa: "[محکم] مستقیم، تمیز، و به‌اندازه کافی قوی بگو تا توجه بمونه",
+  },
+  Ronan: {
+    en: "[low and calm] A grounded voice makes every announcement feel trustworthy",
+    fa: "[بم و آرام] یه صدای محکم هر اعلامیه‌ای رو قابل اعتمادتر می‌کنه",
+  },
+  Aurelius: {
+    en: "[cinematic] Preview the shimmer only; this admin voice stays behind the curtain",
+    fa: "[سینمایی] فقط درخشش دمو رو گوش کن؛ این صدای ادمین پشت پرده می‌مونه",
+  },
 };
 
 export function getDemoText(language, voice) {
