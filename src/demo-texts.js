@@ -313,16 +313,16 @@ export const DEMO_TEXTS = {
     hi: "[हल्की मुस्कान] आपके शब्द सुरुचिपूर्ण, करीब और अनदेखे न किए जाने वाले लग सकते हैं",
   },
   Vespera: {
-    en: "[mysterious] Listen to the demo only; this premium voice holds a cinematic secret",
-    ru: "[таинственно] Послушай только демо; этот премиум голос хранит кинематографичный секрет",
-    de: "[geheimnisvoll] Hör nur die Demo; diese Premium-Stimme trägt ein filmisches Geheimnis",
-    fa: "[مرموز و آرام] فقط دمو رو گوش کن؛ این صدای ویژه یه راز سینمایی تو خودش داره",
-    tr: "[gizemli] Sadece demoyu dinle; bu premium ses sinematik bir sır taşıyor",
-    ar: "[بغموض] استمع إلى العرض فقط؛ هذا الصوت المميز يحمل سراً سينمائياً",
-    zh: "[神秘地] 只听演示吧；这个高级声音藏着电影感的秘密",
-    ja: "[神秘的に] デモだけを聴いてください。このプレミアムな声には映画のような秘密があります",
-    es: "[misterioso] Escucha solo la demo; esta voz premium guarda un secreto cinematográfico",
-    hi: "[रहस्यमय] सिर्फ डेमो सुनिए; यह प्रीमियम आवाज़ एक सिनेमाई राज़ रखती है",
+    en: "[inhales deeply] [mysterious] Come closer; this voice carries a cinematic secret in every shadow",
+    ru: "[глубокий вдох] [таинственно] Подойди ближе; этот голос хранит кинематографичный секрет в каждой тени",
+    de: "[atmet tief ein] [geheimnisvoll] Komm näher; diese Stimme trägt in jedem Schatten ein filmisches Geheimnis",
+    fa: "[نفس عمیق] [مرموز و آرام] نزدیک‌تر بیا؛ این صدا توی هر سایه یه راز سینمایی پنهان کرده",
+    tr: "[derin nefes alır] [gizemli] Biraz yaklaş; bu ses her gölgede sinematik bir sır taşıyor",
+    ar: "[يأخذ نفساً عميقاً] [بغموض] اقترب أكثر؛ هذا الصوت يحمل سراً سينمائياً في كل ظل",
+    zh: "[深吸一口气] [神秘地] 靠近一点；这个声音在每个阴影里都藏着电影感的秘密",
+    ja: "[深く息を吸って] [神秘的に] 近づいてください。この声は影のひとつひとつに映画のような秘密を宿します",
+    es: "[inhala profundamente] [misterioso] Acércate; esta voz guarda un secreto cinematográfico en cada sombra",
+    hi: "[गहरी साँस] [रहस्यमय] थोड़ा पास आइए; यह आवाज़ हर परछाई में एक सिनेमाई राज़ रखती है",
   },
   Elara: {
     en: "[brightly] A tiny sentence can sparkle when the voice knows where to breathe",
@@ -498,16 +498,16 @@ export const DEMO_TEXTS = {
     fa: "[لطیف] بذار جمله نفس بکشه، بعد حسش طبیعی به گوش برسه",
   },
   Octavia: {
-    en: "[mysterious] Preview this rare voice and let the story open like a secret",
-    fa: "[مرموز] فقط پیش‌نمایش این صدای خاص رو گوش کن تا داستان مثل یه راز باز بشه",
+    en: "[gasps softly] [mysterious] Let this rare voice open the story like a secret door",
+    fa: "[نفس کوتاه] [مرموز] بذار این صدای خاص داستان رو مثل یه درِ رازآلود باز کنه",
   },
   Leo: {
     en: "[energetic] Say it with momentum, and even a simple line feels ready",
     fa: "[پرانرژی] با حرکت بگو تا حتی یه خط ساده هم آماده و زنده شنیده بشه",
   },
   Marina: {
-    en: "[dreamy] This demo-only voice floats softly through every quiet phrase",
-    fa: "[رویایی] این صدای فقط دمو، نرم از میان هر جمله آروم عبور می‌کنه",
+    en: "[sighs] [dreamy] A soft wave of voice drifts through every quiet phrase",
+    fa: "[آه آرام] [رویایی] موج نرم این صدا از میان هر جمله آروم عبور می‌کنه",
   },
   Esme: {
     en: "[brightly] Fresh words sparkle when the voice smiles through the sentence",
@@ -554,8 +554,8 @@ export const DEMO_TEXTS = {
     fa: "[بم و آرام] یه صدای محکم هر اعلامیه‌ای رو قابل اعتمادتر می‌کنه",
   },
   Aurelius: {
-    en: "[cinematic] Preview the shimmer only; this admin voice stays behind the curtain",
-    fa: "[سینمایی] فقط درخشش دمو رو گوش کن؛ این صدای ادمین پشت پرده می‌مونه",
+    en: "[laughs softly] [cinematic] A shimmer rises, and the whole line feels larger than the room",
+    fa: "[خنده آروم] [سینمایی] یه درخشش بالا میاد و کل جمله از اتاق بزرگ‌تر حس می‌شه",
   },
 };
 
