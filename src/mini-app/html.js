@@ -94,7 +94,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260729-single-line-edit-cost-20"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260730-ai-chat-1"/>
 </head>
 <body>
   <main class="app">
@@ -109,7 +109,7 @@ export const MINI_APP_HTML = `<!doctype html>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
             <div class="voice-menu"><div id="myVoiceRows" class="my-voice-rows">${VOICE_ROWS}</div><div id="myVoicesEmpty" class="my-voices-empty">Add voices to your list</div><button class="voice-library-open" data-action="open-voices-page" type="button"><span>Voices</span><small id="voiceMenuCount">1 / 6</small><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
-          </div><button id="modeToggle" class="mode-toggle" data-action="toggle-creation-mode" type="button" aria-label="Switch to image creation" aria-pressed="false"><svg class="mode-image-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><circle cx="8.3" cy="9" r="1.55" stroke="currentColor" stroke-width="1.55"/><path d="m5.8 17 4.15-4.15a1.4 1.4 0 0 1 1.98 0l1.55 1.55 1.25-1.25a1.4 1.4 0 0 1 1.98 0L19 15.45" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.2 2.7v3M16.7 4.2h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><svg class="mode-voice-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button></div>
+          </div><button id="aiChatOpen" class="mode-toggle ai-chat-open-button" data-action="open-ai-chat" type="button" aria-label="Open AI chat"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.5 5.25h11A3.25 3.25 0 0 1 20.75 8.5v5A3.25 3.25 0 0 1 17.5 16.75H12l-4.65 3v-3H6.5a3.25 3.25 0 0 1-3.25-3.25v-5A3.25 3.25 0 0 1 6.5 5.25Z" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/><path d="m15.8 7.7.42 1.08 1.08.42-1.08.42-.42 1.08-.42-1.08-1.08-.42 1.08-.42.42-1.08Z" fill="currentColor"/></svg></button><button id="modeToggle" class="mode-toggle" data-action="toggle-creation-mode" type="button" aria-label="Switch to image creation" aria-pressed="false"><svg class="mode-image-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><circle cx="8.3" cy="9" r="1.55" stroke="currentColor" stroke-width="1.55"/><path d="m5.8 17 4.15-4.15a1.4 1.4 0 0 1 1.98 0l1.55 1.55 1.25-1.25a1.4 1.4 0 0 1 1.98 0L19 15.45" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.2 2.7v3M16.7 4.2h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><svg class="mode-voice-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button></div>
         </div>
         <div class="tts-area dialogue-editor" id="dialogueEditor">
           <section class="dialogue-turn active" data-dialogue-turn data-dialogue-id="1" data-voice="${VOICES.Liam}" data-voice-name="Liam">
@@ -196,7 +196,7 @@ export const MINI_APP_HTML = `<!doctype html>
           </div>
           <input id="imageFile" class="image-file-input" type="file" accept="image/jpeg,image/png,image/webp" multiple/>
           <div id="imageSources" class="image-sources" aria-hidden="true"><div class="image-sources-head"><span id="imageSourcesCount">0 selected</span><small>Up to 4 photos</small></div><div id="imageSourcesGrid" class="image-sources-grid"></div></div>
-          <button id="generateImageButton" class="image-generate" data-action="generate-image" type="button"><span class="image-generate-idle"><span id="generateImageLabel">Generate image</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="image-thinking" aria-hidden="true"><canvas id="imageThinkingOrb" class="image-thinking-orb" width="112" height="112"></canvas><span class="image-thinking-label">Thinking….</span></span></button>
+          <button id="generateImageButton" class="image-generate" data-action="generate-image" type="button"><span id="generateImageLabel">Generate image</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           <section id="imageExplore" class="image-explore" aria-hidden="true"><div class="image-explore-head"><button class="image-explore-title" data-action="open-explore-page" type="button">Explore</button><small id="imageExploreCount">0 cards</small></div><div id="imageExploreGrid" class="image-explore-grid"></div></section>
           <div id="imageResult" class="image-result" aria-hidden="true"><div class="image-result-frame"><img id="imageResultPreview" alt="Generated image"/><div class="image-result-shine" aria-hidden="true"></div></div><div class="image-result-actions"><button data-action="share-image" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 15.5V4m0 0L7.8 8.2M12 4l4.2 4.2M5.5 13.5v4A2.5 2.5 0 0 0 8 20h8a2.5 2.5 0 0 0 2.5-2.5v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Share</span></button><button data-action="delete-image" type="button" aria-label="Delete image"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 7.5h13M9.5 7.5V5.8c0-.72.58-1.3 1.3-1.3h2.4c.72 0 1.3.58 1.3 1.3v1.7m-7.1 0 .72 11.1c.06.92.82 1.64 1.74 1.64h4.78c.92 0 1.68-.72 1.74-1.64l.72-11.1M10.2 11v5.8m3.6-5.8v5.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Delete</span></button></div></div>
           <section id="imageHistorySection" class="image-history-section" aria-hidden="true"><div class="image-history-head"><span>CREATIONS</span><small id="imageHistoryCount">0</small></div><div id="imageHistoryGrid" class="image-history-grid"></div></section>
@@ -206,6 +206,22 @@ export const MINI_APP_HTML = `<!doctype html>
       </div>
     </section>
   </main>
+
+  <section id="aiChatPage" class="ai-chat-page" aria-hidden="true">
+    <header class="ai-chat-head">
+      <button class="ai-chat-back" data-action="close-ai-chat" type="button" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 5-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div><span>VEXA AI</span><h2>Chat</h2></div>
+      <button class="ai-chat-new" data-action="clear-ai-chat" type="button" aria-label="New chat"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></button>
+    </header>
+    <div id="aiChatMessages" class="ai-chat-messages" role="log" aria-live="polite">
+      <div id="aiChatEmpty" class="ai-chat-empty"><span>VEXA AI</span><h3>How can I help?</h3><p>Ask anything. I’ll reply in your language.</p></div>
+    </div>
+    <form id="aiChatComposer" class="ai-chat-composer">
+      <textarea id="aiChatInput" maxlength="4000" rows="1" placeholder="Message Vexa AI…" aria-label="Message Vexa AI"></textarea>
+      <button id="aiChatSend" type="submit" aria-label="Send message"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5m0 0L6.5 10.5M12 5l5.5 5.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </form>
+  </section>
+
 
   <div id="rewardWheelSheet" class="wheel-sheet" aria-hidden="true"><button class="wheel-backdrop" data-action="close-wheel" type="button" aria-label="Close reward wheel"></button><section class="wheel-panel" role="dialog" aria-modal="true" aria-labelledby="wheelTitle"><header class="wheel-panel-head"><div><span>DAILY REWARD</span><h2 id="wheelTitle">Spin & win</h2></div><button data-action="close-wheel" type="button" aria-label="Close reward wheel"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="wheel-stage"><span class="wheel-pointer" aria-hidden="true"></span><div id="wheelRotor" class="wheel-rotor"><span class="wheel-prize" style="--wheel-angle:0deg">30% OFF</span><span class="wheel-prize" style="--wheel-angle:60deg">2,100</span><span class="wheel-prize" style="--wheel-angle:120deg">150</span><span class="wheel-prize" style="--wheel-angle:180deg">250</span><span class="wheel-prize" style="--wheel-angle:240deg">15% OFF</span><span class="wheel-prize" style="--wheel-angle:300deg">80</span><i class="wheel-hub" aria-hidden="true"></i></div></div><p id="wheelResult" class="wheel-result" aria-live="polite">Your daily reward is ready</p><button id="wheelSpinButton" class="wheel-spin-button" data-action="spin-wheel" type="button"><span>Spin the wheel</span></button><small id="wheelCountdown" class="wheel-countdown"></small></section></div>
 
@@ -244,6 +260,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260730-image-thinking-orb-1"></script>
+  <script type="module" src="/mini-app/app.js?v=20260730-ai-chat-1"></script>
 </body>
 </html>`;
