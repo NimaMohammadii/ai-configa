@@ -210,6 +210,55 @@ export async function enhanceTextWithEmotion(env, text, language = "en") {
   return output && preservesOriginalSpeech(cleanText, output) ? output : cleanText;
 }
 
+export async function chatWithAi(env, messages) {
+  if (!env.GPT_API) throw new Error("GPT service is not configured.");
+
+  const cleanMessages = (Array.isArray(messages) ? messages : [])
+    .slice(-20)
+    .map((message) => ({
+      role: message?.role === "assistant" ? "assistant" : "user",
+      content: String(message?.content || "").trim(),
+    }))
+    .filter((message) => message.content)
+    .map((message) => ({
+      ...message,
+      content: Array.from(message.content).slice(0, 4000).join(""),
+    }));
+
+  if (!cleanMessages.length || cleanMessages[cleanMessages.length - 1].role !== "user") {
+    throw new Error("Type a message first.");
+  }
+  const totalCharacters = cleanMessages.reduce((total, message) => total + Array.from(message.content).length, 0);
+  if (totalCharacters > 12000) throw new Error("This conversation is too long. Start a new chat.");
+
+  const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + env.GPT_API,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: GPT_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: "You are Vexa AI, a capable and friendly assistant inside Telegram. Reply in the same language as the user's latest message. Give accurate, clear, practical answers. Use readable plain text and keep answers focused unless the user asks for detail.",
+        },
+        ...cleanMessages,
+      ],
+      max_completion_tokens: 1400,
+    }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(toFriendlyGptError(response.status, errorBody));
+  }
+  const data = await response.json();
+  const answer = String(data?.choices?.[0]?.message?.content || "").trim();
+  if (!answer) throw new Error("AI did not return a response. Please try again.");
+  return answer;
+}
+
 function buildSystemPrompt() {
   return ELEVENLABS_ENHANCE_PROMPT;
 }
