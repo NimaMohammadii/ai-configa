@@ -94,7 +94,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260731-ai-chat-motion-1"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260731-ai-chat-polish-2"/>
 </head>
 <body>
   <main class="app">
@@ -210,7 +210,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <section id="aiChatPage" class="ai-chat-page" aria-hidden="true">
     <div id="aiChatMessages" class="ai-chat-messages" role="log" aria-live="polite"></div>
     <form id="aiChatComposer" class="ai-chat-composer">
-      <textarea id="aiChatInput" maxlength="4000" rows="1" placeholder="Message Vexa AI…" aria-label="Message Vexa AI"></textarea>
+      <textarea id="aiChatInput" maxlength="4000" rows="1" dir="auto" placeholder="Ask Vexa" aria-label="Ask Vexa"></textarea>
       <button id="aiChatSend" type="submit" aria-label="Send message"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5m0 0L6.5 10.5M12 5l5.5 5.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </form>
   </section>
@@ -253,6 +253,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260731-ai-chat-motion-1"></script>
+  <script type="module" src="/mini-app/app.js?v=20260731-ai-chat-polish-2"></script>
 </body>
 </html>`;
