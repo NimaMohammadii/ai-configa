@@ -740,29 +740,34 @@ export async function handleCallback(query, env) {
     return;
   }
 
-  if (data === "admin_voice_profiles") {
+  if (data === "admin_voice_profiles" || data.startsWith("admin_voice_profiles:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const page = data.startsWith("admin_voice_profiles:") ? Number(data.slice("admin_voice_profiles:".length)) || 0 : 0;
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, await adminVoiceProfilesText(env), adminVoiceProfilesKeyboard());
+    await editCurrentMenu(env, chatId, userId, messageId, await adminVoiceProfilesText(env, page), adminVoiceProfilesKeyboard(page));
     return;
   }
 
   if (data.startsWith("admin_voice_profile_upload:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    const voiceName = data.slice("admin_voice_profile_upload:".length);
+    const parts = data.slice("admin_voice_profile_upload:".length).split(":");
+    const page = Number(parts.at(-1)) || 0;
+    const voiceName = parts.slice(0, -1).join(":") || parts[0];
     await answerCallback(env, query.id);
-    await setAdminAction(env, userId, "voice_profile", { targetUserId: voiceName, chatId, messageId });
-    await editCurrentMenu(env, chatId, userId, messageId, adminVoiceProfilePromptText(voiceName), adminCancelKeyboard("admin_voice_profiles"));
+    await setAdminAction(env, userId, "voice_profile", { targetUserId: voiceName, page, chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminVoiceProfilePromptText(voiceName), adminCancelKeyboard("admin_voice_profiles:" + page));
     return;
   }
 
   if (data.startsWith("admin_voice_profile_delete:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    const voiceName = data.slice("admin_voice_profile_delete:".length);
+    const parts = data.slice("admin_voice_profile_delete:".length).split(":");
+    const page = Number(parts.at(-1)) || 0;
+    const voiceName = parts.slice(0, -1).join(":") || parts[0];
     await deleteVoiceProfile(env, voiceName);
     await answerCallback(env, query.id, "Voice profile deleted", false);
-    await editCurrentMenu(env, chatId, userId, messageId, (await adminVoiceProfilesText(env)) + "\n\n🗑 Deleted for " + voiceName + ".", adminVoiceProfilesKeyboard());
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminVoiceProfilesText(env, page)) + "\n\n🗑 Deleted for " + voiceName + ".", adminVoiceProfilesKeyboard(page));
     return;
   }
 
@@ -1303,7 +1308,7 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
     await setVoiceProfile(env, voiceName, fileId);
     await deleteMessage(env, chatId, inputMessageId).catch(() => null);
     await clearAdminAction(env, adminId);
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminVoiceProfilesText(env)) + "\n\n✅ Profile image updated for " + voiceName + ".", adminVoiceProfilesKeyboard());
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminVoiceProfilesText(env, action.page || 0)) + "\n\n✅ Profile image updated for " + voiceName + ".", adminVoiceProfilesKeyboard(action.page || 0));
     return true;
   }
 
@@ -1429,7 +1434,7 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   }
 
   if (action.action === "voice_profile") {
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminVoiceProfilePromptText(action.target_user_id || "Nora") + "\n\nPlease send a photo, not text.", adminCancelKeyboard("admin_voice_profiles"));
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminVoiceProfilePromptText(action.target_user_id || "Nora") + "\n\nPlease send a photo, not text.", adminCancelKeyboard("admin_voice_profiles:" + (action.page || 0)));
     return true;
   }
 

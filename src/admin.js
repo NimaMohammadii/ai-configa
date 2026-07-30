@@ -1867,26 +1867,35 @@ export function adminImageExploreMoveText(index = null) {
   return "↕️ <b>Move Explore Card" + card + "</b>\n\nSend the destination card number. For example, send <code>3</code> to place this card at position 3 in the list.";
 }
 
-export async function adminVoiceProfilesText(env) {
+export async function adminVoiceProfilesText(env, page = 0) {
   const profiles = await getVoiceProfiles(env);
+  const totalPages = Math.max(1, Math.ceil(VOICE_NAMES.length / 10));
+  const safePage = Math.max(0, Math.min(Number(page) || 0, totalPages - 1));
+  const pageVoices = VOICE_NAMES.slice(safePage * 10, safePage * 10 + 10);
   const lines = [
     "🖼 <b>Voice Profiles</b>",
     "",
     "Upload a photo for each voice. The photo appears in the left circle of the mini app voice menu.",
     "",
-    "Configured voices:"
+    VOICE_NAMES.length ? "Configured voices · page " + (safePage + 1) + "/" + totalPages + ":" : "No voices yet."
   ];
-  for (const name of VOICE_NAMES) {
+  for (const name of pageVoices) {
     lines.push((profiles[name]?.fileId ? "✅ " : "❌ ") + escapeHtml(name));
   }
   return lines.join("\n");
 }
 
-export function adminVoiceProfilesKeyboard() {
+export function adminVoiceProfilesKeyboard(page = 0) {
+  const totalPages = Math.max(1, Math.ceil(VOICE_NAMES.length / 10));
+  const safePage = Math.max(0, Math.min(Number(page) || 0, totalPages - 1));
   const rows = [];
-  for (const name of VOICE_NAMES) {
-    rows.push([{ text: "Upload " + name, callback_data: "admin_voice_profile_upload:" + name }, { text: "Delete", callback_data: "admin_voice_profile_delete:" + name }]);
+  for (const name of VOICE_NAMES.slice(safePage * 10, safePage * 10 + 10)) {
+    rows.push([{ text: "Upload " + name, callback_data: "admin_voice_profile_upload:" + name + ":" + safePage }, { text: "Delete", callback_data: "admin_voice_profile_delete:" + name + ":" + safePage }]);
   }
+  const nav = [];
+  if (safePage > 0) nav.push({ text: "← Prev", callback_data: "admin_voice_profiles:" + (safePage - 1) });
+  if (safePage + 1 < totalPages) nav.push({ text: "Next →", callback_data: "admin_voice_profiles:" + (safePage + 1) });
+  if (nav.length) rows.push(nav);
   rows.push([{ text: "← Back", callback_data: "admin_main" }]);
   return { inline_keyboard: rows };
 }
