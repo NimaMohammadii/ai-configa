@@ -8,7 +8,7 @@ const VOICE_LIBRARY_NAMES = [
 
 const VOICE_ROWS = VOICE_NAMES.map((name) => {
   const voiceId = VOICES[name];
-  return `<div class="voice-option" data-voice-row="${voiceId}" data-voice-row-name="${name}"><span class="voice-avatar" aria-hidden="true"><span class="voice-avatar-image"></span></span><button class="voice-select${name === "Liam" ? " active" : ""}" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span>${name}</span></button><button class="voice-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Play ${name} demo"><span class="voice-preview-icon">▶</span></button></div>`;
+  return `<div class="voice-option" data-voice-row="${voiceId}" data-voice-row-name="${name}"><span class="voice-avatar" aria-hidden="true"><span class="voice-avatar-image"></span></span><button class="voice-select${name === "Liam" ? " active" : ""}" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span>${name}</span></button><button class="voice-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Hear ${name}"><span class="voice-preview-icon">▶</span></button></div>`;
 }).join("");
 
 const VOICE_DESCRIPTIONS = {
@@ -38,7 +38,7 @@ const VOICE_DESCRIPTIONS = {
   Mason: "Strong, relaxed and naturally trustworthy",
   Aria: "Fresh, bright and emotionally magnetic",
   Selena: "Elegant, intimate and softly premium",
-  Vespera: "Locked premium voice with cinematic mystery",
+  Vespera: "Cinematic mystery with a rare, velvet edge",
   Elara: "Radiant, crisp and full of modern charm",
   Atlas: "Bold, grounded and commandingly modern",
   Mira: "Tender, honest and warmly memorable",
@@ -62,9 +62,9 @@ const VOICE_DESCRIPTIONS = {
   Ivy: "Light, close and warmly memorable",
   Rowan: "Modern, focused and confidently clear",
   Hazel: "Gentle, airy and softly emotional",
-  Octavia: "Demo-only admin voice with rare cinematic mystery",
+  Octavia: "Rare cinematic mystery with dramatic depth",
   Leo: "Energetic, agile and sharply expressive",
-  Marina: "Demo-only admin voice with dreamy softness",
+  Marina: "Dreamy softness with a floating, intimate tone",
   Esme: "Fresh, bright and smilingly expressive",
   Darius: "Narration voice; steady, clear and grounded",
   Beckett: "Narration voice; thoughtful, calm and articulate",
@@ -76,12 +76,12 @@ const VOICE_DESCRIPTIONS = {
   Stella: "Social voice; upbeat, crisp and shareable",
   Griffin: "Grounded, polished and attention-holding",
   Ronan: "Low, calm and naturally trustworthy",
-  Aurelius: "Demo-only admin voice with cinematic shimmer",
+  Aurelius: "Cinematic shimmer with a luminous premium feel",
 };
 
 const VOICE_LIBRARY_CARDS = VOICE_LIBRARY_NAMES.map((name) => {
   const voiceId = VOICES[name];
-  return `<article class="voice-library-card" data-library-voice="${voiceId}" data-library-name="${name}"><button class="voice-library-main" data-action="select-library-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span class="voice-library-avatar" aria-hidden="true"></span><span class="voice-library-copy"><span class="voice-library-name"><strong>${name}</strong><em class="voice-library-state">Add</em></span><small class="voice-library-description">${VOICE_DESCRIPTIONS[name] || "Natural, expressive and versatile"}</small></span></button><div class="voice-library-actions"><button class="voice-library-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Preview ${name}"><span class="voice-preview-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.15 5.95c-.86-.54-1.97.08-1.97 1.1v9.9c0 1.02 1.11 1.64 1.97 1.1l7.92-4.95a1.3 1.3 0 0 0 0-2.2L8.15 5.95Z" fill="currentColor"/></svg></span></button><button class="voice-library-save" data-action="toggle-saved-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button" aria-label="Add ${name}"><span class="voice-save-plus" aria-hidden="true"></span><span class="voice-save-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7.5 8.25h9l-.5 9.1a1.8 1.8 0 0 1-1.8 1.7H9.8a1.8 1.8 0 0 1-1.8-1.7l-.5-9.1Z" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/><path d="M6 5.85h12M9.4 5.85V4.9c0-.75.6-1.35 1.35-1.35h2.5c.75 0 1.35.6 1.35 1.35v.95M10.3 11.1v4.75M13.7 11.1v4.75" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/></svg></span></button></div></article>`;
+  return `<article class="voice-library-card" data-library-voice="${voiceId}" data-library-name="${name}"><button class="voice-library-main" data-action="select-library-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span class="voice-library-avatar" aria-hidden="true"></span><span class="voice-library-copy"><span class="voice-library-name"><strong>${name}</strong><em class="voice-library-state">Add</em></span><small class="voice-library-description">${VOICE_DESCRIPTIONS[name] || "Natural, expressive and versatile"}</small></span></button><div class="voice-library-actions"><button class="voice-library-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Hear ${name}"><span class="voice-preview-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.15 5.95c-.86-.54-1.97.08-1.97 1.1v9.9c0 1.02 1.11 1.64 1.97 1.1l7.92-4.95a1.3 1.3 0 0 0 0-2.2L8.15 5.95Z" fill="currentColor"/></svg></span></button><button class="voice-library-save" data-action="toggle-saved-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button" aria-label="Add ${name}"><span class="voice-save-plus" aria-hidden="true"></span><span class="voice-save-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7.5 8.25h9l-.5 9.1a1.8 1.8 0 0 1-1.8 1.7H9.8a1.8 1.8 0 0 1-1.8-1.7l-.5-9.1Z" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/><path d="M6 5.85h12M9.4 5.85V4.9c0-.75.6-1.35 1.35-1.35h2.5c.75 0 1.35.6 1.35 1.35v.95M10.3 11.1v4.75M13.7 11.1v4.75" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/></svg></span></button></div></article>`;
 }).join("");
 
 export const MINI_APP_HTML = `<!doctype html>
