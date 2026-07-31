@@ -13,6 +13,8 @@ import {
   adminCreditPromptText,
   adminElevenApiKeyboard,
   adminElevenApiText,
+  adminAiChatModelKeyboard,
+  adminAiChatModelText,
   adminBuyersKeyboard,
   adminBuyersText,
   adminMainKeyboard,
@@ -121,6 +123,7 @@ import {
   trackUser,
   tryAdminLogin,
 } from "./admin.js";
+import { AI_CHAT_MODELS, setAiChatModel } from "./ai-chat-model.js";
 import { addCredits, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { storeTelegramExploreMedia } from "./explore-media.js";
@@ -374,6 +377,25 @@ export async function handleCallback(query, env) {
     await setElevenApiSetting(env, keyName);
     await answerCallback(env, query.id, "ElevenLabs API changed to " + keyName);
     await editCurrentMenu(env, chatId, userId, messageId, await adminElevenApiText(env), await adminElevenApiKeyboard(env));
+    return;
+  }
+
+  if (data === "admin_ai_chat_model") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminAiChatModelText(env), await adminAiChatModelKeyboard(env));
+    return;
+  }
+
+  if (data.startsWith("admin_ai_chat_model_set:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const index = Number(data.slice("admin_ai_chat_model_set:".length));
+    const model = AI_CHAT_MODELS[index];
+    if (!model) return answerCallback(env, query.id, "Invalid AI model selection", true);
+    await setAiChatModel(env, model.id);
+    await answerCallback(env, query.id, "AI Chat model changed to " + model.label);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminAiChatModelText(env), await adminAiChatModelKeyboard(env));
     return;
   }
 
