@@ -450,8 +450,45 @@ export async function setMiniAppAccessSettings(env, adminOnly, lockedUntil = 0, 
   ]);
 }
 
+export async function getAiChatAccessSettings(env) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+
+  const rows = await env.DB.prepare(
+    "SELECT key, value FROM app_settings WHERE key IN ('ai_chat_admin_only', 'ai_chat_locked_until', 'ai_chat_locked_from')"
+  ).all();
+  const values = Object.fromEntries((rows.results || []).map((row) => [row.key, row.value]));
+  const lockedUntil = Number.parseInt(values.ai_chat_locked_until || "0", 10) || 0;
+  const lockedFrom = Number.parseInt(values.ai_chat_locked_from || "0", 10) || 0;
+  const now = Math.floor(Date.now() / 1000);
+  const isTimedLockActive = lockedUntil > now;
+
+  if (values.ai_chat_admin_only === "1" && lockedUntil > 0 && !isTimedLockActive) {
+    await setAiChatAccessSettings(env, false, 0, 0);
+    return { adminOnly: false, lockedFrom: 0, lockedUntil: 0, remainingSeconds: 0 };
+  }
+
+  return {
+    adminOnly: values.ai_chat_admin_only === "1",
+    lockedFrom,
+    lockedUntil,
+    remainingSeconds: isTimedLockActive ? lockedUntil - now : 0,
+  };
+}
+
+export async function setAiChatAccessSettings(env, adminOnly, lockedUntil = 0, lockedFrom = 0) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  await Promise.all([
+    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('ai_chat_admin_only', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(adminOnly ? "1" : "0").run(),
+    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('ai_chat_locked_until', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(String(Math.max(0, Number(lockedUntil) || 0))).run(),
+    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('ai_chat_locked_from', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(String(Math.max(0, Number(lockedFrom) || 0))).run(),
+  ]);
+}
+
 export async function adminMiniAppAccessText(env) {
   const settings = await getMiniAppAccessSettings(env);
+  const aiChatSettings = await getAiChatAccessSettings(env);
   const lines = [
     "🔐 <b>Mini App Access</b>",
     "",
@@ -460,17 +497,30 @@ export async function adminMiniAppAccessText(env) {
   if (settings.adminOnly && settings.lockedUntil > 0) {
     lines.push("Auto unlock in: <b>" + formatDuration(settings.remainingSeconds) + "</b>");
   }
-  lines.push("", "Locking shows non-admin users a black update page with a centered progress bar until the selected minutes pass.");
+  lines.push(
+    "",
+    "AI Chat: <b>" + (aiChatSettings.adminOnly ? "Admin only" : "Open for everyone") + "</b>"
+  );
+  if (aiChatSettings.adminOnly && aiChatSettings.lockedUntil > 0) {
+    lines.push("AI Chat auto unlock in: <b>" + formatDuration(aiChatSettings.remainingSeconds) + "</b>");
+  }
+  lines.push("", "Each lock shows non-admin users an update page with a progress bar. Admins always retain access.");
   return lines.join("\n");
 }
 
 export async function adminMiniAppAccessKeyboard(env) {
   const settings = await getMiniAppAccessSettings(env);
+  const aiChatSettings = await getAiChatAccessSettings(env);
   const rows = [];
   if (settings.adminOnly) {
     rows.push([{ text: "🔓 Open for everyone now", callback_data: "admin_mini_app_unlock" }]);
   } else {
     rows.push([{ text: "🔒 Lock with timer", callback_data: "admin_mini_app_lock_prompt" }]);
+  }
+  if (aiChatSettings.adminOnly) {
+    rows.push([{ text: "🔓 Open AI Chat for everyone", callback_data: "admin_ai_chat_unlock" }]);
+  } else {
+    rows.push([{ text: "🔒 Lock only AI Chat", callback_data: "admin_ai_chat_lock_prompt" }]);
   }
   rows.push([{ text: "← Back", callback_data: "admin_main" }]);
   return { inline_keyboard: rows };
@@ -484,6 +534,17 @@ export function adminMiniAppLockPromptText() {
     "Example: <code>15</code>",
     "",
     "After this time, it automatically opens for all users. You can also unlock manually sooner."
+  ].join("\n");
+}
+
+export function adminAiChatLockPromptText() {
+  return [
+    "🔒 <b>Lock AI Chat</b>",
+    "",
+    "Send how many minutes AI Chat should stay admin-only.",
+    "Example: <code>15</code>",
+    "",
+    "Other mini app sections remain available. Admins can keep using AI Chat."
   ].join("\n");
 }
 
