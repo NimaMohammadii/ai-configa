@@ -211,7 +211,7 @@ export async function enhanceTextWithEmotion(env, text, language = "en") {
   return output && preservesOriginalSpeech(cleanText, output) ? output : cleanText;
 }
 
-export async function chatWithAi(env, messages) {
+export async function chatWithAi(env, messages, onStatus) {
   if (!env.GPT_API) throw new Error("GPT service is not configured.");
 
   const cleanMessages = (Array.isArray(messages) ? messages : [])
@@ -232,14 +232,17 @@ export async function chatWithAi(env, messages) {
   const totalCharacters = cleanMessages.reduce((total, message) => total + Array.from(message.content).length, 0);
   if (totalCharacters > 12000) throw new Error("This conversation is too long.");
 
-  const response = await fetchWithTimeout(
-    "https://api.openai.com/v1/responses",
-    {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("gpt_chat_timeout"), GPT_CHAT_TIMEOUT_MS);
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + env.GPT_API,
         "Content-Type": "application/json",
       },
+      signal: controller.signal,
       body: JSON.stringify({
         model: GPT_MODEL,
         instructions: "You are Vexa AI, a capable and friendly assistant inside Telegram. Reply in the same language as the user's latest message. Give accurate, clear, practical answers. Use readable plain text and keep answers focused unless the user asks for detail.",
@@ -268,18 +271,102 @@ export async function chatWithAi(env, messages) {
         tool_choice: "auto",
         max_output_tokens: 1400,
         store: false,
+        stream: true,
       }),
-    },
-    GPT_CHAT_TIMEOUT_MS,
-    "AI took too long. Please try again.",
-  );
+    });
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(toFriendlyGptError(response.status, errorBody));
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(toFriendlyGptError(response.status, errorBody));
+    }
+
+    const data = await readChatResponseStream(response, onStatus);
+    return buildChatResult(data, cleanMessages);
+  } catch (error) {
+    if (error?.name === "AbortError" || String(error).includes("gpt_chat_timeout")) {
+      throw new Error("AI took too long. Please try again.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readChatResponseStream(response, onStatus) {
+  if (!response.body) throw new Error("AI did not return a response. Please try again.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const searchingCalls = new Set();
+  let buffer = "";
+  let completedResponse = null;
+
+  const emitStatus = (status) => {
+    if (typeof onStatus === "function") onStatus(status);
+  };
+
+  const handleBlock = (block) => {
+    let eventName = "";
+    const dataLines = [];
+    for (const line of String(block || "").split(/\r?\n/)) {
+      if (line.startsWith("event:")) eventName = line.slice(6).trim();
+      if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    }
+    const rawData = dataLines.join("\n").trim();
+    if (!rawData || rawData === "[DONE]") return;
+
+    let event;
+    try {
+      event = JSON.parse(rawData);
+    } catch {
+      return;
+    }
+
+    const type = String(event?.type || eventName || "");
+    if (type === "response.web_search_call.in_progress" || type === "response.web_search_call.searching") {
+      const callId = String(event?.item_id || event?.call_id || event?.output_index || "web-search");
+      const wasSearching = searchingCalls.size > 0;
+      searchingCalls.add(callId);
+      if (!wasSearching) emitStatus("searching");
+      return;
+    }
+    if (type === "response.web_search_call.completed") {
+      const callId = String(event?.item_id || event?.call_id || event?.output_index || "web-search");
+      searchingCalls.delete(callId);
+      if (!searchingCalls.size) emitStatus("thinking");
+      return;
+    }
+    if (type === "response.completed") {
+      completedResponse = event?.response || null;
+      return;
+    }
+    if (type === "error" || type === "response.failed") {
+      const message = event?.error?.message || event?.response?.error?.message || "";
+      throw new Error(toFriendlyGptError(502, JSON.stringify({ error: { message } })));
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+
+    let boundary = buffer.match(/\r?\n\r?\n/);
+    while (boundary && boundary.index !== undefined) {
+      const block = buffer.slice(0, boundary.index);
+      buffer = buffer.slice(boundary.index + boundary[0].length);
+      handleBlock(block);
+      boundary = buffer.match(/\r?\n\r?\n/);
+    }
+
+    if (done) break;
   }
 
-  const data = await response.json();
+  if (buffer.trim()) handleBlock(buffer);
+  if (!completedResponse) throw new Error("AI did not return a response. Please try again.");
+  return completedResponse;
+}
+
+function buildChatResult(data, cleanMessages) {
   const imageCall = (Array.isArray(data?.output) ? data.output : [])
     .find((item) => item?.type === "function_call" && item?.name === "generate_image");
 
