@@ -340,7 +340,7 @@ export async function chatWithAi(env, messages, onStatus) {
       signal: controller.signal,
       body: JSON.stringify({
         model: GPT_MODEL,
-        instructions: "You are Vexa AI, a capable and friendly assistant inside Telegram. Reply in the same language as the user's latest message. Give accurate, clear, practical answers. Use readable plain text and keep answers focused unless the user asks for detail.",
+        instructions: "You are Vexa AI, a capable and friendly assistant inside Telegram. Reply in the same language as the user's latest message. Give accurate, clear, practical answers and keep them focused unless the user asks for detail. Format answers as clean Markdown: use short paragraphs, descriptive headings only when useful, compact bullet or numbered lists for multiple items, and **bold** only for key terms. Always close Markdown delimiters. For web-search answers, synthesize the findings into a tidy response and do not add a sources section, citation links, raw URLs, or footnote markers unless the user explicitly asks for sources or links.",
         input: inputMessages,
         tools: [
           { type: "web_search" },
@@ -491,8 +491,17 @@ function buildChatResult(data, cleanMessages) {
   };
 }
 
+function cleanChatAnswer(value) {
+  return String(value || "")
+    .replace(/cite[^]+/g, "")
+    .replace(/【\d+†[^】]+】/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function extractResponseText(data) {
-  if (String(data?.output_text || "").trim()) return String(data.output_text).trim();
+  if (String(data?.output_text || "").trim()) return cleanChatAnswer(data.output_text);
   const parts = [];
   for (const item of Array.isArray(data?.output) ? data.output : []) {
     if (item?.type !== "message") continue;
@@ -502,7 +511,7 @@ function extractResponseText(data) {
       }
     }
   }
-  return parts.join("\n\n").trim();
+  return cleanChatAnswer(parts.join("\n\n"));
 }
 
 function extractResponseSources(data) {
