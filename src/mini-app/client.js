@@ -6,7 +6,8 @@ export const MINI_APP_JS = `
   var appViewportHeight=0;
   function exploreReelsIsOpen(){var page=document.getElementById('exploreReelsPage');return !!(page&&page.classList.contains('show'))}
   function liveViewportHeight(){return window.visualViewport&&window.visualViewport.height?window.visualViewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight)}
-  function syncAiChatKeyboardOffset(){var height=Number(tg&&tg.viewportHeight)||0;if(height<180)return;var stable=Math.max(Number(appViewportHeight)||0,Number(tg&&tg.viewportStableHeight)||0,height);var offset=Math.max(0,Math.round(stable-height));document.documentElement.style.setProperty('--ai-chat-keyboard-offset',String(offset)+'px')}
+  function aiChatViewportHeight(){var viewport=window.visualViewport;if(viewport&&Number(viewport.height)>0)return Math.max(0,Number(viewport.height)+(Number(viewport.offsetTop)||0));return Number(tg&&tg.viewportHeight)||Number(window.innerHeight)||0}
+  function syncAiChatKeyboardOffset(){var height=aiChatViewportHeight();if(height<180)return;var stable=Math.max(Number(appViewportHeight)||0,Number(tg&&tg.viewportStableHeight)||0,height);var offset=Math.max(0,Math.round(stable-height));document.documentElement.style.setProperty('--ai-chat-keyboard-offset',String(offset)+'px')}
   function syncAppViewport(){
     if(exploreReelsIsOpen())return;
     if(aiChatOpen)return
@@ -20,8 +21,8 @@ export const MINI_APP_JS = `
   }
   function syncTelegramViewport(){if(aiChatOpen){syncAiChatKeyboardOffset();scrollAiChat();return}syncAppViewport()}
   syncAppViewport();
-  window.addEventListener('resize',syncAppViewport,{passive:true});
-  if(window.visualViewport)window.visualViewport.addEventListener('resize',syncAppViewport,{passive:true});
+  window.addEventListener('resize',syncTelegramViewport,{passive:true});
+  if(window.visualViewport)window.visualViewport.addEventListener('resize',syncTelegramViewport,{passive:true});
   if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',syncTelegramViewport)}catch(e){}}
 
   var selectedVoice='TX3LPaxmHKxFdv7VOQHJ';
