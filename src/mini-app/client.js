@@ -6,8 +6,15 @@ export const MINI_APP_JS = `
   var appViewportHeight=0;
   function exploreReelsIsOpen(){var page=document.getElementById('exploreReelsPage');return !!(page&&page.classList.contains('show'))}
   function liveViewportHeight(){return window.visualViewport&&window.visualViewport.height?window.visualViewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight)}
+  var aiChatKeyboardOffset=0;
+  var aiChatKeyboardClosing=false;
+  var aiChatKeyboardMotion=null;
+  var aiChatKeyboardRaisedAt=0;
   function aiChatViewportHeight(){var viewport=window.visualViewport;if(viewport&&Number(viewport.height)>0)return Math.max(0,Number(viewport.height)+(Number(viewport.offsetTop)||0));return Number(tg&&tg.viewportHeight)||Number(window.innerHeight)||0}
-  function syncAiChatKeyboardOffset(){var height=aiChatViewportHeight();if(height<180)return;var stable=Math.max(Number(appViewportHeight)||0,Number(tg&&tg.viewportStableHeight)||0,height);var offset=Math.max(0,Math.round(stable-height));document.documentElement.style.setProperty('--ai-chat-keyboard-offset',String(offset)+'px')}
+  function writeAiChatKeyboardOffset(value){var offset=Math.max(0,Math.round(Number(value)||0));if(offset>40&&aiChatKeyboardOffset<=40)aiChatKeyboardRaisedAt=Date.now();aiChatKeyboardOffset=offset;document.documentElement.style.setProperty('--ai-chat-keyboard-offset',String(offset)+'px')}
+  function cancelAiChatKeyboardClose(){aiChatKeyboardClosing=false;if(aiChatKeyboardMotion){try{aiChatKeyboardMotion.cancel()}catch(e){}aiChatKeyboardMotion=null}}
+  function beginAiChatKeyboardClose(){if(!aiChatOpen)return;var composer=document.getElementById('aiChatComposer');var startBottom=composer?(parseFloat(getComputedStyle(composer).bottom)||0):0;cancelAiChatKeyboardClose();aiChatKeyboardClosing=true;document.body.classList.remove('ai-chat-keyboard-open');writeAiChatKeyboardOffset(0);if(!composer||typeof composer.animate!=='function')return;var targetBottom=parseFloat(getComputedStyle(composer).bottom)||0;if(startBottom<=targetBottom+1)return;aiChatKeyboardMotion=composer.animate([{bottom:String(startBottom)+'px'},{bottom:String(targetBottom)+'px'}],{duration:250,easing:'cubic-bezier(.4,0,.2,1)'});aiChatKeyboardMotion.onfinish=function(){aiChatKeyboardMotion=null}}
+  function syncAiChatKeyboardOffset(){var height=aiChatViewportHeight();if(height<180)return;var stable=Math.max(Number(appViewportHeight)||0,Number(tg&&tg.viewportStableHeight)||0,height);var offset=Math.max(0,Math.round(stable-height));if(aiChatKeyboardClosing){writeAiChatKeyboardOffset(0);if(offset<=1)aiChatKeyboardClosing=false;return}if(!document.body.classList.contains('ai-chat-keyboard-open')){writeAiChatKeyboardOffset(0);return}if(aiChatKeyboardOffset>16&&offset<aiChatKeyboardOffset-4){if(offset<=1){writeAiChatKeyboardOffset(0);return}beginAiChatKeyboardClose();return}writeAiChatKeyboardOffset(offset)}
   function syncAppViewport(){
     if(exploreReelsIsOpen())return;
     if(aiChatOpen)return
@@ -19,7 +26,7 @@ export const MINI_APP_JS = `
     appViewportHeight=Math.round(Number(height));
     document.documentElement.style.setProperty('--app-viewport-height',String(appViewportHeight)+'px');
   }
-  function syncTelegramViewport(){if(aiChatOpen){syncAiChatKeyboardOffset();scrollAiChat();return}syncAppViewport()}
+  function syncTelegramViewport(event){if(aiChatOpen){if(event&&event.isStateStable===false&&aiChatKeyboardOffset>40&&Date.now()-aiChatKeyboardRaisedAt>300)beginAiChatKeyboardClose();else syncAiChatKeyboardOffset();scrollAiChat();return}syncAppViewport()}
   syncAppViewport();
   window.addEventListener('resize',syncTelegramViewport,{passive:true});
   if(window.visualViewport)window.visualViewport.addEventListener('resize',syncTelegramViewport,{passive:true});
@@ -372,7 +379,7 @@ export const MINI_APP_JS = `
   var imageFile=q('imageFile');if(imageFile)imageFile.addEventListener('change',function(){selectSourceImages(imageFile.files)});
   var modeToggle=q('modeToggle');if(modeToggle)modeToggle.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();toggleCreationMode()});
   var aiChatComposer=q('aiChatComposer');if(aiChatComposer)aiChatComposer.addEventListener('submit',function(event){event.preventDefault();sendAiChat()});
-  var aiChatInput=q('aiChatInput');if(aiChatInput){aiChatInput.addEventListener('input',resizeAiChatInput);aiChatInput.addEventListener('focus',function(){document.body.classList.add('ai-chat-keyboard-open');setKeyboardOpen(true);scrollAiChat()});aiChatInput.addEventListener('blur',function(){document.body.classList.remove('ai-chat-keyboard-open');setKeyboardOpen(false);scrollAiChat()})}
+  var aiChatInput=q('aiChatInput');if(aiChatInput){aiChatInput.addEventListener('input',resizeAiChatInput);aiChatInput.addEventListener('focus',function(){cancelAiChatKeyboardClose();aiChatKeyboardRaisedAt=0;document.body.classList.add('ai-chat-keyboard-open');setKeyboardOpen(true);syncAiChatKeyboardOffset();scrollAiChat()});aiChatInput.addEventListener('blur',function(){beginAiChatKeyboardClose();setKeyboardOpen(false);scrollAiChat()})}
   var historySearch=q('historySearch');if(historySearch)historySearch.addEventListener('input',function(){searchHistory(historySearch.value)});var voiceLibrarySearch=q('voiceLibrarySearch');if(voiceLibrarySearch)voiceLibrarySearch.addEventListener('input',function(){filterVoiceLibrary(voiceLibrarySearch.value)});
   var exploreSearch=q('exploreSearch');if(exploreSearch)exploreSearch.addEventListener('input',function(){exploreSearchQuery=String(exploreSearch.value||'');renderExplorePage()});
   var audio=q('ttsAudio');if(audio){audio.addEventListener('play',function(){setWavePlaying(true);startAudioProgressLoop()});audio.addEventListener('pause',function(){setWavePlaying(false);syncMainWave()});audio.addEventListener('loadedmetadata',syncMainWave);audio.addEventListener('durationchange',syncMainWave);audio.addEventListener('timeupdate',syncMainWave);audio.addEventListener('ended',function(){audio.currentTime=0;setWavePlaying(false);syncMainWave()})}
