@@ -1,4 +1,5 @@
 const GPT_TIMEOUT_MS = 45000;
+const GPT_CHAT_TIMEOUT_MS = 90000;
 const GPT_IMAGE_TIMEOUT_MS = 150000;
 const GPT_MODEL = "gpt-5.6-terra";
 const MAX_ENHANCE_CHARS = 5000;
@@ -229,34 +230,118 @@ export async function chatWithAi(env, messages) {
     throw new Error("Type a message first.");
   }
   const totalCharacters = cleanMessages.reduce((total, message) => total + Array.from(message.content).length, 0);
-  if (totalCharacters > 12000) throw new Error("This conversation is too long. Start a new chat.");
+  if (totalCharacters > 12000) throw new Error("This conversation is too long.");
 
-  const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + env.GPT_API,
-      "Content-Type": "application/json",
+  const response = await fetchWithTimeout(
+    "https://api.openai.com/v1/responses",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + env.GPT_API,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: GPT_MODEL,
+        instructions: "You are Vexa AI, a capable and friendly assistant inside Telegram. Reply in the same language as the user's latest message. Give accurate, clear, practical answers. Use readable plain text and keep answers focused unless the user asks for detail.",
+        input: cleanMessages,
+        tools: [
+          { type: "web_search" },
+          {
+            type: "function",
+            name: "generate_image",
+            description: "Generate one image with the app's image generator.",
+            parameters: {
+              type: "object",
+              properties: {
+                prompt: { type: "string" },
+                size: {
+                  type: "string",
+                  enum: Array.from(GPT_IMAGE_SIZES),
+                },
+              },
+              required: ["prompt", "size"],
+              additionalProperties: false,
+            },
+            strict: true,
+          },
+        ],
+        tool_choice: "auto",
+        max_output_tokens: 1400,
+        store: false,
+      }),
     },
-    body: JSON.stringify({
-      model: GPT_MODEL,
-      messages: [
-        {
-          role: "system",
-          content: "You are Vexa AI, a capable and friendly assistant inside Telegram. Reply in the same language as the user's latest message. Give accurate, clear, practical answers. Use readable plain text and keep answers focused unless the user asks for detail.",
-        },
-        ...cleanMessages,
-      ],
-      max_completion_tokens: 1400,
-    }),
-  });
+    GPT_CHAT_TIMEOUT_MS,
+    "AI took too long. Please try again.",
+  );
+
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(toFriendlyGptError(response.status, errorBody));
   }
+
   const data = await response.json();
-  const answer = String(data?.choices?.[0]?.message?.content || "").trim();
+  const imageCall = (Array.isArray(data?.output) ? data.output : [])
+    .find((item) => item?.type === "function_call" && item?.name === "generate_image");
+
+  if (imageCall) {
+    let args = {};
+    try {
+      args = JSON.parse(String(imageCall.arguments || "{}"));
+    } catch {
+      args = {};
+    }
+    const latestUserText = cleanMessages[cleanMessages.length - 1].content;
+    const prompt = Array.from(String(args.prompt || latestUserText).trim()).slice(0, MAX_IMAGE_PROMPT_CHARS).join("");
+    if (!prompt) throw new Error("Image prompt is empty.");
+    return {
+      type: "image_request",
+      prompt,
+      size: resolveImageSize(args.size),
+    };
+  }
+
+  const answer = extractResponseText(data);
   if (!answer) throw new Error("AI did not return a response. Please try again.");
-  return answer;
+  return {
+    type: "text",
+    message: answer,
+    sources: extractResponseSources(data),
+  };
+}
+
+function extractResponseText(data) {
+  if (String(data?.output_text || "").trim()) return String(data.output_text).trim();
+  const parts = [];
+  for (const item of Array.isArray(data?.output) ? data.output : []) {
+    if (item?.type !== "message") continue;
+    for (const content of Array.isArray(item.content) ? item.content : []) {
+      if (content?.type === "output_text" && String(content.text || "").trim()) {
+        parts.push(String(content.text).trim());
+      }
+    }
+  }
+  return parts.join("\n\n").trim();
+}
+
+function extractResponseSources(data) {
+  const seen = new Set();
+  const sources = [];
+  for (const item of Array.isArray(data?.output) ? data.output : []) {
+    if (item?.type !== "message") continue;
+    for (const content of Array.isArray(item.content) ? item.content : []) {
+      for (const annotation of Array.isArray(content?.annotations) ? content.annotations : []) {
+        const citation = annotation?.url_citation || annotation;
+        const url = String(citation?.url || "").trim();
+        if (!/^https?:\/\//i.test(url) || seen.has(url)) continue;
+        seen.add(url);
+        sources.push({
+          title: String(citation?.title || "Source").trim() || "Source",
+          url,
+        });
+      }
+    }
+  }
+  return sources.slice(0, 6);
 }
 
 function buildSystemPrompt() {
