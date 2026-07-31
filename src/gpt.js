@@ -30,6 +30,49 @@ const GPT_IMAGE_SIZES = new Set([
 ]);
 const MAX_IMAGE_PROMPT_CHARS = 2000;
 const MAX_IMAGE_EDIT_INPUTS = 5;
+const GPT_CHAT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+const GPT_CHAT_ATTACHMENT_MIME = Object.freeze({
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  pdf: "application/pdf",
+  txt: "text/plain",
+  text: "text/plain",
+  md: "text/markdown",
+  markdown: "text/markdown",
+  json: "application/json",
+  html: "text/html",
+  htm: "text/html",
+  xml: "text/xml",
+  csv: "text/csv",
+  tsv: "text/tsv",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  rtf: "application/rtf",
+  odt: "application/vnd.oasis.opendocument.text",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  js: "text/javascript",
+  mjs: "text/javascript",
+  ts: "text/x-typescript",
+  tsx: "text/tsx",
+  jsx: "text/jsx",
+  py: "text/x-python",
+  css: "text/css",
+  sql: "text/x-sql",
+  log: "text/plain",
+  yaml: "text/x-yaml",
+  yml: "text/x-yaml",
+  toml: "application/toml",
+  eml: "message/rfc822",
+  ics: "text/calendar",
+  srt: "application/x-subrip",
+  vtt: "text/vtt",
+});
 
 export async function generateImage(env, prompt, options = {}) {
   if (!env.GPT_API) {
@@ -211,26 +254,78 @@ export async function enhanceTextWithEmotion(env, text, language = "en") {
   return output && preservesOriginalSpeech(cleanText, output) ? output : cleanText;
 }
 
+function normalizeChatAttachment(raw) {
+  if (!raw || typeof raw !== "object") return null;
+
+  const name = Array.from(String(raw.name || "attachment").split(/[\\/]/).pop() || "attachment")
+    .slice(0, 120)
+    .join("");
+  const extension = String(name.split(".").pop() || "").toLowerCase();
+  const mimeType = GPT_CHAT_ATTACHMENT_MIME[extension];
+  if (!mimeType) throw new Error("This file type is not supported.");
+
+  const source = String(raw.dataUrl || "");
+  if (source.length > Math.ceil(GPT_CHAT_ATTACHMENT_MAX_BYTES * 4 / 3) + 1024) {
+    throw new Error("File is too large. Maximum size is 10 MB.");
+  }
+  const match = source.match(/^data:[^;,]*;base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw new Error("The uploaded file is invalid.");
+
+  const payload = match[1];
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  const byteLength = Math.floor(payload.length * 3 / 4) - padding;
+  if (byteLength <= 0 || byteLength > GPT_CHAT_ATTACHMENT_MAX_BYTES) {
+    throw new Error("File is too large. Maximum size is 10 MB.");
+  }
+
+  return {
+    name,
+    kind: mimeType.startsWith("image/") ? "image" : "file",
+    dataUrl: "data:" + mimeType + ";base64," + payload,
+  };
+}
+
 export async function chatWithAi(env, messages, onStatus) {
   if (!env.GPT_API) throw new Error("GPT service is not configured.");
 
   const cleanMessages = (Array.isArray(messages) ? messages : [])
     .slice(-20)
-    .map((message) => ({
-      role: message?.role === "assistant" ? "assistant" : "user",
-      content: String(message?.content || "").trim(),
-    }))
-    .filter((message) => message.content)
-    .map((message) => ({
-      ...message,
-      content: Array.from(message.content).slice(0, 4000).join(""),
-    }));
+    .map((message) => {
+      const role = message?.role === "assistant" ? "assistant" : "user";
+      return {
+        role,
+        content: Array.from(String(message?.content || "").trim()).slice(0, 4000).join(""),
+        attachment: role === "user" ? normalizeChatAttachment(message?.attachment) : null,
+      };
+    })
+    .filter((message) => message.content || message.attachment);
 
   if (!cleanMessages.length || cleanMessages[cleanMessages.length - 1].role !== "user") {
     throw new Error("Type a message first.");
   }
   const totalCharacters = cleanMessages.reduce((total, message) => total + Array.from(message.content).length, 0);
   if (totalCharacters > 12000) throw new Error("This conversation is too long.");
+
+  const inputMessages = cleanMessages.map((message) => {
+    if (!message.attachment) return { role: message.role, content: message.content };
+    const prompt = message.content || "Analyze this attachment.";
+    if (message.attachment.kind === "image") {
+      return {
+        role: message.role,
+        content: [
+          { type: "input_text", text: prompt },
+          { type: "input_image", image_url: message.attachment.dataUrl, detail: "auto" },
+        ],
+      };
+    }
+    return {
+      role: message.role,
+      content: [
+        { type: "input_file", filename: message.attachment.name, file_data: message.attachment.dataUrl },
+        { type: "input_text", text: prompt },
+      ],
+    };
+  });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("gpt_chat_timeout"), GPT_CHAT_TIMEOUT_MS);
@@ -246,7 +341,7 @@ export async function chatWithAi(env, messages, onStatus) {
       body: JSON.stringify({
         model: GPT_MODEL,
         instructions: "You are Vexa AI, a capable and friendly assistant inside Telegram. Reply in the same language as the user's latest message. Give accurate, clear, practical answers. Use readable plain text and keep answers focused unless the user asks for detail.",
-        input: cleanMessages,
+        input: inputMessages,
         tools: [
           { type: "web_search" },
           {
