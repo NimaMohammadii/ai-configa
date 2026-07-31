@@ -15,6 +15,7 @@ import {
   adminElevenApiText,
   adminAiChatModelKeyboard,
   adminAiChatModelText,
+  adminAiChatLockPromptText,
   adminBuyersKeyboard,
   adminBuyersText,
   adminMainKeyboard,
@@ -97,6 +98,7 @@ import {
   resetUser,
   resolveStartLanguage,
   setAdminAction,
+  setAiChatAccessSettings,
   setElevenApiSetting,
   setLanguageSetting,
   setMiniAppAccessSettings,
@@ -833,6 +835,22 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id);
     await setAdminAction(env, userId, "mini_app_lock_minutes", { chatId, messageId });
     await editCurrentMenu(env, chatId, userId, messageId, adminMiniAppLockPromptText(), adminCancelKeyboard("admin_mini_app_access"));
+    return;
+  }
+
+  if (data === "admin_ai_chat_lock_prompt") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await answerCallback(env, query.id);
+    await setAdminAction(env, userId, "ai_chat_lock_minutes", { chatId, messageId });
+    await editCurrentMenu(env, chatId, userId, messageId, adminAiChatLockPromptText(), adminCancelKeyboard("admin_mini_app_access"));
+    return;
+  }
+
+  if (data === "admin_ai_chat_unlock") {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await setAiChatAccessSettings(env, false, 0, 0);
+    await answerCallback(env, query.id, "AI Chat opened", false);
+    await editCurrentMenu(env, chatId, userId, messageId, (await adminMiniAppAccessText(env)) + "\n\n✅ AI Chat is open for everyone.", await adminMiniAppAccessKeyboard(env));
     return;
   }
 
@@ -1593,6 +1611,21 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     await setMiniAppAccessSettings(env, true, lockedUntil, lockedFrom);
     await clearAdminAction(env, adminId);
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminMiniAppAccessText(env)) + "\n\n✅ Mini app locked for " + minutes + " minutes.", await adminMiniAppAccessKeyboard(env));
+    return true;
+  }
+
+  if (action.action === "ai_chat_lock_minutes") {
+    const minutes = Number.parseInt(String(text).trim(), 10);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminAiChatLockPromptText() + "\n\nInvalid duration. Send a positive number like <code>15</code>.", adminCancelKeyboard("admin_mini_app_access"));
+      return true;
+    }
+
+    const lockedFrom = Math.floor(Date.now() / 1000);
+    const lockedUntil = lockedFrom + (minutes * 60);
+    await setAiChatAccessSettings(env, true, lockedUntil, lockedFrom);
+    await clearAdminAction(env, adminId);
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminMiniAppAccessText(env)) + "\n\n✅ AI Chat locked for " + minutes + " minutes.", await adminMiniAppAccessKeyboard(env));
     return true;
   }
 
