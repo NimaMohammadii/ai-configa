@@ -465,6 +465,8 @@ async function readChatResponseStream(response, onStatus) {
 }
 
 function buildChatResult(data, cleanMessages) {
+  const webSearchUsed = (Array.isArray(data?.output) ? data.output : [])
+    .some((item) => item?.type === "web_search_call");
   const imageCall = (Array.isArray(data?.output) ? data.output : [])
     .find((item) => item?.type === "function_call" && item?.name === "generate_image");
 
@@ -482,6 +484,7 @@ function buildChatResult(data, cleanMessages) {
       type: "image_request",
       prompt,
       size: resolveImageSize(args.size),
+      webSearchUsed,
     };
   }
 
@@ -491,6 +494,7 @@ function buildChatResult(data, cleanMessages) {
     type: "text",
     message: answer,
     sources: extractResponseSources(data),
+    webSearchUsed,
   };
 }
 
