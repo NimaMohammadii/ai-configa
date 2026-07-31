@@ -94,7 +94,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260731-ai-chat-viewport-stable-55"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260731-ai-chat-page-lock-56"/>
 </head>
 <body>
   <main class="app">
