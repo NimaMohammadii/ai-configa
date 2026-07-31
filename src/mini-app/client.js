@@ -6,7 +6,7 @@ export const MINI_APP_JS = `
   var appViewportHeight=0;
   function exploreReelsIsOpen(){var page=document.getElementById('exploreReelsPage');return !!(page&&page.classList.contains('show'))}
   function liveViewportHeight(){return window.visualViewport&&window.visualViewport.height?window.visualViewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight)}
-  function aiChatVisibleHeight(){var viewport=window.visualViewport;var visualHeight=viewport&&Number(viewport.height)>0?Number(viewport.height):0;return visualHeight>=180?visualHeight:(Number(window.innerHeight)||0)}
+  function aiChatVisibleHeight(){var viewport=window.visualViewport;var visualBottom=viewport&&Number(viewport.height)>0?Number(viewport.height)+(Number(viewport.offsetTop)||0):0;return visualBottom>=180?visualBottom:(Number(window.innerHeight)||0)}
   function setAiChatKeyboardOffset(value){var offset=Math.max(0,Math.round(Number(value)||0));document.documentElement.style.setProperty('--ai-chat-keyboard-offset',String(offset)+'px')}
   function syncAiChatKeyboardOffset(){var visible=aiChatVisibleHeight();var stable=Math.max(Number(appViewportHeight)||0,visible);setAiChatKeyboardOffset(visible>=180?Math.max(0,Math.round(stable-visible)):0)}
   function syncAppViewport(){
@@ -24,7 +24,7 @@ export const MINI_APP_JS = `
   function syncAiChatVisualViewport(){if(aiChatOpen)syncAiChatKeyboardOffset()}
   syncAppViewport();
   window.addEventListener('resize',syncTelegramViewport,{passive:true});
-  if(window.visualViewport)window.visualViewport.addEventListener('resize',syncAiChatVisualViewport,{passive:true});
+  if(window.visualViewport){window.visualViewport.addEventListener('resize',syncAiChatVisualViewport,{passive:true});window.visualViewport.addEventListener('scroll',syncAiChatVisualViewport,{passive:true})}
   if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',syncTelegramViewport)}catch(e){}}
 
   var selectedVoice='TX3LPaxmHKxFdv7VOQHJ';
