@@ -1,3 +1,5 @@
+import { getAiChatModel } from "./ai-chat-model.js";
+
 const GPT_TIMEOUT_MS = 45000;
 const GPT_CHAT_TIMEOUT_MS = 90000;
 const GPT_IMAGE_TIMEOUT_MS = 150000;
@@ -327,6 +329,7 @@ export async function chatWithAi(env, messages, onStatus) {
     };
   });
 
+  const model = await getAiChatModel(env);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("gpt_chat_timeout"), GPT_CHAT_TIMEOUT_MS);
 
@@ -339,7 +342,7 @@ export async function chatWithAi(env, messages, onStatus) {
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: GPT_MODEL,
+        model,
         instructions: "You are Vexa AI, a capable and friendly assistant inside Telegram. Reply in the same language as the user's latest message. Give accurate, clear, practical answers and keep them focused unless the user asks for detail. Format answers as clean Markdown: use short paragraphs, descriptive headings only when useful, compact bullet or numbered lists for multiple items, and **bold** only for key terms. Always close Markdown delimiters. For web-search answers, synthesize the findings into a tidy response and do not add a sources section, citation links, raw URLs, or footnote markers unless the user explicitly asks for sources or links.",
         input: inputMessages,
         tools: [

@@ -9,6 +9,7 @@ import { VOICE_NAMES } from "./voices.js";
 import { getImageUsersPage, getUserImageHistory } from "./image-history.js";
 import { ensureWheelTable } from "./reward-wheel.js";
 import { ensureAiChatHistoryTable } from "./ai-chat-history.js";
+import { AI_CHAT_MODELS, getAiChatModel } from "./ai-chat-model.js";
 
 export async function hasTrackedUser(env, userId) {
   requireDb(env);
@@ -166,7 +167,7 @@ export function adminMainKeyboard() {
       [{ text: "🟢 Online Users", callback_data: "admin_online:0" }, { text: "🌍 Users by Language", callback_data: "admin_language_stats" }],
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
       [{ text: "🎧 First Start Audio", callback_data: "admin_welcome_audio" }],
-      [{ text: "🔊 API Eleven", callback_data: "admin_eleven_api" }],
+      [{ text: "🔊 API Eleven", callback_data: "admin_eleven_api" }, { text: "🤖 AI Chat Model", callback_data: "admin_ai_chat_model" }],
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }, { text: "📂 Section Opens", callback_data: "admin_section_opens" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
@@ -219,6 +220,29 @@ export async function adminElevenApiKeyboard(env) {
   const rows = ELEVEN_API_OPTIONS.map((keyName, index) => [{
     text: (selected === keyName ? "✔️ " : "") + keyName + (env[keyName] ? "" : " ⚠️"),
     callback_data: "admin_eleven_api_set:" + index,
+  }]);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export async function adminAiChatModelText(env) {
+  const selected = await getAiChatModel(env);
+  const selectedModel = AI_CHAT_MODELS.find((model) => model.id === selected);
+  return [
+    "🤖 <b>AI Chat Model</b>",
+    "",
+    "Active model: <b>" + selectedModel.label + "</b>",
+    "API model ID: <code>" + selectedModel.id + "</code>",
+    "",
+    "Select the model used for every AI Chat request:",
+  ].join("\n");
+}
+
+export async function adminAiChatModelKeyboard(env) {
+  const selected = await getAiChatModel(env);
+  const rows = AI_CHAT_MODELS.map((model, index) => [{
+    text: (selected === model.id ? "✔️ " : "") + model.label,
+    callback_data: "admin_ai_chat_model_set:" + index,
   }]);
   rows.push([{ text: "← Back", callback_data: "admin_main" }]);
   return { inline_keyboard: rows };
