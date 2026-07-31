@@ -22,7 +22,7 @@ export const MINI_APP_JS = `
     appViewportHeight=Math.round(Number(height));
     document.documentElement.style.setProperty('--app-viewport-height',String(appViewportHeight)+'px');
   }
-  function syncTelegramViewport(){if(!aiChatOpen)syncAppViewport()}
+  function syncTelegramViewport(event){if(aiChatOpen){var root=document.documentElement;if(event&&event.isStateStable)root.classList.remove('ai-chat-keyboard-moving');else root.classList.add('ai-chat-keyboard-moving');return}syncAppViewport()}
   function syncAiChatVisualViewport(){if(aiChatOpen)syncAiChatKeyboardOffset()}
   syncAppViewport();
   window.addEventListener('resize',syncTelegramViewport,{passive:true});
@@ -399,7 +399,7 @@ export const MINI_APP_JS = `
   var aiChatComposer=q('aiChatComposer');if(aiChatComposer)aiChatComposer.addEventListener('submit',function(event){event.preventDefault();sendAiChat()});
   var aiChatSend=q('aiChatSend');if(aiChatSend)aiChatSend.addEventListener('pointerdown',function(){var input=q('aiChatInput');aiChatSendKeepsKeyboard=!!(input&&document.activeElement===input)});
   var aiChatPage=q('aiChatPage');if(aiChatPage)aiChatPage.addEventListener('pointerdown',function(event){if(!aiChatOpen)return;var target=event.target;if(target&&target.closest&&target.closest('#aiChatComposer'))return;closeAiChatKeyboard()});
-  var aiChatInput=q('aiChatInput');if(aiChatInput){aiChatInput.addEventListener('input',resizeAiChatInput);aiChatInput.addEventListener('focus',function(){aiChatKeyboardClosing=false});aiChatInput.addEventListener('blur',function(){if(aiChatSendKeepsKeyboard)return;aiChatKeyboardClosing=true;setAiChatKeyboardOffset(0)})}
+  var aiChatInput=q('aiChatInput');if(aiChatInput){aiChatInput.addEventListener('input',resizeAiChatInput);aiChatInput.addEventListener('focus',function(){aiChatKeyboardClosing=false;document.documentElement.classList.add('ai-chat-keyboard-moving')});aiChatInput.addEventListener('blur',function(){if(aiChatSendKeepsKeyboard)return;aiChatKeyboardClosing=true;setAiChatKeyboardOffset(0)})}
   var aiChatAttach=q('aiChatAttach');if(aiChatAttach)aiChatAttach.addEventListener('click',function(){var file=q('aiChatFile');if(file)file.click()});
   var aiChatFile=q('aiChatFile');if(aiChatFile)aiChatFile.addEventListener('change',function(){selectAiChatAttachment(aiChatFile.files&&aiChatFile.files[0])});
   var historySearch=q('historySearch');if(historySearch)historySearch.addEventListener('input',function(){searchHistory(historySearch.value)});var voiceLibrarySearch=q('voiceLibrarySearch');if(voiceLibrarySearch)voiceLibrarySearch.addEventListener('input',function(){filterVoiceLibrary(voiceLibrarySearch.value)});
