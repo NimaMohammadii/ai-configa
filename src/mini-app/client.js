@@ -8,11 +8,9 @@ export const MINI_APP_JS = `
   function liveViewportHeight(){return window.visualViewport&&window.visualViewport.height?window.visualViewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight)}
   var aiChatKeyboardOffset=0;
   var aiChatKeyboardClosing=false;
-  var aiChatCaretFrame=0;
   function aiChatVisibleHeight(){var viewport=window.visualViewport;var visualHeight=viewport&&Number(viewport.height)>0?Number(viewport.height):0;return visualHeight>=180?visualHeight:(Number(window.innerHeight)||0)}
-  function deferAiChatCaret(){var root=document.documentElement;root.classList.add('ai-chat-keyboard-moving');if(aiChatCaretFrame)cancelAnimationFrame(aiChatCaretFrame);aiChatCaretFrame=requestAnimationFrame(function(){aiChatCaretFrame=requestAnimationFrame(function(){root.classList.remove('ai-chat-keyboard-moving');aiChatCaretFrame=0})})}
   function setAiChatKeyboardOffset(value){aiChatKeyboardOffset=Math.max(0,Math.round(Number(value)||0));document.documentElement.style.setProperty('--ai-chat-keyboard-offset',String(aiChatKeyboardOffset)+'px')}
-  function syncAiChatKeyboardOffset(){if(aiChatKeyboardClosing){setAiChatKeyboardOffset(0);return}deferAiChatCaret();var visible=aiChatVisibleHeight();var stable=Math.max(Number(appViewportHeight)||0,visible);var offset=visible>=180?Math.max(0,Math.round(stable-visible)):0;setAiChatKeyboardOffset(offset)}
+  function syncAiChatKeyboardOffset(){if(aiChatKeyboardClosing){setAiChatKeyboardOffset(0);return}var visible=aiChatVisibleHeight();var stable=Math.max(Number(appViewportHeight)||0,visible);var offset=visible>=180?Math.max(0,Math.round(stable-visible)):0;setAiChatKeyboardOffset(offset)}
   function syncAppViewport(){
     if(exploreReelsIsOpen())return;
     if(aiChatOpen)return
@@ -401,7 +399,7 @@ export const MINI_APP_JS = `
   var aiChatComposer=q('aiChatComposer');if(aiChatComposer)aiChatComposer.addEventListener('submit',function(event){event.preventDefault();sendAiChat()});
   var aiChatSend=q('aiChatSend');if(aiChatSend)aiChatSend.addEventListener('pointerdown',function(){var input=q('aiChatInput');aiChatSendKeepsKeyboard=!!(input&&document.activeElement===input)});
   var aiChatPage=q('aiChatPage');if(aiChatPage)aiChatPage.addEventListener('pointerdown',function(event){if(!aiChatOpen)return;var target=event.target;if(target&&target.closest&&target.closest('#aiChatComposer'))return;closeAiChatKeyboard()});
-  var aiChatInput=q('aiChatInput');if(aiChatInput){aiChatInput.addEventListener('input',resizeAiChatInput);aiChatInput.addEventListener('focus',function(){aiChatKeyboardClosing=false;deferAiChatCaret()});aiChatInput.addEventListener('blur',function(){if(aiChatSendKeepsKeyboard)return;aiChatKeyboardClosing=true;setAiChatKeyboardOffset(0)})}
+  var aiChatInput=q('aiChatInput');if(aiChatInput){aiChatInput.addEventListener('input',resizeAiChatInput);aiChatInput.addEventListener('focus',function(){aiChatKeyboardClosing=false});aiChatInput.addEventListener('blur',function(){if(aiChatSendKeepsKeyboard)return;aiChatKeyboardClosing=true;setAiChatKeyboardOffset(0)})}
   var aiChatAttach=q('aiChatAttach');if(aiChatAttach)aiChatAttach.addEventListener('click',function(){var file=q('aiChatFile');if(file)file.click()});
   var aiChatFile=q('aiChatFile');if(aiChatFile)aiChatFile.addEventListener('change',function(){selectAiChatAttachment(aiChatFile.files&&aiChatFile.files[0])});
   var historySearch=q('historySearch');if(historySearch)historySearch.addEventListener('input',function(){searchHistory(historySearch.value)});var voiceLibrarySearch=q('voiceLibrarySearch');if(voiceLibrarySearch)voiceLibrarySearch.addEventListener('input',function(){filterVoiceLibrary(voiceLibrarySearch.value)});
