@@ -52,6 +52,10 @@ import {
   adminMiniAppIconPromptText,
   adminMiniAppUsersKeyboard,
   adminMiniAppUsersText,
+  adminAiChatUsersKeyboard,
+  adminAiChatUsersText,
+  adminAiChatUserKeyboard,
+  adminAiChatUserText,
   adminWheelUsersKeyboard,
   adminWheelUsersText,
   adminMiniAppLockPromptText,
@@ -125,6 +129,7 @@ import { getDemoText } from "./demo-texts.js";
 import { enqueueImageJob } from "./image-jobs.js";
 import { enqueueBroadcastJob } from "./broadcast-jobs.js";
 import { buildImageHistoryFile, getUserImageHistory, sendImageHistoryDocuments } from "./image-history.js";
+import { buildAiChatHistoryFile, getAiChatHistory } from "./ai-chat-history.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { normalizeLang, t } from "./i18n.js";
 import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember, isMandatoryFaMembershipEnabled, setMandatoryFaMembershipEnabled } from "./mandatory-channel.js";
@@ -495,6 +500,36 @@ export async function handleCallback(query, env) {
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppUsersText(env, page), await adminMiniAppUsersKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_ai_chat_users:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const page = Number(data.split(":")[1] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminAiChatUsersText(env, page), await adminAiChatUsersKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_ai_chat_user:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const parts = data.split(":");
+    const targetUserId = parts[1];
+    const page = Number(parts[2] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminAiChatUserText(env, targetUserId), adminAiChatUserKeyboard(targetUserId, page));
+    return;
+  }
+
+  if (data.startsWith("admin_ai_chat_download:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const targetUserId = data.slice("admin_ai_chat_download:".length);
+    const rows = await getAiChatHistory(env, targetUserId);
+    const filename = "ai-chat-" + String(targetUserId).replace(/[^a-zA-Z0-9_-]/g, "_") + ".txt";
+    await answerCallback(env, query.id, "Sending chat history...", false);
+    await sendTextDocument(env, chatId, buildAiChatHistoryFile(targetUserId, rows), filename, "🤖 AI chat history for <code>" + targetUserId + "</code>");
     return;
   }
 
