@@ -6,9 +6,11 @@ export const MINI_APP_JS = `
   var appViewportHeight=0;
   function exploreReelsIsOpen(){var page=document.getElementById('exploreReelsPage');return !!(page&&page.classList.contains('show'))}
   function liveViewportHeight(){return window.visualViewport&&window.visualViewport.height?window.visualViewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight)}
-  function aiChatVisibleHeight(){var viewport=window.visualViewport;var visualBottom=viewport&&Number(viewport.height)>0?Number(viewport.height)+(Number(viewport.offsetTop)||0):0;return visualBottom>=180?visualBottom:(Number(window.innerHeight)||0)}
-  function setAiChatKeyboardOffset(value){var offset=Math.max(0,Math.round(Number(value)||0));document.documentElement.style.setProperty('--ai-chat-keyboard-offset',String(offset)+'px')}
-  function syncAiChatKeyboardOffset(){var visible=aiChatVisibleHeight();var stable=Math.max(Number(appViewportHeight)||0,visible);setAiChatKeyboardOffset(visible>=180?Math.max(0,Math.round(stable-visible)):0)}
+  var aiChatKeyboardOffset=0;
+  var aiChatKeyboardClosing=false;
+  function aiChatVisibleHeight(){var viewport=window.visualViewport;var visualHeight=viewport&&Number(viewport.height)>0?Number(viewport.height):0;return visualHeight>=180?visualHeight:(Number(window.innerHeight)||0)}
+  function setAiChatKeyboardOffset(value){aiChatKeyboardOffset=Math.max(0,Math.round(Number(value)||0));if(aiChatKeyboardOffset<=0)aiChatKeyboardClosing=false;document.documentElement.style.setProperty('--ai-chat-keyboard-offset',String(aiChatKeyboardOffset)+'px')}
+  function syncAiChatKeyboardOffset(){var visible=aiChatVisibleHeight();var stable=Math.max(Number(appViewportHeight)||0,visible);var offset=visible>=180?Math.max(0,Math.round(stable-visible)):0;if(aiChatKeyboardClosing)offset=Math.min(aiChatKeyboardOffset,offset);setAiChatKeyboardOffset(offset)}
   function syncAppViewport(){
     if(exploreReelsIsOpen())return;
     if(aiChatOpen)return
@@ -24,7 +26,7 @@ export const MINI_APP_JS = `
   function syncAiChatVisualViewport(){if(aiChatOpen)syncAiChatKeyboardOffset()}
   syncAppViewport();
   window.addEventListener('resize',syncTelegramViewport,{passive:true});
-  if(window.visualViewport){window.visualViewport.addEventListener('resize',syncAiChatVisualViewport,{passive:true});window.visualViewport.addEventListener('scroll',syncAiChatVisualViewport,{passive:true})}
+  if(window.visualViewport)window.visualViewport.addEventListener('resize',syncAiChatVisualViewport,{passive:true});
   if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',syncTelegramViewport)}catch(e){}}
 
   var selectedVoice='TX3LPaxmHKxFdv7VOQHJ';
@@ -373,10 +375,10 @@ export const MINI_APP_JS = `
   var imagePrompt=q('imagePrompt');if(imagePrompt)imagePrompt.addEventListener('input',updateImagePromptCount);
   var imageFile=q('imageFile');if(imageFile)imageFile.addEventListener('change',function(){selectSourceImages(imageFile.files)});
   var modeToggle=q('modeToggle');if(modeToggle)modeToggle.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();toggleCreationMode()});
-  function closeAiChatKeyboard(){var input=q('aiChatInput');if(input&&document.activeElement===input)input.blur();if(tg&&typeof tg.hideKeyboard==='function'){try{tg.hideKeyboard()}catch(e){}}}
+  function closeAiChatKeyboard(){aiChatKeyboardClosing=true;var input=q('aiChatInput');if(input&&document.activeElement===input)input.blur();if(tg&&typeof tg.hideKeyboard==='function'){try{tg.hideKeyboard()}catch(e){}}}
   var aiChatComposer=q('aiChatComposer');if(aiChatComposer)aiChatComposer.addEventListener('submit',function(event){event.preventDefault();sendAiChat()});
   var aiChatPage=q('aiChatPage');if(aiChatPage)aiChatPage.addEventListener('pointerdown',function(event){if(!aiChatOpen)return;var target=event.target;if(target&&target.closest&&target.closest('#aiChatComposer'))return;closeAiChatKeyboard()});
-  var aiChatInput=q('aiChatInput');if(aiChatInput){aiChatInput.addEventListener('input',resizeAiChatInput);aiChatInput.addEventListener('focus',scrollAiChat)}
+  var aiChatInput=q('aiChatInput');if(aiChatInput){aiChatInput.addEventListener('input',resizeAiChatInput);aiChatInput.addEventListener('focus',function(){aiChatKeyboardClosing=false;scrollAiChat()});aiChatInput.addEventListener('blur',function(){aiChatKeyboardClosing=true})}
   var historySearch=q('historySearch');if(historySearch)historySearch.addEventListener('input',function(){searchHistory(historySearch.value)});var voiceLibrarySearch=q('voiceLibrarySearch');if(voiceLibrarySearch)voiceLibrarySearch.addEventListener('input',function(){filterVoiceLibrary(voiceLibrarySearch.value)});
   var exploreSearch=q('exploreSearch');if(exploreSearch)exploreSearch.addEventListener('input',function(){exploreSearchQuery=String(exploreSearch.value||'');renderExplorePage()});
   var audio=q('ttsAudio');if(audio){audio.addEventListener('play',function(){setWavePlaying(true);startAudioProgressLoop()});audio.addEventListener('pause',function(){setWavePlaying(false);syncMainWave()});audio.addEventListener('loadedmetadata',syncMainWave);audio.addEventListener('durationchange',syncMainWave);audio.addEventListener('timeupdate',syncMainWave);audio.addEventListener('ended',function(){audio.currentTime=0;setWavePlaying(false);syncMainWave()})}
