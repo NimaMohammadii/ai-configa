@@ -8,9 +8,9 @@ export const MINI_APP_JS = `
   function liveViewportHeight(){return window.visualViewport&&window.visualViewport.height?window.visualViewport.height:(tg&&tg.viewportHeight?tg.viewportHeight:window.innerHeight)}
   var aiChatKeyboardOffset=0;
   var aiChatKeyboardClosing=false;
-  function aiChatVisibleHeight(){var viewport=window.visualViewport;var visualHeight=viewport&&Number(viewport.height)>0?Number(viewport.height):0;return visualHeight>=180?visualHeight:(Number(window.innerHeight)||0)}
+  function aiChatVisibleBottom(){var viewport=window.visualViewport;var visualHeight=viewport&&Number(viewport.height)>0?Number(viewport.height):0;if(visualHeight<180)return Number(window.innerHeight)||0;return visualHeight+Math.max(0,Number(viewport.offsetTop)||0)}
   function setAiChatKeyboardOffset(value){aiChatKeyboardOffset=Math.max(0,Math.round(Number(value)||0));document.documentElement.style.setProperty('--ai-chat-keyboard-offset',String(aiChatKeyboardOffset)+'px')}
-  function syncAiChatKeyboardOffset(){if(aiChatKeyboardClosing){setAiChatKeyboardOffset(0);return}var visible=aiChatVisibleHeight();var stable=Math.max(Number(appViewportHeight)||0,visible);var offset=visible>=180?Math.max(0,Math.round(stable-visible)):0;setAiChatKeyboardOffset(offset)}
+  function syncAiChatKeyboardOffset(){if(aiChatKeyboardClosing){setAiChatKeyboardOffset(0);return}var visible=aiChatVisibleBottom();var stable=Math.max(Number(appViewportHeight)||0,visible);var offset=visible>=180?Math.max(0,Math.round(stable-visible)):0;setAiChatKeyboardOffset(offset)}
   function syncAppViewport(){
     if(exploreReelsIsOpen())return;
     if(aiChatOpen)return
@@ -26,7 +26,7 @@ export const MINI_APP_JS = `
   function syncAiChatVisualViewport(){if(aiChatOpen)syncAiChatKeyboardOffset()}
   syncAppViewport();
   window.addEventListener('resize',syncTelegramViewport,{passive:true});
-  if(window.visualViewport)window.visualViewport.addEventListener('resize',syncAiChatVisualViewport,{passive:true});
+  if(window.visualViewport){window.visualViewport.addEventListener('resize',syncAiChatVisualViewport,{passive:true});window.visualViewport.addEventListener('scroll',syncAiChatVisualViewport,{passive:true});}
   if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',syncTelegramViewport)}catch(e){}}
 
   var selectedVoice='TX3LPaxmHKxFdv7VOQHJ';
