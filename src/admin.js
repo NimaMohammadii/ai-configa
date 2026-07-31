@@ -8,6 +8,7 @@ import { tgJson } from "./telegram-api.js";
 import { VOICE_NAMES } from "./voices.js";
 import { getImageUsersPage, getUserImageHistory } from "./image-history.js";
 import { ensureWheelTable } from "./reward-wheel.js";
+import { ensureAiChatHistoryTable } from "./ai-chat-history.js";
 
 export async function hasTrackedUser(env, userId) {
   requireDb(env);
@@ -77,6 +78,7 @@ export const MINI_APP_TRACKED_SECTIONS = {
   explore: "Explore",
   voices: "Voice Library",
   tts: "Text to Speech",
+  ai_chat: "AI Chat",
 };
 
 export function normalizeTrackedMiniAppSection(section = "home") {
@@ -168,7 +170,7 @@ export function adminMainKeyboard() {
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }, { text: "📂 Section Opens", callback_data: "admin_section_opens" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
-      [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }],
+      [{ text: "🤖 AI Chat Users", callback_data: "admin_ai_chat_users:0" }, { text: "🎨 Image Users", callback_data: "admin_image_users:0" }],
       [{ text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
       [{ text: "💸 Image Pricing", callback_data: "admin_image_pricing" }, { text: "🐙 Explore Prompts", callback_data: "admin_image_explore" }],
       [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
@@ -834,6 +836,74 @@ export async function adminMiniAppUsersKeyboard(env, page = 0) {
 
 function miniAppUserLabel(user) {
   return userLabel(user) + " • 📱 " + formatNumber(user.mini_app_open_count || 0);
+}
+
+export async function getAdminAiChatUsersPage(env, page = 0, limit = 8) {
+  requireDb(env);
+  await ensureAiChatHistoryTable(env);
+  await ensureMiniAppSectionOpenTable(env);
+  const offset = Math.max(0, Number(page)) * Number(limit);
+  const countRow = await env.DB.prepare("SELECT COUNT(DISTINCT user_id) AS total FROM ai_chat_history").first();
+  const users = await env.DB.prepare(
+    "SELECT h.user_id, b.username, b.first_name, b.last_name, COUNT(h.id) AS message_count, " +
+    "COALESCE(s.open_count, 0) AS open_count, MAX(h.created_at) AS last_chat_at " +
+    "FROM ai_chat_history h LEFT JOIN bot_users b ON b.user_id = h.user_id " +
+    "LEFT JOIN mini_app_section_opens s ON s.user_id = h.user_id AND s.section = 'ai_chat' " +
+    "GROUP BY h.user_id, b.username, b.first_name, b.last_name, s.open_count " +
+    "ORDER BY datetime(MAX(h.created_at)) DESC LIMIT ? OFFSET ?"
+  ).bind(Number(limit), Number(offset)).all();
+  return { total: Number(countRow?.total || 0), page: Math.max(0, Number(page)), limit: Number(limit), users: users.results || [] };
+}
+
+export async function adminAiChatUsersText(env, page = 0) {
+  const data = await getAdminAiChatUsersPage(env, page);
+  return [
+    "🤖 <b>AI Chat Users</b>", "",
+    "Users who chatted with AI: <b>" + formatNumber(data.total) + "</b>",
+    "Page: <b>" + (data.page + 1) + "</b>", "",
+    data.users.length ? "Select a user to download their chat history:" : "No AI chats have been saved yet.",
+  ].join("\n");
+}
+
+export async function adminAiChatUsersKeyboard(env, page = 0) {
+  const data = await getAdminAiChatUsersPage(env, page);
+  const rows = data.users.map((user) => [{
+    text: userLabel(user) + " • ↩️ " + formatNumber(Math.max(0, Number(user.open_count || 0) - 1)) + " • 💬 " + formatNumber(user.message_count || 0),
+    callback_data: "admin_ai_chat_user:" + user.user_id + ":" + data.page,
+  }]);
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_ai_chat_users:" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_ai_chat_users:" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export async function adminAiChatUserText(env, userId) {
+  await ensureAiChatHistoryTable(env);
+  await ensureMiniAppSectionOpenTable(env);
+  const user = await env.DB.prepare(
+    "SELECT h.user_id, b.username, b.first_name, b.last_name, COUNT(h.id) AS message_count, " +
+    "COALESCE(s.open_count, 0) AS open_count, MAX(h.created_at) AS last_chat_at " +
+    "FROM ai_chat_history h LEFT JOIN bot_users b ON b.user_id = h.user_id " +
+    "LEFT JOIN mini_app_section_opens s ON s.user_id = h.user_id AND s.section = 'ai_chat' " +
+    "WHERE h.user_id = ? GROUP BY h.user_id, b.username, b.first_name, b.last_name, s.open_count"
+  ).bind(String(userId)).first();
+  if (!user) return "🤖 <b>AI Chat User</b>\n\nUser not found.";
+  return [
+    "🤖 <b>AI Chat User</b>", "", "User: <b>" + escapeHtml(userLabel(user)) + "</b>",
+    "User ID: <code>" + escapeHtml(user.user_id) + "</code>",
+    "Returned to AI Chat: <b>" + formatNumber(Math.max(0, Number(user.open_count || 0) - 1)) + "</b>",
+    "AI requests: <b>" + formatNumber(user.message_count || 0) + "</b>",
+    "Last chat: <b>" + escapeHtml(formatTehranTime(user.last_chat_at)) + "</b>", "", "Use the button below to download the complete chat as a text file.",
+  ].join("\n");
+}
+
+export function adminAiChatUserKeyboard(userId, page = 0) {
+  return { inline_keyboard: [
+    [{ text: "⬇️ Download Chat", callback_data: "admin_ai_chat_download:" + userId }],
+    [{ text: "← Chat Users", callback_data: "admin_ai_chat_users:" + page }, { text: "← Back", callback_data: "admin_main" }],
+  ] };
 }
 
 export async function getAdminSectionOpenSummary(env) {

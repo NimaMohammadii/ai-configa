@@ -138,6 +138,19 @@ CREATE TABLE IF NOT EXISTS mini_app_section_opens (
 CREATE INDEX IF NOT EXISTS idx_mini_app_section_opens_section
   ON mini_app_section_opens (section, open_count DESC, last_opened_at DESC);
 
+CREATE TABLE IF NOT EXISTS ai_chat_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  user_message TEXT NOT NULL DEFAULT '',
+  assistant_message TEXT NOT NULL DEFAULT '',
+  attachment_name TEXT,
+  response_type TEXT NOT NULL DEFAULT 'text',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_chat_history_user_created
+  ON ai_chat_history (user_id, created_at DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_credit_usage_log_created ON credit_usage_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_credit_usage_log_user_created ON credit_usage_log (user_id, created_at DESC);
 
