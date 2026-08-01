@@ -8,10 +8,27 @@ export const AI_CHAT_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>AI Chat</title>
-  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260801-ai-chat-volume-wave-loader-1"/>
+  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260801-ai-chat-synced-header-wave-1"/>
 </head>
 <body>
   <section id="aiChatPage" class="ai-chat-page" aria-hidden="false">
+    <header id="aiChatHead" class="ai-chat-head">
+      <div class="credit-tools">
+        <div id="aiChatCreditPill" class="credit-pill" aria-label="Credits">
+          <span id="aiChatBalance">—</span>
+          <span>credits</span>
+        </div>
+      </div>
+      <div class="mode-tools">
+        <div class="voice-wrap">
+          <button id="aiChatVoiceCard" class="voice-btn" type="button" aria-label="Selected voice">
+            <span id="aiChatVoiceAvatar" class="voice-button-avatar" aria-hidden="true"></span>
+            <span id="aiChatVoiceLabel">Nora</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
     <div id="aiChatMessages" class="ai-chat-messages" role="log" aria-live="polite"><div id="aiChatEmpty" class="ai-chat-empty"><span>How can I help?</span><canvas id="aiChatEmptyOrb" class="ai-chat-empty-orb" width="96" height="96" aria-hidden="true"></canvas></div></div>
     <form id="aiChatComposer" class="ai-chat-composer">
       <input id="aiChatFile" type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.txt,.md,.markdown,.json,.html,.htm,.xml,.csv,.tsv,.doc,.docx,.rtf,.odt,.ppt,.pptx,.xls,.xlsx,.js,.mjs,.ts,.tsx,.jsx,.py,.css,.sql,.log,.yaml,.yml,.toml,.eml,.ics,.srt,.vtt"/>
@@ -24,6 +41,6 @@ export const AI_CHAT_HTML = `<!doctype html>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/mini-app/chat/creature.js?v=20260801-ai-chat-creature-rounded-jelly-2"></script>
-  <script type="module" src="/mini-app/chat/app.js?v=20260801-ai-chat-volume-wave-loader-1"></script>
+  <script type="module" src="/mini-app/chat/app.js?v=20260801-ai-chat-synced-header-wave-1"></script>
 </body>
 </html>`;
