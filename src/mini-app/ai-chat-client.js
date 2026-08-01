@@ -14,6 +14,8 @@ export const AI_CHAT_JS = `
   var aiChatSavedVoices=[];
   var aiChatVoiceProfiles={};
   var aiChatVoiceMenuBusy=false;
+  var aiChatActivePreviewButton=null;
+  var aiChatActivePreviewVoice='';
   var aiChatAttachment=null;
   var aiChatAttachmentMaxBytes=10*1024*1024;
   var aiChatAttachmentMimes={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',pdf:'application/pdf',txt:'text/plain',text:'text/plain',md:'text/markdown',markdown:'text/markdown',json:'application/json',html:'text/html',htm:'text/html',xml:'text/xml',csv:'text/csv',tsv:'text/tsv',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',rtf:'application/rtf',odt:'application/vnd.oasis.opendocument.text',ppt:'application/vnd.ms-powerpoint',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',js:'text/javascript',mjs:'text/javascript',ts:'text/x-typescript',tsx:'text/tsx',jsx:'text/jsx',py:'text/x-python',css:'text/css',sql:'text/x-sql',log:'text/plain',yaml:'text/x-yaml',yml:'text/x-yaml',toml:'application/toml',eml:'message/rfc822',ics:'text/calendar',srt:'application/x-subrip',vtt:'text/vtt'};
@@ -23,6 +25,30 @@ export const AI_CHAT_JS = `
   var aiThinkingLastFrame=0;
   var stableViewportHeight=Math.max(1,Number(tg&&(tg.viewportStableHeight||tg.viewportHeight))||Number(window.innerHeight)||1);
   function q(id){return document.getElementById(id)}
+  function setAiChatVoiceImage(image,voice){
+    if(!image)return;
+
+    var source=String(aiChatVoiceProfiles[voice]||'');
+    var frame=image.parentElement;
+
+    if(source){
+      image.style.backgroundImage=
+        'url("'+source.split('"').join('%22')+'")';
+      image.classList.add('has-image');
+
+      if(frame&&frame.classList.contains('voice-avatar')){
+        frame.classList.add('has-image');
+      }
+    }else{
+      image.style.backgroundImage='';
+      image.classList.remove('has-image');
+
+      if(frame&&frame.classList.contains('voice-avatar')){
+        frame.classList.remove('has-image');
+      }
+    }
+  }
+
   function setAiChatVoiceAvatar(avatar,voice){
     if(!avatar)return;
 
@@ -40,55 +66,47 @@ export const AI_CHAT_JS = `
   function renderAiChatVoiceMenu(){
     var rows=q('aiChatVoiceRows');
     var empty=q('aiChatVoicesEmpty');
+    var count=q('aiChatVoiceMenuCount');
     if(!rows||!empty)return;
 
-    rows.replaceChildren();
+    var saved=new Set(aiChatSavedVoices);
 
-    var voices=aiChatSavedVoices.slice();
-    if(
-      aiChatPreferredVoice
-      &&voices.indexOf(aiChatPreferredVoice)<0
-    ){
-      voices.unshift(aiChatPreferredVoice);
-    }
+    rows.querySelectorAll(
+      '.voice-option[data-voice-row-name]'
+    ).forEach(function(row){
+      var voice=String(
+        row.getAttribute('data-voice-row-name')||''
+      );
+      var isSaved=saved.has(voice);
+      var select=row.querySelector('.voice-select');
+      var image=row.querySelector('.voice-avatar-image');
 
-    voices.forEach(function(voice){
-      var option=document.createElement('button');
-      option.type='button';
-      option.className='ai-chat-voice-option';
-      option.dataset.voice=voice;
-      option.setAttribute(
-        'aria-pressed',
-        voice===aiChatPreferredVoice?'true':'false'
+      row.classList.toggle(
+        'voice-not-saved',
+        !isSaved
       );
 
-      if(voice===aiChatPreferredVoice){
-        option.classList.add('active');
+      if(select){
+        var active=voice===aiChatPreferredVoice;
+        select.classList.toggle('active',active);
+        select.setAttribute(
+          'aria-pressed',
+          active?'true':'false'
+        );
       }
 
-      var avatar=document.createElement('span');
-      avatar.className='ai-chat-voice-option-avatar';
-      avatar.setAttribute('aria-hidden','true');
-      setAiChatVoiceAvatar(avatar,voice);
-
-      var name=document.createElement('span');
-      name.className='ai-chat-voice-option-name';
-      name.textContent=voice;
-
-      var check=document.createElement('span');
-      check.className='ai-chat-voice-option-check';
-      check.setAttribute('aria-hidden','true');
-      check.textContent='✓';
-
-      option.append(avatar,name,check);
-      option.addEventListener('click',function(event){
-        event.stopPropagation();
-        selectAiChatVoice(voice);
-      });
-      rows.appendChild(option);
+      setAiChatVoiceImage(image,voice);
     });
 
-    empty.hidden=voices.length>0;
+    empty.classList.toggle(
+      'show',
+      !aiChatSavedVoices.length
+    );
+
+    if(count){
+      count.textContent=
+        String(aiChatSavedVoices.length)+' / 6';
+    }
   }
 
   function setAiChatVoiceMenu(open){
@@ -121,11 +139,93 @@ export const AI_CHAT_JS = `
     );
   }
 
-  async function selectAiChatVoice(voice){
-    var selected=String(voice||'').trim();
-    if(!selected||aiChatVoiceMenuBusy)return;
+  function stopAiChatVoicePreview(){
+    var audio=q('aiChatVoicePreviewAudio');
 
-    if(selected===aiChatPreferredVoice){
+    if(audio){
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    }
+
+    if(aiChatActivePreviewButton){
+      aiChatActivePreviewButton.classList.remove(
+        'loading',
+        'playing'
+      );
+    }
+
+    aiChatActivePreviewButton=null;
+    aiChatActivePreviewVoice='';
+  }
+
+  async function previewAiChatVoice(button){
+    var voiceId=String(
+      button.getAttribute('data-preview-voice')||''
+    );
+    var voiceName=String(
+      button.getAttribute('data-preview-name')||'Voice'
+    );
+    var audio=q('aiChatVoicePreviewAudio');
+    if(!voiceId||!audio)return;
+
+    if(
+      aiChatActivePreviewButton===button
+      &&aiChatActivePreviewVoice===voiceId
+      &&!audio.paused
+    ){
+      audio.pause();
+      return;
+    }
+
+    stopAiChatVoicePreview();
+    aiChatActivePreviewButton=button;
+    aiChatActivePreviewVoice=voiceId;
+    button.classList.add('loading');
+
+    try{
+      var data=await api('/mini-app/api/voice-demo',{
+        voice:voiceId
+      });
+
+      if(aiChatActivePreviewButton!==button){
+        return;
+      }
+
+      audio.src=
+        'data:audio/mpeg;base64,'
+        +String(data.audioBase64||'');
+      button.classList.remove('loading');
+      button.classList.add('playing');
+      await audio.play();
+    }catch(error){
+      button.classList.remove('loading','playing');
+      aiChatActivePreviewButton=null;
+      aiChatActivePreviewVoice='';
+      toast(
+        error.message||('Could not play '+voiceName)
+      );
+    }
+  }
+
+  function openAiChatVoicesPage(){
+    stopAiChatVoicePreview();
+    window.location.assign('/mini-app?section=voices');
+  }
+
+  async function selectAiChatVoice(voiceId,voiceName){
+    var selectedId=String(voiceId||'').trim();
+    var selectedName=String(voiceName||'').trim();
+
+    if(
+      !selectedId
+      ||!selectedName
+      ||aiChatVoiceMenuBusy
+    ){
+      return;
+    }
+
+    if(selectedName===aiChatPreferredVoice){
       setAiChatVoiceMenu(false);
       return;
     }
@@ -133,6 +233,7 @@ export const AI_CHAT_JS = `
     var wrap=q('aiChatVoiceWrap');
     var card=q('aiChatVoiceCard');
     aiChatVoiceMenuBusy=true;
+    stopAiChatVoicePreview();
 
     if(wrap){
       wrap.classList.add('updating');
@@ -144,11 +245,13 @@ export const AI_CHAT_JS = `
     try{
       var data=await api('/mini-app/api/user-voices',{
         action:'select',
-        voice:selected
+        voice:selectedId
       });
 
       updateAiChatHeader({
-        voice:String(data.selectedVoice||selected),
+        voice:String(
+          data.selectedVoice||selectedName
+        ),
         savedVoices:Array.isArray(data.savedVoices)
           ?data.savedVoices
           :aiChatSavedVoices
@@ -189,7 +292,8 @@ export const AI_CHAT_JS = `
         })
         .filter(function(item,index,list){
           return item&&list.indexOf(item)===index;
-        });
+        })
+        .slice(0,6);
     }
 
     if(data.voiceProfiles&&typeof data.voiceProfiles==='object'){
@@ -197,8 +301,13 @@ export const AI_CHAT_JS = `
     }
 
     var balance=q('aiChatBalance');
-    if(balance&&data.balance!==undefined&&data.balance!==null){
-      balance.textContent=Number(data.balance).toLocaleString('en-US');
+    if(
+      balance
+      &&data.balance!==undefined
+      &&data.balance!==null
+    ){
+      balance.textContent=
+        Number(data.balance).toLocaleString('en-US');
     }
 
     var label=q('aiChatVoiceLabel');
@@ -268,30 +377,43 @@ export const AI_CHAT_JS = `
     var position=index/Math.max(1,count-1);
     return Math.pow(
       Math.sin(Math.PI*position),
-      .68
+      .78
     );
   }
 
   function aiVoiceBarHeight(index,count,seconds){
     var envelope=aiVoiceWaveEnvelope(index,count);
     var primary=
-      .5+.5*Math.sin(seconds*5.4+index*.78);
-    var detail=
-      .5+.5*Math.sin(seconds*8.2-index*.46);
+      .5+.5*Math.sin(seconds*3.9+index*.62);
+    var secondary=
+      .5+.5*Math.sin(seconds*5.7-index*.39);
+    var texture=
+      .5+.5*Math.sin(seconds*8.1+index*.21);
 
-    return 1.4+envelope*(
-      5+10*(primary*.58+detail*.42)
+    return 1.2+envelope*(
+      4.4
+      +12.6*(
+        primary*.5
+        +secondary*.34
+        +texture*.16
+      )
     );
   }
 
-  function drawAiVoiceWaveBody(ctx,seconds,mix,size){
+  function drawAiVoiceWaveBody(
+    ctx,
+    seconds,
+    mix,
+    width,
+    height
+  ){
     var amount=aiSmoothMorph(mix);
     if(amount<.01)return;
 
-    var barCount=15;
-    var left=5;
-    var width=size-10;
-    var center=size/2;
+    var barCount=23;
+    var left=2.5;
+    var waveWidth=Math.max(1,width-left*2);
+    var center=height/2;
 
     ctx.save();
     ctx.lineCap='round';
@@ -303,64 +425,88 @@ export const AI_CHAT_JS = `
         index,
         barCount
       );
-      var height=aiVoiceBarHeight(
+      var barHeight=aiVoiceBarHeight(
         index,
         barCount,
         seconds
       );
-      var x=left+width*index/(barCount-1);
+      var x=
+        left
+        +waveWidth*index/(barCount-1);
 
       ctx.beginPath();
-      ctx.moveTo(x,center-height/2);
-      ctx.lineTo(x,center+height/2);
-      ctx.globalAlpha=.22*amount*envelope;
-      ctx.strokeStyle='rgba(255,255,255,.68)';
-      ctx.lineWidth=2.05;
+      ctx.moveTo(x,center-barHeight/2);
+      ctx.lineTo(x,center+barHeight/2);
+      ctx.globalAlpha=
+        .14*amount*envelope;
+      ctx.strokeStyle='rgba(255,255,255,.64)';
+      ctx.lineWidth=1.9;
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.moveTo(x,center-height*.34);
-      ctx.lineTo(x,center+height*.34);
-      ctx.globalAlpha=.38*amount*envelope;
-      ctx.strokeStyle='rgba(255,255,255,.94)';
-      ctx.lineWidth=.68;
+      ctx.moveTo(x,center-barHeight*.41);
+      ctx.lineTo(x,center+barHeight*.41);
+      ctx.globalAlpha=
+        .3*amount*envelope;
+      ctx.strokeStyle='rgba(255,255,255,.86)';
+      ctx.lineWidth=.95;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x,center-barHeight*.25);
+      ctx.lineTo(x,center+barHeight*.25);
+      ctx.globalAlpha=
+        .52*amount*envelope;
+      ctx.strokeStyle='rgba(255,255,255,.98)';
+      ctx.lineWidth=.42;
       ctx.stroke();
     }
 
     ctx.restore();
   }
 
-  function morphAiDotsToVoiceWave(dots,seconds,mix,size){
+  function morphAiDotsToVoiceWave(
+    dots,
+    seconds,
+    mix,
+    width,
+    height
+  ){
     var amount=aiSmoothMorph(mix);
     if(amount<=0)return;
 
-    var barCount=15;
-    var dotsPerBar=7;
+    var barCount=23;
+    var dotsPerBar=9;
     var visibleDots=barCount*dotsPerBar;
-    var left=5;
-    var width=size-10;
-    var center=size/2;
+    var left=2.5;
+    var waveWidth=Math.max(1,width-left*2);
+    var center=height/2;
 
     dots.forEach(function(dot,index){
       var visible=index<visibleDots;
       var bar=Math.floor(index/dotsPerBar);
       var level=index%dotsPerBar;
-      var distance=Math.abs(level-(dotsPerBar-1)/2);
+      var middle=(dotsPerBar-1)/2;
+      var distance=Math.abs(level-middle);
       var envelope=visible
         ?aiVoiceWaveEnvelope(bar,barCount)
         :0;
-      var height=visible
+      var barHeight=visible
         ?aiVoiceBarHeight(bar,barCount,seconds)
         :0;
-      var targetX=left
-        +width*bar/Math.max(1,barCount-1);
-      var targetY=center
-        +(level-(dotsPerBar-1)/2)
-        *height/(dotsPerBar-1);
+      var targetX=
+        left
+        +waveWidth*bar/Math.max(1,barCount-1);
+      var targetY=
+        center
+        +(level-middle)
+        *barHeight/(dotsPerBar-1);
+      var centerWeight=
+        1-distance/Math.max(1,middle);
       var targetRadius=
-        .38+.2*(1-distance/3);
+        .28+.25*centerWeight;
       var targetAlpha=visible
-        ?(.24+.52*(1-distance/3))*envelope
+        ?(.16+.56*centerWeight)*envelope
         :0;
 
       dot.x+=(targetX-dot.x)*amount;
@@ -368,17 +514,20 @@ export const AI_CHAT_JS = `
       dot.z*=1-amount;
       dot.r+=(targetRadius-dot.r)*amount;
       dot.a+=(targetAlpha-dot.a)*amount;
-      dot.white+=(.07-dot.white)*amount;
+      dot.white+=(.055-dot.white)*amount;
 
       if(visible){
-        var centerLight=1-distance/3;
-        var shade=198+48*centerLight;
-        var currentColor=dot.color||[shade,shade,shade];
+        var shade=194+58*centerWeight;
+        var currentColor=
+          dot.color||[shade,shade,shade];
 
         dot.color=[
-          currentColor[0]+(shade-currentColor[0])*amount,
-          currentColor[1]+(shade-currentColor[1])*amount,
-          currentColor[2]+(shade-currentColor[2])*amount
+          currentColor[0]
+            +(shade-currentColor[0])*amount,
+          currentColor[1]
+            +(shade-currentColor[1])*amount,
+          currentColor[2]
+            +(shade-currentColor[2])*amount
         ];
       }
     });
@@ -392,20 +541,38 @@ export const AI_CHAT_JS = `
   ){
     if(!canvas)return;
 
-    var size=48;
-    var dpr=Math.min(2,window.devicePixelRatio||1);
-    var pixels=Math.round(size*dpr);
+    var bounds=canvas.getBoundingClientRect();
+    var width=Math.max(
+      1,
+      Number(bounds.width)||48
+    );
+    var height=Math.max(
+      1,
+      Number(bounds.height)||48
+    );
+    var size=Math.min(width,height);
+    var dpr=Math.min(
+      3,
+      window.devicePixelRatio||1
+    );
+    var pixelWidth=Math.round(width*dpr);
+    var pixelHeight=Math.round(height*dpr);
 
-    if(canvas.width!==pixels||canvas.height!==pixels){
-      canvas.width=pixels;
-      canvas.height=pixels;
+    if(
+      canvas.width!==pixelWidth
+      ||canvas.height!==pixelHeight
+    ){
+      canvas.width=pixelWidth;
+      canvas.height=pixelHeight;
     }
 
     var ctx=canvas.getContext('2d');
     if(!ctx)return;
 
     ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.clearRect(0,0,size,size);
+    ctx.clearRect(0,0,width,height);
+    ctx.imageSmoothingEnabled=true;
+    ctx.imageSmoothingQuality='high';
 
     var searchMorph=aiSmoothMorph(searchMix);
     var voiceMorph=aiSmoothMorph(voiceMix);
@@ -417,21 +584,25 @@ export const AI_CHAT_JS = `
     var project=aiOrbProject(
       0,
       .55-.42*searchMorph,
-      size/2,
-      size/2
+      width/2,
+      height/2
     );
     var dots=[];
     var dotScale=Math.pow(size/300,.6);
     var ghostCount=38;
 
     for(var ghost=0;ghost<ghostCount;ghost+=1){
-      var point=aiOrbSpherePoint(ghost,ghostCount);
+      var point=aiOrbSpherePoint(
+        ghost,
+        ghostCount
+      );
       var ghostPoint=project(
         point[0]*radius,
         point[1]*radius,
         point[2]*radius
       );
-      var ghostDepth=(ghostPoint[2]/radius+1)/2;
+      var ghostDepth=
+        (ghostPoint[2]/radius+1)/2;
 
       dots.push({
         x:ghostPoint[0],
@@ -439,7 +610,9 @@ export const AI_CHAT_JS = `
         z:ghostPoint[2],
         r:.8*dotScale,
         white:.78,
-        a:(.1+.22*ghostDepth)*(1-searchMorph)
+        a:
+          (.1+.22*ghostDepth)
+          *(1-searchMorph)
       });
     }
 
@@ -449,7 +622,8 @@ export const AI_CHAT_JS = `
     var segments=44;
 
     for(var lane=0;lane<lanes;lane+=1){
-      var laneOffset=(lane-(lanes-1)/2)*.075;
+      var laneOffset=
+        (lane-(lanes-1)/2)*.075;
       var laneDistance=
         Math.abs(lane-(lanes-1)/2)
         /Math.max(1,(lanes-1)/2);
@@ -458,7 +632,11 @@ export const AI_CHAT_JS = `
       var sphereY=Math.cos(latitude);
       var sphereRadius=Math.sin(latitude);
 
-      for(var segment=0;segment<segments;segment+=1){
+      for(
+        var segment=0;
+        segment<segments;
+        segment+=1
+      ){
         var angle=
           segment/segments*Math.PI*2;
         var wobble=
@@ -493,25 +671,35 @@ export const AI_CHAT_JS = `
         var sphereZ=
           Math.sin(sphereAngle)*sphereRadius;
         var x=
-          thinkingX+(sphereX-thinkingX)*searchMorph;
+          thinkingX
+          +(sphereX-thinkingX)*searchMorph;
         var y=
-          thinkingY+(sphereY-thinkingY)*searchMorph;
+          thinkingY
+          +(sphereY-thinkingY)*searchMorph;
         var z=
-          thinkingZ+(sphereZ-thinkingZ)*searchMorph;
-        var length=Math.sqrt(x*x+y*y+z*z)||1;
+          thinkingZ
+          +(sphereZ-thinkingZ)*searchMorph;
+        var length=Math.sqrt(
+          x*x+y*y+z*z
+        )||1;
         var projected=project(
           x/length*radius,
           y/length*radius,
           z/length*radius
         );
-        var depth=(projected[2]/radius+1)/2;
+        var depth=
+          (projected[2]/radius+1)/2;
         var thinkingRadius=
           (.935+1.445*depth)
           *(1-.25*laneDistance)
           *dotScale;
         var searchRadius=.48+.52*depth;
         var searchVisible=
-          segment%(lane===0||lane===lanes-1?4:2)===0
+          segment%(
+            lane===0||lane===lanes-1
+              ?4
+              :2
+          )===0
             ?1
             :0;
 
@@ -523,14 +711,18 @@ export const AI_CHAT_JS = `
           x:projected[0],
           y:projected[1],
           z:projected[2],
-          r:thinkingRadius
-            +(searchRadius-thinkingRadius)*searchMorph,
+          r:
+            thinkingRadius
+            +(searchRadius-thinkingRadius)
+            *searchMorph,
           white:
             (.52-.44*depth+.18*laneDistance)
             *(1-searchMorph)
-            +(.22+.14*(1-depth))*searchMorph,
+            +(.22+.14*(1-depth))
+            *searchMorph,
           a:
-            (.4+.6*depth)*(1-searchMorph)
+            (.4+.6*depth)
+            *(1-searchMorph)
             +(.16+.66*depth)
             *searchMorph
             *searchVisible
@@ -542,13 +734,15 @@ export const AI_CHAT_JS = `
       dots,
       seconds,
       voiceMorph,
-      size
+      width,
+      height
     );
     drawAiVoiceWaveBody(
       ctx,
       seconds,
       voiceMorph,
-      size
+      width,
+      height
     );
     aiOrbPaint(ctx,dots);
   }
@@ -1254,6 +1448,73 @@ export const AI_CHAT_JS = `
     );
   }
 
+  var voiceMenu=q('aiChatVoiceMenu');
+  if(voiceMenu){
+    voiceMenu.addEventListener('click',function(event){
+      var target=event.target;
+      var preview=target&&target.closest
+        ?target.closest('.voice-preview')
+        :null;
+      var select=target&&target.closest
+        ?target.closest('.voice-select')
+        :null;
+      var library=target&&target.closest
+        ?target.closest('#aiChatOpenVoices')
+        :null;
+
+      if(preview){
+        event.preventDefault();
+        event.stopPropagation();
+        previewAiChatVoice(preview);
+        return;
+      }
+
+      if(select){
+        event.preventDefault();
+        event.stopPropagation();
+        selectAiChatVoice(
+          select.getAttribute('data-voice'),
+          select.getAttribute('data-voice-name')
+        );
+        return;
+      }
+
+      if(library){
+        event.preventDefault();
+        event.stopPropagation();
+        openAiChatVoicesPage();
+      }
+    });
+  }
+
+  var voicePreviewAudio=q('aiChatVoicePreviewAudio');
+  if(voicePreviewAudio){
+    voicePreviewAudio.addEventListener(
+      'play',
+      function(){
+        if(aiChatActivePreviewButton){
+          aiChatActivePreviewButton.classList.add(
+            'playing'
+          );
+        }
+      }
+    );
+    voicePreviewAudio.addEventListener(
+      'pause',
+      function(){
+        if(aiChatActivePreviewButton){
+          aiChatActivePreviewButton.classList.remove(
+            'playing'
+          );
+        }
+      }
+    );
+    voicePreviewAudio.addEventListener(
+      'ended',
+      stopAiChatVoicePreview
+    );
+  }
+
   document.addEventListener('pointerdown',function(event){
     var target=event.target;
     if(
@@ -1267,6 +1528,8 @@ export const AI_CHAT_JS = `
     setAiChatVoiceMenu(false);
   });
   window.addEventListener('pagehide',function(){
+    stopAiChatVoicePreview();
+
     aiChatAudioUrls.forEach(function(url){
       URL.revokeObjectURL(url);
     });
