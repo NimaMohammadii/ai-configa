@@ -1,6 +1,4 @@
-export const EMOTION_TAGS_JS = String.raw`
-;(function(){
-  var tags=[
+export const EMOTION_TAGS = [
     ['Emotion','happy','Bright, positive delivery'],
     ['Emotion','sad','Soft, downcast delivery'],
     ['Emotion','excited','More energy and enthusiasm'],
@@ -71,6 +69,14 @@ export const EMOTION_TAGS_JS = String.raw`
     ['Sounds','fart','Adds the experimental sound effect'],
     ['Sounds','strong French accent','Applies the documented accent example']
   ];
+
+export const EMOTION_TAG_NAMES = EMOTION_TAGS.map(
+  (item) => item[1]
+);
+
+export const EMOTION_TAGS_JS = String.raw`
+;(function(){
+  var tags=${JSON.stringify(EMOTION_TAGS)};
   var activeCategory='All';
   var savedStart=0;
   var savedEnd=0;
