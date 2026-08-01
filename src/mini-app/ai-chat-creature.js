@@ -227,93 +227,131 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     context.clip();
 
     const base = context.createRadialGradient(
-      centerX - radiusX * 0.34,
-      centerY - radiusY * 0.43,
-      radiusX * 0.05,
-      centerX + radiusX * 0.06,
-      centerY + radiusY * 0.08,
-      radiusX * 1.22
+      centerX - radiusX * 0.3,
+      centerY - radiusY * 0.38,
+      radiusX * 0.03,
+      centerX + radiusX * 0.12,
+      centerY + radiusY * 0.16,
+      radiusX * 1.34
     );
-    base.addColorStop(0, "rgba(190, 158, 229, 1)");
-    base.addColorStop(0.25, "rgba(116, 76, 166, 1)");
-    base.addColorStop(0.63, "rgba(67, 37, 105, 1)");
-    base.addColorStop(1, "rgba(27, 16, 45, 1)");
+    base.addColorStop(0, "rgba(190, 160, 226, 1)");
+    base.addColorStop(0.24, "rgba(126, 84, 174, 1)");
+    base.addColorStop(0.54, "rgba(77, 45, 119, 1)");
+    base.addColorStop(0.78, "rgba(49, 27, 79, 1)");
+    base.addColorStop(1, "rgba(20, 12, 34, 1)");
 
     context.fillStyle = base;
     context.fillRect(0, 0, size, size);
 
-    const glassLight = context.createRadialGradient(
-      centerX - radiusX * 0.38,
-      centerY - radiusY * 0.58,
+    const upperVolume = context.createRadialGradient(
+      centerX - radiusX * 0.35,
+      centerY - radiusY * 0.5,
       0,
-      centerX - radiusX * 0.25,
-      centerY - radiusY * 0.42,
-      radiusX * 0.76
+      centerX - radiusX * 0.2,
+      centerY - radiusY * 0.34,
+      radiusX * 0.82
     );
-    glassLight.addColorStop(0, "rgba(255, 255, 255, .34)");
-    glassLight.addColorStop(0.28, "rgba(231, 215, 250, .15)");
-    glassLight.addColorStop(0.72, "rgba(221, 199, 248, .035)");
-    glassLight.addColorStop(1, "rgba(221, 199, 248, 0)");
+    upperVolume.addColorStop(0, "rgba(255, 255, 255, .31)");
+    upperVolume.addColorStop(0.22, "rgba(229, 211, 249, .16)");
+    upperVolume.addColorStop(0.58, "rgba(203, 175, 235, .045)");
+    upperVolume.addColorStop(1, "rgba(203, 175, 235, 0)");
 
-    context.fillStyle = glassLight;
+    context.fillStyle = upperVolume;
     context.fillRect(0, 0, size, size);
 
-    const lowerLight = context.createRadialGradient(
-      centerX,
-      centerY + radiusY * 0.92,
+    const centerVolume = context.createRadialGradient(
+      centerX - radiusX * 0.12,
+      centerY - radiusY * 0.12,
       0,
-      centerX,
-      centerY + radiusY * 0.78,
-      radiusX * 0.92
-    );
-    lowerLight.addColorStop(0, "rgba(143, 100, 195, .46)");
-    lowerLight.addColorStop(0.38, "rgba(105, 66, 151, .15)");
-    lowerLight.addColorStop(1, "rgba(77, 42, 119, 0)");
-
-    context.fillStyle = lowerLight;
-    context.fillRect(0, 0, size, size);
-
-    const innerShade = context.createRadialGradient(
       centerX,
       centerY,
-      radiusX * 0.58,
-      centerX,
-      centerY,
-      radiusX * 1.04
+      radiusX * 0.82
     );
-    innerShade.addColorStop(0, "rgba(16, 8, 28, 0)");
-    innerShade.addColorStop(0.78, "rgba(16, 8, 28, .08)");
-    innerShade.addColorStop(1, "rgba(10, 5, 18, .38)");
+    centerVolume.addColorStop(0, "rgba(165, 121, 207, .16)");
+    centerVolume.addColorStop(0.48, "rgba(127, 82, 172, .07)");
+    centerVolume.addColorStop(1, "rgba(89, 48, 132, 0)");
 
-    context.fillStyle = innerShade;
+    context.fillStyle = centerVolume;
     context.fillRect(0, 0, size, size);
 
-    const sheenOffset = Math.sin(seconds * 0.72) * 1.2;
+    const lowerReflection = context.createRadialGradient(
+      centerX,
+      centerY + radiusY * 0.94,
+      0,
+      centerX,
+      centerY + radiusY * 0.8,
+      radiusX * 0.9
+    );
+    lowerReflection.addColorStop(0, "rgba(155, 111, 199, .42)");
+    lowerReflection.addColorStop(0.3, "rgba(118, 75, 163, .17)");
+    lowerReflection.addColorStop(0.68, "rgba(88, 49, 130, .035)");
+    lowerReflection.addColorStop(1, "rgba(72, 39, 110, 0)");
+
+    context.fillStyle = lowerReflection;
+    context.fillRect(0, 0, size, size);
+
+    const sideShade = context.createLinearGradient(
+      centerX - radiusX,
+      centerY,
+      centerX + radiusX,
+      centerY
+    );
+    sideShade.addColorStop(0, "rgba(16, 8, 29, .12)");
+    sideShade.addColorStop(0.24, "rgba(16, 8, 29, 0)");
+    sideShade.addColorStop(0.64, "rgba(16, 8, 29, .025)");
+    sideShade.addColorStop(1, "rgba(10, 5, 19, .27)");
+
+    context.fillStyle = sideShade;
+    context.fillRect(0, 0, size, size);
+
+    const edgeDepth = context.createRadialGradient(
+      centerX - radiusX * 0.08,
+      centerY - radiusY * 0.1,
+      radiusX * 0.48,
+      centerX,
+      centerY,
+      radiusX * 1.03
+    );
+    edgeDepth.addColorStop(0, "rgba(9, 4, 17, 0)");
+    edgeDepth.addColorStop(0.72, "rgba(9, 4, 17, .025)");
+    edgeDepth.addColorStop(0.9, "rgba(9, 4, 17, .15)");
+    edgeDepth.addColorStop(1, "rgba(7, 3, 13, .42)");
+
+    context.fillStyle = edgeDepth;
+    context.fillRect(0, 0, size, size);
+
+    const sheenOffset = Math.sin(seconds * 0.72) * 0.85;
     const movingSheen = context.createLinearGradient(
-      centerX - radiusX + sheenOffset,
+      centerX - radiusX * 0.85 + sheenOffset,
       centerY - radiusY,
-      centerX + radiusX * 0.5 + sheenOffset,
+      centerX + radiusX * 0.38 + sheenOffset,
       centerY + radiusY
     );
-    movingSheen.addColorStop(0, "rgba(255, 255, 255, .08)");
-    movingSheen.addColorStop(0.36, "rgba(255, 255, 255, .02)");
-    movingSheen.addColorStop(0.62, "rgba(255, 255, 255, 0)");
-    movingSheen.addColorStop(1, "rgba(255, 255, 255, .025)");
+    movingSheen.addColorStop(0, "rgba(255, 255, 255, .075)");
+    movingSheen.addColorStop(0.34, "rgba(255, 255, 255, .022)");
+    movingSheen.addColorStop(0.6, "rgba(255, 255, 255, 0)");
+    movingSheen.addColorStop(1, "rgba(255, 255, 255, .016)");
 
     context.fillStyle = movingSheen;
     context.fillRect(0, 0, size, size);
-    context.restore();
 
     context.save();
-    orbPath(
-      centerX,
-      centerY,
-      radiusX - 0.45,
-      radiusY - 0.45
+    context.globalAlpha = 0.48;
+    context.filter = "blur(1.1px)";
+    context.fillStyle = "rgba(255, 255, 255, .16)";
+    context.beginPath();
+    context.ellipse(
+      centerX - radiusX * 0.34,
+      centerY - radiusY * 0.52,
+      radiusX * 0.22,
+      radiusY * 0.09,
+      -0.52,
+      0,
+      Math.PI * 2
     );
-    context.strokeStyle = "rgba(213, 190, 240, .2)";
-    context.lineWidth = 0.7;
-    context.stroke();
+    context.fill();
+    context.restore();
+
     context.restore();
   }
 
