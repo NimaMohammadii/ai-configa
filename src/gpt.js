@@ -289,7 +289,8 @@ function normalizeChatAttachment(raw) {
   };
 }
 
-function buildAiChatInstructions() {
+function buildAiChatInstructions(preferredVoice) {
+  const selectedVoice = VOICE_NAMES.includes(preferredVoice) ? preferredVoice : "Nora";
   return [
     "You are Vexa AI, a capable and friendly assistant inside Telegram.",
     "Reply in the same language as the user's latest message.",
@@ -298,8 +299,8 @@ function buildAiChatInstructions() {
     "Use the generate_speech tool only when the user clearly asks to create, read, narrate, dub, or convert text into spoken audio.",
     "Do not generate speech for ordinary questions, explanations, or messages that merely mention audio.",
     "Pass only the exact text that should be spoken. Do not include setup text, explanations, quotation marks, or Markdown.",
-    "Choose the exact named voice when the user specifies one.",
-    "When no voice is named, select the most suitable available voice from the requested language, tone, character, or style.",
+    "Always use the user’s currently selected voice for speech: " + selectedVoice + ".",
+    "Never choose a different voice inside AI Chat; the voice card is the single source of truth.",
     "For web-search answers, do not add sources, citation links, raw URLs, or footnote markers unless the user asks for them."
   ].join(" ");
 }
@@ -315,6 +316,9 @@ export async function chatWithAi(env, messages, onStatus) {
         role,
         content: Array.from(String(message?.content || "").trim()).slice(0, 4000).join(""),
         attachment: role === "user" ? normalizeChatAttachment(message?.attachment) : null,
+        preferredVoice: role === "user" && VOICE_NAMES.includes(message?.preferredVoice)
+          ? message.preferredVoice
+          : "",
       };
     })
     .filter((message) => message.content || message.attachment);
@@ -322,6 +326,10 @@ export async function chatWithAi(env, messages, onStatus) {
   if (!cleanMessages.length || cleanMessages[cleanMessages.length - 1].role !== "user") {
     throw new Error("Type a message first.");
   }
+  const latestPreferredVoice = [...cleanMessages]
+    .reverse()
+    .find((message) => message.role === "user" && message.preferredVoice)
+    ?.preferredVoice || "Nora";
   const totalCharacters = cleanMessages.reduce((total, message) => total + Array.from(message.content).length, 0);
   if (totalCharacters > 12000) throw new Error("This conversation is too long.");
 
@@ -360,7 +368,7 @@ export async function chatWithAi(env, messages, onStatus) {
       signal: controller.signal,
       body: JSON.stringify({
         model,
-        instructions: buildAiChatInstructions(),
+        instructions: buildAiChatInstructions(latestPreferredVoice),
         input: inputMessages,
         tools: [
           { type: "web_search" },
@@ -395,8 +403,8 @@ export async function chatWithAi(env, messages, onStatus) {
                 },
                 voice: {
                   type: "string",
-                  enum: VOICE_NAMES,
-                  description: "The voice that best matches the user's explicit choice or requested style."
+                  enum: [latestPreferredVoice],
+                  description: "The exact voice currently selected in the user’s voice card."
                 }
               },
               required: ["text", "voice"],
