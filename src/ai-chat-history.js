@@ -13,10 +13,22 @@ export async function saveAiChatExchange(env, userId, messages, result) {
   const latest = [...(Array.isArray(messages) ? messages : [])].reverse().find((message) => message?.role !== "assistant");
   const userMessage = Array.from(String(latest?.content || "").trim()).slice(0, 4000).join("");
   const attachmentName = latest?.attachment?.name ? Array.from(String(latest.attachment.name)).slice(0, 255).join("") : null;
-  const responseType = result?.type === "image_request" ? "image_request" : "text";
-  const assistantMessage = responseType === "image_request"
-    ? "[Image request] " + String(result?.prompt || "") + (result?.size ? " (" + result.size + ")" : "")
-    : String(result?.message || "");
+  let responseType = "text";
+  let assistantMessage = String(result?.message || "");
+
+  if (result?.type === "image_request") {
+    responseType = "image_request";
+    assistantMessage = "[Image request] " + String(result?.prompt || "");
+    if (result?.size) {
+      assistantMessage += " (" + result.size + ")";
+    }
+  }
+
+  if (result?.type === "speech_request") {
+    responseType = "speech_request";
+    assistantMessage = "[Speech request · " + String(result?.voice || "Voice") + "] "
+      + String(result?.text || "");
+  }
   await env.DB.prepare(
     "INSERT INTO ai_chat_history (user_id, user_message, assistant_message, attachment_name, response_type, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
   ).bind(String(userId), userMessage, assistantMessage, attachmentName, responseType).run();
