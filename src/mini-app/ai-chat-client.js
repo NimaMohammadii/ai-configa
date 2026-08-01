@@ -15,6 +15,7 @@ export const AI_CHAT_JS = `
   var aiChatAttachmentMimes={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',pdf:'application/pdf',txt:'text/plain',text:'text/plain',md:'text/markdown',markdown:'text/markdown',json:'application/json',html:'text/html',htm:'text/html',xml:'text/xml',csv:'text/csv',tsv:'text/tsv',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',rtf:'application/rtf',odt:'application/vnd.oasis.opendocument.text',ppt:'application/vnd.ms-powerpoint',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',js:'text/javascript',mjs:'text/javascript',ts:'text/x-typescript',tsx:'text/tsx',jsx:'text/jsx',py:'text/x-python',css:'text/css',sql:'text/x-sql',log:'text/plain',yaml:'text/x-yaml',yml:'text/x-yaml',toml:'application/toml',eml:'message/rfc822',ics:'text/calendar',srt:'application/x-subrip',vtt:'text/vtt'};
   var aiThinkingFrame=0;
   var aiThinkingSearchMix=0;
+  var aiThinkingVoiceMix=0;
   var aiThinkingLastFrame=0;
   var stableViewportHeight=Math.max(1,Number(tg&&(tg.viewportStableHeight||tg.viewportHeight))||Number(window.innerHeight)||1);
   function q(id){return document.getElementById(id)}
@@ -28,9 +29,424 @@ export const AI_CHAT_JS = `
   async function api(path,body){var response;try{response=await fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){throw new Error('Connection interrupted · Try again')}var data=await response.json().catch(function(){return{error:'Invalid response'}});if(!response.ok)throw new Error(data.error||'Request failed');return data}
   function aiOrbSpherePoint(index,count){var golden=Math.PI*(3-Math.sqrt(5));var y=1-2*(index+.5)/count;var radius=Math.sqrt(1-y*y);var angle=index*golden;return[radius*Math.cos(angle),y,radius*Math.sin(angle)]}
   function aiOrbProject(yaw,pitch,cx,cy){var sy=Math.sin(yaw),cyaw=Math.cos(yaw),sp=Math.sin(pitch),cp=Math.cos(pitch);return function(x,y,z){var rx=x*cyaw+z*sy;var rz=-x*sy+z*cyaw;var ry=y*cp-rz*sp;var depth=y*sp+rz*cp;return[cx+rx,cy-ry,depth]}}
-  function aiOrbPaint(ctx,dots){dots.sort(function(a,b){return a.z-b.z});dots.forEach(function(dot){if(dot.a<.02)return;var ink=Math.max(0,Math.min(1,dot.white));var shade=Math.round((1-ink)*255);ctx.fillStyle='rgba('+shade+','+shade+','+shade+','+dot.a+')';ctx.beginPath();ctx.arc(dot.x,dot.y,Math.max(.255,dot.r),0,Math.PI*2);ctx.fill()})}
-  function drawAiThinkingOrb(canvas,seconds,searchMix){if(!canvas)return;var size=48;var dpr=Math.min(2,window.devicePixelRatio||1);var pixels=Math.round(size*dpr);if(canvas.width!==pixels||canvas.height!==pixels){canvas.width=pixels;canvas.height=pixels}var ctx=canvas.getContext('2d');if(!ctx)return;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,size,size);var morph=Math.max(0,Math.min(1,Number(searchMix)||0));morph=morph*morph*(3-2*morph);var searchPulse=1+Math.sin(seconds*2.15)*.052*morph;var radius=size*(.39-.02*morph)*searchPulse;var speedTime=seconds*2.34;var project=aiOrbProject(0,.55-.42*morph,size/2,size/2);var dots=[];var dotScale=Math.pow(size/300,.6);var ghostCount=38;for(var ghost=0;ghost<ghostCount;ghost+=1){var point=aiOrbSpherePoint(ghost,ghostCount);var gp=project(point[0]*radius,point[1]*radius,point[2]*radius);var gd=(gp[2]/radius+1)/2;dots.push({x:gp[0],y:gp[1],z:gp[2],r:.8*dotScale,white:.78,a:(.1+.22*gd)*(1-morph)})}var sinTilt=Math.sin(.55),cosTilt=Math.cos(.55);var lanes=12;var segments=44;for(var lane=0;lane<lanes;lane+=1){var laneOffset=(lane-(lanes-1)/2)*.075;var laneDistance=Math.abs(lane-(lanes-1)/2)/Math.max(1,(lanes-1)/2);var latitude=Math.PI*(lane+.45)/(lanes-.1);var sphereY=Math.cos(latitude);var sphereRadius=Math.sin(latitude);for(var segment=0;segment<segments;segment+=1){var angle=segment/segments*Math.PI*2;var wobble=.16*Math.sin(angle*3-speedTime*1.7+lane*.22)+.07*Math.sin(angle*5+speedTime*1.1);var elevation=laneOffset+wobble;var thinkingX=Math.cos(angle)-sinTilt*elevation;var thinkingY=cosTilt*Math.sin(angle);var thinkingZ=sinTilt*Math.sin(angle)-cosTilt*elevation;var thinkingLength=Math.sqrt(thinkingX*thinkingX+thinkingY*thinkingY+thinkingZ*thinkingZ);thinkingX/=thinkingLength;thinkingY/=thinkingLength;thinkingZ/=thinkingLength;var sphereAngle=angle+seconds*.48+(lane%2)*Math.PI/segments;var sphereX=Math.cos(sphereAngle)*sphereRadius;var sphereZ=Math.sin(sphereAngle)*sphereRadius;var x=thinkingX+(sphereX-thinkingX)*morph;var y=thinkingY+(sphereY-thinkingY)*morph;var z=thinkingZ+(sphereZ-thinkingZ)*morph;var length=Math.sqrt(x*x+y*y+z*z)||1;var projected=project(x/length*radius,y/length*radius,z/length*radius);var depth=(projected[2]/radius+1)/2;var thinkingRadius=(.935+1.445*depth)*(1-.25*laneDistance)*dotScale;var searchRadius=.48+.52*depth;var searchVisible=segment%(lane===0||lane===lanes-1?4:2)===0?1:0;if(morph>.999&&!searchVisible)continue;dots.push({x:projected[0],y:projected[1],z:projected[2],r:thinkingRadius+(searchRadius-thinkingRadius)*morph,white:(.52-.44*depth+.18*laneDistance)*(1-morph)+(.22+.14*(1-depth))*morph,a:(.4+.6*depth)*(1-morph)+(.16+.66*depth)*morph*searchVisible})}}aiOrbPaint(ctx,dots)}
-  function startAiThinkingOrb(){stopAiThinkingOrb();var canvas=q('aiThinkingOrb');var emptyCanvas=q('aiChatEmptyOrb');if(!canvas&&!emptyCanvas)return;var row=q('aiThinkingRow');aiThinkingSearchMix=row&&row.getAttribute('data-state')==='searching'?1:0;aiThinkingLastFrame=0;var reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;function frame(now){var seconds=(now||performance.now())/1000;var currentRow=q('aiThinkingRow');var target=currentRow&&currentRow.getAttribute('data-state')==='searching'?1:0;if(reduced)aiThinkingSearchMix=target;else{var delta=aiThinkingLastFrame?Math.min(.05,seconds-aiThinkingLastFrame):0;aiThinkingSearchMix+=(target-aiThinkingSearchMix)*Math.min(1,delta*2.25);if(Math.abs(target-aiThinkingSearchMix)<.001)aiThinkingSearchMix=target}aiThinkingLastFrame=seconds;if(canvas)drawAiThinkingOrb(canvas,seconds,aiThinkingSearchMix);if(emptyCanvas)drawAiThinkingOrb(emptyCanvas,seconds,0);var list=q('aiChatMessages');var emptyVisible=!!(aiChatOpen&&list&&!list.querySelector('.ai-chat-message,.ai-thinking-row'));if(!reduced&&(aiChatBusy||emptyVisible))aiThinkingFrame=requestAnimationFrame(frame)}frame(performance.now())}
+  function aiOrbPaint(ctx,dots){
+    dots.sort(function(first,second){
+      return first.z-second.z;
+    });
+
+    dots.forEach(function(dot){
+      if(dot.a<.02)return;
+
+      if(dot.color){
+        ctx.fillStyle='rgba('
+          +Math.round(dot.color[0])+','
+          +Math.round(dot.color[1])+','
+          +Math.round(dot.color[2])+','
+          +dot.a+')';
+      }else{
+        var ink=Math.max(0,Math.min(1,dot.white));
+        var shade=Math.round((1-ink)*255);
+        ctx.fillStyle='rgba('
+          +shade+','
+          +shade+','
+          +shade+','
+          +dot.a+')';
+      }
+
+      ctx.beginPath();
+      ctx.arc(
+        dot.x,
+        dot.y,
+        Math.max(.255,dot.r),
+        0,
+        Math.PI*2
+      );
+      ctx.fill();
+    });
+  }
+
+  function aiSmoothMorph(value){
+    var amount=Math.max(0,Math.min(1,Number(value)||0));
+    return amount*amount*(3-2*amount);
+  }
+
+  function drawAiVoiceTrace(ctx,seconds,mix,size){
+    var amount=aiSmoothMorph(mix);
+    if(amount<.01)return;
+
+    var center=size/2;
+    var left=4;
+    var width=size-8;
+
+    ctx.save();
+    ctx.globalAlpha=.18*amount;
+    ctx.lineCap='round';
+    ctx.lineJoin='round';
+    ctx.strokeStyle='rgba(196,130,225,.82)';
+    ctx.shadowColor='rgba(177,95,218,.72)';
+    ctx.shadowBlur=8*amount;
+    ctx.lineWidth=1.35;
+
+    ctx.beginPath();
+    for(var index=0;index<=64;index+=1){
+      var position=index/64;
+      var envelope=Math.pow(
+        Math.sin(Math.PI*position),
+        .58
+      );
+      var signal=
+        Math.sin(position*Math.PI*6-seconds*8.7)*.58
+        +Math.sin(position*Math.PI*13+seconds*5.4)*.24
+        +Math.sin(position*Math.PI*2.4-seconds*3.1)*.18;
+      var x=left+width*position;
+      var y=center+signal*9.6*envelope;
+
+      if(index===0){
+        ctx.moveTo(x,y);
+      }else{
+        ctx.lineTo(x,y);
+      }
+    }
+    ctx.stroke();
+
+    ctx.globalAlpha=.08*amount;
+    ctx.lineWidth=3.6;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function morphAiDotsToVoiceWave(dots,seconds,mix,size){
+    var amount=aiSmoothMorph(mix);
+    if(amount<=0)return;
+
+    var groups=Math.ceil(dots.length/7);
+    var center=size/2;
+    var left=4;
+    var width=size-8;
+
+    dots.forEach(function(dot,index){
+      var residue=index%7;
+      var visible=residue===0||residue===1;
+      var group=Math.floor(index/7);
+      var position=group/Math.max(1,groups-1);
+      var envelope=Math.pow(
+        Math.sin(Math.PI*position),
+        .58
+      );
+      var signal=
+        Math.sin(position*Math.PI*6-seconds*8.7)*.58
+        +Math.sin(position*Math.PI*13+seconds*5.4)*.24
+        +Math.sin(position*Math.PI*2.4-seconds*3.1)*.18;
+      var echo=residue===1
+        ?Math.sin(position*Math.PI*9+seconds*6.2)*1.15
+        :0;
+      var targetX=left+width*position;
+      var targetY=center
+        +signal*9.6*envelope
+        +echo;
+      var targetRadius=residue===0
+        ?.72+.22*envelope
+        :.42+.12*envelope;
+      var targetAlpha=visible
+        ?(residue===0?.82:.28)*(.56+.44*envelope)
+        :0;
+
+      dot.x+=(targetX-dot.x)*amount;
+      dot.y+=(targetY-dot.y)*amount;
+      dot.z*=1-amount;
+      dot.r+=(targetRadius-dot.r)*amount;
+      dot.a+=(targetAlpha-dot.a)*amount;
+      dot.white+=(.08-dot.white)*amount;
+
+      if(visible){
+        var highlight=.45+.55*envelope;
+        dot.color=[
+          202+42*highlight,
+          146+84*highlight,
+          226+26*highlight
+        ];
+      }
+    });
+  }
+
+  function drawAiThinkingOrb(
+    canvas,
+    seconds,
+    searchMix,
+    voiceMix
+  ){
+    if(!canvas)return;
+
+    var size=48;
+    var dpr=Math.min(2,window.devicePixelRatio||1);
+    var pixels=Math.round(size*dpr);
+
+    if(canvas.width!==pixels||canvas.height!==pixels){
+      canvas.width=pixels;
+      canvas.height=pixels;
+    }
+
+    var ctx=canvas.getContext('2d');
+    if(!ctx)return;
+
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,size,size);
+
+    var searchMorph=aiSmoothMorph(searchMix);
+    var voiceMorph=aiSmoothMorph(voiceMix);
+    var searchPulse=
+      1+Math.sin(seconds*2.15)*.052*searchMorph;
+    var radius=
+      size*(.39-.02*searchMorph)*searchPulse;
+    var speedTime=seconds*2.34;
+    var project=aiOrbProject(
+      0,
+      .55-.42*searchMorph,
+      size/2,
+      size/2
+    );
+    var dots=[];
+    var dotScale=Math.pow(size/300,.6);
+    var ghostCount=38;
+
+    for(var ghost=0;ghost<ghostCount;ghost+=1){
+      var point=aiOrbSpherePoint(ghost,ghostCount);
+      var ghostPoint=project(
+        point[0]*radius,
+        point[1]*radius,
+        point[2]*radius
+      );
+      var ghostDepth=(ghostPoint[2]/radius+1)/2;
+
+      dots.push({
+        x:ghostPoint[0],
+        y:ghostPoint[1],
+        z:ghostPoint[2],
+        r:.8*dotScale,
+        white:.78,
+        a:(.1+.22*ghostDepth)*(1-searchMorph)
+      });
+    }
+
+    var sinTilt=Math.sin(.55);
+    var cosTilt=Math.cos(.55);
+    var lanes=12;
+    var segments=44;
+
+    for(var lane=0;lane<lanes;lane+=1){
+      var laneOffset=(lane-(lanes-1)/2)*.075;
+      var laneDistance=
+        Math.abs(lane-(lanes-1)/2)
+        /Math.max(1,(lanes-1)/2);
+      var latitude=
+        Math.PI*(lane+.45)/(lanes-.1);
+      var sphereY=Math.cos(latitude);
+      var sphereRadius=Math.sin(latitude);
+
+      for(var segment=0;segment<segments;segment+=1){
+        var angle=
+          segment/segments*Math.PI*2;
+        var wobble=
+          .16*Math.sin(
+            angle*3-speedTime*1.7+lane*.22
+          )
+          +.07*Math.sin(
+            angle*5+speedTime*1.1
+          );
+        var elevation=laneOffset+wobble;
+        var thinkingX=
+          Math.cos(angle)-sinTilt*elevation;
+        var thinkingY=
+          cosTilt*Math.sin(angle);
+        var thinkingZ=
+          sinTilt*Math.sin(angle)-cosTilt*elevation;
+        var thinkingLength=Math.sqrt(
+          thinkingX*thinkingX
+          +thinkingY*thinkingY
+          +thinkingZ*thinkingZ
+        );
+
+        thinkingX/=thinkingLength;
+        thinkingY/=thinkingLength;
+        thinkingZ/=thinkingLength;
+
+        var sphereAngle=
+          angle+seconds*.48
+          +(lane%2)*Math.PI/segments;
+        var sphereX=
+          Math.cos(sphereAngle)*sphereRadius;
+        var sphereZ=
+          Math.sin(sphereAngle)*sphereRadius;
+        var x=
+          thinkingX+(sphereX-thinkingX)*searchMorph;
+        var y=
+          thinkingY+(sphereY-thinkingY)*searchMorph;
+        var z=
+          thinkingZ+(sphereZ-thinkingZ)*searchMorph;
+        var length=Math.sqrt(x*x+y*y+z*z)||1;
+        var projected=project(
+          x/length*radius,
+          y/length*radius,
+          z/length*radius
+        );
+        var depth=(projected[2]/radius+1)/2;
+        var thinkingRadius=
+          (.935+1.445*depth)
+          *(1-.25*laneDistance)
+          *dotScale;
+        var searchRadius=.48+.52*depth;
+        var searchVisible=
+          segment%(lane===0||lane===lanes-1?4:2)===0
+            ?1
+            :0;
+
+        if(searchMorph>.999&&!searchVisible){
+          continue;
+        }
+
+        dots.push({
+          x:projected[0],
+          y:projected[1],
+          z:projected[2],
+          r:thinkingRadius
+            +(searchRadius-thinkingRadius)*searchMorph,
+          white:
+            (.52-.44*depth+.18*laneDistance)
+            *(1-searchMorph)
+            +(.22+.14*(1-depth))*searchMorph,
+          a:
+            (.4+.6*depth)*(1-searchMorph)
+            +(.16+.66*depth)
+            *searchMorph
+            *searchVisible
+        });
+      }
+    }
+
+    morphAiDotsToVoiceWave(
+      dots,
+      seconds,
+      voiceMorph,
+      size
+    );
+    drawAiVoiceTrace(
+      ctx,
+      seconds,
+      voiceMorph,
+      size
+    );
+    aiOrbPaint(ctx,dots);
+  }
+
+  function approachAiThinkingMix(
+    current,
+    target,
+    delta,
+    speed
+  ){
+    var next=current
+      +(target-current)*Math.min(1,delta*speed);
+
+    if(Math.abs(target-next)<.001){
+      return target;
+    }
+
+    return next;
+  }
+
+  function startAiThinkingOrb(){
+    stopAiThinkingOrb();
+
+    var canvas=q('aiThinkingOrb');
+    var emptyCanvas=q('aiChatEmptyOrb');
+    if(!canvas&&!emptyCanvas)return;
+
+    var row=q('aiThinkingRow');
+    var initialState=row
+      ?row.getAttribute('data-state')
+      :'';
+
+    aiThinkingSearchMix=
+      initialState==='searching'?1:0;
+    aiThinkingVoiceMix=
+      initialState==='generating_voice'?1:0;
+    aiThinkingLastFrame=0;
+
+    var reduced=window.matchMedia
+      &&window.matchMedia(
+        '(prefers-reduced-motion: reduce)'
+      ).matches;
+
+    function frame(now){
+      var seconds=
+        (now||performance.now())/1000;
+      var currentRow=q('aiThinkingRow');
+      var state=currentRow
+        ?currentRow.getAttribute('data-state')
+        :'';
+      var searchTarget=
+        state==='searching'?1:0;
+      var voiceTarget=
+        state==='generating_voice'?1:0;
+      var delta=aiThinkingLastFrame
+        ?Math.min(.05,seconds-aiThinkingLastFrame)
+        :0;
+
+      if(reduced){
+        aiThinkingSearchMix=searchTarget;
+        aiThinkingVoiceMix=voiceTarget;
+      }else{
+        aiThinkingSearchMix=approachAiThinkingMix(
+          aiThinkingSearchMix,
+          searchTarget,
+          delta,
+          2.6
+        );
+        aiThinkingVoiceMix=approachAiThinkingMix(
+          aiThinkingVoiceMix,
+          voiceTarget,
+          delta,
+          3.4
+        );
+      }
+
+      aiThinkingLastFrame=seconds;
+
+      if(canvas){
+        drawAiThinkingOrb(
+          canvas,
+          seconds,
+          aiThinkingSearchMix,
+          aiThinkingVoiceMix
+        );
+      }
+
+      if(emptyCanvas){
+        drawAiThinkingOrb(
+          emptyCanvas,
+          seconds,
+          0,
+          0
+        );
+      }
+
+      var list=q('aiChatMessages');
+      var emptyVisible=!!(
+        aiChatOpen
+        &&list
+        &&!list.querySelector(
+          '.ai-chat-message,.ai-thinking-row'
+        )
+      );
+
+      if(!reduced&&(aiChatBusy||emptyVisible)){
+        aiThinkingFrame=requestAnimationFrame(frame);
+      }
+    }
+
+    frame(performance.now());
+  }
+
   function stopAiThinkingOrb(){if(aiThinkingFrame){cancelAnimationFrame(aiThinkingFrame);aiThinkingFrame=0}var canvas=q('aiThinkingOrb');if(canvas){var ctx=canvas.getContext('2d');if(ctx)ctx.clearRect(0,0,canvas.width,canvas.height)}}
   function syncAiChatEmptyState(){var list=q('aiChatMessages');var empty=q('aiChatEmpty');if(!list||!empty)return;empty.classList.toggle('hidden',!!list.querySelector('.ai-chat-message,.ai-thinking-row'))}
   function scrollAiChat(){var list=q('aiChatMessages');if(!list)return;requestAnimationFrame(function(){var messages=list.querySelectorAll('.ai-chat-message');var latest=messages[messages.length-1];if(!latest)return;var top=parseFloat(getComputedStyle(list).paddingTop)||0;list.scrollTop=Math.max(0,list.scrollTop+latest.getBoundingClientRect().top-list.getBoundingClientRect().top-top)})}
@@ -454,7 +870,8 @@ export const AI_CHAT_JS = `
       drawAiThinkingOrb(
         canvas,
         performance.now()/1000,
-        next==='searching'?1:0
+        next==='searching'?1:0,
+        next==='generating_voice'?1:0
       );
     }
 
