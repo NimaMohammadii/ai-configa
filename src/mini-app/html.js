@@ -94,7 +94,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260801-ai-chat-focus-62"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260731-ai-chat-viewport-57"/>
 </head>
 <body>
   <main class="app">
@@ -256,6 +256,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260801-ai-chat-viewport-offset-63"></script>
+  <script type="module" src="/mini-app/app.js?v=20260731-ai-chat-viewport-57"></script>
 </body>
 </html>`;
