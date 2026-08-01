@@ -204,12 +204,13 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "void main() {",
     "  vec2 p = (vUv - 0.5) * 2.0 / 0.82;",
     "  float bottomWeight = 1.0 - smoothstep(-0.94, 0.12, p.y);",
+    "  float compression = max(uTouch, 0.0);",
     "  vec2 spherePoint = p;",
-    "  spherePoint.x *= 1.0 - bottomWeight * (0.035 + uTouch * 0.045);",
+    "  spherePoint.x *= 1.0 - bottomWeight * (0.055 + compression * 0.075);",
+    "  spherePoint.y += bottomWeight * (0.02 + compression * 0.035);",
     "  float radiusSquared = dot(spherePoint, spherePoint);",
     "",
-    "  float floorLevel = -0.935 + uTouch * 0.06 + uHappy * 0.018;",
-    "  if (radiusSquared > 1.0 || p.y < floorLevel) discard;",
+    "  if (radiusSquared > 1.0) discard;",
     "",
     "  float sphereZ = sqrt(max(0.0, 1.0 - radiusSquared));",
     "  vec3 normal = normalize(vec3(spherePoint.x, spherePoint.y, sphereZ));",
@@ -248,15 +249,19 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "",
     "  float innerRing = smoothstep(0.58, 0.98, radiusSquared);",
     "  color += vec3(0.11, 0.048, 0.17) * innerRing * 0.2;",
+    "",
+    "  float baseLobe = (1.0 - smoothstep(-0.72, -0.18, p.y)) *",
+    "    (1.0 - smoothstep(0.45, 1.0, abs(p.x)));",
+    "  color += vec3(0.08, 0.03, 0.115) * baseLobe *",
+    "    (0.22 + compression * 0.16);",
     "  color += violetGlass * fresnel * (0.19 + uHappy * 0.08);",
     "",
 
     "  float touchWave = sin(radiusSquared * 24.0 - uTime * 8.0);",
     "  color += vec3(0.055, 0.022, 0.08) * touchWave * uTouch * 0.08;",
     "",
-    "  float edge = 1.0 - smoothstep(0.965, 1.0, radiusSquared);",
-    "  float floorEdge = smoothstep(floorLevel, floorLevel + 0.052, p.y);",
-    "  float alpha = edge * floorEdge * (0.9 + fresnel * 0.1);",
+    "  float edge = 1.0 - smoothstep(0.955, 1.0, radiusSquared);",
+    "  float alpha = edge * (0.9 + fresnel * 0.1);",
     "  gl_FragColor = vec4(color, alpha);",
     "}"
   ].join("\\n");
@@ -415,14 +420,15 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   function touchAmount(now) {
     if (touchStartedAt < 0) return 0;
 
-    const progress = (now - touchStartedAt) / 480;
+    const progress = (now - touchStartedAt) / 720;
 
     if (progress >= 1) {
       touchStartedAt = -1;
       return 0;
     }
 
-    return Math.sin(progress * Math.PI) * (1 - progress * 0.28);
+    const wave = Math.sin(progress * Math.PI * 2.35);
+    return wave * Math.pow(1 - progress, 1.18);
   }
 
   function happyAmount(now) {
@@ -512,15 +518,19 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   function renderContact(touch, happy, lift) {
     contactContext.clearRect(0, 0, size, size);
 
-    const width = 14.5 + touch * 3.8 + happy * 1.1;
-    const height = 2.35 + touch * 0.72;
+    const width =
+      15.2 +
+      Math.abs(touch) * 3.2 +
+      Math.max(0, touch) * 1.8 +
+      happy * 1.1;
+    const height = 2.45 + Math.abs(touch) * 0.68;
     const alpha = clamp(
-      0.19 + touch * 0.07 - lift * 0.035,
+      0.21 + Math.abs(touch) * 0.08 - lift * 0.035,
       0.07,
       0.26
     );
     const centerX = size / 2;
-    const centerY = size - 4.7;
+    const centerY = size - 4.45;
 
     const gradient = contactContext.createRadialGradient(
       centerX,
@@ -535,7 +545,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     gradient.addColorStop(1, "rgba(16, 8, 21, 0)");
 
     contactContext.save();
-    contactContext.filter = "blur(1.1px)";
+    contactContext.filter = "blur(1.25px)";
     contactContext.fillStyle = gradient;
     contactContext.beginPath();
     contactContext.ellipse(
@@ -590,12 +600,12 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     const scaleX =
       1 +
       jelly * (thinking ? 0.02 : 0.015) +
-      touch * 0.055 +
+      touch * 0.085 +
       happy * 0.014;
     const scaleY =
       1 -
       jelly * (thinking ? 0.015 : 0.011) -
-      touch * 0.04 +
+      touch * 0.065 +
       happy * 0.006;
 
     stage.style.transform =
