@@ -8,11 +8,10 @@ export const AI_CHAT_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>AI Chat</title>
-  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260801-ai-chat-companion-1"/>
+  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260801-ai-chat-stable-height-1"/>
 </head>
 <body>
   <section id="aiChatPage" class="ai-chat-page" aria-hidden="false">
-    <div class="ai-chat-companion" aria-hidden="true"><canvas id="aiChatCompanion" width="192" height="192"></canvas></div>
     <div id="aiChatMessages" class="ai-chat-messages" role="log" aria-live="polite"><div id="aiChatEmpty" class="ai-chat-empty"><span>How can I help?</span><canvas id="aiChatEmptyOrb" class="ai-chat-empty-orb" width="96" height="96" aria-hidden="true"></canvas></div></div>
     <form id="aiChatComposer" class="ai-chat-composer">
       <input id="aiChatFile" type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.txt,.md,.markdown,.json,.html,.htm,.xml,.csv,.tsv,.doc,.docx,.rtf,.odt,.ppt,.pptx,.xls,.xlsx,.js,.mjs,.ts,.tsx,.jsx,.py,.css,.sql,.log,.yaml,.yml,.toml,.eml,.ics,.srt,.vtt"/>
@@ -24,6 +23,6 @@ export const AI_CHAT_HTML = `<!doctype html>
   </section>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/chat/app.js?v=20260801-ai-chat-companion-1"></script>
+  <script type="module" src="/mini-app/chat/app.js?v=20260801-ai-chat-stable-height-1"></script>
 </body>
 </html>`;
