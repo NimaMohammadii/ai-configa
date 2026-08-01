@@ -23,7 +23,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  position: relative;",
     "  width: 56px;",
     "  height: 56px;",
-    "  transform-origin: center;",
+    "  transform-origin: center 88%;",
     "  will-change: transform;",
     "}",
     ".ai-chat-creature canvas {",
@@ -32,6 +32,12 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  display: block;",
     "  width: 56px;",
     "  height: 56px;",
+    "}",
+    ".ai-chat-creature-contact {",
+    "  z-index: 0;",
+    "}",
+    ".ai-chat-creature-sphere {",
+    "  z-index: 1;",
     "}",
     ".ai-chat-creature-face {",
     "  z-index: 2;",
@@ -59,6 +65,9 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   host.className = "ai-chat-creature";
   host.setAttribute("aria-hidden", "true");
 
+  const contactCanvas = document.createElement("canvas");
+  contactCanvas.className = "ai-chat-creature-contact";
+
   const stage = document.createElement("div");
   stage.className = "ai-chat-creature-stage";
 
@@ -70,6 +79,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
 
   stage.appendChild(sphereCanvas);
   stage.appendChild(faceCanvas);
+  host.appendChild(contactCanvas);
   host.appendChild(stage);
 
   const page = document.getElementById("aiChatPage");
@@ -90,12 +100,17 @@ export const AI_CHAT_CREATURE_JS = `(function () {
 
   if (!gl) return;
 
+  const contactContext = contactCanvas.getContext("2d", {
+    alpha: true,
+    desynchronized: true
+  });
+
   const faceContext = faceCanvas.getContext("2d", {
     alpha: true,
     desynchronized: true
   });
 
-  if (!faceContext) return;
+  if (!contactContext || !faceContext) return;
 
   const size = 56;
   const reducedMotion = Boolean(
@@ -190,7 +205,8 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  vec2 p = (vUv - 0.5) * 2.0 / 0.82;",
     "  float radiusSquared = dot(p, p);",
     "",
-    "  if (radiusSquared > 1.0) discard;",
+    "  float floorLevel = -0.965 + uTouch * 0.055 + uHappy * 0.016;",
+    "  if (radiusSquared > 1.0 || p.y < floorLevel) discard;",
     "",
     "  float sphereZ = sqrt(max(0.0, 1.0 - radiusSquared));",
     "  vec3 normal = normalize(vec3(p.x, p.y, sphereZ));",
@@ -211,7 +227,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  vec3 obsidian = vec3(0.012, 0.012, 0.016);",
     "  vec3 graphite = vec3(0.12, 0.12, 0.14);",
     "  vec3 silver = vec3(0.5, 0.5, 0.54);",
-    "  vec3 pearl = vec3(0.94, 0.94, 0.98);",
+    "  vec3 pearl = vec3(0.58, 0.58, 0.62);",
     "",
     "  float volume = clamp(diffuse * 0.62 + sphereZ * 0.27, 0.0, 1.0);",
     "  vec3 color = mix(obsidian, graphite, volume);",
@@ -221,8 +237,8 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  vec3 halfDirection = normalize(keyLight + viewDirection);",
     "  float specular = pow(max(dot(normal, halfDirection), 0.0), 72.0);",
     "  float broadSpecular = pow(max(dot(normal, halfDirection), 0.0), 18.0);",
-    "  color += pearl * specular * 0.9;",
-    "  color += pearl * broadSpecular * 0.13;",
+    "  color += pearl * specular * 0.34;",
+    "  color += pearl * broadSpecular * 0.07;",
     "",
     "  float lowerReflection = pow(max(fill, 0.0), 3.2);",
     "  color += vec3(0.18, 0.18, 0.2) * lowerReflection * 0.42;",
@@ -231,18 +247,13 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  color += vec3(0.14, 0.14, 0.16) * innerRing * 0.2;",
     "  color += pearl * fresnel * (0.19 + uHappy * 0.08);",
     "",
-    "  float movingHighlight = 1.0 - smoothstep(",
-    "    0.0,",
-    "    0.08,",
-    "    distance(p, vec2(-0.34 + sin(uTime * 0.34) * 0.025, 0.42))",
-    "  );",
-    "  color += pearl * movingHighlight * 0.42;",
-    "",
+
     "  float touchWave = sin(radiusSquared * 24.0 - uTime * 8.0);",
     "  color += vec3(0.06, 0.06, 0.07) * touchWave * uTouch * 0.08;",
     "",
     "  float edge = 1.0 - smoothstep(0.965, 1.0, radiusSquared);",
-    "  float alpha = edge * (0.9 + fresnel * 0.1);",
+    "  float floorEdge = smoothstep(floorLevel, floorLevel + 0.026, p.y);",
+    "  float alpha = edge * floorEdge * (0.9 + fresnel * 0.1);",
     "  gl_FragColor = vec4(color, alpha);",
     "}"
   ].join("\\n");
@@ -298,10 +309,23 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     ) {
       sphereCanvas.width = pixels;
       sphereCanvas.height = pixels;
+      contactCanvas.width = pixels;
+      contactCanvas.height = pixels;
       faceCanvas.width = pixels;
       faceCanvas.height = pixels;
       gl.viewport(0, 0, pixels, pixels);
     }
+
+    contactContext.setTransform(
+      pixelRatio,
+      0,
+      0,
+      pixelRatio,
+      0,
+      0
+    );
+    contactContext.imageSmoothingEnabled = true;
+    contactContext.imageSmoothingQuality = "high";
 
     faceContext.setTransform(
       pixelRatio,
@@ -482,6 +506,48 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     }
   }
 
+  function renderContact(touch, happy, lift) {
+    contactContext.clearRect(0, 0, size, size);
+
+    const width = 15.5 + touch * 3.6 + happy * 1.2;
+    const height = 2.15 + touch * 0.6;
+    const alpha = clamp(
+      0.19 + touch * 0.07 - lift * 0.035,
+      0.07,
+      0.26
+    );
+    const centerX = size / 2;
+    const centerY = 50.4;
+
+    const gradient = contactContext.createRadialGradient(
+      centerX,
+      centerY,
+      0,
+      centerX,
+      centerY,
+      width / 2
+    );
+    gradient.addColorStop(0, "rgba(94, 94, 100, " + alpha + ")");
+    gradient.addColorStop(0.5, "rgba(58, 58, 63, " + (alpha * 0.54) + ")");
+    gradient.addColorStop(1, "rgba(20, 20, 22, 0)");
+
+    contactContext.save();
+    contactContext.filter = "blur(.85px)";
+    contactContext.fillStyle = gradient;
+    contactContext.beginPath();
+    contactContext.ellipse(
+      centerX,
+      centerY,
+      width / 2,
+      height / 2,
+      0,
+      0,
+      Math.PI * 2
+    );
+    contactContext.fill();
+    contactContext.restore();
+  }
+
   function renderFace(blink, breathe) {
     faceContext.clearRect(0, 0, size, size);
 
@@ -511,23 +577,30 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     const breathe = Math.sin(seconds * (thinking ? 2.55 : 1.82));
     const energy = searching ? 0.48 : thinking ? 0.24 : 0;
 
+    const jelly = Math.sin(seconds * (thinking ? 2.45 : 1.86));
     const moveX =
-      Math.sin(seconds * (1.1 + energy)) * (0.68 + energy * 0.42);
+      Math.sin(seconds * (1.02 + energy)) * (0.38 + energy * 0.3);
     const moveY =
-      Math.sin(seconds * (1.36 + energy)) * (0.76 + energy * 0.4) -
-      happy * 1.85;
-    const uniformScale =
+      -Math.abs(Math.sin(seconds * (0.92 + energy * 0.3))) *
+      (0.34 + energy * 0.16) -
+      happy * 1.3;
+    const scaleX =
       1 +
-      breathe * (thinking ? 0.012 : 0.007) +
-      happy * 0.018;
-    const scaleX = uniformScale + touch * 0.038;
-    const scaleY = uniformScale - touch * 0.027;
+      jelly * (thinking ? 0.017 : 0.012) +
+      touch * 0.05 +
+      happy * 0.014;
+    const scaleY =
+      1 -
+      jelly * (thinking ? 0.013 : 0.009) -
+      touch * 0.036 +
+      happy * 0.006;
 
     stage.style.transform =
       "translate3d(" + moveX.toFixed(2) + "px," +
       moveY.toFixed(2) + "px,0) " +
       "scale(" + scaleX.toFixed(4) + "," + scaleY.toFixed(4) + ")";
 
+    renderContact(touch, happy, Math.abs(moveY));
     renderSphere(seconds, touch, happy);
     renderFace(blinkAmount(now), breathe);
 
