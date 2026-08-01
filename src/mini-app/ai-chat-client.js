@@ -9,6 +9,7 @@ export const AI_CHAT_JS = `
   var aiChatBusy=false;
   var aiChatSendKeepsKeyboard=false;
   var aiChatMessages=[];
+  var aiChatAudioUrls=[];
   var aiChatAttachment=null;
   var aiChatAttachmentMaxBytes=10*1024*1024;
   var aiChatAttachmentMimes={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',pdf:'application/pdf',txt:'text/plain',text:'text/plain',md:'text/markdown',markdown:'text/markdown',json:'application/json',html:'text/html',htm:'text/html',xml:'text/xml',csv:'text/csv',tsv:'text/tsv',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',rtf:'application/rtf',odt:'application/vnd.oasis.opendocument.text',ppt:'application/vnd.ms-powerpoint',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',js:'text/javascript',mjs:'text/javascript',ts:'text/x-typescript',tsx:'text/tsx',jsx:'text/jsx',py:'text/x-python',css:'text/css',sql:'text/x-sql',log:'text/plain',yaml:'text/x-yaml',yml:'text/x-yaml',toml:'application/toml',eml:'message/rfc822',ics:'text/calendar',srt:'application/x-subrip',vtt:'text/vtt'};
@@ -48,10 +49,312 @@ export const AI_CHAT_JS = `
   function hideAiImageGenerating(){setAiChatCreatureState('idle');stopAiThinkingOrb();var item=q('aiImageGenerating');if(item)item.remove()}
   function showAiImageGenerating(){setAiChatCreatureState('thinking');var list=q('aiChatMessages');if(!list)return;hideAiImageGenerating();var item=document.createElement('article');item.id='aiImageGenerating';item.className='ai-chat-message assistant ai-chat-image-generating';item.innerHTML='<div class="ai-chat-image-generating-content"><canvas id="aiThinkingOrb" width="96" height="96" aria-hidden="true"></canvas><span>Creating image</span></div>';list.appendChild(item);syncAiChatEmptyState();scrollAiChat();startAiThinkingOrb()}
   function appendAiChatImage(data){setAiChatCreatureState('happy');var list=q('aiChatMessages');if(!list)return;var mimeType=String(data&&data.mimeType||'image/jpeg');var base64=String(data&&data.imageBase64||'');if(!base64)return;var source='data:'+mimeType+';base64,'+base64;var item=document.createElement('article');item.className='ai-chat-message assistant ai-chat-image-message';var card=document.createElement('div');card.className='ai-chat-image-card';var blurred=document.createElement('img');blurred.className='ai-chat-image-blur';blurred.alt='Generated image';var sharp=document.createElement('img');sharp.className='ai-chat-image-sharp';sharp.alt='';sharp.setAttribute('aria-hidden','true');blurred.addEventListener('load',function(){card.classList.add('ready');scrollAiChat()},{once:true});card.appendChild(blurred);card.appendChild(sharp);item.appendChild(card);list.appendChild(item);blurred.src=source;sharp.src=source;aiChatMessages.push({role:'assistant',content:'Generated image: '+String(data&&data.prompt||'')});scrollAiChat()}
+  function formatAiChatAudioTime(value){
+    var total=Math.max(0,Math.floor(Number(value)||0));
+    var minutes=Math.floor(total/60);
+    var seconds=String(total%60).padStart(2,'0');
+    return minutes+':'+seconds;
+  }
+
+  async function shareAiChatAudio(blob,filename,text){
+    var file=new File(
+      [blob],
+      String(filename||'vexa-voice.mp3'),
+      {type:'audio/mpeg'}
+    );
+
+    if(!navigator.share||!navigator.canShare||!navigator.canShare({files:[file]})){
+      toast('Sharing is not available on this device');
+      return;
+    }
+
+    try{
+      await navigator.share({
+        files:[file],
+        title:'Vexa voice',
+        text:String(text||'')
+      });
+    }catch(error){
+      if(error&&error.name!=='AbortError'){
+        toast('Could not share this audio');
+      }
+    }
+  }
+
+  function appendAiChatAudio(data){
+    setAiChatCreatureState('happy');
+
+    var list=q('aiChatMessages');
+    var base64=String(data&&data.audioBase64||'');
+    if(!list||!base64)return;
+
+    var binary=atob(base64);
+    var bytes=new Uint8Array(binary.length);
+    for(var index=0;index<binary.length;index+=1){
+      bytes[index]=binary.charCodeAt(index);
+    }
+
+    var blob=new Blob([bytes],{type:'audio/mpeg'});
+    var source=URL.createObjectURL(blob);
+    aiChatAudioUrls.push(source);
+
+    var item=document.createElement('article');
+    item.className='ai-chat-message assistant ai-chat-audio-message';
+
+    var card=document.createElement('div');
+    card.className='ai-chat-audio-card';
+
+    var play=document.createElement('button');
+    play.className='ai-chat-audio-play';
+    play.type='button';
+    play.setAttribute('aria-label','Play audio');
+    play.innerHTML='<span aria-hidden="true"></span>';
+
+    var body=document.createElement('div');
+    body.className='ai-chat-audio-body';
+
+    var track=document.createElement('input');
+    track.className='ai-chat-audio-track';
+    track.type='range';
+    track.min='0';
+    track.max='1000';
+    track.value='0';
+    track.setAttribute('aria-label','Audio position');
+
+    var meta=document.createElement('div');
+    meta.className='ai-chat-audio-meta';
+
+    var voice=document.createElement('span');
+    voice.textContent=String(data&&data.voice||'Voice');
+
+    var time=document.createElement('span');
+    time.textContent='0:00';
+
+    meta.appendChild(voice);
+    meta.appendChild(time);
+    body.appendChild(track);
+    body.appendChild(meta);
+
+    var share=document.createElement('button');
+    share.className='ai-chat-audio-share';
+    share.type='button';
+    share.setAttribute('aria-label','Share audio');
+    share.innerHTML='<span aria-hidden="true"></span><strong>Share</strong>';
+
+    var audio=document.createElement('audio');
+    audio.preload='metadata';
+    audio.src=source;
+
+    play.addEventListener('click',function(){
+      if(audio.paused){
+        audio.play().catch(function(){
+          toast('Could not play this audio');
+        });
+      }else{
+        audio.pause();
+      }
+    });
+
+    audio.addEventListener('play',function(){
+      card.classList.add('is-playing');
+      play.setAttribute('aria-label','Pause audio');
+    });
+
+    audio.addEventListener('pause',function(){
+      card.classList.remove('is-playing');
+      play.setAttribute('aria-label','Play audio');
+    });
+
+    audio.addEventListener('loadedmetadata',function(){
+      time.textContent=formatAiChatAudioTime(audio.duration);
+    });
+
+    audio.addEventListener('timeupdate',function(){
+      var duration=Number(audio.duration)||0;
+      var progress=duration?audio.currentTime/duration:0;
+      track.value=String(Math.round(progress*1000));
+      track.style.setProperty('--audio-progress',(progress*100)+'%');
+      time.textContent=formatAiChatAudioTime(audio.currentTime);
+    });
+
+    audio.addEventListener('ended',function(){
+      track.value='0';
+      track.style.setProperty('--audio-progress','0%');
+      time.textContent=formatAiChatAudioTime(audio.duration);
+    });
+
+    track.addEventListener('input',function(){
+      var duration=Number(audio.duration)||0;
+      if(duration){
+        audio.currentTime=duration*Number(track.value)/1000;
+      }
+    });
+
+    share.addEventListener('click',function(){
+      shareAiChatAudio(
+        blob,
+        String(data&&data.filename||'vexa-voice.mp3'),
+        String(data&&data.text||'')
+      );
+    });
+
+    card.appendChild(play);
+    card.appendChild(body);
+    card.appendChild(share);
+    card.appendChild(audio);
+    item.appendChild(card);
+    list.appendChild(item);
+
+    aiChatMessages.push({
+      role:'assistant',
+      content:'Generated voice with '+String(data&&data.voice||'Voice')+': '+String(data&&data.text||'')
+    });
+
+    syncAiChatEmptyState();
+    scrollAiChat();
+  }
+
   function showAiThinking(){setAiChatCreatureState('thinking');var list=q('aiChatMessages');if(!list)return;hideAiThinking();var row=document.createElement('div');row.id='aiThinkingRow';row.className='ai-thinking-row';row.setAttribute('data-state','thinking');row.innerHTML='<canvas id="aiThinkingOrb" class="ai-thinking-orb" width="96" height="96" aria-hidden="true"></canvas><span>Thinking</span>';list.appendChild(row);syncAiChatEmptyState();var page=q('aiChatPage');if(page)page.classList.add('thinking');scrollAiChat();startAiThinkingOrb()}
-  function setAiThinkingState(state){var row=q('aiThinkingRow');if(!row)return;var next=state==='searching'?'searching':'thinking';setAiChatCreatureState(next);if(row.getAttribute('data-state')===next)return;row.setAttribute('data-state',next);var label=row.querySelector('span');if(label)label.textContent=next==='searching'?'Searching…':'Thinking';if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){var canvas=q('aiThinkingOrb');drawAiThinkingOrb(canvas,performance.now()/1000,next==='searching'?1:0)}scrollAiChat()}
+  function setAiThinkingState(state){
+    var row=q('aiThinkingRow');
+    if(!row)return;
+
+    var next='thinking';
+    var labelText='Thinking';
+
+    if(state==='searching'){
+      next='searching';
+      labelText='Searching…';
+    }else if(state==='generating_voice'){
+      next='generating_voice';
+      labelText='Generating voice';
+    }
+
+    setAiChatCreatureState(next==='searching'?'searching':'thinking');
+    row.setAttribute('data-state',next);
+
+    var label=row.querySelector('span');
+    if(label){
+      label.textContent=labelText;
+    }
+
+    if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      var canvas=q('aiThinkingOrb');
+      drawAiThinkingOrb(
+        canvas,
+        performance.now()/1000,
+        next==='searching'?1:0
+      );
+    }
+
+    scrollAiChat();
+  }
   function hideAiThinking(){setAiChatCreatureState('idle');stopAiThinkingOrb();var row=q('aiThinkingRow');if(row)row.remove();var page=q('aiChatPage');if(page)page.classList.remove('thinking')}
-  async function sendAiChat(){if(aiChatBusy)return;var input=q('aiChatInput');var keepKeyboard=aiChatSendKeepsKeyboard||!!(input&&document.activeElement===input);aiChatSendKeepsKeyboard=false;if(keepKeyboard&&input){input.focus()}var typed=String(input&&input.value||'').trim();var attachment=aiChatAttachment;if(!typed&&!attachment)return;var message=typed||(attachment.isImage?'What is in this image?':'Analyze this attachment.');if(attachment)aiChatMessages.forEach(function(item){if(item&&item.attachment)delete item.attachment});appendAiChatMessage('user',message,false,attachment);clearAiChatAttachment();if(input){input.value='';resizeAiChatInput()}aiChatBusy=true;var send=q('aiChatSend');var attach=q('aiChatAttach');if(send)send.disabled=true;if(attach)attach.disabled=true;showAiThinking();try{var data=await streamAiChat({messages:aiChatMessages.slice(-20)},setAiThinkingState);hideAiThinking();if(data.type==='image_request'){showAiImageGenerating();var imageData=await api('/mini-app/api/image',{prompt:String(data.prompt||message),size:String(data.size||'1024x1024')});hideAiImageGenerating();imageData.prompt=String(data.prompt||message);appendAiChatImage(imageData)}else{await appendAiChatMessage('assistant',String(data.message||''),true)}}catch(error){hideAiThinking();hideAiImageGenerating();var errorMessage=error.message||'Could not reach AI';if(String(errorMessage).indexOf('Not enough credits')===0)await appendAiChatMessage('assistant',String(errorMessage),true);else toast(errorMessage)}finally{aiChatBusy=false;if(send)send.disabled=false;if(attach)attach.disabled=false}}
+  async function sendAiChat(){
+    if(aiChatBusy)return;
+
+    var input=q('aiChatInput');
+    var keepKeyboard=aiChatSendKeepsKeyboard||!!(
+      input&&document.activeElement===input
+    );
+    aiChatSendKeepsKeyboard=false;
+
+    if(keepKeyboard&&input){
+      input.focus();
+    }
+
+    var typed=String(input&&input.value||'').trim();
+    var attachment=aiChatAttachment;
+    if(!typed&&!attachment)return;
+
+    var message=typed||(
+      attachment.isImage
+        ?'What is in this image?'
+        :'Analyze this attachment.'
+    );
+
+    if(attachment){
+      aiChatMessages.forEach(function(item){
+        if(item&&item.attachment){
+          delete item.attachment;
+        }
+      });
+    }
+
+    appendAiChatMessage('user',message,false,attachment);
+    clearAiChatAttachment();
+
+    if(input){
+      input.value='';
+      resizeAiChatInput();
+    }
+
+    aiChatBusy=true;
+    var send=q('aiChatSend');
+    var attach=q('aiChatAttach');
+
+    if(send)send.disabled=true;
+    if(attach)attach.disabled=true;
+    showAiThinking();
+
+    try{
+      var data=await streamAiChat(
+        {messages:aiChatMessages.slice(-20)},
+        setAiThinkingState
+      );
+
+      if(data.type==='image_request'){
+        hideAiThinking();
+        showAiImageGenerating();
+
+        var imageData=await api('/mini-app/api/image',{
+          prompt:String(data.prompt||message),
+          size:String(data.size||'1024x1024')
+        });
+
+        hideAiImageGenerating();
+        imageData.prompt=String(data.prompt||message);
+        appendAiChatImage(imageData);
+      }else if(data.type==='speech_request'){
+        setAiThinkingState('generating_voice');
+
+        var audioData=await api('/mini-app/api/tts',{
+          text:String(data.text||''),
+          voice:String(data.voice||'Nora')
+        });
+
+        hideAiThinking();
+        audioData.text=String(data.text||'');
+        appendAiChatAudio(audioData);
+      }else{
+        hideAiThinking();
+        await appendAiChatMessage(
+          'assistant',
+          String(data.message||''),
+          true
+        );
+      }
+    }catch(error){
+      hideAiThinking();
+      hideAiImageGenerating();
+
+      var errorMessage=error.message||'Could not reach AI';
+      if(String(errorMessage).indexOf('Not enough credits')===0){
+        await appendAiChatMessage(
+          'assistant',
+          String(errorMessage),
+          true
+        );
+      }else{
+        toast(errorMessage);
+      }
+    }finally{
+      aiChatBusy=false;
+      if(send)send.disabled=false;
+      if(attach)attach.disabled=false;
+    }
+  }
+
   async function streamAiChat(body,onStatus){var response;try{response=await fetch('/mini-app/api/chat',{method:'POST',headers:{'content-type':'application/json','accept':'application/x-ndjson'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){throw new Error('Connection interrupted · Try again')}if(!response.ok){var failed=await response.json().catch(function(){return{error:'Request failed'}});throw new Error(failed.error||'Request failed')}if(!response.body)throw new Error('Invalid response');var reader=response.body.getReader();var decoder=new TextDecoder();var buffer='';var result=null;var newline=String.fromCharCode(10);function consume(line){var clean=String(line||'').trim();if(!clean)return;var event;try{event=JSON.parse(clean)}catch(error){return}if(event.type==='status'){if(typeof onStatus==='function')onStatus(event.status);return}if(event.type==='error')throw new Error(event.error||'Could not reach AI');if(event.type==='result')result=event.data}while(true){var chunk=await reader.read();buffer+=decoder.decode(chunk.value||new Uint8Array(),{stream:!chunk.done});var index=buffer.indexOf(newline);while(index>=0){consume(buffer.slice(0,index));buffer=buffer.slice(index+1);index=buffer.indexOf(newline)}if(chunk.done)break}if(buffer.trim())consume(buffer);if(!result)throw new Error('Invalid response');return result}
   function closeAiChat(){window.location.replace('/mini-app')}
   function closeAiChatKeyboard(){var input=q('aiChatInput');if(input&&document.activeElement===input)input.blur();if(tg&&typeof tg.hideKeyboard==='function'){try{tg.hideKeyboard()}catch(e){}}}
@@ -65,6 +368,12 @@ export const AI_CHAT_JS = `
   var input=q('aiChatInput');if(input)input.addEventListener('input',resizeAiChatInput)
   var attach=q('aiChatAttach');if(attach)attach.addEventListener('click',function(){var file=q('aiChatFile');if(file)file.click()});
   var file=q('aiChatFile');if(file)file.addEventListener('change',function(){selectAiChatAttachment(file.files&&file.files[0])});
+  window.addEventListener('pagehide',function(){
+    aiChatAudioUrls.forEach(function(url){
+      URL.revokeObjectURL(url);
+    });
+    aiChatAudioUrls=[];
+  });
   syncAiChatEmptyState();startAiThinkingOrb();loadAiChat();
 })();
 `;
