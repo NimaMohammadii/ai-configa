@@ -15,14 +15,66 @@ export const AI_CHAT_JS = `
   var aiThinkingFrame=0;
   var aiThinkingSearchMix=0;
   var aiThinkingLastFrame=0;
-  var stableViewportHeight=Math.max(1,Number(tg&&(tg.viewportStableHeight||tg.viewportHeight))||Number(window.innerHeight)||1);
+  var stableViewportHeight = Math.max(
+    1,
+    Number(tg && (tg.viewportStableHeight || tg.viewportHeight)) ||
+      Number(window.innerHeight) ||
+      1
+  );
+  var stableViewportBottom = window.visualViewport
+    ? Number(window.visualViewport.height) + Math.max(0, Number(window.visualViewport.offsetTop) || 0)
+    : stableViewportHeight;
+  var aiChatKeyboardFrame = 0;
+
   function q(id){return document.getElementById(id)}
   function withoutTrailingDot(value){return String(value==null?'':value).replace(/[.!؟。]+$/u,'')}
   function toast(value){var node=q('toast');if(!node)return;node.textContent=withoutTrailingDot(value);node.classList.remove('show');void node.offsetWidth;node.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){node.classList.remove('show')},3200)}
-  function setAiChatKeyboardOffset(value){document.documentElement.style.setProperty('--ai-chat-keyboard-offset',Math.max(0,Math.round(Number(value)||0))+'px')}
-  function syncAiChatKeyboardOffset(){setAiChatKeyboardOffset(stableViewportHeight-Number(tg&&tg.viewportHeight||stableViewportHeight))}
-  document.documentElement.style.setProperty('--ai-chat-page-height',Math.round(stableViewportHeight)+'px');
-  if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',syncAiChatKeyboardOffset)}catch(e){}}
+  function visibleViewportBottom() {
+    var viewport = window.visualViewport;
+
+    if (viewport && Number(viewport.height) > 0) {
+      return Number(viewport.height) + Math.max(0, Number(viewport.offsetTop) || 0);
+    }
+
+    return Number(tg && tg.viewportHeight) || Number(window.innerHeight) || stableViewportHeight;
+  }
+
+  function setAiChatKeyboardOffset(value) {
+    var offset = Math.max(0, Math.round(Number(value) || 0));
+
+    if (offset < 80) {
+      offset = 0;
+    }
+
+    document.documentElement.style.setProperty('--ai-chat-keyboard-offset', offset + 'px');
+  }
+
+  function syncAiChatKeyboardOffset() {
+    if (aiChatKeyboardFrame) {
+      return;
+    }
+
+    aiChatKeyboardFrame = requestAnimationFrame(function() {
+      aiChatKeyboardFrame = 0;
+      setAiChatKeyboardOffset(stableViewportBottom - visibleViewportBottom());
+    });
+  }
+
+  document.documentElement.style.setProperty(
+    '--ai-chat-page-height',
+    Math.round(stableViewportHeight) + 'px'
+  );
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncAiChatKeyboardOffset, {passive: true});
+    window.visualViewport.addEventListener('scroll', syncAiChatKeyboardOffset, {passive: true});
+  }
+
+  if (tg && tg.onEvent) {
+    try {
+      tg.onEvent('viewportChanged', syncAiChatKeyboardOffset);
+    } catch (e) {}
+  }
   async function api(path,body){var response;try{response=await fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){throw new Error('Connection interrupted · Try again')}var data=await response.json().catch(function(){return{error:'Invalid response'}});if(!response.ok)throw new Error(data.error||'Request failed');return data}
   function aiOrbSpherePoint(index,count){var golden=Math.PI*(3-Math.sqrt(5));var y=1-2*(index+.5)/count;var radius=Math.sqrt(1-y*y);var angle=index*golden;return[radius*Math.cos(angle),y,radius*Math.sin(angle)]}
   function aiOrbProject(yaw,pitch,cx,cy){var sy=Math.sin(yaw),cyaw=Math.cos(yaw),sp=Math.sin(pitch),cp=Math.cos(pitch);return function(x,y,z){var rx=x*cyaw+z*sy;var rz=-x*sy+z*cyaw;var ry=y*cp-rz*sp;var depth=y*sp+rz*cp;return[cx+rx,cy-ry,depth]}}
