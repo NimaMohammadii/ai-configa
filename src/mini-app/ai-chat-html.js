@@ -8,7 +8,7 @@ export const AI_CHAT_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>AI Chat</title>
-  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260801-ai-chat-no-page-pan-6"/>
+  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260801-ai-chat-single-keyboard-5"/>
 </head>
 <body>
   <section id="aiChatPage" class="ai-chat-page" aria-hidden="false">
@@ -23,6 +23,6 @@ export const AI_CHAT_HTML = `<!doctype html>
   </section>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/chat/app.js?v=20260801-ai-chat-no-page-pan-6"></script>
+  <script type="module" src="/mini-app/chat/app.js?v=20260801-ai-chat-single-keyboard-5"></script>
 </body>
 </html>`;
