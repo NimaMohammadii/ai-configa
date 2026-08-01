@@ -11,7 +11,9 @@ export const AI_CHAT_JS = `
   var aiChatMessages=[];
   var aiChatAudioUrls=[];
   var aiChatPreferredVoice='Nora';
+  var aiChatSavedVoices=[];
   var aiChatVoiceProfiles={};
+  var aiChatVoiceMenuBusy=false;
   var aiChatAttachment=null;
   var aiChatAttachmentMaxBytes=10*1024*1024;
   var aiChatAttachmentMimes={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',pdf:'application/pdf',txt:'text/plain',text:'text/plain',md:'text/markdown',markdown:'text/markdown',json:'application/json',html:'text/html',htm:'text/html',xml:'text/xml',csv:'text/csv',tsv:'text/tsv',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',rtf:'application/rtf',odt:'application/vnd.oasis.opendocument.text',ppt:'application/vnd.ms-powerpoint',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',js:'text/javascript',mjs:'text/javascript',ts:'text/x-typescript',tsx:'text/tsx',jsx:'text/jsx',py:'text/x-python',css:'text/css',sql:'text/x-sql',log:'text/plain',yaml:'text/x-yaml',yml:'text/x-yaml',toml:'application/toml',eml:'message/rfc822',ics:'text/calendar',srt:'application/x-subrip',vtt:'text/vtt'};
@@ -21,12 +23,173 @@ export const AI_CHAT_JS = `
   var aiThinkingLastFrame=0;
   var stableViewportHeight=Math.max(1,Number(tg&&(tg.viewportStableHeight||tg.viewportHeight))||Number(window.innerHeight)||1);
   function q(id){return document.getElementById(id)}
+  function setAiChatVoiceAvatar(avatar,voice){
+    if(!avatar)return;
+
+    var source=String(aiChatVoiceProfiles[voice]||'');
+    if(source){
+      avatar.style.backgroundImage=
+        'url("'+source.split('"').join('%22')+'")';
+      avatar.classList.add('has-image');
+    }else{
+      avatar.style.backgroundImage='';
+      avatar.classList.remove('has-image');
+    }
+  }
+
+  function renderAiChatVoiceMenu(){
+    var rows=q('aiChatVoiceRows');
+    var empty=q('aiChatVoicesEmpty');
+    if(!rows||!empty)return;
+
+    rows.replaceChildren();
+
+    var voices=aiChatSavedVoices.slice();
+    if(
+      aiChatPreferredVoice
+      &&voices.indexOf(aiChatPreferredVoice)<0
+    ){
+      voices.unshift(aiChatPreferredVoice);
+    }
+
+    voices.forEach(function(voice){
+      var option=document.createElement('button');
+      option.type='button';
+      option.className='ai-chat-voice-option';
+      option.dataset.voice=voice;
+      option.setAttribute(
+        'aria-pressed',
+        voice===aiChatPreferredVoice?'true':'false'
+      );
+
+      if(voice===aiChatPreferredVoice){
+        option.classList.add('active');
+      }
+
+      var avatar=document.createElement('span');
+      avatar.className='ai-chat-voice-option-avatar';
+      avatar.setAttribute('aria-hidden','true');
+      setAiChatVoiceAvatar(avatar,voice);
+
+      var name=document.createElement('span');
+      name.className='ai-chat-voice-option-name';
+      name.textContent=voice;
+
+      var check=document.createElement('span');
+      check.className='ai-chat-voice-option-check';
+      check.setAttribute('aria-hidden','true');
+      check.textContent='✓';
+
+      option.append(avatar,name,check);
+      option.addEventListener('click',function(event){
+        event.stopPropagation();
+        selectAiChatVoice(voice);
+      });
+      rows.appendChild(option);
+    });
+
+    empty.hidden=voices.length>0;
+  }
+
+  function setAiChatVoiceMenu(open){
+    var wrap=q('aiChatVoiceWrap');
+    var card=q('aiChatVoiceCard');
+    var menu=q('aiChatVoiceMenu');
+    if(!wrap||!card||!menu)return;
+
+    var shouldOpen=!!open;
+    wrap.classList.toggle('open',shouldOpen);
+    card.setAttribute(
+      'aria-expanded',
+      shouldOpen?'true':'false'
+    );
+    menu.setAttribute(
+      'aria-hidden',
+      shouldOpen?'false':'true'
+    );
+  }
+
+  function toggleAiChatVoiceMenu(event){
+    if(event){
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    var wrap=q('aiChatVoiceWrap');
+    setAiChatVoiceMenu(
+      !(wrap&&wrap.classList.contains('open'))
+    );
+  }
+
+  async function selectAiChatVoice(voice){
+    var selected=String(voice||'').trim();
+    if(!selected||aiChatVoiceMenuBusy)return;
+
+    if(selected===aiChatPreferredVoice){
+      setAiChatVoiceMenu(false);
+      return;
+    }
+
+    var wrap=q('aiChatVoiceWrap');
+    var card=q('aiChatVoiceCard');
+    aiChatVoiceMenuBusy=true;
+
+    if(wrap){
+      wrap.classList.add('updating');
+    }
+    if(card){
+      card.setAttribute('aria-busy','true');
+    }
+
+    try{
+      var data=await api('/mini-app/api/user-voices',{
+        action:'select',
+        voice:selected
+      });
+
+      updateAiChatHeader({
+        voice:String(data.selectedVoice||selected),
+        savedVoices:Array.isArray(data.savedVoices)
+          ?data.savedVoices
+          :aiChatSavedVoices
+      });
+      setAiChatVoiceMenu(false);
+
+      if(tg&&tg.HapticFeedback){
+        try{
+          tg.HapticFeedback.impactOccurred('light');
+        }catch(error){}
+      }
+    }catch(error){
+      toast(error.message);
+    }finally{
+      aiChatVoiceMenuBusy=false;
+
+      if(wrap){
+        wrap.classList.remove('updating');
+      }
+      if(card){
+        card.removeAttribute('aria-busy');
+      }
+    }
+  }
+
   function updateAiChatHeader(data){
     if(!data||typeof data!=='object')return;
 
     var voice=String(data.voice||'').trim();
     if(voice){
       aiChatPreferredVoice=voice;
+    }
+
+    if(Array.isArray(data.savedVoices)){
+      aiChatSavedVoices=data.savedVoices
+        .map(function(item){
+          return String(item||'').trim();
+        })
+        .filter(function(item,index,list){
+          return item&&list.indexOf(item)===index;
+        });
     }
 
     if(data.voiceProfiles&&typeof data.voiceProfiles==='object'){
@@ -43,21 +206,11 @@ export const AI_CHAT_JS = `
       label.textContent=aiChatPreferredVoice;
     }
 
-    var avatar=q('aiChatVoiceAvatar');
-    if(avatar){
-      var source=String(
-        aiChatVoiceProfiles[aiChatPreferredVoice]||''
-      );
-
-      if(source){
-        avatar.style.backgroundImage=
-          'url("'+source.split('"').join('%22')+'")';
-        avatar.classList.add('has-image');
-      }else{
-        avatar.style.backgroundImage='';
-        avatar.classList.remove('has-image');
-      }
-    }
+    setAiChatVoiceAvatar(
+      q('aiChatVoiceAvatar'),
+      aiChatPreferredVoice
+    );
+    renderAiChatVoiceMenu();
   }
 
   function setAiChatCreatureState(state){if(typeof window.aiChatCreatureSetState==='function')window.aiChatCreatureSetState(state)}
@@ -142,8 +295,8 @@ export const AI_CHAT_JS = `
 
     ctx.save();
     ctx.lineCap='round';
-    ctx.shadowColor='rgba(151,77,185,.3)';
-    ctx.shadowBlur=5*amount;
+    ctx.shadowColor='transparent';
+    ctx.shadowBlur=0;
 
     for(var index=0;index<barCount;index+=1){
       var envelope=aiVoiceWaveEnvelope(
@@ -161,16 +314,16 @@ export const AI_CHAT_JS = `
       ctx.moveTo(x,center-height/2);
       ctx.lineTo(x,center+height/2);
       ctx.globalAlpha=.22*amount*envelope;
-      ctx.strokeStyle='rgba(205,159,226,.92)';
-      ctx.lineWidth=2.15;
+      ctx.strokeStyle='rgba(255,255,255,.68)';
+      ctx.lineWidth=2.05;
       ctx.stroke();
 
       ctx.beginPath();
       ctx.moveTo(x,center-height*.34);
       ctx.lineTo(x,center+height*.34);
       ctx.globalAlpha=.38*amount*envelope;
-      ctx.strokeStyle='rgba(249,241,252,.96)';
-      ctx.lineWidth=.72;
+      ctx.strokeStyle='rgba(255,255,255,.94)';
+      ctx.lineWidth=.68;
       ctx.stroke();
     }
 
@@ -219,10 +372,13 @@ export const AI_CHAT_JS = `
 
       if(visible){
         var centerLight=1-distance/3;
+        var shade=198+48*centerLight;
+        var currentColor=dot.color||[shade,shade,shade];
+
         dot.color=[
-          220+28*centerLight,
-          181+58*centerLight,
-          236+17*centerLight
+          currentColor[0]+(shade-currentColor[0])*amount,
+          currentColor[1]+(shade-currentColor[1])*amount,
+          currentColor[2]+(shade-currentColor[2])*amount
         ];
       }
     });
@@ -465,7 +621,7 @@ export const AI_CHAT_JS = `
           aiThinkingVoiceMix,
           voiceTarget,
           delta,
-          3.4
+          1.15
         );
       }
 
@@ -1090,7 +1246,26 @@ export const AI_CHAT_JS = `
   var input=q('aiChatInput');if(input)input.addEventListener('input',resizeAiChatInput)
   var attach=q('aiChatAttach');if(attach)attach.addEventListener('click',function(){var file=q('aiChatFile');if(file)file.click()});
   var file=q('aiChatFile');if(file)file.addEventListener('change',function(){selectAiChatAttachment(file.files&&file.files[0])});
-  var voiceCard=q('aiChatVoiceCard');if(voiceCard)voiceCard.addEventListener('click',closeAiChat);
+  var voiceCard=q('aiChatVoiceCard');
+  if(voiceCard){
+    voiceCard.addEventListener(
+      'click',
+      toggleAiChatVoiceMenu
+    );
+  }
+
+  document.addEventListener('pointerdown',function(event){
+    var target=event.target;
+    if(
+      target
+      &&target.closest
+      &&target.closest('#aiChatVoiceWrap')
+    ){
+      return;
+    }
+
+    setAiChatVoiceMenu(false);
+  });
   window.addEventListener('pagehide',function(){
     aiChatAudioUrls.forEach(function(url){
       URL.revokeObjectURL(url);
