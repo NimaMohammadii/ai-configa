@@ -70,48 +70,62 @@ export const AI_CHAT_JS = `
     return amount*amount*(3-2*amount);
   }
 
-  function drawAiVoiceTrace(ctx,seconds,mix,size){
+  function aiVoiceBarHeight(index,count,seconds){
+    var position=index/Math.max(1,count-1);
+    var envelope=
+      .34+.66*Math.pow(
+        Math.sin(Math.PI*position),
+        .72
+      );
+    var primary=
+      .5+.5*Math.sin(seconds*5.4+index*.78);
+    var detail=
+      .5+.5*Math.sin(seconds*8.2-index*.46);
+
+    return 4+envelope*(
+      5+9*(primary*.58+detail*.42)
+    );
+  }
+
+  function drawAiVoiceWaveBody(ctx,seconds,mix,size){
     var amount=aiSmoothMorph(mix);
     if(amount<.01)return;
 
+    var barCount=15;
+    var left=5;
+    var width=size-10;
     var center=size/2;
-    var left=4;
-    var width=size-8;
 
     ctx.save();
-    ctx.globalAlpha=.18*amount;
     ctx.lineCap='round';
-    ctx.lineJoin='round';
-    ctx.strokeStyle='rgba(196,130,225,.82)';
-    ctx.shadowColor='rgba(177,95,218,.72)';
-    ctx.shadowBlur=8*amount;
-    ctx.lineWidth=1.35;
+    ctx.shadowColor='rgba(151,77,185,.34)';
+    ctx.shadowBlur=5*amount;
 
-    ctx.beginPath();
-    for(var index=0;index<=64;index+=1){
-      var position=index/64;
-      var envelope=Math.pow(
-        Math.sin(Math.PI*position),
-        .58
+    for(var index=0;index<barCount;index+=1){
+      var height=aiVoiceBarHeight(
+        index,
+        barCount,
+        seconds
       );
-      var signal=
-        Math.sin(position*Math.PI*6-seconds*8.7)*.58
-        +Math.sin(position*Math.PI*13+seconds*5.4)*.24
-        +Math.sin(position*Math.PI*2.4-seconds*3.1)*.18;
-      var x=left+width*position;
-      var y=center+signal*9.6*envelope;
+      var x=left+width*index/(barCount-1);
 
-      if(index===0){
-        ctx.moveTo(x,y);
-      }else{
-        ctx.lineTo(x,y);
-      }
+      ctx.beginPath();
+      ctx.moveTo(x,center-height/2);
+      ctx.lineTo(x,center+height/2);
+      ctx.globalAlpha=.2*amount;
+      ctx.strokeStyle='rgba(205,159,226,.92)';
+      ctx.lineWidth=2.15;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x,center-height*.34);
+      ctx.lineTo(x,center+height*.34);
+      ctx.globalAlpha=.34*amount;
+      ctx.strokeStyle='rgba(249,241,252,.96)';
+      ctx.lineWidth=.72;
+      ctx.stroke();
     }
-    ctx.stroke();
 
-    ctx.globalAlpha=.08*amount;
-    ctx.lineWidth=3.6;
-    ctx.stroke();
     ctx.restore();
   }
 
@@ -119,36 +133,30 @@ export const AI_CHAT_JS = `
     var amount=aiSmoothMorph(mix);
     if(amount<=0)return;
 
-    var groups=Math.ceil(dots.length/7);
+    var barCount=15;
+    var dotsPerBar=7;
+    var visibleDots=barCount*dotsPerBar;
+    var left=5;
+    var width=size-10;
     var center=size/2;
-    var left=4;
-    var width=size-8;
 
     dots.forEach(function(dot,index){
-      var residue=index%7;
-      var visible=residue===0||residue===1;
-      var group=Math.floor(index/7);
-      var position=group/Math.max(1,groups-1);
-      var envelope=Math.pow(
-        Math.sin(Math.PI*position),
-        .58
-      );
-      var signal=
-        Math.sin(position*Math.PI*6-seconds*8.7)*.58
-        +Math.sin(position*Math.PI*13+seconds*5.4)*.24
-        +Math.sin(position*Math.PI*2.4-seconds*3.1)*.18;
-      var echo=residue===1
-        ?Math.sin(position*Math.PI*9+seconds*6.2)*1.15
+      var visible=index<visibleDots;
+      var bar=Math.floor(index/dotsPerBar);
+      var level=index%dotsPerBar;
+      var distance=Math.abs(level-(dotsPerBar-1)/2);
+      var height=visible
+        ?aiVoiceBarHeight(bar,barCount,seconds)
         :0;
-      var targetX=left+width*position;
+      var targetX=left
+        +width*bar/Math.max(1,barCount-1);
       var targetY=center
-        +signal*9.6*envelope
-        +echo;
-      var targetRadius=residue===0
-        ?.72+.22*envelope
-        :.42+.12*envelope;
+        +(level-(dotsPerBar-1)/2)
+        *height/(dotsPerBar-1);
+      var targetRadius=
+        .42+.22*(1-distance/3);
       var targetAlpha=visible
-        ?(residue===0?.82:.28)*(.56+.44*envelope)
+        ?.28+.5*(1-distance/3)
         :0;
 
       dot.x+=(targetX-dot.x)*amount;
@@ -156,14 +164,14 @@ export const AI_CHAT_JS = `
       dot.z*=1-amount;
       dot.r+=(targetRadius-dot.r)*amount;
       dot.a+=(targetAlpha-dot.a)*amount;
-      dot.white+=(.08-dot.white)*amount;
+      dot.white+=(.07-dot.white)*amount;
 
       if(visible){
-        var highlight=.45+.55*envelope;
+        var centerLight=1-distance/3;
         dot.color=[
-          202+42*highlight,
-          146+84*highlight,
-          226+26*highlight
+          220+28*centerLight,
+          181+58*centerLight,
+          236+17*centerLight
         ];
       }
     });
@@ -329,7 +337,7 @@ export const AI_CHAT_JS = `
       voiceMorph,
       size
     );
-    drawAiVoiceTrace(
+    drawAiVoiceWaveBody(
       ctx,
       seconds,
       voiceMorph,
