@@ -89,6 +89,14 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   let nextBlinkAt = lastTime + 1600 + Math.random() * 1200;
   let blinkStartedAt = -1;
   let secondBlinkAt = -1;
+  let creatureState = "idle";
+  let stateUntil = 0;
+  let happyStartedAt = -1;
+  let touchSquishStartedAt = -1;
+  let journey = null;
+  let journeyStarted = false;
+  let profileAmount = 0;
+
 
   function resizeCanvas() {
     const dpr = Math.min(4, (window.devicePixelRatio || 1) * 1.5);
@@ -105,17 +113,41 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   }
 
   function chooseNextGaze(now) {
+    const searching = creatureState === "searching";
     const choice = gazePositions[
       Math.floor(Math.random() * gazePositions.length)
     ];
 
     targetGazeX = choice[0] + (Math.random() - 0.5) * 0.12;
     targetGazeY = choice[1] + (Math.random() - 0.5) * 0.1;
-    nextGazeAt = now + 620 + Math.random() * 1050;
+    nextGazeAt = now + (
+      searching
+        ? 260 + Math.random() * 410
+        : 620 + Math.random() * 1050
+    );
   }
 
   function updateAutomaticGaze(now) {
-    if (now < pointerUntil) return;
+    if (stateUntil > 0 && now >= stateUntil) {
+      creatureState = "idle";
+      stateUntil = 0;
+      nextGazeAt = now;
+    }
+
+    if (journey || now < pointerUntil) return;
+
+    if (creatureState === "thinking") {
+      targetGazeX = Math.sin(now / 920) * 0.24;
+      targetGazeY = -0.56;
+      return;
+    }
+
+    if (creatureState === "happy") {
+      targetGazeX = 0;
+      targetGazeY = 0.18;
+      return;
+    }
+
     if (now >= nextGazeAt) chooseNextGaze(now);
   }
 
@@ -163,14 +195,22 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     );
   }
 
-  function drawEye(centerX, centerY, blink, tilt) {
-    const width = 3.75;
-    const openHeight = 8.35;
+  function drawEye(
+    centerX,
+    centerY,
+    blink,
+    tilt,
+    widthScale,
+    opacity
+  ) {
+    const width = 4.15 * widthScale;
+    const openHeight = 8.75;
     const height = Math.max(0.72, openHeight * (1 - blink * 0.94));
     const x = centerX + gazeX * 2.05;
     const y = centerY + gazeY * 1.45;
 
     context.save();
+    context.globalAlpha = opacity;
     context.translate(x, y);
     context.rotate(tilt);
 
@@ -355,8 +395,136 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     context.restore();
   }
 
+  function clamp(value, minimum, maximum) {
+    return Math.max(minimum, Math.min(maximum, value));
+  }
+
+  function mix(from, to, amount) {
+    return from + (to - from) * amount;
+  }
+
+  function smoothStep(value) {
+    const amount = clamp(value, 0, 1);
+    return amount * amount * (3 - 2 * amount);
+  }
+
+  function updateJourney(now) {
+    if (!journey) {
+      profileAmount += (0 - profileAmount) * 0.16;
+      return;
+    }
+
+    const duration = 4300;
+    const elapsed = now - journey.startedAt;
+
+    if (elapsed < 0) return;
+
+    const time = clamp(elapsed / duration, 0, 1);
+    let x = 0;
+    let y = 0;
+    let scaleX = 1;
+    let scaleY = 1;
+    let rotation = 0;
+
+    if (time < 0.3) {
+      const progress = smoothStep(time / 0.3);
+      const stretch = Math.sin(progress * Math.PI);
+
+      x = journey.x * progress;
+      y = journey.y * progress - Math.sin(progress * Math.PI) * 7;
+      scaleX = 1 + stretch * 0.18;
+      scaleY = 1 - stretch * 0.11;
+      rotation = stretch * 0.055;
+      profileAmount = mix(0, 1, smoothStep(progress * 1.35));
+      targetGazeX = 0.86;
+      targetGazeY = -0.08;
+    } else if (time < 0.47) {
+      const progress = smoothStep((time - 0.3) / 0.17);
+
+      x = journey.x;
+      y = journey.y + mix(-4.5, -1.5, progress);
+      scaleX = 1 - Math.sin(progress * Math.PI) * 0.035;
+      scaleY = 1 + Math.sin(progress * Math.PI) * 0.045;
+      profileAmount = 1;
+      targetGazeX = 0.62;
+      targetGazeY = mix(-0.78, -0.3, progress);
+    } else if (time < 0.61) {
+      const progress = smoothStep((time - 0.47) / 0.14);
+
+      x = journey.x;
+      y = journey.y + mix(-1.5, 4.5, progress);
+      scaleX = 1 + Math.sin(progress * Math.PI) * 0.025;
+      scaleY = 1 - Math.sin(progress * Math.PI) * 0.02;
+      profileAmount = 1;
+      targetGazeX = 0.58;
+      targetGazeY = mix(-0.3, 0.78, progress);
+    } else if (time < 0.73) {
+      const progress = smoothStep((time - 0.61) / 0.12);
+
+      x = journey.x - Math.sin(progress * Math.PI) * 1.8;
+      y = journey.y + mix(4.5, 0, progress);
+      scaleX = 1;
+      scaleY = 1;
+      profileAmount = mix(1, 0, progress);
+      targetGazeX = mix(0.58, 0, progress);
+      targetGazeY = mix(0.78, 0, progress);
+    } else if (time < 0.81) {
+      const progress = smoothStep((time - 0.73) / 0.08);
+
+      x = journey.x;
+      y = journey.y;
+      scaleX = mix(1, 0.88, Math.sin(progress * Math.PI));
+      scaleY = mix(1, 1.1, Math.sin(progress * Math.PI));
+      rotation = mix(0, -0.045, progress);
+      profileAmount = mix(0, -1, progress);
+      targetGazeX = mix(0, -0.82, progress);
+      targetGazeY = 0;
+    } else {
+      const progress = smoothStep((time - 0.81) / 0.19);
+      const stretch = Math.sin(progress * Math.PI);
+
+      x = journey.x * (1 - progress);
+      y = journey.y * (1 - progress) - stretch * 6;
+      scaleX = 1 + stretch * 0.15;
+      scaleY = 1 - stretch * 0.09;
+      rotation = -stretch * 0.052;
+      profileAmount = mix(-1, 0, smoothStep(clamp((progress - 0.62) / 0.38, 0, 1)));
+      targetGazeX = mix(-0.82, 0, progress);
+      targetGazeY = -0.05;
+    }
+
+    host.style.transform =
+      "translate3d(" + x.toFixed(2) + "px," +
+      y.toFixed(2) + "px,0) " +
+      "rotate(" + rotation.toFixed(4) + "rad) " +
+      "scale(" + scaleX.toFixed(3) + "," + scaleY.toFixed(3) + ")";
+
+    if (time >= 1) {
+      journey = null;
+      profileAmount = 0;
+      host.style.transform = "none";
+      targetGazeX = 0;
+      targetGazeY = 0;
+      nextGazeAt = now + 520;
+    }
+  }
+
+  function touchSquish(now) {
+    if (touchSquishStartedAt < 0) return 0;
+
+    const progress = (now - touchSquishStartedAt) / 430;
+
+    if (progress >= 1) {
+      touchSquishStartedAt = -1;
+      return 0;
+    }
+
+    return Math.sin(progress * Math.PI) * (1 - progress * 0.34);
+  }
+
   function draw(now) {
     resizeCanvas();
+    updateJourney(now);
 
     const elapsed = Math.min(40, now - lastTime);
     const gazeEase = 1 - Math.pow(0.7, elapsed / 16.67);
@@ -370,26 +538,82 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     context.clearRect(0, 0, size, size);
 
     const breathe = Math.sin(seconds * 2.05);
+    const thinkingPuff = creatureState === "thinking" ? 0.5 : 0;
+    const searchingEnergy = creatureState === "searching" ? 0.42 : 0;
+    const squish = touchSquish(now);
+
+    const happyProgress = happyStartedAt < 0
+      ? 1
+      : clamp((now - happyStartedAt) / 940, 0, 1);
+    const happyBounce = creatureState === "happy"
+      ? -Math.abs(Math.sin(happyProgress * Math.PI * 2)) *
+        (1 - happyProgress) * 3.2
+      : 0;
+
     const sway =
-      Math.sin(seconds * 1.16) * 0.92 +
+      Math.sin(seconds * (1.16 + searchingEnergy)) * (0.92 + searchingEnergy) +
       Math.sin(seconds * 2.47 + 0.8) * 0.24;
     const bob =
-      Math.sin(seconds * 1.48 + 0.35) * 1.02 +
-      Math.sin(seconds * 2.72) * 0.18;
+      Math.sin(seconds * (1.48 + searchingEnergy)) * (1.02 + searchingEnergy) +
+      Math.sin(seconds * 2.72) * 0.18 +
+      happyBounce;
 
     const centerX = size / 2 + sway;
     const centerY = size / 2 + bob;
-    const radiusX = 19.15 + breathe * 0.38;
-    const radiusY = 19.15 - breathe * 0.3;
+    const radiusX =
+      19.15 +
+      breathe * (0.38 + thinkingPuff) +
+      squish * 1.45;
+    const radiusY =
+      19.15 -
+      breathe * (0.3 + thinkingPuff * 0.55) -
+      squish * 1.15;
     const faceTilt = Math.sin(seconds * 1.16) * 0.024;
 
     drawOrb(centerX, centerY, radiusX, radiusY, seconds);
 
     const blink = blinkAmount(now);
     const eyeY = centerY - 0.55 + breathe * 0.08;
+    const profile = clamp(profileAmount, -1, 1);
+    const profileStrength = Math.abs(profile);
 
-    drawEye(centerX - 5.6, eyeY, blink, faceTilt);
-    drawEye(centerX + 5.6, eyeY, blink, faceTilt);
+    const leftOffset = profile >= 0
+      ? mix(-5, 1.45, profileStrength)
+      : mix(-5, -5.8, profileStrength);
+    const rightOffset = profile >= 0
+      ? mix(5, 5.8, profileStrength)
+      : mix(5, -1.45, profileStrength);
+
+    const leftScale = profile >= 0
+      ? mix(1, 0.58, profileStrength)
+      : 1;
+    const rightScale = profile >= 0
+      ? 1
+      : mix(1, 0.58, profileStrength);
+
+    const leftOpacity = profile >= 0
+      ? mix(1, 0.72, profileStrength)
+      : 1;
+    const rightOpacity = profile >= 0
+      ? 1
+      : mix(1, 0.72, profileStrength);
+
+    drawEye(
+      centerX + leftOffset,
+      eyeY,
+      blink,
+      faceTilt,
+      leftScale,
+      leftOpacity
+    );
+    drawEye(
+      centerX + rightOffset,
+      eyeY,
+      blink,
+      faceTilt,
+      rightScale,
+      rightOpacity
+    );
 
     if (!reducedMotion && !document.hidden) {
       animationFrame = requestAnimationFrame(draw);
@@ -400,6 +624,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     const bounds = canvas.getBoundingClientRect();
     const centerX = bounds.left + bounds.width / 2;
     const centerY = bounds.top + bounds.height / 2;
+    const now = performance.now();
 
     targetGazeX = Math.max(
       -1,
@@ -409,8 +634,77 @@ export const AI_CHAT_CREATURE_JS = `(function () {
       -0.88,
       Math.min(0.88, (event.clientY - centerY) / (window.innerHeight * 0.16))
     );
-    pointerUntil = performance.now() + 1200;
+    pointerUntil = now + 1200;
     nextGazeAt = pointerUntil + 260;
+
+    const padding = 12;
+    const touchesCreature =
+      event.clientX >= bounds.left - padding &&
+      event.clientX <= bounds.right + padding &&
+      event.clientY >= bounds.top - padding &&
+      event.clientY <= bounds.bottom + padding;
+
+    if (event.type === "pointerdown" && touchesCreature) {
+      touchSquishStartedAt = now;
+    }
+  }
+
+  function setCreatureState(state) {
+    const next = ["thinking", "searching", "happy"].includes(state)
+      ? state
+      : "idle";
+    const now = performance.now();
+
+    creatureState = next;
+    nextGazeAt = now;
+
+    if (next === "happy") {
+      happyStartedAt = now;
+      stateUntil = now + 980;
+      touchSquishStartedAt = now;
+    } else {
+      happyStartedAt = -1;
+      stateUntil = 0;
+    }
+  }
+
+  function visitMessage(messageElement) {
+    if (
+      reducedMotion ||
+      journeyStarted ||
+      !messageElement ||
+      !messageElement.getBoundingClientRect
+    ) {
+      return;
+    }
+
+    const bubble =
+      messageElement.querySelector(".ai-chat-message-content") ||
+      messageElement;
+    const origin = host.getBoundingClientRect();
+    const target = bubble.getBoundingClientRect();
+
+    const targetLeft = clamp(
+      target.left - size - 8,
+      8,
+      window.innerWidth - size - 8
+    );
+    const targetTop = clamp(
+      target.top + Math.min(target.height / 2, 28) - size / 2,
+      8,
+      window.innerHeight - size - 72
+    );
+
+    journeyStarted = true;
+    host.style.animation = "none";
+    host.style.opacity = "1";
+    host.style.transform = "none";
+
+    journey = {
+      startedAt: performance.now() + 90,
+      x: targetLeft - origin.left,
+      y: targetTop - origin.top
+    };
   }
 
   function resume() {
@@ -418,6 +712,9 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     lastTime = performance.now();
     draw(lastTime);
   }
+
+  window.aiChatCreatureSetState = setCreatureState;
+  window.aiChatCreatureVisitMessage = visitMessage;
 
   window.addEventListener("pointermove", updatePointerGaze, { passive: true });
   window.addEventListener("pointerdown", updatePointerGaze, { passive: true });
