@@ -41,12 +41,12 @@ button{border:0}
 }
 
 .ai-thinking-row[data-state=generating_voice] .ai-thinking-orb{
-  width:66px;
+  width:62px;
   height:44px;
-  flex-basis:66px;
+  flex-basis:62px;
   filter:
-    drop-shadow(0 0 7px rgba(205,151,231,.28))
-    drop-shadow(0 0 15px rgba(112,44,145,.18));
+    drop-shadow(0 0 6px rgba(205,151,231,.2))
+    drop-shadow(0 0 12px rgba(112,44,145,.12));
   animation:
     aiVoiceWaveFloat 1.65s ease-in-out infinite;
 }
@@ -71,7 +71,7 @@ button{border:0}
     transform:translate3d(0,0,0) scaleX(1);
   }
   50%{
-    transform:translate3d(0,-1px,0) scaleX(1.045);
+    transform:translate3d(0,-1px,0) scaleX(1.02);
   }
 }
 
