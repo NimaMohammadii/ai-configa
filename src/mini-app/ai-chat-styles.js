@@ -212,6 +212,22 @@ button{border:0}
 }
 
 
+.ai-chat-head .voice-button-avatar{
+  display:none;
+  width:22px;
+  height:22px;
+  flex:0 0 22px;
+  border-radius:50%;
+  background:#171717 center/cover no-repeat;
+}
+
+.ai-chat-head .voice-button-avatar.has-image{
+  display:block;
+  border:1px solid rgba(255,255,255,.22);
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.18);
+}
+
+
 .ai-chat-head .voice-btn{
   border:0;
   border-radius:16px;
