@@ -410,11 +410,11 @@ export const AI_CHAT_CREATURE_JS = `(function () {
 
   function updateJourney(now) {
     if (!journey) {
-      profileAmount += (0 - profileAmount) * 0.16;
+      profileAmount += (0 - profileAmount) * 0.12;
       return;
     }
 
-    const duration = 4300;
+    const duration = 6500;
     const elapsed = now - journey.startedAt;
 
     if (elapsed < 0) return;
@@ -426,71 +426,83 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     let scaleY = 1;
     let rotation = 0;
 
-    if (time < 0.3) {
-      const progress = smoothStep(time / 0.3);
-      const stretch = Math.sin(progress * Math.PI);
+    if (time < 0.36) {
+      const progress = smoothStep(time / 0.36);
+      const motion = Math.sin(progress * Math.PI);
+      const settle = Math.sin(progress * Math.PI * 2) * (1 - progress);
 
       x = journey.x * progress;
-      y = journey.y * progress - Math.sin(progress * Math.PI) * 7;
-      scaleX = 1 + stretch * 0.18;
-      scaleY = 1 - stretch * 0.11;
-      rotation = stretch * 0.055;
-      profileAmount = mix(0, 1, smoothStep(progress * 1.35));
-      targetGazeX = 0.86;
-      targetGazeY = -0.08;
-    } else if (time < 0.47) {
-      const progress = smoothStep((time - 0.3) / 0.17);
+      y =
+        journey.y * progress -
+        Math.sin(progress * Math.PI) * 4.2 +
+        settle * 0.7;
+      scaleX = 1 + motion * 0.078;
+      scaleY = 1 - motion * 0.047;
+      rotation = motion * 0.024;
+      profileAmount = mix(0, 0.88, smoothStep(progress * 1.22));
+      targetGazeX = 0.72;
+      targetGazeY = -0.06;
+    } else if (time < 0.5) {
+      const progress = smoothStep((time - 0.36) / 0.14);
+      const settle = Math.sin(progress * Math.PI) * (1 - progress);
+
+      x = journey.x + settle * 0.7;
+      y = journey.y + mix(-3.2, -1.2, progress);
+      scaleX = 1 - settle * 0.018;
+      scaleY = 1 + settle * 0.024;
+      profileAmount = 0.88;
+      targetGazeX = 0.5;
+      targetGazeY = mix(-0.72, -0.28, progress);
+    } else if (time < 0.63) {
+      const progress = smoothStep((time - 0.5) / 0.13);
 
       x = journey.x;
-      y = journey.y + mix(-4.5, -1.5, progress);
-      scaleX = 1 - Math.sin(progress * Math.PI) * 0.035;
-      scaleY = 1 + Math.sin(progress * Math.PI) * 0.045;
-      profileAmount = 1;
-      targetGazeX = 0.62;
-      targetGazeY = mix(-0.78, -0.3, progress);
-    } else if (time < 0.61) {
-      const progress = smoothStep((time - 0.47) / 0.14);
+      y = journey.y + mix(-1.2, 3.6, progress);
+      scaleX = 1 + Math.sin(progress * Math.PI) * 0.012;
+      scaleY = 1 - Math.sin(progress * Math.PI) * 0.01;
+      profileAmount = 0.88;
+      targetGazeX = 0.48;
+      targetGazeY = mix(-0.28, 0.72, progress);
+    } else if (time < 0.72) {
+      const progress = smoothStep((time - 0.63) / 0.09);
 
-      x = journey.x;
-      y = journey.y + mix(-1.5, 4.5, progress);
-      scaleX = 1 + Math.sin(progress * Math.PI) * 0.025;
-      scaleY = 1 - Math.sin(progress * Math.PI) * 0.02;
-      profileAmount = 1;
-      targetGazeX = 0.58;
-      targetGazeY = mix(-0.3, 0.78, progress);
-    } else if (time < 0.73) {
-      const progress = smoothStep((time - 0.61) / 0.12);
-
-      x = journey.x - Math.sin(progress * Math.PI) * 1.8;
-      y = journey.y + mix(4.5, 0, progress);
+      x = journey.x - Math.sin(progress * Math.PI) * 1.1;
+      y = journey.y + mix(3.6, 0, progress);
       scaleX = 1;
       scaleY = 1;
-      profileAmount = mix(1, 0, progress);
-      targetGazeX = mix(0.58, 0, progress);
-      targetGazeY = mix(0.78, 0, progress);
-    } else if (time < 0.81) {
-      const progress = smoothStep((time - 0.73) / 0.08);
+      profileAmount = mix(0.88, 0, progress);
+      targetGazeX = mix(0.48, 0, progress);
+      targetGazeY = mix(0.72, 0, progress);
+    } else if (time < 0.78) {
+      const progress = smoothStep((time - 0.72) / 0.06);
+      const anticipation = Math.sin(progress * Math.PI);
 
       x = journey.x;
       y = journey.y;
-      scaleX = mix(1, 0.88, Math.sin(progress * Math.PI));
-      scaleY = mix(1, 1.1, Math.sin(progress * Math.PI));
-      rotation = mix(0, -0.045, progress);
-      profileAmount = mix(0, -1, progress);
-      targetGazeX = mix(0, -0.82, progress);
+      scaleX = 1 - anticipation * 0.055;
+      scaleY = 1 + anticipation * 0.07;
+      rotation = mix(0, -0.022, progress);
+      profileAmount = mix(0, -0.88, progress);
+      targetGazeX = mix(0, -0.7, progress);
       targetGazeY = 0;
     } else {
-      const progress = smoothStep((time - 0.81) / 0.19);
-      const stretch = Math.sin(progress * Math.PI);
+      const progress = smoothStep((time - 0.78) / 0.22);
+      const motion = Math.sin(progress * Math.PI);
 
       x = journey.x * (1 - progress);
-      y = journey.y * (1 - progress) - stretch * 6;
-      scaleX = 1 + stretch * 0.15;
-      scaleY = 1 - stretch * 0.09;
-      rotation = -stretch * 0.052;
-      profileAmount = mix(-1, 0, smoothStep(clamp((progress - 0.62) / 0.38, 0, 1)));
-      targetGazeX = mix(-0.82, 0, progress);
-      targetGazeY = -0.05;
+      y =
+        journey.y * (1 - progress) -
+        Math.sin(progress * Math.PI) * 3.8;
+      scaleX = 1 + motion * 0.068;
+      scaleY = 1 - motion * 0.041;
+      rotation = -motion * 0.023;
+      profileAmount = mix(
+        -0.88,
+        0,
+        smoothStep(clamp((progress - 0.66) / 0.34, 0, 1))
+      );
+      targetGazeX = mix(-0.7, 0, progress);
+      targetGazeY = -0.04;
     }
 
     host.style.transform =
@@ -575,45 +587,51 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     const blink = blinkAmount(now);
     const eyeY = centerY - 0.55 + breathe * 0.08;
     const profile = clamp(profileAmount, -1, 1);
-    const profileStrength = Math.abs(profile);
+    const yaw = profile * 0.96;
+    const surfaceRadius = 14.55;
+    const eyeAngle = 0.35;
 
-    const leftOffset = profile >= 0
-      ? mix(-5, 1.45, profileStrength)
-      : mix(-5, -5.8, profileStrength);
-    const rightOffset = profile >= 0
-      ? mix(5, 5.8, profileStrength)
-      : mix(5, -1.45, profileStrength);
+    function projectEye(angle) {
+      const rotatedAngle = angle + yaw;
+      const depth = Math.cos(rotatedAngle);
 
-    const leftScale = profile >= 0
-      ? mix(1, 0.58, profileStrength)
-      : 1;
-    const rightScale = profile >= 0
-      ? 1
-      : mix(1, 0.58, profileStrength);
+      return {
+        x: Math.sin(rotatedAngle) * surfaceRadius,
+        widthScale: clamp((depth - 0.12) / 0.82, 0.2, 1),
+        opacity: clamp((depth - 0.18) / 0.45, 0, 1)
+      };
+    }
 
-    const leftOpacity = profile >= 0
-      ? mix(1, 0.72, profileStrength)
-      : 1;
-    const rightOpacity = profile >= 0
-      ? 1
-      : mix(1, 0.72, profileStrength);
+    const leftEye = projectEye(-eyeAngle);
+    const rightEye = projectEye(eyeAngle);
+
+    context.save();
+    orbPath(
+      centerX,
+      centerY,
+      radiusX - 0.35,
+      radiusY - 0.35
+    );
+    context.clip();
 
     drawEye(
-      centerX + leftOffset,
+      centerX + leftEye.x,
       eyeY,
       blink,
       faceTilt,
-      leftScale,
-      leftOpacity
+      leftEye.widthScale,
+      leftEye.opacity
     );
     drawEye(
-      centerX + rightOffset,
+      centerX + rightEye.x,
       eyeY,
       blink,
       faceTilt,
-      rightScale,
-      rightOpacity
+      rightEye.widthScale,
+      rightEye.opacity
     );
+
+    context.restore();
 
     if (!reducedMotion && !document.hidden) {
       animationFrame = requestAnimationFrame(draw);
