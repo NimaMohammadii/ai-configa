@@ -23,7 +23,7 @@ export const AI_CHAT_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>AI Chat</title>
-  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260801-ai-chat-emotion-wave-voice-menu-1"/>
+  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260801-ai-chat-exact-tts-voice-card-1"/>
 </head>
 <body>
   <section id="aiChatPage" class="ai-chat-page" aria-hidden="false">
@@ -36,7 +36,7 @@ export const AI_CHAT_HTML = `<!doctype html>
       </div>
       <div class="mode-tools">
         <div id="aiChatVoiceWrap" class="voice-wrap">
-          <button id="aiChatVoiceCard" class="voice-btn" type="button" aria-label="Selected voice" aria-haspopup="listbox" aria-expanded="false">
+          <button id="aiChatVoiceCard" class="voice-btn" data-action="toggle-voice" type="button" aria-label="Selected voice" aria-haspopup="listbox" aria-expanded="false">
             <span id="aiChatVoiceAvatar" class="voice-button-avatar" aria-hidden="true"></span>
             <span id="aiChatVoiceLabel">Nora</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -68,6 +68,6 @@ export const AI_CHAT_HTML = `<!doctype html>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/mini-app/chat/creature.js?v=20260801-ai-chat-creature-rounded-jelly-2"></script>
-  <script type="module" src="/mini-app/chat/app.js?v=20260801-ai-chat-emotion-wave-voice-menu-1"></script>
+  <script type="module" src="/mini-app/chat/app.js?v=20260801-ai-chat-exact-tts-voice-card-1"></script>
 </body>
 </html>`;
