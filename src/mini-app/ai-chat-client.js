@@ -10,6 +10,8 @@ export const AI_CHAT_JS = `
   var aiChatSendKeepsKeyboard=false;
   var aiChatMessages=[];
   var aiChatAudioUrls=[];
+  var aiChatPreferredVoice='Nora';
+  var aiChatVoiceProfiles={};
   var aiChatAttachment=null;
   var aiChatAttachmentMaxBytes=10*1024*1024;
   var aiChatAttachmentMimes={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',pdf:'application/pdf',txt:'text/plain',text:'text/plain',md:'text/markdown',markdown:'text/markdown',json:'application/json',html:'text/html',htm:'text/html',xml:'text/xml',csv:'text/csv',tsv:'text/tsv',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',rtf:'application/rtf',odt:'application/vnd.oasis.opendocument.text',ppt:'application/vnd.ms-powerpoint',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',js:'text/javascript',mjs:'text/javascript',ts:'text/x-typescript',tsx:'text/tsx',jsx:'text/jsx',py:'text/x-python',css:'text/css',sql:'text/x-sql',log:'text/plain',yaml:'text/x-yaml',yml:'text/x-yaml',toml:'application/toml',eml:'message/rfc822',ics:'text/calendar',srt:'application/x-subrip',vtt:'text/vtt'};
@@ -19,6 +21,45 @@ export const AI_CHAT_JS = `
   var aiThinkingLastFrame=0;
   var stableViewportHeight=Math.max(1,Number(tg&&(tg.viewportStableHeight||tg.viewportHeight))||Number(window.innerHeight)||1);
   function q(id){return document.getElementById(id)}
+  function updateAiChatHeader(data){
+    if(!data||typeof data!=='object')return;
+
+    var voice=String(data.voice||'').trim();
+    if(voice){
+      aiChatPreferredVoice=voice;
+    }
+
+    if(data.voiceProfiles&&typeof data.voiceProfiles==='object'){
+      aiChatVoiceProfiles=data.voiceProfiles;
+    }
+
+    var balance=q('aiChatBalance');
+    if(balance&&data.balance!==undefined&&data.balance!==null){
+      balance.textContent=Number(data.balance).toLocaleString('en-US');
+    }
+
+    var label=q('aiChatVoiceLabel');
+    if(label){
+      label.textContent=aiChatPreferredVoice;
+    }
+
+    var avatar=q('aiChatVoiceAvatar');
+    if(avatar){
+      var source=String(
+        aiChatVoiceProfiles[aiChatPreferredVoice]||''
+      );
+
+      if(source){
+        avatar.style.backgroundImage=
+          'url("'+source.split('"').join('%22')+'")';
+        avatar.classList.add('has-image');
+      }else{
+        avatar.style.backgroundImage='';
+        avatar.classList.remove('has-image');
+      }
+    }
+  }
+
   function setAiChatCreatureState(state){if(typeof window.aiChatCreatureSetState==='function')window.aiChatCreatureSetState(state)}
   function withoutTrailingDot(value){return String(value==null?'':value).replace(/[.!؟。]+$/u,'')}
   function toast(value){var node=q('toast');if(!node)return;node.textContent=withoutTrailingDot(value);node.classList.remove('show');void node.offsetWidth;node.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){node.classList.remove('show')},3200)}
@@ -70,20 +111,23 @@ export const AI_CHAT_JS = `
     return amount*amount*(3-2*amount);
   }
 
-  function aiVoiceBarHeight(index,count,seconds){
+  function aiVoiceWaveEnvelope(index,count){
     var position=index/Math.max(1,count-1);
-    var envelope=
-      .34+.66*Math.pow(
-        Math.sin(Math.PI*position),
-        .72
-      );
+    return Math.pow(
+      Math.sin(Math.PI*position),
+      .68
+    );
+  }
+
+  function aiVoiceBarHeight(index,count,seconds){
+    var envelope=aiVoiceWaveEnvelope(index,count);
     var primary=
       .5+.5*Math.sin(seconds*5.4+index*.78);
     var detail=
       .5+.5*Math.sin(seconds*8.2-index*.46);
 
-    return 4+envelope*(
-      5+9*(primary*.58+detail*.42)
+    return 1.4+envelope*(
+      5+10*(primary*.58+detail*.42)
     );
   }
 
@@ -98,10 +142,14 @@ export const AI_CHAT_JS = `
 
     ctx.save();
     ctx.lineCap='round';
-    ctx.shadowColor='rgba(151,77,185,.34)';
+    ctx.shadowColor='rgba(151,77,185,.3)';
     ctx.shadowBlur=5*amount;
 
     for(var index=0;index<barCount;index+=1){
+      var envelope=aiVoiceWaveEnvelope(
+        index,
+        barCount
+      );
       var height=aiVoiceBarHeight(
         index,
         barCount,
@@ -112,7 +160,7 @@ export const AI_CHAT_JS = `
       ctx.beginPath();
       ctx.moveTo(x,center-height/2);
       ctx.lineTo(x,center+height/2);
-      ctx.globalAlpha=.2*amount;
+      ctx.globalAlpha=.22*amount*envelope;
       ctx.strokeStyle='rgba(205,159,226,.92)';
       ctx.lineWidth=2.15;
       ctx.stroke();
@@ -120,7 +168,7 @@ export const AI_CHAT_JS = `
       ctx.beginPath();
       ctx.moveTo(x,center-height*.34);
       ctx.lineTo(x,center+height*.34);
-      ctx.globalAlpha=.34*amount;
+      ctx.globalAlpha=.38*amount*envelope;
       ctx.strokeStyle='rgba(249,241,252,.96)';
       ctx.lineWidth=.72;
       ctx.stroke();
@@ -145,6 +193,9 @@ export const AI_CHAT_JS = `
       var bar=Math.floor(index/dotsPerBar);
       var level=index%dotsPerBar;
       var distance=Math.abs(level-(dotsPerBar-1)/2);
+      var envelope=visible
+        ?aiVoiceWaveEnvelope(bar,barCount)
+        :0;
       var height=visible
         ?aiVoiceBarHeight(bar,barCount,seconds)
         :0;
@@ -154,9 +205,9 @@ export const AI_CHAT_JS = `
         +(level-(dotsPerBar-1)/2)
         *height/(dotsPerBar-1);
       var targetRadius=
-        .42+.22*(1-distance/3);
+        .38+.2*(1-distance/3);
       var targetAlpha=visible
-        ?.28+.5*(1-distance/3)
+        ?(.24+.52*(1-distance/3))*envelope
         :0;
 
       dot.x+=(targetX-dot.x)*amount;
@@ -934,10 +985,23 @@ export const AI_CHAT_JS = `
     showAiThinking();
 
     try{
+      var requestMessages=aiChatMessages
+        .slice(-20)
+        .map(function(item){
+          return Object.assign({},item);
+        });
+      var latestRequest=
+        requestMessages[requestMessages.length-1];
+
+      if(latestRequest&&latestRequest.role==='user'){
+        latestRequest.preferredVoice=aiChatPreferredVoice;
+      }
+
       var data=await streamAiChat(
-        {messages:aiChatMessages.slice(-20)},
+        {messages:requestMessages},
         setAiThinkingState
       );
+      updateAiChatHeader(data);
 
       if(data.type==='image_request'){
         hideAiThinking();
@@ -950,6 +1014,7 @@ export const AI_CHAT_JS = `
 
         hideAiImageGenerating();
         imageData.prompt=String(data.prompt||message);
+        updateAiChatHeader(imageData);
         appendAiChatImage(imageData);
       }else if(data.type==='speech_request'){
         setAiThinkingState('generating_voice');
@@ -961,6 +1026,7 @@ export const AI_CHAT_JS = `
 
         hideAiThinking();
         audioData.text=String(data.text||'');
+        updateAiChatHeader(audioData);
         appendAiChatAudio(audioData);
       }else{
         hideAiThinking();
@@ -995,7 +1061,27 @@ export const AI_CHAT_JS = `
   function closeAiChat(){window.location.replace('/mini-app')}
   function closeAiChatKeyboard(){var input=q('aiChatInput');if(input&&document.activeElement===input)input.blur();if(tg&&typeof tg.hideKeyboard==='function'){try{tg.hideKeyboard()}catch(e){}}}
   function showAiChatLocked(data){var page=q('aiChatPage');if(!page)return;page.innerHTML='<main class="lock-screen"><section class="lock-card" aria-label="AI Chat update"><p class="lock-title"><span>Updating</span><span class="lock-dots" aria-hidden="true"><i></i><i></i><i></i></span></p><div class="lock-bar" aria-hidden="true"><span id="aiChatLockFill"></span></div></section></main>';var fill=q('aiChatLockFill');var serverNow=Number(data.serverNow)||Math.floor(Date.now()/1000);var lockedUntil=Number(data.lockedUntil)||serverNow+60;var lockedFrom=Number(data.lockedFrom)||Math.max(serverNow,lockedUntil-60);var total=Math.max(1,lockedUntil-lockedFrom);var offset=serverNow-Date.now()/1000;function tick(){var now=Date.now()/1000+offset;var progress=Math.min(100,Math.max(0,(now-lockedFrom)/total*100));if(fill)fill.style.width=progress+'%';if(now>=lockedUntil){clearInterval(lockTimer);location.reload()}}tick();lockTimer=setInterval(tick,500)}
-  async function loadAiChat(){try{var data=await api('/mini-app/api/session',{});var lock=data.locked?data:(data.aiChatLock||{locked:false});if(lock.locked){showAiChatLocked(lock);return}api('/mini-app/api/section-open',{section:'ai_chat'}).catch(function(){})}catch(error){toast(error.message)}}
+  async function loadAiChat(){
+    try{
+      var data=await api('/mini-app/api/session',{});
+      var lock=data.locked
+        ?data
+        :(data.aiChatLock||{locked:false});
+
+      if(lock.locked){
+        showAiChatLocked(lock);
+        return;
+      }
+
+      updateAiChatHeader(data);
+      api(
+        '/mini-app/api/section-open',
+        {section:'ai_chat'}
+      ).catch(function(){});
+    }catch(error){
+      toast(error.message);
+    }
+  }
   if(tg&&tg.BackButton){try{tg.BackButton.show();tg.BackButton.onClick(closeAiChat)}catch(e){}}
   requestAnimationFrame(function(){document.documentElement.classList.add('ai-chat-ready')})
   var composer=q('aiChatComposer');if(composer)composer.addEventListener('submit',function(event){event.preventDefault();sendAiChat()});
@@ -1004,6 +1090,7 @@ export const AI_CHAT_JS = `
   var input=q('aiChatInput');if(input)input.addEventListener('input',resizeAiChatInput)
   var attach=q('aiChatAttach');if(attach)attach.addEventListener('click',function(){var file=q('aiChatFile');if(file)file.click()});
   var file=q('aiChatFile');if(file)file.addEventListener('change',function(){selectAiChatAttachment(file.files&&file.files[0])});
+  var voiceCard=q('aiChatVoiceCard');if(voiceCard)voiceCard.addEventListener('click',closeAiChat);
   window.addEventListener('pagehide',function(){
     aiChatAudioUrls.forEach(function(url){
       URL.revokeObjectURL(url);
