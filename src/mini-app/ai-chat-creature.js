@@ -12,8 +12,8 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  z-index: 4;",
     "  top: calc(7px + env(safe-area-inset-top));",
     "  left: 14px;",
-    "  width: 56px;",
-    "  height: 56px;",
+    "  width: 52px;",
+    "  height: 52px;",
     "  pointer-events: none;",
     "  opacity: 0;",
     "  transform: translate3d(-4px, -3px, 0) scale(.88);",
@@ -21,8 +21,8 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "}",
     ".ai-chat-creature-stage {",
     "  position: relative;",
-    "  width: 56px;",
-    "  height: 56px;",
+    "  width: 52px;",
+    "  height: 52px;",
     "  transform-origin: center 88%;",
     "  will-change: transform;",
     "}",
@@ -30,8 +30,8 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  position: absolute;",
     "  inset: 0;",
     "  display: block;",
-    "  width: 56px;",
-    "  height: 56px;",
+    "  width: 52px;",
+    "  height: 52px;",
     "}",
     ".ai-chat-creature-contact {",
     "  z-index: 0;",
@@ -43,7 +43,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  z-index: 2;",
     "}",
     "html.has-ai-chat-creature .ai-chat-messages {",
-    "  padding-top: calc(84px + env(safe-area-inset-top));",
+    "  padding-top: calc(80px + env(safe-area-inset-top));",
     "}",
     "@keyframes aiCreatureArrive {",
     "  0% { opacity: 0; transform: translate3d(-4px, -3px, 0) scale(.88); }",
@@ -112,7 +112,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
 
   if (!contactContext || !faceContext) return;
 
-  const size = 56;
+  const size = 52;
   const reducedMotion = Boolean(
     window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -203,13 +203,16 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "",
     "void main() {",
     "  vec2 p = (vUv - 0.5) * 2.0 / 0.82;",
-    "  float radiusSquared = dot(p, p);",
+    "  float bottomWeight = 1.0 - smoothstep(-0.94, 0.12, p.y);",
+    "  vec2 spherePoint = p;",
+    "  spherePoint.x *= 1.0 - bottomWeight * (0.035 + uTouch * 0.045);",
+    "  float radiusSquared = dot(spherePoint, spherePoint);",
     "",
-    "  float floorLevel = -0.965 + uTouch * 0.055 + uHappy * 0.016;",
+    "  float floorLevel = -0.935 + uTouch * 0.06 + uHappy * 0.018;",
     "  if (radiusSquared > 1.0 || p.y < floorLevel) discard;",
     "",
     "  float sphereZ = sqrt(max(0.0, 1.0 - radiusSquared));",
-    "  vec3 normal = normalize(vec3(p.x, p.y, sphereZ));",
+    "  vec3 normal = normalize(vec3(spherePoint.x, spherePoint.y, sphereZ));",
     "  vec3 viewDirection = vec3(0.0, 0.0, 1.0);",
     "  vec3 keyLight = normalize(vec3(-0.62, 0.72, 0.84));",
     "  vec3 fillLight = normalize(vec3(0.72, -0.55, 0.48));",
@@ -224,35 +227,35 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  float flowC = sin((p.x + p.y) * 5.1 + uTime * 0.36);",
     "  float liquid = (flowA + flowB * 0.55 + flowC * 0.35) / 1.9;",
     "",
-    "  vec3 obsidian = vec3(0.012, 0.012, 0.016);",
-    "  vec3 graphite = vec3(0.12, 0.12, 0.14);",
-    "  vec3 silver = vec3(0.5, 0.5, 0.54);",
-    "  vec3 pearl = vec3(0.58, 0.58, 0.62);",
+    "  vec3 deepInk = vec3(0.018, 0.01, 0.03);",
+    "  vec3 deepPurple = vec3(0.12, 0.052, 0.19);",
+    "  vec3 mutedViolet = vec3(0.39, 0.24, 0.52);",
+    "  vec3 violetGlass = vec3(0.49, 0.36, 0.61);",
     "",
     "  float volume = clamp(diffuse * 0.62 + sphereZ * 0.27, 0.0, 1.0);",
-    "  vec3 color = mix(obsidian, graphite, volume);",
-    "  color = mix(color, silver, diffuse * diffuse * 0.38);",
-    "  color += liquid * vec3(0.034, 0.034, 0.038) * (0.55 + uState);",
+    "  vec3 color = mix(deepInk, deepPurple, volume);",
+    "  color = mix(color, mutedViolet, diffuse * diffuse * 0.38);",
+    "  color += liquid * vec3(0.042, 0.018, 0.062) * (0.55 + uState);",
     "",
     "  vec3 halfDirection = normalize(keyLight + viewDirection);",
     "  float specular = pow(max(dot(normal, halfDirection), 0.0), 72.0);",
     "  float broadSpecular = pow(max(dot(normal, halfDirection), 0.0), 18.0);",
-    "  color += pearl * specular * 0.34;",
-    "  color += pearl * broadSpecular * 0.07;",
+    "  color += violetGlass * specular * 0.34;",
+    "  color += violetGlass * broadSpecular * 0.07;",
     "",
     "  float lowerReflection = pow(max(fill, 0.0), 3.2);",
-    "  color += vec3(0.18, 0.18, 0.2) * lowerReflection * 0.42;",
+    "  color += vec3(0.16, 0.075, 0.23) * lowerReflection * 0.42;",
     "",
     "  float innerRing = smoothstep(0.58, 0.98, radiusSquared);",
-    "  color += vec3(0.14, 0.14, 0.16) * innerRing * 0.2;",
-    "  color += pearl * fresnel * (0.19 + uHappy * 0.08);",
+    "  color += vec3(0.11, 0.048, 0.17) * innerRing * 0.2;",
+    "  color += violetGlass * fresnel * (0.19 + uHappy * 0.08);",
     "",
 
     "  float touchWave = sin(radiusSquared * 24.0 - uTime * 8.0);",
-    "  color += vec3(0.06, 0.06, 0.07) * touchWave * uTouch * 0.08;",
+    "  color += vec3(0.055, 0.022, 0.08) * touchWave * uTouch * 0.08;",
     "",
     "  float edge = 1.0 - smoothstep(0.965, 1.0, radiusSquared);",
-    "  float floorEdge = smoothstep(floorLevel, floorLevel + 0.026, p.y);",
+    "  float floorEdge = smoothstep(floorLevel, floorLevel + 0.052, p.y);",
     "  float alpha = edge * floorEdge * (0.9 + fresnel * 0.1);",
     "  gl_FragColor = vec4(color, alpha);",
     "}"
@@ -509,15 +512,15 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   function renderContact(touch, happy, lift) {
     contactContext.clearRect(0, 0, size, size);
 
-    const width = 15.5 + touch * 3.6 + happy * 1.2;
-    const height = 2.15 + touch * 0.6;
+    const width = 14.5 + touch * 3.8 + happy * 1.1;
+    const height = 2.35 + touch * 0.72;
     const alpha = clamp(
       0.19 + touch * 0.07 - lift * 0.035,
       0.07,
       0.26
     );
     const centerX = size / 2;
-    const centerY = 50.4;
+    const centerY = size - 4.7;
 
     const gradient = contactContext.createRadialGradient(
       centerX,
@@ -527,12 +530,12 @@ export const AI_CHAT_CREATURE_JS = `(function () {
       centerY,
       width / 2
     );
-    gradient.addColorStop(0, "rgba(94, 94, 100, " + alpha + ")");
-    gradient.addColorStop(0.5, "rgba(58, 58, 63, " + (alpha * 0.54) + ")");
-    gradient.addColorStop(1, "rgba(20, 20, 22, 0)");
+    gradient.addColorStop(0, "rgba(74, 42, 92, " + alpha + ")");
+    gradient.addColorStop(0.5, "rgba(42, 23, 54, " + (alpha * 0.54) + ")");
+    gradient.addColorStop(1, "rgba(16, 8, 21, 0)");
 
     contactContext.save();
-    contactContext.filter = "blur(.85px)";
+    contactContext.filter = "blur(1.1px)";
     contactContext.fillStyle = gradient;
     contactContext.beginPath();
     contactContext.ellipse(
@@ -586,13 +589,13 @@ export const AI_CHAT_CREATURE_JS = `(function () {
       happy * 1.3;
     const scaleX =
       1 +
-      jelly * (thinking ? 0.017 : 0.012) +
-      touch * 0.05 +
+      jelly * (thinking ? 0.02 : 0.015) +
+      touch * 0.055 +
       happy * 0.014;
     const scaleY =
       1 -
-      jelly * (thinking ? 0.013 : 0.009) -
-      touch * 0.036 +
+      jelly * (thinking ? 0.015 : 0.011) -
+      touch * 0.04 +
       happy * 0.006;
 
     stage.style.transform =
