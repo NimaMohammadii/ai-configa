@@ -1,4 +1,5 @@
 import { getAiChatModel } from "./ai-chat-model.js";
+import { VOICE_NAMES } from "./voices.js";
 
 const GPT_TIMEOUT_MS = 45000;
 const GPT_CHAT_TIMEOUT_MS = 90000;
@@ -33,6 +34,7 @@ const GPT_IMAGE_SIZES = new Set([
 const MAX_IMAGE_PROMPT_CHARS = 2000;
 const MAX_IMAGE_EDIT_INPUTS = 5;
 const GPT_CHAT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+const MAX_CHAT_SPEECH_CHARS = 5000;
 const GPT_CHAT_ATTACHMENT_MIME = Object.freeze({
   png: "image/png",
   jpg: "image/jpeg",
@@ -287,6 +289,21 @@ function normalizeChatAttachment(raw) {
   };
 }
 
+function buildAiChatInstructions() {
+  return [
+    "You are Vexa AI, a capable and friendly assistant inside Telegram.",
+    "Reply in the same language as the user's latest message.",
+    "Give accurate, clear, practical answers and keep them focused unless the user asks for detail.",
+    "Format text answers as clean Markdown with short paragraphs and compact lists when useful.",
+    "Use the generate_speech tool only when the user clearly asks to create, read, narrate, dub, or convert text into spoken audio.",
+    "Do not generate speech for ordinary questions, explanations, or messages that merely mention audio.",
+    "Pass only the exact text that should be spoken. Do not include setup text, explanations, quotation marks, or Markdown.",
+    "Choose the exact named voice when the user specifies one.",
+    "When no voice is named, select the most suitable available voice from the requested language, tone, character, or style.",
+    "For web-search answers, do not add sources, citation links, raw URLs, or footnote markers unless the user asks for them."
+  ].join(" ");
+}
+
 export async function chatWithAi(env, messages, onStatus) {
   if (!env.GPT_API) throw new Error("GPT service is not configured.");
 
@@ -343,7 +360,7 @@ export async function chatWithAi(env, messages, onStatus) {
       signal: controller.signal,
       body: JSON.stringify({
         model,
-        instructions: "You are Vexa AI, a capable and friendly assistant inside Telegram. Reply in the same language as the user's latest message. Give accurate, clear, practical answers and keep them focused unless the user asks for detail. Format answers as clean Markdown: use short paragraphs, descriptive headings only when useful, compact bullet or numbered lists for multiple items, and **bold** only for key terms. Always close Markdown delimiters. For web-search answers, synthesize the findings into a tidy response and do not add a sources section, citation links, raw URLs, or footnote markers unless the user explicitly asks for sources or links.",
+        instructions: buildAiChatInstructions(),
         input: inputMessages,
         tools: [
           { type: "web_search" },
@@ -364,6 +381,28 @@ export async function chatWithAi(env, messages, onStatus) {
               additionalProperties: false,
             },
             strict: true,
+          },
+          {
+            type: "function",
+            name: "generate_speech",
+            description: "Create spoken audio only when the user asks for text-to-speech, narration, dubbing, or a voice reading.",
+            parameters: {
+              type: "object",
+              properties: {
+                text: {
+                  type: "string",
+                  description: "The exact text to speak, without explanations or Markdown."
+                },
+                voice: {
+                  type: "string",
+                  enum: VOICE_NAMES,
+                  description: "The voice that best matches the user's explicit choice or requested style."
+                }
+              },
+              required: ["text", "voice"],
+              additionalProperties: false
+            },
+            strict: true
           },
         ],
         tool_choice: "auto",
@@ -469,6 +508,35 @@ function buildChatResult(data, cleanMessages) {
     .some((item) => item?.type === "web_search_call");
   const imageCall = (Array.isArray(data?.output) ? data.output : [])
     .find((item) => item?.type === "function_call" && item?.name === "generate_image");
+
+  const speechCall = (Array.isArray(data?.output) ? data.output : [])
+    .find((item) => item?.type === "function_call" && item?.name === "generate_speech");
+
+  if (speechCall) {
+    let args = {};
+    try {
+      args = JSON.parse(String(speechCall.arguments || "{}"));
+    } catch {
+      args = {};
+    }
+
+    const text = Array.from(String(args.text || "").trim())
+      .slice(0, MAX_CHAT_SPEECH_CHARS)
+      .join("");
+    if (!text) {
+      throw new Error("Speech text is empty.");
+    }
+
+    const requestedVoice = String(args.voice || "").trim();
+    const voice = VOICE_NAMES.includes(requestedVoice) ? requestedVoice : "Nora";
+
+    return {
+      type: "speech_request",
+      text,
+      voice,
+      webSearchUsed
+    };
+  }
 
   if (imageCall) {
     let args = {};
