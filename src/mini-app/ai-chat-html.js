@@ -8,7 +8,7 @@ export const AI_CHAT_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>AI Chat</title>
-  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260801-ai-chat-synced-header-wave-1"/>
+  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260801-ai-chat-voice-menu-soft-wave-1"/>
 </head>
 <body>
   <section id="aiChatPage" class="ai-chat-page" aria-hidden="false">
@@ -20,12 +20,16 @@ export const AI_CHAT_HTML = `<!doctype html>
         </div>
       </div>
       <div class="mode-tools">
-        <div class="voice-wrap">
-          <button id="aiChatVoiceCard" class="voice-btn" type="button" aria-label="Selected voice">
+        <div id="aiChatVoiceWrap" class="voice-wrap">
+          <button id="aiChatVoiceCard" class="voice-btn" type="button" aria-label="Selected voice" aria-haspopup="listbox" aria-expanded="false">
             <span id="aiChatVoiceAvatar" class="voice-button-avatar" aria-hidden="true"></span>
             <span id="aiChatVoiceLabel">Nora</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
+          <div id="aiChatVoiceMenu" class="voice-menu" role="listbox" aria-label="Choose voice" aria-hidden="true">
+            <div id="aiChatVoiceRows" class="my-voice-rows"></div>
+            <div id="aiChatVoicesEmpty" class="my-voices-empty" hidden>No saved voices yet</div>
+          </div>
         </div>
       </div>
     </header>
@@ -41,6 +45,6 @@ export const AI_CHAT_HTML = `<!doctype html>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/mini-app/chat/creature.js?v=20260801-ai-chat-creature-rounded-jelly-2"></script>
-  <script type="module" src="/mini-app/chat/app.js?v=20260801-ai-chat-synced-header-wave-1"></script>
+  <script type="module" src="/mini-app/chat/app.js?v=20260801-ai-chat-voice-menu-soft-wave-1"></script>
 </body>
 </html>`;
