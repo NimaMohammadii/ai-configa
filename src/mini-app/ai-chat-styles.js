@@ -27,6 +27,30 @@ button{border:0}
   display:none;
 }
 
+.ai-thinking-row .ai-thinking-orb{
+  transition:
+    width .62s cubic-bezier(.16,1,.3,1),
+    height .62s cubic-bezier(.16,1,.3,1),
+    flex-basis .62s cubic-bezier(.16,1,.3,1),
+    filter .42s ease,
+    transform .62s cubic-bezier(.16,1,.3,1);
+}
+
+.ai-thinking-row[data-state=generating_voice]{
+  gap:7px;
+}
+
+.ai-thinking-row[data-state=generating_voice] .ai-thinking-orb{
+  width:66px;
+  height:44px;
+  flex-basis:66px;
+  filter:
+    drop-shadow(0 0 7px rgba(205,151,231,.28))
+    drop-shadow(0 0 15px rgba(112,44,145,.18));
+  animation:
+    aiVoiceWaveFloat 1.65s ease-in-out infinite;
+}
+
 .ai-thinking-row[data-state=generating_voice] span{
   background-image:
     linear-gradient(
@@ -36,11 +60,25 @@ button{border:0}
       rgba(190,126,220,.94) 57%,
       rgba(255,255,255,.46) 78%
     );
+  background-size:210% 100%;
+  animation:
+    aiThinkingShine 1.5s ease-in-out infinite;
+}
+
+@keyframes aiVoiceWaveFloat{
+  0%,
+  100%{
+    transform:translate3d(0,0,0) scaleX(1);
+  }
+  50%{
+    transform:translate3d(0,-1px,0) scaleX(1.045);
+  }
 }
 
 @media (prefers-reduced-motion:reduce){
   .ai-chat-wave-player,
-  .ai-chat-wave-player *{
+  .ai-chat-wave-player *,
+  .ai-thinking-row[data-state=generating_voice] .ai-thinking-orb{
     animation:none!important;
     transition:none!important;
   }
