@@ -19,11 +19,11 @@ export const AI_CHAT_JS = `
   function q(id){return document.getElementById(id)}
   function withoutTrailingDot(value){return String(value==null?'':value).replace(/[.!؟。]+$/u,'')}
   function toast(value){var node=q('toast');if(!node)return;node.textContent=withoutTrailingDot(value);node.classList.remove('show');void node.offsetWidth;node.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){node.classList.remove('show')},3200)}
-  function visibleViewportBottom(){var viewport=window.visualViewport;return viewport&&Number(viewport.height)>0?Number(viewport.height)+Math.max(0,Number(viewport.offsetTop)||0):Number(window.innerHeight)||0}
+  function visibleViewportHeight(){var viewport=window.visualViewport;return viewport&&Number(viewport.height)>0?Number(viewport.height):Number(window.innerHeight)||0}
   function setAiChatKeyboardOffset(value){document.documentElement.style.setProperty('--ai-chat-keyboard-offset',Math.max(0,Math.round(Number(value)||0))+'px')}
   function setAiChatPageHeight(value){document.documentElement.style.setProperty('--ai-chat-page-height',Math.max(1,Math.round(Number(value)||0))+'px')}
-  function syncAiChatKeyboardOffset(){var current=visibleViewportBottom();var input=q('aiChatInput');var focused=!!(input&&document.activeElement===input);if(!focused){stableViewportBottom=current;setAiChatPageHeight(stableViewportBottom);setAiChatKeyboardOffset(0);return}setAiChatKeyboardOffset(stableViewportBottom-current)}
-  stableViewportBottom=visibleViewportBottom();setAiChatPageHeight(stableViewportBottom);
+  function syncAiChatKeyboardOffset(){var current=visibleViewportHeight();var input=q('aiChatInput');var focused=!!(input&&document.activeElement===input);if(!focused){stableViewportBottom=current;setAiChatPageHeight(stableViewportBottom);setAiChatKeyboardOffset(0);return}setAiChatKeyboardOffset(stableViewportBottom-current)}
+  stableViewportBottom=visibleViewportHeight();setAiChatPageHeight(stableViewportBottom);
   if(window.visualViewport)window.visualViewport.addEventListener('resize',syncAiChatKeyboardOffset,{passive:true})
   async function api(path,body){var response;try{response=await fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){throw new Error('Connection interrupted · Try again')}var data=await response.json().catch(function(){return{error:'Invalid response'}});if(!response.ok)throw new Error(data.error||'Request failed');return data}
   function aiOrbSpherePoint(index,count){var golden=Math.PI*(3-Math.sqrt(5));var y=1-2*(index+.5)/count;var radius=Math.sqrt(1-y*y);var angle=index*golden;return[radius*Math.cos(angle),y,radius*Math.sin(angle)]}
@@ -63,7 +63,7 @@ export const AI_CHAT_JS = `
   var composer=q('aiChatComposer');if(composer)composer.addEventListener('submit',function(event){event.preventDefault();sendAiChat()});
   var send=q('aiChatSend');if(send)send.addEventListener('pointerdown',function(){var input=q('aiChatInput');aiChatSendKeepsKeyboard=!!(input&&document.activeElement===input)});
   var page=q('aiChatPage');if(page)page.addEventListener('pointerdown',function(event){var target=event.target;if(target&&target.closest&&target.closest('#aiChatComposer'))return;closeAiChatKeyboard()});
-  var input=q('aiChatInput');if(input){input.addEventListener('input',resizeAiChatInput);input.addEventListener('blur',function(){if(aiChatSendKeepsKeyboard)return;setAiChatKeyboardOffset(0)})}
+  var input=q('aiChatInput');if(input){input.addEventListener('pointerdown',function(event){if(document.activeElement===input)return;event.preventDefault();input.focus({preventScroll:true})},{passive:false});input.addEventListener('input',resizeAiChatInput);input.addEventListener('blur',function(){if(aiChatSendKeepsKeyboard)return;setAiChatKeyboardOffset(0)})}
   var attach=q('aiChatAttach');if(attach)attach.addEventListener('click',function(){var file=q('aiChatFile');if(file)file.click()});
   var file=q('aiChatFile');if(file)file.addEventListener('change',function(){selectAiChatAttachment(file.files&&file.files[0])});
   syncAiChatEmptyState();startAiThinkingOrb();loadAiChat();
