@@ -211,6 +211,24 @@ button{border:0}
   flex:0 0 auto;
 }
 
+
+.ai-chat-head .voice-btn{
+  border:0;
+  border-radius:16px;
+  background:var(--ticket-glass-bg);
+  box-shadow:var(--ticket-glass-shadow);
+  backdrop-filter:blur(10px) saturate(1.12);
+  -webkit-backdrop-filter:blur(10px) saturate(1.12);
+}
+
+.ai-chat-head .voice-btn:active{
+  background:rgba(255,255,255,.105);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.13),
+    inset 0 -1px 0 rgba(255,255,255,.07),
+    0 5px 14px rgba(0,0,0,.2);
+}
+
 .ai-chat-messages{
   padding-top:calc(80px + env(safe-area-inset-top));
 }
