@@ -22,8 +22,9 @@ export const AI_CHAT_JS = `
   function toast(value){var node=q('toast');if(!node)return;node.textContent=withoutTrailingDot(value);node.classList.remove('show');void node.offsetWidth;node.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){node.classList.remove('show')},3200)}
   function visibleViewportBottom(){var viewport=window.visualViewport;return viewport&&Number(viewport.height)>0?Number(viewport.height)+Math.max(0,Number(viewport.offsetTop)||0):Number(window.innerHeight)||0}
   function setAiChatKeyboardOffset(value){document.documentElement.style.setProperty('--ai-chat-keyboard-offset',Math.max(0,Math.round(Number(value)||0))+'px')}
-  function syncAiChatKeyboardOffset(){var current=visibleViewportBottom();var input=q('aiChatInput');var focused=!!(input&&document.activeElement===input);if(!focused){stableViewportBottom=current;setAiChatKeyboardOffset(0);return}setAiChatKeyboardOffset(stableViewportBottom-current)}
-  stableViewportBottom=visibleViewportBottom();
+  function setAiChatPageHeight(value){document.documentElement.style.setProperty('--ai-chat-page-height',Math.max(1,Math.round(Number(value)||0))+'px')}
+  function syncAiChatKeyboardOffset(){var current=visibleViewportBottom();var input=q('aiChatInput');var focused=!!(input&&document.activeElement===input);if(!focused){stableViewportBottom=current;setAiChatPageHeight(stableViewportBottom);setAiChatKeyboardOffset(0);return}setAiChatKeyboardOffset(stableViewportBottom-current)}
+  stableViewportBottom=visibleViewportBottom();setAiChatPageHeight(stableViewportBottom);
   if(window.visualViewport){window.visualViewport.addEventListener('resize',syncAiChatKeyboardOffset,{passive:true});window.visualViewport.addEventListener('scroll',syncAiChatKeyboardOffset,{passive:true})}
   if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',syncAiChatKeyboardOffset)}catch(e){}}
   async function api(path,body){var response;try{response=await fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){throw new Error('Connection interrupted · Try again')}var data=await response.json().catch(function(){return{error:'Invalid response'}});if(!response.ok)throw new Error(data.error||'Request failed');return data}
