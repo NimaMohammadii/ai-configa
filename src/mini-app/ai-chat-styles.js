@@ -41,9 +41,9 @@ button{border:0}
 }
 
 .ai-thinking-row[data-state=generating_voice] .ai-thinking-orb{
-  width:62px;
+  width:74px;
   height:44px;
-  flex-basis:62px;
+  flex-basis:74px;
   filter:none;
   animation:
     aiVoiceWaveFloat 2.4s ease-in-out infinite;
@@ -53,14 +53,14 @@ button{border:0}
   background-image:
     linear-gradient(
       100deg,
-      rgba(255,255,255,.38) 16%,
-      rgba(255,255,255,.94) 48%,
-      rgba(255,255,255,.56) 66%,
-      rgba(255,255,255,.34) 82%
+      rgba(220,190,235,.42) 16%,
+      rgba(255,255,255,.96) 46%,
+      rgba(190,126,220,.94) 57%,
+      rgba(255,255,255,.46) 78%
     );
   background-size:210% 100%;
   animation:
-    aiThinkingShine 2.1s ease-in-out infinite;
+    aiThinkingShine 1.5s ease-in-out infinite;
 }
 
 @keyframes aiVoiceWaveFloat{
@@ -194,14 +194,11 @@ button{border:0}
   align-items:center;
   justify-content:center;
   gap:8px;
-  padding:0 13px 0 8px;
-  border:0;
-  border-radius:16px;
+  padding:0 13px;
+  border:1px solid var(--line);
+  border-radius:999px;
   color:#fff;
-  background:var(--ticket-glass-bg);
-  box-shadow:var(--ticket-glass-shadow);
-  backdrop-filter:blur(10px) saturate(1.12);
-  -webkit-backdrop-filter:blur(10px) saturate(1.12);
+  background:rgba(255,255,255,.055);
   font-size:14px;
   font-weight:650;
   line-height:1;
@@ -269,7 +266,7 @@ button{border:0}
 
 
 .ai-chat-head .voice-btn svg{
-  transition:transform .42s cubic-bezier(.16,1,.3,1);
+  transition:transform .22s ease;
 }
 
 .ai-chat-head .voice-wrap.open .voice-btn svg{
@@ -286,122 +283,235 @@ button{border:0}
 
 .ai-chat-head .voice-menu{
   position:absolute;
-  z-index:12;
-  top:44px;
   right:0;
-  width:min(236px,calc(100vw - 32px));
+  top:44px;
+  z-index:50;
+  width:230px;
   max-height:min(390px,58vh);
-  padding:7px;
-  overflow:auto;
-  overscroll-behavior:contain;
+  overflow:hidden;
+  padding:7px 7px 6px;
   border:1px solid rgba(255,255,255,.13);
-  border-radius:18px;
-  background:rgba(12,12,12,.92);
-  box-shadow:
-    0 20px 55px rgba(0,0,0,.68),
-    inset 0 1px 0 rgba(255,255,255,.065);
-  backdrop-filter:blur(22px) saturate(1.08);
-  -webkit-backdrop-filter:blur(22px) saturate(1.08);
+  border-radius:20px;
+  background:rgba(8,8,8,.97);
+  box-shadow:0 24px 70px rgba(0,0,0,.72);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
   opacity:0;
-  visibility:hidden;
-  pointer-events:none;
-  transform:translate3d(0,-7px,0) scale(.975);
+  transform:translateY(-8px) scale(.96);
   transform-origin:top right;
+  pointer-events:none;
   transition:
-    opacity .24s ease,
-    visibility 0s linear .28s,
-    transform .38s cubic-bezier(.16,1,.3,1);
+    opacity .18s ease,
+    transform .18s ease;
 }
 
 .ai-chat-head .voice-wrap.open .voice-menu{
   opacity:1;
-  visibility:visible;
+  transform:translateY(0) scale(1);
   pointer-events:auto;
-  transform:translate3d(0,0,0) scale(1);
-  transition-delay:0s;
 }
 
 .ai-chat-head .my-voice-rows{
-  display:grid;
-  gap:3px;
+  max-height:min(314px,47vh);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:none;
 }
 
-.ai-chat-head .my-voices-empty{
-  padding:15px 12px;
-  color:rgba(255,255,255,.5);
-  font-size:12px;
-  line-height:1.4;
-  text-align:center;
+.ai-chat-head .my-voice-rows::-webkit-scrollbar{
+  display:none;
 }
 
-.ai-chat-head .ai-chat-voice-option{
-  width:100%;
-  min-height:46px;
+.ai-chat-head .voice-option{
   display:grid;
-  grid-template-columns:34px minmax(0,1fr) 18px;
+  grid-template-columns:34px minmax(0,1fr) 28px;
   align-items:center;
-  gap:9px;
-  padding:6px 9px 6px 7px;
-  border-radius:13px;
-  color:#fff;
-  background:transparent;
-  text-align:left;
-  transition:
-    background .2s ease,
-    transform .2s cubic-bezier(.2,.9,.2,1);
+  gap:8px;
+  min-height:44px;
+  padding:4px;
+  border-radius:15px;
 }
 
-.ai-chat-head .ai-chat-voice-option:active{
-  transform:scale(.975);
+.ai-chat-head .voice-option+.voice-option{
+  margin-top:2px;
 }
 
-.ai-chat-head .ai-chat-voice-option.active{
-  background:rgba(255,255,255,.085);
+.ai-chat-head .voice-option.voice-not-saved{
+  display:none;
 }
 
-.ai-chat-head .ai-chat-voice-option-avatar{
-  width:34px;
-  height:34px;
+.ai-chat-head .voice-option:has(.voice-select.active){
+  background:rgba(255,255,255,.08);
+}
+
+.ai-chat-head .voice-avatar{
+  grid-column:1;
+  grid-row:1;
+  position:relative;
+  width:32px;
+  height:32px;
+  display:block;
+  overflow:hidden;
+  border:1px solid #252525;
   border-radius:50%;
-  background:
-    linear-gradient(145deg,#2d2d2d,#111);
-  box-shadow:
-    inset 0 0 0 1px rgba(255,255,255,.09);
+  background:#171717 center/cover no-repeat;
 }
 
-.ai-chat-head .ai-chat-voice-option-avatar.has-image{
+.ai-chat-head .voice-avatar.has-image{
+  border-color:rgba(255,255,255,.22);
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.18);
+}
+
+.ai-chat-head .voice-avatar-image{
+  display:block;
+  width:100%;
+  height:100%;
+  border-radius:inherit;
   background-position:center;
   background-size:cover;
   background-repeat:no-repeat;
-  box-shadow:
-    inset 0 0 0 1px rgba(255,255,255,.16);
+  filter:none;
+  box-shadow:none;
 }
 
-.ai-chat-head .ai-chat-voice-option-name{
-  min-width:0;
+.ai-chat-head .voice-select{
+  grid-column:2;
+  width:100%;
+  height:34px;
   overflow:hidden;
-  font-size:13.5px;
-  font-weight:610;
-  line-height:1.2;
+  padding:0 5px;
+  border-radius:12px;
+  background:transparent;
+  color:rgba(255,255,255,.68);
+  font-size:13px;
+  font-weight:620;
+  text-align:left;
+}
+
+.ai-chat-head .voice-select span{
+  display:block;
+  overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
 
-.ai-chat-head .ai-chat-voice-option-check{
-  color:rgba(255,255,255,.84);
-  font-size:13px;
-  font-weight:700;
-  opacity:0;
-  transform:scale(.7);
-  transition:
-    opacity .2s ease,
-    transform .28s cubic-bezier(.16,1,.3,1);
+.ai-chat-head .voice-select.active{
+  color:#fff;
 }
 
-.ai-chat-head .ai-chat-voice-option.active
-.ai-chat-voice-option-check{
-  opacity:1;
-  transform:scale(1);
+.ai-chat-head .voice-preview{
+  grid-column:3;
+  grid-row:1;
+  position:relative;
+  width:28px;
+  height:28px;
+  display:grid;
+  place-items:center;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  color:rgba(255,255,255,.72);
+  box-shadow:none;
+  transition:
+    transform .18s ease,
+    color .18s ease,
+    opacity .18s ease;
+}
+
+.ai-chat-head .voice-preview:active{
+  transform:scale(.88);
+}
+
+.ai-chat-head .voice-preview-icon{
+  display:block;
+  font-size:11px;
+  line-height:1;
+  transform:translateX(1px);
+}
+
+.ai-chat-head .voice-preview.loading{
+  opacity:.7;
+}
+
+.ai-chat-head .voice-preview.loading
+.voice-preview-icon{
+  width:11px;
+  height:11px;
+  border:1.5px solid rgba(255,255,255,.22);
+  border-top-color:#fff;
+  border-radius:50%;
+  font-size:0;
+  transform:none;
+  animation:
+    aiChatPreviewSpin .7s linear infinite;
+}
+
+.ai-chat-head .voice-preview.playing{
+  background:transparent;
+  color:#fff;
+}
+
+.ai-chat-head .voice-preview.playing
+.voice-preview-icon{
+  width:8px;
+  height:10px;
+  border-left:2.5px solid currentColor;
+  border-right:2.5px solid currentColor;
+  font-size:0;
+  transform:none;
+}
+
+.ai-chat-head .my-voices-empty{
+  display:none;
+  padding:18px 12px;
+  color:rgba(255,255,255,.38);
+  font-size:11px;
+  font-weight:650;
+  text-align:center;
+}
+
+.ai-chat-head .my-voices-empty.show{
+  display:block;
+}
+
+.ai-chat-head .voice-library-open{
+  width:100%;
+  height:42px;
+  margin-top:5px;
+  padding:0 10px 0 13px;
+  display:grid;
+  grid-template-columns:1fr auto auto;
+  align-items:center;
+  gap:8px;
+  border-top:1px solid rgba(255,255,255,.1);
+  border-radius:0 0 14px 14px;
+  background:transparent;
+  color:#fff;
+  font-size:13px;
+  font-weight:780;
+  text-align:left;
+}
+
+.ai-chat-head .voice-library-open small{
+  color:rgba(255,255,255,.4);
+  font-size:9px;
+  font-weight:720;
+}
+
+.ai-chat-head .voice-library-open svg{
+  color:rgba(255,255,255,.48);
+  transition:transform .2s ease;
+}
+
+.ai-chat-head .voice-library-open:active svg{
+  transform:translateX(3px);
+}
+
+@keyframes aiChatPreviewSpin{
+  to{
+    transform:rotate(360deg);
+  }
 }
 
 @keyframes aiChatHeadIn{
