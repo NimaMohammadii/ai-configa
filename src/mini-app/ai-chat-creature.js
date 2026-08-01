@@ -2,7 +2,6 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   "use strict";
 
   const creatureId = "aiChatCreature";
-  const canvasId = "aiChatCreatureCanvas";
 
   if (document.getElementById(creatureId)) return;
 
@@ -11,27 +10,27 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     ".ai-chat-creature {",
     "  position: absolute;",
     "  z-index: 4;",
-    "  top: calc(11px + env(safe-area-inset-top));",
-    "  left: 14px;",
-    "  width: 54px;",
-    "  height: 54px;",
+    "  top: calc(12px + env(safe-area-inset-top));",
+    "  left: 15px;",
+    "  width: 52px;",
+    "  height: 52px;",
     "  pointer-events: none;",
     "  opacity: 0;",
-    "  transform: translate3d(-7px, -4px, 0) scale(.86);",
-    "  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .34));",
+    "  transform: translate3d(-5px, -3px, 0) scale(.84);",
+    "  filter: drop-shadow(0 7px 14px rgba(54, 12, 34, .32));",
     "  animation: aiCreatureArrive .82s cubic-bezier(.16, 1, .3, 1) .14s forwards;",
     "}",
     ".ai-chat-creature canvas {",
     "  display: block;",
-    "  width: 54px;",
-    "  height: 54px;",
+    "  width: 52px;",
+    "  height: 52px;",
     "}",
     "html.has-ai-chat-creature .ai-chat-messages {",
-    "  padding-top: calc(82px + env(safe-area-inset-top));",
+    "  padding-top: calc(80px + env(safe-area-inset-top));",
     "}",
     "@keyframes aiCreatureArrive {",
-    "  0% { opacity: 0; transform: translate3d(-7px, -4px, 0) scale(.86); }",
-    "  68% { opacity: 1; transform: translate3d(1px, 1px, 0) scale(1.035); }",
+    "  0% { opacity: 0; transform: translate3d(-5px, -3px, 0) scale(.84); }",
+    "  68% { opacity: 1; transform: translate3d(0, 1px, 0) scale(1.035); }",
     "  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }",
     "}",
     "@media (prefers-reduced-motion: reduce) {",
@@ -50,7 +49,6 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   host.setAttribute("aria-hidden", "true");
 
   const canvas = document.createElement("canvas");
-  canvas.id = canvasId;
   host.appendChild(canvas);
 
   const page = document.getElementById("aiChatPage");
@@ -62,7 +60,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   const context = canvas.getContext("2d");
   if (!context) return;
 
-  const size = 54;
+  const size = 52;
   const reducedMotion = Boolean(
     window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -75,7 +73,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   let targetGazeX = 0;
   let targetGazeY = 0;
   let pointerUntil = 0;
-  let nextBlinkAt = lastTime + 1800 + Math.random() * 1700;
+  let nextBlinkAt = lastTime + 1900 + Math.random() * 1500;
   let blinkStartedAt = -1;
 
   function resizeCanvas() {
@@ -90,50 +88,6 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  function roundedBlobPath(centerX, centerY, width, height, time) {
-    const left = centerX - width / 2;
-    const right = centerX + width / 2;
-    const top = centerY - height / 2;
-    const bottom = centerY + height / 2;
-    const wobble = Math.sin(time * 1.45) * 0.65;
-
-    context.beginPath();
-    context.moveTo(centerX, top - wobble * 0.35);
-    context.bezierCurveTo(
-      right - width * 0.16,
-      top - 0.8,
-      right + 0.7 + wobble,
-      centerY - height * 0.16,
-      right - wobble * 0.2,
-      centerY + height * 0.1
-    );
-    context.bezierCurveTo(
-      right - 0.6,
-      bottom - height * 0.13,
-      centerX + width * 0.18,
-      bottom + 0.8,
-      centerX,
-      bottom + wobble * 0.25
-    );
-    context.bezierCurveTo(
-      left + width * 0.16,
-      bottom + 0.8,
-      left - 0.7 - wobble,
-      centerY + height * 0.14,
-      left + wobble * 0.2,
-      centerY - height * 0.1
-    );
-    context.bezierCurveTo(
-      left + 0.6,
-      top + height * 0.1,
-      centerX - width * 0.18,
-      top - 0.8,
-      centerX,
-      top - wobble * 0.35
-    );
-    context.closePath();
-  }
-
   function blinkAmount(now) {
     if (blinkStartedAt < 0 && now >= nextBlinkAt) {
       blinkStartedAt = now;
@@ -141,11 +95,11 @@ export const AI_CHAT_CREATURE_JS = `(function () {
 
     if (blinkStartedAt < 0) return 0;
 
-    const progress = (now - blinkStartedAt) / 170;
+    const progress = (now - blinkStartedAt) / 180;
 
     if (progress >= 1) {
       blinkStartedAt = -1;
-      nextBlinkAt = now + 2500 + Math.random() * 2700;
+      nextBlinkAt = now + 2700 + Math.random() * 2500;
       return 0;
     }
 
@@ -156,66 +110,158 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     if (now < pointerUntil) return;
 
     targetGazeX =
-      Math.sin(seconds * 0.63) * 0.62 +
-      Math.sin(seconds * 0.19 + 1.3) * 0.18;
+      Math.sin(seconds * 0.57) * 0.72 +
+      Math.sin(seconds * 0.21 + 1.4) * 0.15;
     targetGazeY =
-      Math.sin(seconds * 0.41 + 2.1) * 0.33;
+      Math.sin(seconds * 0.39 + 2.3) * 0.42;
   }
 
-  function drawEye(centerX, centerY, blink, seconds) {
-    const eyeWidth = 8.7;
-    const eyeHeight = Math.max(0.8, 11.4 * (1 - blink * 0.94));
-    const pupilX = centerX + gazeX * 1.8;
-    const pupilY = centerY + gazeY * 1.45;
-    const pupilRadius = 2.35;
+  function drawEye(centerX, centerY, blink) {
+    const width = 3.8;
+    const openHeight = 8.3;
+    const height = Math.max(0.75, openHeight * (1 - blink * 0.93));
+    const x = centerX + gazeX * 1.35;
+    const y = centerY + gazeY * 0.85;
 
     context.save();
-    context.beginPath();
-    context.ellipse(centerX, centerY, eyeWidth / 2, eyeHeight / 2, 0, 0, Math.PI * 2);
-    context.clip();
+    context.shadowColor = "rgba(255, 240, 244, .34)";
+    context.shadowBlur = 2.8;
 
     const eyeGradient = context.createLinearGradient(
-      centerX,
-      centerY - eyeHeight / 2,
-      centerX,
-      centerY + eyeHeight / 2
+      x,
+      y - height / 2,
+      x,
+      y + height / 2
     );
     eyeGradient.addColorStop(0, "rgba(255, 255, 255, .98)");
-    eyeGradient.addColorStop(1, "rgba(222, 218, 229, .92)");
+    eyeGradient.addColorStop(1, "rgba(244, 230, 234, .94)");
+
     context.fillStyle = eyeGradient;
-    context.fillRect(
-      centerX - eyeWidth / 2,
-      centerY - eyeHeight / 2,
-      eyeWidth,
-      eyeHeight
-    );
-
-    context.fillStyle = "rgba(10, 9, 12, .96)";
     context.beginPath();
-    context.arc(pupilX, pupilY, pupilRadius, 0, Math.PI * 2);
-    context.fill();
-
-    context.fillStyle = "rgba(255, 255, 255, .88)";
-    context.beginPath();
-    context.arc(
-      pupilX - 0.72,
-      pupilY - 0.85,
-      0.62 + Math.sin(seconds * 0.8) * 0.03,
-      0,
-      Math.PI * 2
+    context.roundRect(
+      x - width / 2,
+      y - height / 2,
+      width,
+      height,
+      Math.min(width / 2, height / 2)
     );
     context.fill();
     context.restore();
+  }
 
-    if (blink > 0.78) {
-      context.strokeStyle = "rgba(12, 11, 14, .72)";
-      context.lineWidth = 1.15;
-      context.lineCap = "round";
-      context.beginPath();
-      context.moveTo(centerX - 3.3, centerY);
-      context.quadraticCurveTo(centerX, centerY + 0.9, centerX + 3.3, centerY);
-      context.stroke();
-    }
+  function drawBody(centerX, centerY, radiusX, radiusY, seconds) {
+    context.save();
+
+    context.shadowColor = "rgba(218, 67, 115, .25)";
+    context.shadowBlur = 7;
+
+    const bodyGradient = context.createRadialGradient(
+      centerX - radiusX * 0.34,
+      centerY - radiusY * 0.4,
+      radiusX * 0.08,
+      centerX,
+      centerY,
+      radiusX * 1.08
+    );
+    bodyGradient.addColorStop(0, "rgba(255, 190, 197, 1)");
+    bodyGradient.addColorStop(0.28, "rgba(239, 104, 133, 1)");
+    bodyGradient.addColorStop(0.7, "rgba(177, 48, 96, 1)");
+    bodyGradient.addColorStop(1, "rgba(83, 23, 55, 1)");
+
+    context.fillStyle = bodyGradient;
+    context.beginPath();
+    context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+
+    context.save();
+    context.beginPath();
+    context.ellipse(
+      centerX,
+      centerY,
+      radiusX - 0.55,
+      radiusY - 0.55,
+      0,
+      0,
+      Math.PI * 2
+    );
+    context.clip();
+
+    const topSheen = context.createRadialGradient(
+      centerX - radiusX * 0.34,
+      centerY - radiusY * 0.54,
+      0,
+      centerX - radiusX * 0.2,
+      centerY - radiusY * 0.35,
+      radiusX * 0.72
+    );
+    topSheen.addColorStop(0, "rgba(255, 255, 255, .34)");
+    topSheen.addColorStop(0.42, "rgba(255, 255, 255, .09)");
+    topSheen.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+    context.fillStyle = topSheen;
+    context.fillRect(0, 0, size, size);
+
+    const lowerGlow = context.createRadialGradient(
+      centerX,
+      centerY + radiusY * 0.9,
+      0,
+      centerX,
+      centerY + radiusY * 0.82,
+      radiusX * 0.92
+    );
+    lowerGlow.addColorStop(0, "rgba(255, 137, 151, .5)");
+    lowerGlow.addColorStop(0.36, "rgba(255, 113, 138, .16)");
+    lowerGlow.addColorStop(1, "rgba(255, 113, 138, 0)");
+
+    context.fillStyle = lowerGlow;
+    context.fillRect(0, 0, size, size);
+
+    const movingSheenX =
+      centerX - radiusX * 0.52 + Math.sin(seconds * 0.68) * 1.1;
+    const movingSheen = context.createLinearGradient(
+      movingSheenX,
+      centerY - radiusY,
+      movingSheenX + radiusX * 0.75,
+      centerY + radiusY
+    );
+    movingSheen.addColorStop(0, "rgba(255, 255, 255, .05)");
+    movingSheen.addColorStop(0.5, "rgba(255, 255, 255, .015)");
+    movingSheen.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+    context.fillStyle = movingSheen;
+    context.fillRect(0, 0, size, size);
+    context.restore();
+
+    context.strokeStyle = "rgba(255, 205, 211, .22)";
+    context.lineWidth = 0.75;
+    context.beginPath();
+    context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+    context.stroke();
+  }
+
+  function drawGroundGlow(centerX, centerY, radiusX) {
+    context.save();
+    context.globalAlpha = 0.58;
+    context.filter = "blur(3px)";
+
+    const glow = context.createRadialGradient(
+      centerX,
+      centerY,
+      0,
+      centerX,
+      centerY,
+      radiusX
+    );
+    glow.addColorStop(0, "rgba(233, 84, 126, .42)");
+    glow.addColorStop(0.5, "rgba(185, 47, 98, .16)");
+    glow.addColorStop(1, "rgba(95, 22, 57, 0)");
+
+    context.fillStyle = glow;
+    context.beginPath();
+    context.ellipse(centerX, centerY, radiusX, 3.2, 0, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
   }
 
   function draw(now) {
@@ -232,63 +278,20 @@ export const AI_CHAT_CREATURE_JS = `(function () {
 
     context.clearRect(0, 0, size, size);
 
-    const breathe = Math.sin(seconds * 2.05);
-    const bob = Math.sin(seconds * 1.34) * 0.72;
-    const centerX = size / 2 + Math.sin(seconds * 0.72) * 0.34;
-    const centerY = size / 2 + bob;
-    const bodyWidth = 42.5 + breathe * 0.7;
-    const bodyHeight = 40.5 - breathe * 0.45;
+    const breathe = Math.sin(seconds * 1.85);
+    const bob = Math.sin(seconds * 1.28) * 0.62;
+    const centerX = size / 2 + Math.sin(seconds * 0.71) * 0.2;
+    const centerY = 24.8 + bob;
+    const radiusX = 19.4 + breathe * 0.24;
+    const radiusY = 19.4 - breathe * 0.18;
 
-    context.save();
-    context.globalAlpha = 0.42;
-    context.filter = "blur(4px)";
-    context.fillStyle = "rgba(86, 48, 105, .32)";
-    context.beginPath();
-    context.ellipse(centerX, centerY + 16.5, 14.2, 3.9, 0, 0, Math.PI * 2);
-    context.fill();
-    context.restore();
-
-    roundedBlobPath(centerX, centerY, bodyWidth, bodyHeight, seconds);
-
-    const bodyGradient = context.createRadialGradient(
-      centerX - 8,
-      centerY - 10,
-      3,
-      centerX,
-      centerY,
-      bodyWidth * 0.62
-    );
-    bodyGradient.addColorStop(0, "rgba(72, 68, 77, 1)");
-    bodyGradient.addColorStop(0.48, "rgba(35, 32, 40, 1)");
-    bodyGradient.addColorStop(1, "rgba(13, 12, 16, 1)");
-    context.fillStyle = bodyGradient;
-    context.fill();
-
-    context.strokeStyle = "rgba(181, 145, 201, .18)";
-    context.lineWidth = 0.9;
-    context.stroke();
-
-    context.save();
-    roundedBlobPath(centerX, centerY, bodyWidth - 3, bodyHeight - 3, seconds);
-    context.clip();
-
-    const sheen = context.createLinearGradient(
-      centerX - 16,
-      centerY - 18,
-      centerX + 12,
-      centerY + 16
-    );
-    sheen.addColorStop(0, "rgba(255, 255, 255, .13)");
-    sheen.addColorStop(0.33, "rgba(255, 255, 255, .025)");
-    sheen.addColorStop(1, "rgba(255, 255, 255, 0)");
-    context.fillStyle = sheen;
-    context.fillRect(5, 4, 42, 42);
-    context.restore();
+    drawGroundGlow(centerX, centerY + radiusY + 3.8, radiusX * 0.76);
+    drawBody(centerX, centerY, radiusX, radiusY, seconds);
 
     const blink = blinkAmount(now);
-    const eyeY = centerY - 0.6 + breathe * 0.14;
-    drawEye(centerX - 6.3, eyeY, blink, seconds);
-    drawEye(centerX + 6.3, eyeY, blink, seconds);
+    const eyeY = centerY - 0.6;
+    drawEye(centerX - 5.6, eyeY, blink);
+    drawEye(centerX + 5.6, eyeY, blink);
 
     if (!reducedMotion && !document.hidden) {
       animationFrame = requestAnimationFrame(draw);
@@ -297,12 +300,18 @@ export const AI_CHAT_CREATURE_JS = `(function () {
 
   function updatePointerGaze(event) {
     const bounds = canvas.getBoundingClientRect();
-    const x = (event.clientX - (bounds.left + bounds.width / 2)) / window.innerWidth;
-    const y = (event.clientY - (bounds.top + bounds.height / 2)) / window.innerHeight;
+    const centerX = bounds.left + bounds.width / 2;
+    const centerY = bounds.top + bounds.height / 2;
 
-    targetGazeX = Math.max(-1, Math.min(1, x * 4.2));
-    targetGazeY = Math.max(-0.8, Math.min(0.8, y * 4.2));
-    pointerUntil = performance.now() + 1300;
+    targetGazeX = Math.max(
+      -1,
+      Math.min(1, (event.clientX - centerX) / (window.innerWidth * 0.18))
+    );
+    targetGazeY = Math.max(
+      -0.85,
+      Math.min(0.85, (event.clientY - centerY) / (window.innerHeight * 0.18))
+    );
+    pointerUntil = performance.now() + 1350;
   }
 
   function resume() {
@@ -313,6 +322,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
 
   window.addEventListener("pointermove", updatePointerGaze, { passive: true });
   window.addEventListener("pointerdown", updatePointerGaze, { passive: true });
+
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden && !reducedMotion) resume();
   });
