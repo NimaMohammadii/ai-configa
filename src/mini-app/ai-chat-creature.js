@@ -10,7 +10,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     ".ai-chat-creature {",
     "  position: absolute;",
     "  z-index: 4;",
-    "  top: calc(11px + env(safe-area-inset-top));",
+    "  top: calc(7px + env(safe-area-inset-top));",
     "  left: 14px;",
     "  width: 56px;",
     "  height: 56px;",
@@ -208,38 +208,38 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  float flowC = sin((p.x + p.y) * 5.1 + uTime * 0.36);",
     "  float liquid = (flowA + flowB * 0.55 + flowC * 0.35) / 1.9;",
     "",
-    "  vec3 deepPurple = vec3(0.105, 0.045, 0.18);",
-    "  vec3 middlePurple = vec3(0.31, 0.13, 0.47);",
-    "  vec3 softPurple = vec3(0.63, 0.43, 0.79);",
-    "  vec3 glassPurple = vec3(0.82, 0.68, 0.94);",
+    "  vec3 obsidian = vec3(0.012, 0.012, 0.016);",
+    "  vec3 graphite = vec3(0.12, 0.12, 0.14);",
+    "  vec3 silver = vec3(0.5, 0.5, 0.54);",
+    "  vec3 pearl = vec3(0.94, 0.94, 0.98);",
     "",
     "  float volume = clamp(diffuse * 0.62 + sphereZ * 0.27, 0.0, 1.0);",
-    "  vec3 color = mix(deepPurple, middlePurple, volume);",
-    "  color = mix(color, softPurple, diffuse * diffuse * 0.38);",
-    "  color += liquid * vec3(0.035, 0.018, 0.052) * (0.55 + uState);",
+    "  vec3 color = mix(obsidian, graphite, volume);",
+    "  color = mix(color, silver, diffuse * diffuse * 0.38);",
+    "  color += liquid * vec3(0.034, 0.034, 0.038) * (0.55 + uState);",
     "",
     "  vec3 halfDirection = normalize(keyLight + viewDirection);",
     "  float specular = pow(max(dot(normal, halfDirection), 0.0), 72.0);",
     "  float broadSpecular = pow(max(dot(normal, halfDirection), 0.0), 18.0);",
-    "  color += glassPurple * specular * 0.9;",
-    "  color += glassPurple * broadSpecular * 0.13;",
+    "  color += pearl * specular * 0.9;",
+    "  color += pearl * broadSpecular * 0.13;",
     "",
     "  float lowerReflection = pow(max(fill, 0.0), 3.2);",
-    "  color += vec3(0.24, 0.12, 0.36) * lowerReflection * 0.42;",
+    "  color += vec3(0.18, 0.18, 0.2) * lowerReflection * 0.42;",
     "",
     "  float innerRing = smoothstep(0.58, 0.98, radiusSquared);",
-    "  color += vec3(0.21, 0.11, 0.32) * innerRing * 0.2;",
-    "  color += glassPurple * fresnel * (0.19 + uHappy * 0.08);",
+    "  color += vec3(0.14, 0.14, 0.16) * innerRing * 0.2;",
+    "  color += pearl * fresnel * (0.19 + uHappy * 0.08);",
     "",
     "  float movingHighlight = 1.0 - smoothstep(",
     "    0.0,",
     "    0.08,",
     "    distance(p, vec2(-0.34 + sin(uTime * 0.34) * 0.025, 0.42))",
     "  );",
-    "  color += glassPurple * movingHighlight * 0.42;",
+    "  color += pearl * movingHighlight * 0.42;",
     "",
     "  float touchWave = sin(radiusSquared * 24.0 - uTime * 8.0);",
-    "  color += vec3(0.08, 0.04, 0.12) * touchWave * uTouch * 0.08;",
+    "  color += vec3(0.06, 0.06, 0.07) * touchWave * uTouch * 0.08;",
     "",
     "  float edge = 1.0 - smoothstep(0.965, 1.0, radiusSquared);",
     "  float alpha = edge * (0.9 + fresnel * 0.1);",
@@ -430,13 +430,13 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   }
 
   function drawEye(centerX, centerY, blink) {
-    const width = 4.15;
-    const openHeight = 8.7;
+    const width = 4.65;
+    const openHeight = 9.2;
     const height = Math.max(0.7, openHeight * (1 - blink * 0.94));
     const x = centerX + gazeX * 1.85;
     const y = centerY + gazeY * 1.25;
 
-    faceContext.fillStyle = "rgba(12, 6, 20, .34)";
+    faceContext.fillStyle = "rgba(0, 0, 0, .38)";
     faceContext.beginPath();
     faceContext.roundRect(
       x - (width + 1.6) / 2,
@@ -454,8 +454,8 @@ export const AI_CHAT_CREATURE_JS = `(function () {
       y + height / 2
     );
     gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
-    gradient.addColorStop(0.58, "rgba(246, 240, 251, .99)");
-    gradient.addColorStop(1, "rgba(216, 203, 226, .97)");
+    gradient.addColorStop(0.58, "rgba(246, 246, 248, .99)");
+    gradient.addColorStop(1, "rgba(218, 218, 222, .97)");
 
     faceContext.fillStyle = gradient;
     faceContext.beginPath();
