@@ -19,10 +19,22 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     "  transform: translate3d(-4px, -3px, 0) scale(.88);",
     "  animation: aiCreatureArrive .82s cubic-bezier(.16, 1, .3, 1) .14s forwards;",
     "}",
+    ".ai-chat-creature-stage {",
+    "  position: relative;",
+    "  width: 56px;",
+    "  height: 56px;",
+    "  transform-origin: center;",
+    "  will-change: transform;",
+    "}",
     ".ai-chat-creature canvas {",
+    "  position: absolute;",
+    "  inset: 0;",
     "  display: block;",
     "  width: 56px;",
     "  height: 56px;",
+    "}",
+    ".ai-chat-creature-face {",
+    "  z-index: 2;",
     "}",
     "html.has-ai-chat-creature .ai-chat-messages {",
     "  padding-top: calc(84px + env(safe-area-inset-top));",
@@ -47,8 +59,18 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   host.className = "ai-chat-creature";
   host.setAttribute("aria-hidden", "true");
 
-  const canvas = document.createElement("canvas");
-  host.appendChild(canvas);
+  const stage = document.createElement("div");
+  stage.className = "ai-chat-creature-stage";
+
+  const sphereCanvas = document.createElement("canvas");
+  sphereCanvas.className = "ai-chat-creature-sphere";
+
+  const faceCanvas = document.createElement("canvas");
+  faceCanvas.className = "ai-chat-creature-face";
+
+  stage.appendChild(sphereCanvas);
+  stage.appendChild(faceCanvas);
+  host.appendChild(stage);
 
   const page = document.getElementById("aiChatPage");
   if (!page) return;
@@ -56,15 +78,26 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   page.appendChild(host);
   document.documentElement.classList.add("has-ai-chat-creature");
 
-  const context = canvas.getContext("2d", {
+  const gl = sphereCanvas.getContext("webgl", {
+    alpha: true,
+    antialias: true,
+    depth: false,
+    stencil: false,
+    premultipliedAlpha: false,
+    preserveDrawingBuffer: false,
+    powerPreference: "high-performance"
+  });
+
+  if (!gl) return;
+
+  const faceContext = faceCanvas.getContext("2d", {
     alpha: true,
     desynchronized: true
   });
-  if (!context) return;
+
+  if (!faceContext) return;
 
   const size = 56;
-  const particleCount = 380;
-  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
   const reducedMotion = Boolean(
     window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -79,8 +112,6 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     [-0.1, 0.12],
     [0.56, -0.1]
   ];
-
-  const particles = createParticles();
 
   let animationFrame = 0;
   let lastTime = performance.now();
@@ -97,52 +128,191 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   let nextBlinkAt = lastTime + 1700 + Math.random() * 1300;
   let blinkStartedAt = -1;
   let secondBlinkAt = -1;
+  let pixelRatio = 1;
 
   function clamp(value, minimum, maximum) {
     return Math.max(minimum, Math.min(maximum, value));
   }
 
-  function mix(from, to, amount) {
-    return from + (to - from) * amount;
-  }
+  function compileShader(type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
 
-  function seededValue(index) {
-    const value = Math.sin(index * 12.9898 + 78.233) * 43758.5453;
-    return value - Math.floor(value);
-  }
-
-  function createParticles() {
-    const items = [];
-
-    for (let index = 0; index < particleCount; index += 1) {
-      const y = 1 - 2 * (index + 0.5) / particleCount;
-      const ringRadius = Math.sqrt(Math.max(0, 1 - y * y));
-      const angle = index * goldenAngle;
-
-      items.push({
-        x: Math.cos(angle) * ringRadius,
-        y,
-        z: Math.sin(angle) * ringRadius,
-        phase: seededValue(index) * Math.PI * 2,
-        weight: 0.72 + seededValue(index + 91) * 0.48
-      });
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      const message = gl.getShaderInfoLog(shader) || "Shader compilation failed";
+      gl.deleteShader(shader);
+      throw new Error(message);
     }
 
-    return items;
+    return shader;
   }
 
-  function resizeCanvas() {
-    const dpr = Math.min(4, (window.devicePixelRatio || 1) * 1.65);
-    const pixels = Math.round(size * dpr);
+  function createProgram(vertexSource, fragmentSource) {
+    const program = gl.createProgram();
+    const vertexShader = compileShader(gl.VERTEX_SHADER, vertexSource);
+    const fragmentShader = compileShader(gl.FRAGMENT_SHADER, fragmentSource);
 
-    if (canvas.width !== pixels || canvas.height !== pixels) {
-      canvas.width = pixels;
-      canvas.height = pixels;
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const message = gl.getProgramInfoLog(program) || "Shader linking failed";
+      gl.deleteProgram(program);
+      throw new Error(message);
     }
 
-    context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
+    return program;
+  }
+
+  const vertexShaderSource = [
+    "attribute vec2 aPosition;",
+    "varying vec2 vUv;",
+    "void main() {",
+    "  vUv = aPosition * 0.5 + 0.5;",
+    "  gl_Position = vec4(aPosition, 0.0, 1.0);",
+    "}"
+  ].join("\\n");
+
+  const fragmentShaderSource = [
+    "precision highp float;",
+    "varying vec2 vUv;",
+    "uniform float uTime;",
+    "uniform float uState;",
+    "uniform float uTouch;",
+    "uniform float uHappy;",
+    "",
+    "void main() {",
+    "  vec2 p = (vUv - 0.5) * 2.0 / 0.82;",
+    "  float radiusSquared = dot(p, p);",
+    "",
+    "  if (radiusSquared > 1.0) discard;",
+    "",
+    "  float sphereZ = sqrt(max(0.0, 1.0 - radiusSquared));",
+    "  vec3 normal = normalize(vec3(p.x, p.y, sphereZ));",
+    "  vec3 viewDirection = vec3(0.0, 0.0, 1.0);",
+    "  vec3 keyLight = normalize(vec3(-0.62, 0.72, 0.84));",
+    "  vec3 fillLight = normalize(vec3(0.72, -0.55, 0.48));",
+    "",
+    "  float diffuse = max(dot(normal, keyLight), 0.0);",
+    "  float fill = max(dot(normal, fillLight), 0.0);",
+    "  float fresnel = pow(1.0 - sphereZ, 2.35);",
+    "",
+    "  float flowSpeed = 0.64 + uState * 1.45;",
+    "  float flowA = sin(p.y * 7.2 + p.x * 2.1 + uTime * flowSpeed);",
+    "  float flowB = sin(p.x * 8.4 - p.y * 3.6 - uTime * (0.48 + uState));",
+    "  float flowC = sin((p.x + p.y) * 5.1 + uTime * 0.36);",
+    "  float liquid = (flowA + flowB * 0.55 + flowC * 0.35) / 1.9;",
+    "",
+    "  vec3 deepPurple = vec3(0.105, 0.045, 0.18);",
+    "  vec3 middlePurple = vec3(0.31, 0.13, 0.47);",
+    "  vec3 softPurple = vec3(0.63, 0.43, 0.79);",
+    "  vec3 glassPurple = vec3(0.82, 0.68, 0.94);",
+    "",
+    "  float volume = clamp(diffuse * 0.62 + sphereZ * 0.27, 0.0, 1.0);",
+    "  vec3 color = mix(deepPurple, middlePurple, volume);",
+    "  color = mix(color, softPurple, diffuse * diffuse * 0.38);",
+    "  color += liquid * vec3(0.035, 0.018, 0.052) * (0.55 + uState);",
+    "",
+    "  vec3 halfDirection = normalize(keyLight + viewDirection);",
+    "  float specular = pow(max(dot(normal, halfDirection), 0.0), 72.0);",
+    "  float broadSpecular = pow(max(dot(normal, halfDirection), 0.0), 18.0);",
+    "  color += glassPurple * specular * 0.9;",
+    "  color += glassPurple * broadSpecular * 0.13;",
+    "",
+    "  float lowerReflection = pow(max(fill, 0.0), 3.2);",
+    "  color += vec3(0.24, 0.12, 0.36) * lowerReflection * 0.42;",
+    "",
+    "  float innerRing = smoothstep(0.58, 0.98, radiusSquared);",
+    "  color += vec3(0.21, 0.11, 0.32) * innerRing * 0.2;",
+    "  color += glassPurple * fresnel * (0.19 + uHappy * 0.08);",
+    "",
+    "  float movingHighlight = smoothstep(",
+    "    0.08,",
+    "    0.0,",
+    "    distance(p, vec2(-0.34 + sin(uTime * 0.34) * 0.025, 0.42))",
+    "  );",
+    "  color += glassPurple * movingHighlight * 0.42;",
+    "",
+    "  float touchWave = sin(radiusSquared * 24.0 - uTime * 8.0);",
+    "  color += vec3(0.08, 0.04, 0.12) * touchWave * uTouch * 0.08;",
+    "",
+    "  float edge = 1.0 - smoothstep(0.965, 1.0, radiusSquared);",
+    "  float alpha = edge * (0.9 + fresnel * 0.1);",
+    "  gl_FragColor = vec4(color, alpha);",
+    "}"
+  ].join("\\n");
+
+  const program = createProgram(
+    vertexShaderSource,
+    fragmentShaderSource
+  );
+
+  const positionLocation = gl.getAttribLocation(program, "aPosition");
+  const timeLocation = gl.getUniformLocation(program, "uTime");
+  const stateLocation = gl.getUniformLocation(program, "uState");
+  const touchLocation = gl.getUniformLocation(program, "uTouch");
+  const happyLocation = gl.getUniformLocation(program, "uHappy");
+
+  const positionBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array([
+      -1, -1,
+      1, -1,
+      -1, 1,
+      -1, 1,
+      1, -1,
+      1, 1
+    ]),
+    gl.STATIC_DRAW
+  );
+
+  gl.useProgram(program);
+  gl.enableVertexAttribArray(positionLocation);
+  gl.vertexAttribPointer(
+    positionLocation,
+    2,
+    gl.FLOAT,
+    false,
+    0,
+    0
+  );
+  gl.disable(gl.DEPTH_TEST);
+  gl.disable(gl.CULL_FACE);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  function resizeCanvases() {
+    pixelRatio = Math.min(4, (window.devicePixelRatio || 1) * 1.65);
+    const pixels = Math.round(size * pixelRatio);
+
+    if (
+      sphereCanvas.width !== pixels ||
+      sphereCanvas.height !== pixels
+    ) {
+      sphereCanvas.width = pixels;
+      sphereCanvas.height = pixels;
+      faceCanvas.width = pixels;
+      faceCanvas.height = pixels;
+      gl.viewport(0, 0, pixels, pixels);
+    }
+
+    faceContext.setTransform(
+      pixelRatio,
+      0,
+      0,
+      pixelRatio,
+      0,
+      0
+    );
+    faceContext.imageSmoothingEnabled = true;
+    faceContext.imageSmoothingQuality = "high";
   }
 
   function chooseNextGaze(now) {
@@ -241,167 +411,22 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     return Math.sin(progress * Math.PI) * (1 - progress * 0.2);
   }
 
-  function rotatePoint(point, yaw, pitch, twist) {
-    const localYaw = yaw + point.y * twist;
-    const sinYaw = Math.sin(localYaw);
-    const cosYaw = Math.cos(localYaw);
-
-    const yawX = point.x * cosYaw + point.z * sinYaw;
-    const yawZ = -point.x * sinYaw + point.z * cosYaw;
-
-    const sinPitch = Math.sin(pitch);
-    const cosPitch = Math.cos(pitch);
-
-    return {
-      x: yawX,
-      y: point.y * cosPitch - yawZ * sinPitch,
-      z: point.y * sinPitch + yawZ * cosPitch
-    };
+  function stateValue() {
+    if (creatureState === "searching") return 1;
+    if (creatureState === "thinking") return 0.48;
+    if (creatureState === "happy") return 0.26;
+    return 0;
   }
 
-  function particleColor(light, alpha) {
-    const amount = clamp(light, 0, 1);
-    const red = Math.round(mix(68, 213, amount));
-    const green = Math.round(mix(38, 181, amount));
-    const blue = Math.round(mix(111, 242, amount));
-
-    return "rgba(" + red + "," + green + "," + blue + "," + alpha + ")";
-  }
-
-  function projectParticles(seconds, centerX, centerY, radiusX, radiusY) {
-    const searching = creatureState === "searching";
-    const thinking = creatureState === "thinking";
-    const rotationSpeed = searching ? 0.82 : thinking ? 0.31 : 0.19;
-    const waveStrength = searching ? 0.055 : thinking ? 0.07 : 0.032;
-    const twist = searching
-      ? Math.sin(seconds * 1.7) * 0.7
-      : Math.sin(seconds * 0.42) * 0.12;
-    const yaw = seconds * rotationSpeed + Math.sin(seconds * 0.31) * 0.16;
-    const pitch = 0.15 + Math.sin(seconds * 0.29) * 0.11;
-    const projected = [];
-
-    for (const particle of particles) {
-      const rotated = rotatePoint(particle, yaw, pitch, twist);
-      const wave = 1 + waveStrength * Math.sin(
-        seconds * (searching ? 5.4 : 2.35) +
-        particle.phase +
-        rotated.y * 4.2
-      );
-      const perspective = 1 + rotated.z * 0.075;
-      const depth = (rotated.z + 1) / 2;
-      const rim = Math.pow(1 - Math.abs(rotated.z), 5);
-      const light = clamp(
-        0.2 +
-        depth * 0.58 +
-        (-rotated.x - rotated.y) * 0.11 +
-        rim * 0.13,
-        0,
-        1
-      );
-      const alpha = clamp(
-        0.14 + depth * 0.77 + rim * 0.08,
-        0.12,
-        0.98
-      );
-      const dotRadius = (
-        0.24 +
-        depth * 0.72 +
-        rim * 0.11
-      ) * particle.weight;
-
-      projected.push({
-        x: centerX + rotated.x * radiusX * wave * perspective,
-        y: centerY - rotated.y * radiusY * wave * perspective,
-        z: rotated.z,
-        light,
-        alpha,
-        radius: dotRadius
-      });
-    }
-
-    projected.sort(function (first, second) {
-      return first.z - second.z;
-    });
-
-    return projected;
-  }
-
-  function drawParticleGlow(projected) {
-    context.save();
-    context.globalCompositeOperation = "lighter";
-    context.filter = "blur(.75px)";
-
-    for (const particle of projected) {
-      if (particle.light < 0.7 || particle.z < 0.05) continue;
-
-      context.fillStyle = particleColor(
-        particle.light,
-        particle.alpha * 0.16
-      );
-      context.beginPath();
-      context.arc(
-        particle.x,
-        particle.y,
-        particle.radius * 2.45,
-        0,
-        Math.PI * 2
-      );
-      context.fill();
-    }
-
-    context.restore();
-  }
-
-  function drawParticleCores(projected) {
-    context.save();
-
-    for (const particle of projected) {
-      context.fillStyle = particleColor(
-        particle.light,
-        particle.alpha
-      );
-      context.beginPath();
-      context.arc(
-        particle.x,
-        particle.y,
-        Math.max(0.18, particle.radius),
-        0,
-        Math.PI * 2
-      );
-      context.fill();
-
-      if (particle.light > 0.86 && particle.z > 0.25) {
-        context.fillStyle = "rgba(242, 227, 255, " +
-          (particle.alpha * 0.5) + ")";
-        context.beginPath();
-        context.arc(
-          particle.x - particle.radius * 0.18,
-          particle.y - particle.radius * 0.2,
-          Math.max(0.12, particle.radius * 0.32),
-          0,
-          Math.PI * 2
-        );
-        context.fill();
-      }
-    }
-
-    context.restore();
-  }
-
-  function clearEyeSpace(centerX, centerY, width, height) {
-    context.save();
-    context.globalCompositeOperation = "destination-out";
-    context.fillStyle = "rgba(0, 0, 0, .94)";
-    context.beginPath();
-    context.roundRect(
-      centerX - width / 2,
-      centerY - height / 2,
-      width,
-      height,
-      width / 2
-    );
-    context.fill();
-    context.restore();
+  function renderSphere(seconds, touch, happy) {
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(program);
+    gl.uniform1f(timeLocation, seconds);
+    gl.uniform1f(stateLocation, stateValue());
+    gl.uniform1f(touchLocation, touch);
+    gl.uniform1f(happyLocation, happy);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
   function drawEye(centerX, centerY, blink) {
@@ -411,9 +436,18 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     const x = centerX + gazeX * 1.85;
     const y = centerY + gazeY * 1.25;
 
-    clearEyeSpace(x, y, width + 1.65, openHeight + 1.8);
+    faceContext.fillStyle = "rgba(12, 6, 20, .34)";
+    faceContext.beginPath();
+    faceContext.roundRect(
+      x - (width + 1.6) / 2,
+      y - (openHeight + 1.8) / 2,
+      width + 1.6,
+      openHeight + 1.8,
+      (width + 1.6) / 2
+    );
+    faceContext.fill();
 
-    const gradient = context.createLinearGradient(
+    const gradient = faceContext.createLinearGradient(
       x,
       y - height / 2,
       x,
@@ -423,33 +457,43 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     gradient.addColorStop(0.58, "rgba(246, 240, 251, .99)");
     gradient.addColorStop(1, "rgba(216, 203, 226, .97)");
 
-    context.fillStyle = gradient;
-    context.beginPath();
-    context.roundRect(
+    faceContext.fillStyle = gradient;
+    faceContext.beginPath();
+    faceContext.roundRect(
       x - width / 2,
       y - height / 2,
       width,
       height,
       Math.min(width / 2, height / 2)
     );
-    context.fill();
+    faceContext.fill();
 
     if (height > 2.2) {
-      context.fillStyle = "rgba(255, 255, 255, .55)";
-      context.beginPath();
-      context.roundRect(
+      faceContext.fillStyle = "rgba(255, 255, 255, .55)";
+      faceContext.beginPath();
+      faceContext.roundRect(
         x - width * 0.22,
         y - height * 0.38,
         width * 0.44,
         height * 0.45,
         width * 0.2
       );
-      context.fill();
+      faceContext.fill();
     }
   }
 
+  function renderFace(blink, breathe) {
+    faceContext.clearRect(0, 0, size, size);
+
+    const centerX = size / 2;
+    const centerY = size / 2 - 0.45 + breathe * 0.06;
+
+    drawEye(centerX - 5.05, centerY, blink);
+    drawEye(centerX + 5.05, centerY, blink);
+  }
+
   function draw(now) {
-    resizeCanvas();
+    resizeCanvases();
 
     const elapsed = Math.min(40, now - lastTime);
     const gazeEase = 1 - Math.pow(0.7, elapsed / 16.67);
@@ -460,51 +504,32 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     gazeX += (targetGazeX - gazeX) * gazeEase;
     gazeY += (targetGazeY - gazeY) * gazeEase;
 
-    context.clearRect(0, 0, size, size);
-
-    const searching = creatureState === "searching";
-    const thinking = creatureState === "thinking";
     const touch = touchAmount(now);
     const happy = happyAmount(now);
-    const breathe = Math.sin(seconds * (thinking ? 2.6 : 1.85));
-    const energy = searching ? 0.52 : thinking ? 0.28 : 0;
+    const thinking = creatureState === "thinking";
+    const searching = creatureState === "searching";
+    const breathe = Math.sin(seconds * (thinking ? 2.55 : 1.82));
+    const energy = searching ? 0.48 : thinking ? 0.24 : 0;
 
-    const centerX =
-      size / 2 +
-      Math.sin(seconds * (1.12 + energy)) * (0.72 + energy * 0.5);
-    const centerY =
-      size / 2 +
-      Math.sin(seconds * (1.38 + energy)) * (0.78 + energy * 0.42) -
-      happy * 1.9;
+    const moveX =
+      Math.sin(seconds * (1.1 + energy)) * (0.68 + energy * 0.42);
+    const moveY =
+      Math.sin(seconds * (1.36 + energy)) * (0.76 + energy * 0.4) -
+      happy * 1.85;
+    const uniformScale =
+      1 +
+      breathe * (thinking ? 0.012 : 0.007) +
+      happy * 0.018;
+    const scaleX = uniformScale + touch * 0.038;
+    const scaleY = uniformScale - touch * 0.027;
 
-    const pulse = breathe * (thinking ? 0.68 : 0.32);
-    const radiusX =
-      19.7 +
-      pulse +
-      touch * 1.45 +
-      happy * 0.75;
-    const radiusY =
-      19.7 -
-      pulse * 0.55 -
-      touch * 1.05 +
-      happy * 0.32;
+    stage.style.transform =
+      "translate3d(" + moveX.toFixed(2) + "px," +
+      moveY.toFixed(2) + "px,0) " +
+      "scale(" + scaleX.toFixed(4) + "," + scaleY.toFixed(4) + ")";
 
-    const projected = projectParticles(
-      seconds,
-      centerX,
-      centerY,
-      radiusX,
-      radiusY
-    );
-
-    drawParticleGlow(projected);
-    drawParticleCores(projected);
-
-    const blink = blinkAmount(now);
-    const eyeY = centerY - 0.55 + breathe * 0.06;
-
-    drawEye(centerX - 5.05, eyeY, blink);
-    drawEye(centerX + 5.05, eyeY, blink);
+    renderSphere(seconds, touch, happy);
+    renderFace(blinkAmount(now), breathe);
 
     if (!reducedMotion && !document.hidden) {
       animationFrame = requestAnimationFrame(draw);
@@ -512,7 +537,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
   }
 
   function updatePointerGaze(event) {
-    const bounds = canvas.getBoundingClientRect();
+    const bounds = faceCanvas.getBoundingClientRect();
     const centerX = bounds.left + bounds.width / 2;
     const centerY = bounds.top + bounds.height / 2;
     const now = performance.now();
@@ -580,7 +605,7 @@ export const AI_CHAT_CREATURE_JS = `(function () {
     if (!document.hidden && !reducedMotion) resume();
   });
 
-  resizeCanvas();
+  resizeCanvases();
   chooseNextGaze(performance.now());
   draw(performance.now());
 })();`;
