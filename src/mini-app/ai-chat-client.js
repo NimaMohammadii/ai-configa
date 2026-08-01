@@ -49,36 +49,223 @@ export const AI_CHAT_JS = `
   function hideAiImageGenerating(){setAiChatCreatureState('idle');stopAiThinkingOrb();var item=q('aiImageGenerating');if(item)item.remove()}
   function showAiImageGenerating(){setAiChatCreatureState('thinking');var list=q('aiChatMessages');if(!list)return;hideAiImageGenerating();var item=document.createElement('article');item.id='aiImageGenerating';item.className='ai-chat-message assistant ai-chat-image-generating';item.innerHTML='<div class="ai-chat-image-generating-content"><canvas id="aiThinkingOrb" width="96" height="96" aria-hidden="true"></canvas><span>Creating image</span></div>';list.appendChild(item);syncAiChatEmptyState();scrollAiChat();startAiThinkingOrb()}
   function appendAiChatImage(data){setAiChatCreatureState('happy');var list=q('aiChatMessages');if(!list)return;var mimeType=String(data&&data.mimeType||'image/jpeg');var base64=String(data&&data.imageBase64||'');if(!base64)return;var source='data:'+mimeType+';base64,'+base64;var item=document.createElement('article');item.className='ai-chat-message assistant ai-chat-image-message';var card=document.createElement('div');card.className='ai-chat-image-card';var blurred=document.createElement('img');blurred.className='ai-chat-image-blur';blurred.alt='Generated image';var sharp=document.createElement('img');sharp.className='ai-chat-image-sharp';sharp.alt='';sharp.setAttribute('aria-hidden','true');blurred.addEventListener('load',function(){card.classList.add('ready');scrollAiChat()},{once:true});card.appendChild(blurred);card.appendChild(sharp);item.appendChild(card);list.appendChild(item);blurred.src=source;sharp.src=source;aiChatMessages.push({role:'assistant',content:'Generated image: '+String(data&&data.prompt||'')});scrollAiChat()}
-  function formatAiChatAudioTime(value){
-    var total=Math.max(0,Math.floor(Number(value)||0));
-    var minutes=Math.floor(total/60);
-    var seconds=String(total%60).padStart(2,'0');
-    return minutes+':'+seconds;
+  function formatAiChatAudioTime(seconds){
+    var value=Math.max(0,Math.floor(Number(seconds)||0));
+    return Math.floor(value/60)+':'+String(value%60).padStart(2,'0');
   }
 
-  async function shareAiChatAudio(blob,filename,text){
-    var file=new File(
-      [blob],
-      String(filename||'vexa-voice.mp3'),
-      {type:'audio/mpeg'}
-    );
+  function finiteAiChatAudioDuration(audio){
+    var duration=Number(audio&&audio.duration);
+    return Number.isFinite(duration)&&duration>0?duration:0;
+  }
 
-    if(!navigator.share||!navigator.canShare||!navigator.canShare({files:[file]})){
-      toast('Sharing is not available on this device');
-      return;
+  function setAiChatWavePlaying(card,playing){
+    var button=card.querySelector('.wave-play');
+
+    if(button){
+      button.classList.toggle('is-playing',!!playing);
+      button.setAttribute(
+        'aria-label',
+        playing?'Pause audio':'Play audio'
+      );
     }
 
+    card.classList.toggle('is-playing',!!playing);
+  }
+
+  function paintAiChatWaveform(card,values){
+    var wrap=card.querySelector('.wave-seek');
+    if(!wrap)return;
+
+    var count=values.length;
+    var step=240/count;
+    var width=Math.max(1.6,step*.44);
+    var markup=values.map(function(value,index){
+      var height=Math.max(2,Math.min(36,2+value*34));
+      var x=index*step+(step-width)/2;
+      var y=(44-height)/2;
+
+      return '<rect x="'+x.toFixed(2)
+        +'" y="'+y.toFixed(2)
+        +'" width="'+width.toFixed(2)
+        +'" height="'+height.toFixed(2)
+        +'" rx="'+Math.min(width/2,1.8).toFixed(2)
+        +'"/>';
+    }).join('');
+
+    wrap.querySelectorAll(
+      '.wave-svg-base,.wave-svg-progress'
+    ).forEach(function(svg){
+      svg.innerHTML=markup;
+    });
+  }
+
+  async function renderAiChatWaveform(card,source){
+    var count=48;
+    paintAiChatWaveform(card,new Array(count).fill(0));
+
+    var AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioContextClass)return;
+
+    var context;
     try{
-      await navigator.share({
-        files:[file],
-        title:'Vexa voice',
-        text:String(text||'')
+      context=new AudioContextClass();
+
+      var response=await fetch(source);
+      if(!response.ok){
+        throw new Error('Audio is unavailable');
+      }
+
+      var bytes=await response.arrayBuffer();
+      var buffer=await context.decodeAudioData(bytes.slice(0));
+      var values=[];
+
+      for(var index=0;index<count;index+=1){
+        var from=Math.floor(buffer.length*index/count);
+        var to=Math.max(
+          from+1,
+          Math.floor(buffer.length*(index+1)/count)
+        );
+        var sampleStep=Math.max(1,Math.floor((to-from)/180));
+        var energy=0;
+        var peak=0;
+        var samples=0;
+
+        for(var frame=from;frame<to;frame+=sampleStep){
+          var amplitude=0;
+
+          for(
+            var channel=0;
+            channel<buffer.numberOfChannels;
+            channel+=1
+          ){
+            amplitude+=Math.abs(
+              buffer.getChannelData(channel)[frame]||0
+            );
+          }
+
+          amplitude/=Math.max(1,buffer.numberOfChannels);
+          energy+=amplitude*amplitude;
+          peak=Math.max(peak,amplitude);
+          samples+=1;
+        }
+
+        values.push(
+          Math.sqrt(energy/Math.max(1,samples))*.72+peak*.28
+        );
+      }
+
+      var sorted=values.slice().sort(function(first,second){
+        return first-second;
       });
+      var scale=sorted[Math.floor((sorted.length-1)*.92)]
+        ||sorted[sorted.length-1]
+        ||1;
+
+      paintAiChatWaveform(
+        card,
+        values.map(function(value){
+          return Math.min(1,value/scale);
+        })
+      );
     }catch(error){
-      if(error&&error.name!=='AbortError'){
-        toast('Could not share this audio');
+      paintAiChatWaveform(card,new Array(count).fill(0));
+    }finally{
+      if(context){
+        context.close().catch(function(){});
       }
     }
+  }
+
+  function syncAiChatWave(card,audio){
+    var wrap=card.querySelector('.wave-seek');
+    var range=card.querySelector('.wave-range');
+    var time=card.querySelector('.wave-time');
+    if(!wrap||!range)return;
+
+    var duration=finiteAiChatAudioDuration(audio);
+    var current=duration
+      ?Math.min(duration,Math.max(0,Number(audio.currentTime)||0))
+      :0;
+    var ratio=duration?current/duration:0;
+
+    wrap.style.setProperty(
+      '--wave-progress',
+      (ratio*100).toFixed(3)+'%'
+    );
+    range.value=String(Math.round(ratio*1000));
+    range.disabled=!duration;
+
+    if(time){
+      time.textContent=formatAiChatAudioTime(current);
+    }
+  }
+
+  function startAiChatAudioProgress(card,audio){
+    function frame(){
+      syncAiChatWave(card,audio);
+
+      if(!audio.paused&&!audio.ended){
+        requestAnimationFrame(frame);
+      }
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  function downloadAiChatAudio(blob,filename){
+    var url=URL.createObjectURL(blob);
+    var link=document.createElement('a');
+
+    link.href=url;
+    link.download=filename||'vexa-voice.mp3';
+    link.rel='noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(function(){
+      URL.revokeObjectURL(url);
+    },4000);
+  }
+
+  async function shareAiChatAudio(source,filename){
+    var response=await fetch(source);
+    if(!response.ok){
+      throw new Error('Audio is unavailable');
+    }
+
+    var blob=await response.blob();
+    var audioName=filename||'vexa-voice.mp3';
+    var file=typeof File==='function'
+      ?new File(
+        [blob],
+        audioName,
+        {type:blob.type||'audio/mpeg'}
+      )
+      :null;
+    var canShareFile=!!(file&&navigator.share);
+
+    if(canShareFile&&navigator.canShare){
+      try{
+        canShareFile=navigator.canShare({files:[file]});
+      }catch(error){
+        canShareFile=false;
+      }
+    }
+
+    if(canShareFile){
+      try{
+        await navigator.share({files:[file]});
+        return;
+      }catch(error){
+        if(error&&error.name==='AbortError'){
+          throw error;
+        }
+      }
+    }
+
+    downloadAiChatAudio(blob,audioName);
   }
 
   function appendAiChatAudio(data){
@@ -90,6 +277,7 @@ export const AI_CHAT_JS = `
 
     var binary=atob(base64);
     var bytes=new Uint8Array(binary.length);
+
     for(var index=0;index<binary.length;index+=1){
       bytes[index]=binary.charCodeAt(index);
     }
@@ -99,56 +287,61 @@ export const AI_CHAT_JS = `
     aiChatAudioUrls.push(source);
 
     var item=document.createElement('article');
-    item.className='ai-chat-message assistant ai-chat-audio-message';
+    item.className=
+      'ai-chat-message assistant ai-chat-audio-message';
 
     var card=document.createElement('div');
-    card.className='ai-chat-audio-card';
-
-    var play=document.createElement('button');
-    play.className='ai-chat-audio-play';
-    play.type='button';
-    play.setAttribute('aria-label','Play audio');
-    play.innerHTML='<span aria-hidden="true"></span>';
-
-    var body=document.createElement('div');
-    body.className='ai-chat-audio-body';
-
-    var track=document.createElement('input');
-    track.className='ai-chat-audio-track';
-    track.type='range';
-    track.min='0';
-    track.max='1000';
-    track.value='0';
-    track.setAttribute('aria-label','Audio position');
-
-    var meta=document.createElement('div');
-    meta.className='ai-chat-audio-meta';
-
-    var voice=document.createElement('span');
-    voice.textContent=String(data&&data.voice||'Voice');
-
-    var time=document.createElement('span');
-    time.textContent='0:00';
-
-    meta.appendChild(voice);
-    meta.appendChild(time);
-    body.appendChild(track);
-    body.appendChild(meta);
-
-    var share=document.createElement('button');
-    share.className='ai-chat-audio-share';
-    share.type='button';
-    share.setAttribute('aria-label','Share audio');
-    share.innerHTML='<span aria-hidden="true"></span><strong>Share</strong>';
+    card.className=
+      'wave-player show ai-chat-wave-player';
+    card.innerHTML=
+      '<button class="wave-play" type="button" aria-label="Play audio">'
+      +'<span class="wave-play-shape" aria-hidden="true">'
+      +'<svg class="wave-play-icon" viewBox="0 0 24 24" style="stroke:none">'
+      +'<path d="M6.2 2.8C4.7 1.9 2.8 3 2.8 4.75v14.5c0 1.75 1.9 2.85 3.4 1.95l13.8-8.1c1.6-.95 1.6-1.25 0-2.2z"/>'
+      +'</svg>'
+      +'<span class="wave-pause-icon"><i></i><i></i></span>'
+      +'</span>'
+      +'</button>'
+      +'<div class="wave-player-body">'
+      +'<div class="wave-seek" style="--wave-progress:0%">'
+      +'<svg class="wave-svg wave-svg-base" viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true"></svg>'
+      +'<svg class="wave-svg wave-svg-progress" viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true"></svg>'
+      +'<input class="wave-range" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek audio" disabled/>'
+      +'<div class="wave-meta" aria-hidden="true">'
+      +'<span class="wave-time">0:00</span>'
+      +'</div>'
+      +'</div>'
+      +'</div>'
+      +'<div class="wave-actions">'
+      +'<button class="wave-share" type="button" aria-label="Share audio">'
+      +'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+      +'<path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 13.5v4A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-4" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>'
+      +'</svg>'
+      +'</button>'
+      +'</div>';
 
     var audio=document.createElement('audio');
     audio.preload='metadata';
     audio.src=source;
+    card.appendChild(audio);
+
+    var play=card.querySelector('.wave-play');
+    var range=card.querySelector('.wave-range');
+    var wrap=card.querySelector('.wave-seek');
+    var share=card.querySelector('.wave-share');
 
     play.addEventListener('click',function(){
       if(audio.paused){
-        audio.play().catch(function(){
-          toast('Could not play this audio');
+        document.querySelectorAll(
+          '.ai-chat-wave-player audio'
+        ).forEach(function(otherAudio){
+          if(otherAudio!==audio){
+            otherAudio.pause();
+          }
+        });
+
+        audio.play().catch(function(error){
+          toast(error&&error.message||'Could not play audio');
         });
       }else{
         audio.pause();
@@ -156,62 +349,80 @@ export const AI_CHAT_JS = `
     });
 
     audio.addEventListener('play',function(){
-      card.classList.add('is-playing');
-      play.setAttribute('aria-label','Pause audio');
+      setAiChatWavePlaying(card,true);
+      startAiChatAudioProgress(card,audio);
     });
 
     audio.addEventListener('pause',function(){
-      card.classList.remove('is-playing');
-      play.setAttribute('aria-label','Play audio');
+      setAiChatWavePlaying(card,false);
+      syncAiChatWave(card,audio);
     });
 
     audio.addEventListener('loadedmetadata',function(){
-      time.textContent=formatAiChatAudioTime(audio.duration);
-    });
-
-    audio.addEventListener('timeupdate',function(){
-      var duration=Number(audio.duration)||0;
-      var progress=duration?audio.currentTime/duration:0;
-      track.value=String(Math.round(progress*1000));
-      track.style.setProperty('--audio-progress',(progress*100)+'%');
-      time.textContent=formatAiChatAudioTime(audio.currentTime);
+      syncAiChatWave(card,audio);
     });
 
     audio.addEventListener('ended',function(){
-      track.value='0';
-      track.style.setProperty('--audio-progress','0%');
-      time.textContent=formatAiChatAudioTime(audio.duration);
+      setAiChatWavePlaying(card,false);
+      audio.currentTime=0;
+      syncAiChatWave(card,audio);
     });
 
-    track.addEventListener('input',function(){
-      var duration=Number(audio.duration)||0;
-      if(duration){
-        audio.currentTime=duration*Number(track.value)/1000;
+    range.addEventListener('pointerdown',function(){
+      wrap.classList.add('is-scrubbing');
+    });
+
+    range.addEventListener('pointerup',function(){
+      wrap.classList.remove('is-scrubbing');
+    });
+
+    range.addEventListener('pointercancel',function(){
+      wrap.classList.remove('is-scrubbing');
+    });
+
+    range.addEventListener('input',function(){
+      var duration=finiteAiChatAudioDuration(audio);
+      if(!duration)return;
+
+      audio.currentTime=Math.min(
+        duration,
+        Math.max(0,Number(range.value)||0)/1000*duration
+      );
+      syncAiChatWave(card,audio);
+    });
+
+    share.addEventListener('click',async function(){
+      if(share.classList.contains('sharing'))return;
+
+      share.classList.add('sharing');
+      try{
+        await shareAiChatAudio(
+          source,
+          String(data&&data.filename||'vexa-voice.mp3')
+        );
+      }catch(error){
+        if(error&&error.name!=='AbortError'){
+          toast('Could not share audio');
+        }
+      }finally{
+        share.classList.remove('sharing');
       }
     });
 
-    share.addEventListener('click',function(){
-      shareAiChatAudio(
-        blob,
-        String(data&&data.filename||'vexa-voice.mp3'),
-        String(data&&data.text||'')
-      );
-    });
-
-    card.appendChild(play);
-    card.appendChild(body);
-    card.appendChild(share);
-    card.appendChild(audio);
     item.appendChild(card);
     list.appendChild(item);
 
     aiChatMessages.push({
       role:'assistant',
-      content:'Generated voice with '+String(data&&data.voice||'Voice')+': '+String(data&&data.text||'')
+      content:'Generated voice with '
+        +String(data&&data.voice||'Voice')
+        +': '
+        +String(data&&data.text||'')
     });
 
     syncAiChatEmptyState();
     scrollAiChat();
+    renderAiChatWaveform(card,source);
   }
 
   function showAiThinking(){setAiChatCreatureState('thinking');var list=q('aiChatMessages');if(!list)return;hideAiThinking();var row=document.createElement('div');row.id='aiThinkingRow';row.className='ai-thinking-row';row.setAttribute('data-state','thinking');row.innerHTML='<canvas id="aiThinkingOrb" class="ai-thinking-orb" width="96" height="96" aria-hidden="true"></canvas><span>Thinking</span>';list.appendChild(row);syncAiChatEmptyState();var page=q('aiChatPage');if(page)page.classList.add('thinking');scrollAiChat();startAiThinkingOrb()}
