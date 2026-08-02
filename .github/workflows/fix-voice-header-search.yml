@@ -1,0 +1,59 @@
+name: Fix voice header and search layout
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/fix-voice-header-search.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Keep header and search at their original layout
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('src/mini-app/client.js')
+          text = path.read_text()
+          needle = "  document.head.appendChild(uiStyle);\n"
+          override = """  document.head.appendChild(uiStyle);
+  var demoLanguageLayoutStyle=document.createElement('style');
+  demoLanguageLayoutStyle.textContent='.demo-language-title-row{display:block!important;position:relative!important}.demo-language-wrap{position:absolute!important;left:calc(100% + 8px)!important;bottom:-1px!important;z-index:12!important;height:30px!important;min-height:30px!important;max-height:30px!important;align-self:auto!important}.demo-language-wrap .voice-btn{height:30px!important;min-height:30px!important;max-height:30px!important;min-width:90px!important;padding:0 8px!important;gap:6px!important;font-size:12px!important}.demo-language-wrap .voice-btn>svg{width:14px!important;height:14px!important}.demo-language-wrap .voice-menu{top:36px!important;width:204px!important}.demo-language-button-avatar{width:18px!important;height:18px!important;flex-basis:18px!important}.demo-language-button-avatar .demo-language-flag{width:18px!important;height:12px!important}@media(max-width:390px){.demo-language-wrap{left:calc(100% + 6px)!important}.demo-language-wrap .voice-btn{min-width:84px!important;padding:0 7px!important;font-size:11px!important}.demo-language-wrap .voice-menu{width:196px!important}}';
+  document.head.appendChild(demoLanguageLayoutStyle);
+"""
+          count = text.count(needle)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one style insertion point, found {count}')
+          path.write_text(text.replace(needle, override, 1))
+          PY
+
+      - name: Validate scoped change
+        shell: bash
+        run: |
+          node --check src/mini-app/client.js
+          npm test
+          git diff --check
+          test "$(git diff --name-only | tr -d '\r')" = "src/mini-app/client.js"
+
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/fix-voice-header-search.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/mini-app/client.js .github/workflows/fix-voice-header-search.yml
+          git diff --cached --check
+          git commit -m "Restore voice header and search layout"
+          git push origin HEAD:main
