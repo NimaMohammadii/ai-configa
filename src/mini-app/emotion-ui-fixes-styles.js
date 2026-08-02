@@ -21,4 +21,14 @@ body.emotion-highlight-ready .tts-area textarea::placeholder{color:transparent!i
 body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,72,178,.42)}
 @keyframes emotionButtonLift{from{opacity:0;transform:translateY(12px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:380px){.emotion-card{left:14px!important;right:14px!important;max-height:min(40dvh,320px)!important}body.keyboard-open #flow.active .emotion-trigger,body.keyboard-open.emotion-audio-ready #flow.active .emotion-trigger{right:22px!important;width:42px!important;min-width:42px!important}}
+
+/* Keep the Voices header and search at their original dimensions. */
+.demo-language-title-row{display:block!important;position:relative!important}
+.demo-language-wrap{position:absolute!important;left:calc(100% + 8px)!important;bottom:-1px!important;z-index:12!important;height:30px!important;min-height:30px!important;max-height:30px!important;align-self:auto!important}
+.demo-language-wrap .voice-btn{height:30px!important;min-height:30px!important;max-height:30px!important;min-width:90px!important;padding:0 8px!important;gap:6px!important;font-size:12px!important}
+.demo-language-wrap .voice-btn>svg{width:14px!important;height:14px!important}
+.demo-language-wrap .voice-menu{top:36px!important;width:204px!important}
+.demo-language-button-avatar{width:18px!important;height:18px!important;flex-basis:18px!important}
+.demo-language-button-avatar .demo-language-flag{width:18px!important;height:12px!important}
+@media(max-width:390px){.demo-language-wrap{left:calc(100% + 6px)!important}.demo-language-wrap .voice-btn{min-width:84px!important;padding:0 7px!important;font-size:11px!important}.demo-language-wrap .voice-menu{width:196px!important}}
 `;
