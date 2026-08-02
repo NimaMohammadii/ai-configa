@@ -450,17 +450,90 @@ export async function chatWithAi(env, messages, onStatus) {
   }
 }
 
+function resolveAiToolStatus(event, type) {
+  const item = event?.item || event?.output_item || {};
+  const activity = [
+    type,
+    item?.type,
+    event?.tool_type,
+    item?.name,
+    event?.name,
+    event?.tool_name,
+    item?.server_label,
+    event?.server_label,
+    item?.command,
+    event?.command,
+    item?.action,
+    event?.action,
+    item?.operation?.type,
+    event?.operation?.type,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (/(apply[_ -]?patch|commit|push|merge|update[_ -]?file|delete[_ -]?file|rename[_ -]?file)/.test(activity)) {
+    return "applying_changes";
+  }
+  if (/(run[_ -]?tests?|test|lint|type[_ -]?check|check[_ -]?changes|verify|build)/.test(activity)) {
+    return "checking_changes";
+  }
+  if (/(write[_ -]?file|edit[_ -]?file|create[_ -]?file|replace[_ -]?file|generate[_ -]?code|code[_ -]?interpreter)/.test(activity)) {
+    return "writing_code";
+  }
+  if (/(github|repository|repo|read[_ -]?file|get[_ -]?file|fetch[_ -]?file|list[_ -]?files|search[_ -]?code|inspect)/.test(activity)) {
+    return "inspecting_repo";
+  }
+  return "";
+}
+
+function aiToolCallId(event, type) {
+  const item = event?.item || event?.output_item || {};
+  return String(
+    item?.id
+      || item?.call_id
+      || event?.item_id
+      || event?.call_id
+      || event?.output_index
+      || type,
+  );
+}
+
+function aiToolEventStarted(type) {
+  return type === "response.output_item.added"
+    || type.endsWith(".in_progress")
+    || type.endsWith(".searching")
+    || type.endsWith(".interpreting")
+    || type.endsWith(".calling");
+}
+
+function aiToolEventFinished(type) {
+  return type === "response.output_item.done"
+    || type.endsWith(".completed")
+    || type.endsWith(".failed")
+    || type.endsWith(".incomplete");
+}
+
 async function readChatResponseStream(response, onStatus) {
   if (!response.body) throw new Error("AI did not return a response. Please try again.");
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const searchingCalls = new Set();
+  const activityCalls = new Map();
   let buffer = "";
   let completedResponse = null;
 
   const emitStatus = (status) => {
     if (typeof onStatus === "function") onStatus(status);
+  };
+
+  const emitCurrentStatus = () => {
+    const activeStatuses = Array.from(activityCalls.values());
+    emitStatus(
+      activeStatuses[activeStatuses.length - 1]
+        || (searchingCalls.size ? "searching" : "thinking"),
+    );
   };
 
   const handleBlock = (block) => {
@@ -485,15 +558,30 @@ async function readChatResponseStream(response, onStatus) {
       const callId = String(event?.item_id || event?.call_id || event?.output_index || "web-search");
       const wasSearching = searchingCalls.size > 0;
       searchingCalls.add(callId);
-      if (!wasSearching) emitStatus("searching");
+      if (!wasSearching && !activityCalls.size) emitStatus("searching");
       return;
     }
     if (type === "response.web_search_call.completed") {
       const callId = String(event?.item_id || event?.call_id || event?.output_index || "web-search");
       searchingCalls.delete(callId);
-      if (!searchingCalls.size) emitStatus("thinking");
+      emitCurrentStatus();
       return;
     }
+
+    const activityStatus = resolveAiToolStatus(event, type);
+    const activityId = aiToolCallId(event, type);
+    if (activityStatus && aiToolEventStarted(type)) {
+      activityCalls.delete(activityId);
+      activityCalls.set(activityId, activityStatus);
+      emitStatus(activityStatus);
+      return;
+    }
+    if (aiToolEventFinished(type) && activityCalls.has(activityId)) {
+      activityCalls.delete(activityId);
+      emitCurrentStatus();
+      return;
+    }
+
     if (type === "response.completed") {
       completedResponse = event?.response || null;
       return;
