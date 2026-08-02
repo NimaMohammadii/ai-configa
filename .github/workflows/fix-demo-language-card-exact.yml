@@ -1,0 +1,70 @@
+name: Fix exact demo language card style
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/fix-demo-language-card-exact.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Patch only the demo language card appearance
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('src/mini-app/client.js')
+          text = path.read_text()
+
+          old_class = 'class="voice-button-avatar has-image demo-language-button-avatar"'
+          new_class = 'class="voice-button-avatar has-image demo-language-button-flag"'
+          if text.count(old_class) != 1:
+              raise SystemExit(f'Expected exactly one language button avatar class, found {text.count(old_class)}')
+          text = text.replace(old_class, new_class, 1)
+
+          start_marker = '.demo-language-title-row{'
+          end_marker = "';\n  document.head.appendChild(uiStyle);"
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('Could not find the existing demo-language CSS block')
+
+          exact_css = (
+              '.demo-language-title-row{display:flex;align-items:center;gap:10px;position:relative}'
+              '.demo-language-wrap{z-index:12}'
+              '.demo-language-button-flag{height:14px!important;border-radius:3px!important;overflow:hidden!important;background:none!important;border:0!important;box-shadow:none!important}'
+              '.demo-language-button-flag .demo-language-flag{width:22px;height:14px;border-radius:3px;box-shadow:none}'
+              '.demo-language-avatar{display:grid!important;place-items:center!important}'
+          )
+          text = text[:start] + exact_css + text[end:]
+          path.write_text(text)
+          PY
+
+      - name: Validate
+        run: |
+          node --check src/mini-app/client.js
+          npm test
+          git diff --check
+
+      - name: Commit exact fix and remove workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/fix-demo-language-card-exact.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/mini-app/client.js .github/workflows/fix-demo-language-card-exact.yml
+          git diff --cached --check
+          git commit -m "Match language card to TTS voice card"
+          git push origin HEAD:main
