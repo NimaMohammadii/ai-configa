@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - .github/workflows/normalize-language-picker-from-pre-flags.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
