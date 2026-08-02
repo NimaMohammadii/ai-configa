@@ -3,25 +3,20 @@ name: Fix voice header and search layout
 on:
   push:
     branches:
-      - agent/fix-voice-header-search
+      - main
     paths:
       - .github/workflows/fix-voice-header-search.yml
-  pull_request:
-    branches:
-      - main
-    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.head_ref == 'agent/fix-voice-header-search' || github.ref == 'refs/heads/agent/fix-voice-header-search'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/fix-voice-header-search
+          ref: main
           fetch-depth: 0
 
       - name: Keep header and search at their original layout
@@ -61,4 +56,4 @@ jobs:
           git add src/mini-app/client.js .github/workflows/fix-voice-header-search.yml
           git diff --cached --check
           git commit -m "Restore voice header and search layout"
-          git push origin HEAD:agent/fix-voice-header-search
+          git push origin HEAD:main
