@@ -1,0 +1,46 @@
+name: Run voice demo language patch
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'feature/voice-demo-language'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/voice-demo-language
+          fetch-depth: 0
+
+      - name: Apply exact patch
+        run: python3 .github/patch_voice_demo_language.py
+
+      - name: Validate
+        run: |
+          node --check src/mini-app/client.js
+          node --check src/mini-app/server.js
+          node --check src/state.js
+          node --check src/demo-texts.js
+          npm test
+
+      - name: Commit exact changes
+        run: |
+          rm -f .github/workflows/patch-voice-demo-language.yml
+          rm -f .github/workflows/run-voice-demo-language.yml
+          rm -f .github/patch_voice_demo_language.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Add voice demo language picker"
+          git push origin HEAD:feature/voice-demo-language
