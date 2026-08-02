@@ -4,6 +4,7 @@ export const DEFAULT_STATE = {
   page: 0,
   menuMessageId: null,
   language: null,
+  demoLanguage: null,
   emotionActive: false,
 };
 
@@ -11,7 +12,7 @@ export async function getState(env, userId) {
   requireDb(env);
 
   const row = await env.DB.prepare(
-    "SELECT voice, output, page, menu_message_id, language FROM user_state WHERE user_id = ?"
+    "SELECT voice, output, page, menu_message_id, language, demo_language FROM user_state WHERE user_id = ?"
   ).bind(String(userId)).first();
 
   if (!row) return { ...DEFAULT_STATE };
@@ -22,6 +23,7 @@ export async function getState(env, userId) {
     page: Number(row.page || 0),
     menuMessageId: row.menu_message_id ? Number(row.menu_message_id) : null,
     language: row.language || null,
+    demoLanguage: row.demo_language || null,
     emotionActive: false,
   };
 }
@@ -35,12 +37,13 @@ export async function saveState(env, userId, state) {
     page: Number(state.page || 0),
     menuMessageId: state.menuMessageId ? Number(state.menuMessageId) : null,
     language: state.language || null,
+    demoLanguage: state.demoLanguage || null,
   };
 
   await env.DB.prepare(
-    "INSERT INTO user_state (user_id, voice, output, page, menu_message_id, language, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) " +
-    "ON CONFLICT(user_id) DO UPDATE SET voice = excluded.voice, output = excluded.output, page = excluded.page, menu_message_id = excluded.menu_message_id, language = excluded.language, updated_at = CURRENT_TIMESTAMP"
-  ).bind(String(userId), cleanState.voice, cleanState.output, cleanState.page, cleanState.menuMessageId, cleanState.language).run();
+    "INSERT INTO user_state (user_id, voice, output, page, menu_message_id, language, demo_language, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET voice = excluded.voice, output = excluded.output, page = excluded.page, menu_message_id = excluded.menu_message_id, language = excluded.language, demo_language = excluded.demo_language, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(userId), cleanState.voice, cleanState.output, cleanState.page, cleanState.menuMessageId, cleanState.language, cleanState.demoLanguage).run();
 }
 
 export async function setMenuMessageId(env, userId, messageId) {

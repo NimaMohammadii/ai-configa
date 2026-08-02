@@ -561,5 +561,5 @@ export const DEMO_TEXTS = {
 
 export function getDemoText(language, voice) {
   const lang = language || "en";
-  return DEMO_TEXTS[voice]?.[lang] || DEMO_TEXTS[voice]?.en || DEMO_TEXTS.Nora[lang] || DEMO_TEXTS.Nora.en;
+  return DEMO_TEXTS[voice]?.[lang] || DEMO_TEXTS.Nora[lang] || DEMO_TEXTS[voice]?.en || DEMO_TEXTS.Nora.en;
 }
