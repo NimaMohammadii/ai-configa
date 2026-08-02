@@ -450,143 +450,17 @@ export async function chatWithAi(env, messages, onStatus) {
   }
 }
 
-const AI_REPO_INSPECT_TOOLS = new Set([
-  "get_file_contents",
-  "search_code",
-  "get_commit",
-  "list_commits",
-  "list_branches",
-  "list_tags",
-  "get_latest_release",
-  "get_release_by_tag",
-  "get_repository",
-  "list_pull_requests",
-  "get_pull_request",
-  "get_pull_request_files",
-  "pull_request_read",
-]);
-
-const AI_REPO_CODE_WRITE_TOOLS = new Set([
-  "create_or_update_file",
-  "push_files",
-]);
-
-const AI_REPO_APPLY_TOOLS = new Set([
-  "delete_file",
-  "create_branch",
-  "update_pull_request_branch",
-  "create_pull_request",
-  "update_pull_request",
-  "merge_pull_request",
-]);
-
-const AI_REPO_CHECK_TOOLS = new Set([
-  "actions_get",
-  "actions_list",
-  "get_workflow_run",
-  "get_workflow_run_logs",
-  "get_workflow_job",
-  "list_workflow_runs",
-  "get_commit_status",
-  "get_check_run",
-  "list_check_runs",
-]);
-
-function normalizeAiToolName(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function resolveAiMcpToolKind(name) {
-  const toolName = normalizeAiToolName(name);
-  if (AI_REPO_CODE_WRITE_TOOLS.has(toolName)) return "code_write";
-  if (AI_REPO_APPLY_TOOLS.has(toolName)) return "apply";
-  if (AI_REPO_CHECK_TOOLS.has(toolName)) return "check";
-  if (AI_REPO_INSPECT_TOOLS.has(toolName)) return "inspect";
-  return "";
-}
-
-function aiToolStatusForKind(kind, phase = "running") {
-  if (kind === "code_write") {
-    return phase === "arguments" ? "writing_code" : "applying_changes";
-  }
-  if (kind === "apply") return "applying_changes";
-  if (kind === "check") return "checking_changes";
-  if (kind === "inspect") return "inspecting_repo";
-  return "";
-}
-
-function aiToolCallId(event) {
-  const item = event?.item || event?.output_item || {};
-  return String(
-    item?.id
-      || event?.item_id
-      || event?.call_id
-      || event?.output_index
-      || "",
-  );
-}
-
-function looksLikeGeneratedCode(value) {
-  const text = String(value || "");
-  if (/(^|\n)```(?:[a-z0-9_+#.-]+)?[ \t]*\n/i.test(text)) return true;
-
-  const lines = text.split(/\r?\n/).slice(-24);
-  let signals = 0;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.length > 240) continue;
-
-    if (/^(?:import|export|const|let|var|function|class|interface|type|enum|def|async\s+def|from\s+\S+\s+import|#include|public\s+(?:class|static)|private\s+|protected\s+|SELECT\s+|INSERT\s+|CREATE\s+(?:TABLE|INDEX)|<\/?[a-z][^>]*>|[.#]?[a-z][\w-]*(?:\s+[.#]?[a-z][\w-]*)*\s*\{)/i.test(trimmed)) {
-      signals += 1;
-    }
-    if (/[{};]$/.test(trimmed) || /=>/.test(trimmed) || /^(?:if|for|while|switch|try|catch)\s*\(/.test(trimmed)) {
-      signals += 1;
-    }
-  }
-
-  return signals >= 3;
-}
-
 async function readChatResponseStream(response, onStatus) {
   if (!response.body) throw new Error("AI did not return a response. Please try again.");
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const searchingCalls = new Set();
-  const activityCalls = new Map();
-  let generatedTextProbe = "";
-  let generatedCodeActive = false;
   let buffer = "";
   let completedResponse = null;
 
   const emitStatus = (status) => {
     if (typeof onStatus === "function") onStatus(status);
-  };
-
-  const emitCurrentStatus = () => {
-    const activeCalls = Array.from(activityCalls.values());
-    emitStatus(
-      activeCalls[activeCalls.length - 1]?.status
-        || (searchingCalls.size ? "searching" : "thinking"),
-    );
-  };
-
-  const updateActivity = (id, patch) => {
-    if (!id) return;
-    const current = activityCalls.get(id) || {};
-    const next = { ...current, ...patch };
-    if (!next.kind || !next.status) return;
-    activityCalls.delete(id);
-    activityCalls.set(id, next);
-    emitStatus(next.status);
-  };
-
-  const finishActivity = (id) => {
-    if (!id || !activityCalls.has(id)) return false;
-    activityCalls.delete(id);
-    emitCurrentStatus();
-    return true;
   };
 
   const handleBlock = (block) => {
@@ -611,130 +485,15 @@ async function readChatResponseStream(response, onStatus) {
       const callId = String(event?.item_id || event?.call_id || event?.output_index || "web-search");
       const wasSearching = searchingCalls.size > 0;
       searchingCalls.add(callId);
-      if (!wasSearching && !activityCalls.size) emitStatus("searching");
+      if (!wasSearching) emitStatus("searching");
       return;
     }
     if (type === "response.web_search_call.completed") {
       const callId = String(event?.item_id || event?.call_id || event?.output_index || "web-search");
       searchingCalls.delete(callId);
-      emitCurrentStatus();
+      if (!searchingCalls.size) emitStatus("thinking");
       return;
     }
-
-    if (type === "response.output_text.delta") {
-      generatedTextProbe = (generatedTextProbe + String(event?.delta || "")).slice(-8000);
-      if (!generatedCodeActive && looksLikeGeneratedCode(generatedTextProbe)) {
-        generatedCodeActive = true;
-        updateActivity("generated-output-code", {
-          kind: "code_write",
-          name: "output_text",
-          status: "writing_code",
-        });
-      }
-      return;
-    }
-
-    if (type === "response.output_item.added") {
-      const item = event?.item || {};
-      const activityId = aiToolCallId(event);
-
-      if (item?.type === "mcp_call") {
-        const kind = resolveAiMcpToolKind(item?.name);
-        const status = aiToolStatusForKind(
-          kind,
-          kind === "code_write" ? "arguments" : "running",
-        );
-        if (kind && status) {
-          updateActivity(activityId, {
-            kind,
-            name: normalizeAiToolName(item?.name),
-            status,
-          });
-          return;
-        }
-      }
-
-      if (item?.type === "code_interpreter_call") {
-        updateActivity(activityId, {
-          kind: "code_write",
-          name: "code_interpreter",
-          status: "writing_code",
-        });
-        return;
-      }
-
-      if (item?.type === "apply_patch_call") {
-        updateActivity(activityId, {
-          kind: "apply",
-          name: "apply_patch",
-          status: "applying_changes",
-        });
-        return;
-      }
-    }
-
-    if (type === "response.mcp_call_arguments.delta" || type === "response.mcp_call_arguments.done") {
-      const activityId = aiToolCallId(event);
-      const activity = activityCalls.get(activityId);
-      if (activity?.kind === "code_write") {
-        updateActivity(activityId, {
-          status: aiToolStatusForKind("code_write", "arguments"),
-        });
-      }
-      return;
-    }
-
-    if (type === "response.mcp_call.in_progress") {
-      const activityId = aiToolCallId(event);
-      const activity = activityCalls.get(activityId);
-      if (activity?.kind) {
-        updateActivity(activityId, {
-          status: aiToolStatusForKind(activity.kind, "running"),
-        });
-      }
-      return;
-    }
-
-    if (type === "response.code_interpreter_call_code.delta" || type === "response.code_interpreter_call_code.done" || type === "response.code_interpreter_call.in_progress") {
-      updateActivity(aiToolCallId(event), {
-        kind: "code_write",
-        name: "code_interpreter",
-        status: "writing_code",
-      });
-      return;
-    }
-
-    if (type === "response.code_interpreter_call.interpreting") {
-      updateActivity(aiToolCallId(event), {
-        kind: "check",
-        name: "code_interpreter",
-        status: "checking_changes",
-      });
-      return;
-    }
-
-    if (type === "response.apply_patch_call.in_progress") {
-      updateActivity(aiToolCallId(event), {
-        kind: "apply",
-        name: "apply_patch",
-        status: "applying_changes",
-      });
-      return;
-    }
-
-    if (
-      type === "response.mcp_call.completed"
-      || type === "response.mcp_call.failed"
-      || type === "response.code_interpreter_call.completed"
-      || type === "response.code_interpreter_call.failed"
-      || type === "response.code_interpreter_call.incomplete"
-      || type === "response.apply_patch_call.completed"
-      || type === "response.apply_patch_call.failed"
-      || type === "response.output_item.done"
-    ) {
-      if (finishActivity(aiToolCallId(event))) return;
-    }
-
     if (type === "response.completed") {
       completedResponse = event?.response || null;
       return;

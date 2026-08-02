@@ -22,8 +22,6 @@ export const AI_CHAT_JS = `
   var aiThinkingFrame=0;
   var aiThinkingSearchMix=0;
   var aiThinkingVoiceMix=0;
-  var aiThinkingCodeMix=0;
-  var aiThinkingCodeStage=0;
   var aiThinkingLastFrame=0;
   var stableViewportHeight=Math.max(1,Number(tg&&(tg.viewportStableHeight||tg.viewportHeight))||Number(window.innerHeight)||1);
   function q(id){return document.getElementById(id)}
@@ -375,264 +373,6 @@ export const AI_CHAT_JS = `
     return amount*amount*(3-2*amount);
   }
 
-  function aiCodeStateStage(state){
-    if(state==='writing_code')return 1;
-    if(state==='applying_changes')return 2;
-    if(state==='checking_changes')return 3;
-    return 0;
-  }
-
-  function aiIsCodeState(state){
-    return state==='inspecting_repo'
-      ||state==='writing_code'
-      ||state==='applying_changes'
-      ||state==='checking_changes';
-  }
-
-  function aiCodeStageWeight(stage,index){
-    return aiSmoothMorph(
-      Math.max(0,1-Math.abs(stage-index))
-    );
-  }
-
-  function drawAiCodeLoader(
-    ctx,
-    seconds,
-    mix,
-    stage,
-    width,
-    height
-  ){
-    var amount=aiSmoothMorph(mix);
-    if(amount<.01)return;
-
-    var size=Math.min(width,height);
-    var scale=size/44;
-    var cx=width/2;
-    var cy=height/2;
-    var inspect=aiCodeStageWeight(stage,0);
-    var writing=aiCodeStageWeight(stage,1);
-    var applying=aiCodeStageWeight(stage,2);
-    var checking=aiCodeStageWeight(stage,3);
-    var open=
-      1.08*inspect
-      +.96*writing
-      +.75*applying
-      +1.01*checking;
-    var pulse=.5+.5*Math.sin(seconds*3.1);
-    var drift=Math.sin(seconds*1.45)*.7*scale;
-
-    ctx.save();
-    ctx.globalCompositeOperation='destination-out';
-    ctx.globalAlpha=amount;
-    ctx.fillRect(0,0,width,height);
-    ctx.restore();
-
-    ctx.save();
-    ctx.globalCompositeOperation='lighter';
-    ctx.lineCap='round';
-    ctx.lineJoin='round';
-    ctx.translate(cx,cy);
-    ctx.scale(
-      .72+.28*amount,
-      .72+.28*amount
-    );
-    ctx.rotate((1-amount)*-.18);
-
-    var braceGradient=ctx.createLinearGradient(
-      -16*scale,
-      -16*scale,
-      16*scale,
-      16*scale
-    );
-    braceGradient.addColorStop(
-      0,
-      'rgba(255,255,255,'+(.22+.42*amount)+')'
-    );
-    braceGradient.addColorStop(
-      .52,
-      'rgba(210,167,235,'+(.42+.48*amount)+')'
-    );
-    braceGradient.addColorStop(
-      1,
-      'rgba(255,255,255,'+(.18+.38*amount)+')'
-    );
-
-    ctx.strokeStyle=braceGradient;
-    ctx.lineWidth=(1.05+.35*pulse)*scale;
-    ctx.shadowColor='rgba(190,126,220,.34)';
-    ctx.shadowBlur=(3.5+3*pulse)*scale;
-
-    function brace(side){
-      var edge=side*11.5*scale*open;
-      var inner=side*6.2*scale*open;
-      var middle=side*14.2*scale*open;
-
-      ctx.beginPath();
-      ctx.moveTo(inner,-16*scale+drift);
-      ctx.bezierCurveTo(
-        edge,-16*scale+drift,
-        edge,-10*scale+drift,
-        edge,-6.2*scale+drift
-      );
-      ctx.bezierCurveTo(
-        edge,-2.2*scale+drift,
-        middle,-2.1*scale+drift,
-        middle,drift
-      );
-      ctx.bezierCurveTo(
-        middle,2.1*scale+drift,
-        edge,2.2*scale+drift,
-        edge,6.2*scale+drift
-      );
-      ctx.bezierCurveTo(
-        edge,10*scale+drift,
-        edge,16*scale+drift,
-        inner,16*scale+drift
-      );
-      ctx.stroke();
-    }
-
-    brace(-1);
-    brace(1);
-
-    ctx.shadowBlur=0;
-    var coreRadius=(
-      3.15
-      +.65*pulse
-      +1.5*applying
-    )*scale;
-    var coreGradient=ctx.createRadialGradient(
-      0,0,.2*scale,
-      0,0,coreRadius*1.65
-    );
-    coreGradient.addColorStop(
-      0,
-      'rgba(255,255,255,'+(.75*amount)+')'
-    );
-    coreGradient.addColorStop(
-      .36,
-      'rgba(211,180,255,'+(.52*amount)+')'
-    );
-    coreGradient.addColorStop(
-      1,
-      'rgba(142,74,180,0)'
-    );
-    ctx.fillStyle=coreGradient;
-    ctx.beginPath();
-    ctx.arc(0,0,coreRadius*1.65,0,Math.PI*2);
-    ctx.fill();
-
-    var ringCount=18;
-    for(var ring=0;ring<ringCount;ring+=1){
-      var ringAngle=
-        ring/ringCount*Math.PI*2
-        +seconds*(.45+applying*1.15);
-      var ringRadius=coreRadius*(
-        .88+.13*Math.sin(seconds*2.7+ring*.7)
-      );
-      var ringAlpha=(
-        .22+.55*(.5+.5*Math.sin(ringAngle-seconds))
-      )*amount;
-
-      ctx.fillStyle='rgba(238,216,250,'+ringAlpha+')';
-      ctx.beginPath();
-      ctx.arc(
-        Math.cos(ringAngle)*ringRadius,
-        Math.sin(ringAngle)*ringRadius,
-        (.32+.15*pulse)*scale,
-        0,
-        Math.PI*2
-      );
-      ctx.fill();
-    }
-
-    var lengths=[.86,.58,.74,.46];
-    var typing=(seconds*.42)%1;
-    var scan=(seconds*.31)%1;
-    var verify=(seconds*.27)%1;
-
-    for(var row=0;row<4;row+=1){
-      var y=(row-1.5)*5.05*scale;
-      var contraction=1-.48*applying;
-      var left=-7.5*scale*contraction;
-      var full=15*scale*lengths[row]*contraction;
-      var visible=
-        inspect*(.22+.78*Math.max(
-          0,
-          1-Math.abs(row/3-scan)*2.7
-        ))
-        +writing*Math.min(
-          1,
-          Math.max(0,typing*1.45-row*.12)
-        )
-        +applying*(.42+.58*pulse)
-        +checking*(.26+.74*Math.max(
-          0,
-          1-Math.abs(row/3-verify)*3.2
-        ));
-      visible=Math.max(.08,Math.min(1,visible));
-
-      ctx.strokeStyle='rgba(244,232,250,'
-        +(visible*.72*amount)+')';
-      ctx.lineWidth=(.58+.3*visible)*scale;
-      ctx.beginPath();
-      ctx.moveTo(left,y);
-      ctx.lineTo(
-        left+full*visible,
-        y+Math.sin(seconds*3+row)*.25*scale*writing
-      );
-      ctx.stroke();
-
-      var dotCount=10;
-      for(var dot=0;dot<dotCount;dot+=1){
-        var progress=dot/(dotCount-1);
-        var dotVisible=progress<=visible?1:.08;
-        var travel=
-          writing*Math.sin(seconds*4+dot*.55+row)*.32*scale
-          +applying*(.5-progress)*2.4*scale*pulse;
-
-        ctx.fillStyle='rgba(215,177,236,'
-          +((.18+.58*dotVisible)*amount)+')';
-        ctx.beginPath();
-        ctx.arc(
-          left+full*progress+travel,
-          y,
-          (.26+.14*dotVisible)*scale,
-          0,
-          Math.PI*2
-        );
-        ctx.fill();
-      }
-    }
-
-    var sweepWeight=inspect+checking;
-    if(sweepWeight>.01){
-      var sweepY=(-14+28*((seconds*.34)%1))*scale;
-      var sweepGradient=ctx.createLinearGradient(
-        -8*scale,
-        0,
-        8*scale,
-        0
-      );
-      sweepGradient.addColorStop(0,'rgba(255,255,255,0)');
-      sweepGradient.addColorStop(
-        .5,
-        'rgba(255,255,255,'
-          +(.36*sweepWeight*amount)+')'
-      );
-      sweepGradient.addColorStop(1,'rgba(255,255,255,0)');
-      ctx.strokeStyle=sweepGradient;
-      ctx.lineWidth=.55*scale;
-      ctx.beginPath();
-      ctx.moveTo(-8*scale,sweepY);
-      ctx.lineTo(8*scale,sweepY);
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
   function aiVoiceWaveEnvelope(index,count){
     var position=index/Math.max(1,count-1);
     return Math.pow(
@@ -797,9 +537,7 @@ export const AI_CHAT_JS = `
     canvas,
     seconds,
     searchMix,
-    voiceMix,
-    codeMix,
-    codeStage
+    voiceMix
   ){
     if(!canvas)return;
 
@@ -838,7 +576,6 @@ export const AI_CHAT_JS = `
 
     var searchMorph=aiSmoothMorph(searchMix);
     var voiceMorph=aiSmoothMorph(voiceMix);
-    var codeMorph=aiSmoothMorph(codeMix);
     var searchPulse=
       1+Math.sin(seconds*2.15)*.052*searchMorph;
     var radius=
@@ -876,7 +613,6 @@ export const AI_CHAT_JS = `
         a:
           (.1+.22*ghostDepth)
           *(1-searchMorph)
-          *(1-codeMorph)
       });
     }
 
@@ -984,13 +720,12 @@ export const AI_CHAT_JS = `
             *(1-searchMorph)
             +(.22+.14*(1-depth))
             *searchMorph,
-          a:(
+          a:
             (.4+.6*depth)
             *(1-searchMorph)
             +(.16+.66*depth)
             *searchMorph
             *searchVisible
-          )*(1-codeMorph)
         });
       }
     }
@@ -1005,19 +740,11 @@ export const AI_CHAT_JS = `
     drawAiVoiceWaveBody(
       ctx,
       seconds,
-      voiceMorph*(1-codeMorph),
+      voiceMorph,
       width,
       height
     );
     aiOrbPaint(ctx,dots);
-    drawAiCodeLoader(
-      ctx,
-      seconds,
-      codeMorph,
-      codeStage,
-      width,
-      height
-    );
   }
 
   function approachAiThinkingMix(
@@ -1052,10 +779,6 @@ export const AI_CHAT_JS = `
       initialState==='searching'?1:0;
     aiThinkingVoiceMix=
       initialState==='generating_voice'?1:0;
-    aiThinkingCodeMix=
-      aiIsCodeState(initialState)?1:0;
-    aiThinkingCodeStage=
-      aiCodeStateStage(initialState);
     aiThinkingLastFrame=0;
 
     var reduced=window.matchMedia
@@ -1074,10 +797,6 @@ export const AI_CHAT_JS = `
         state==='searching'?1:0;
       var voiceTarget=
         state==='generating_voice'?1:0;
-      var codeTarget=aiIsCodeState(state)?1:0;
-      var codeStageTarget=codeTarget
-        ?aiCodeStateStage(state)
-        :aiThinkingCodeStage;
       var delta=aiThinkingLastFrame
         ?Math.min(.05,seconds-aiThinkingLastFrame)
         :0;
@@ -1085,8 +804,6 @@ export const AI_CHAT_JS = `
       if(reduced){
         aiThinkingSearchMix=searchTarget;
         aiThinkingVoiceMix=voiceTarget;
-        aiThinkingCodeMix=codeTarget;
-        aiThinkingCodeStage=codeStageTarget;
       }else{
         aiThinkingSearchMix=approachAiThinkingMix(
           aiThinkingSearchMix,
@@ -1100,18 +817,6 @@ export const AI_CHAT_JS = `
           delta,
           1.15
         );
-        aiThinkingCodeMix=approachAiThinkingMix(
-          aiThinkingCodeMix,
-          codeTarget,
-          delta,
-          1.7
-        );
-        aiThinkingCodeStage=approachAiThinkingMix(
-          aiThinkingCodeStage,
-          codeStageTarget,
-          delta,
-          1.85
-        );
       }
 
       aiThinkingLastFrame=seconds;
@@ -1121,9 +826,7 @@ export const AI_CHAT_JS = `
           canvas,
           seconds,
           aiThinkingSearchMix,
-          aiThinkingVoiceMix,
-          aiThinkingCodeMix,
-          aiThinkingCodeStage
+          aiThinkingVoiceMix
         );
       }
 
@@ -1131,8 +834,6 @@ export const AI_CHAT_JS = `
         drawAiThinkingOrb(
           emptyCanvas,
           seconds,
-          0,
-          0,
           0,
           0
         );
@@ -1563,18 +1264,6 @@ export const AI_CHAT_JS = `
     }else if(state==='generating_voice'){
       next='generating_voice';
       labelText='Generating voice';
-    }else if(state==='inspecting_repo'){
-      next='inspecting_repo';
-      labelText='Inspecting repository';
-    }else if(state==='writing_code'){
-      next='writing_code';
-      labelText='Writing code';
-    }else if(state==='applying_changes'){
-      next='applying_changes';
-      labelText='Applying changes';
-    }else if(state==='checking_changes'){
-      next='checking_changes';
-      labelText='Checking changes';
     }
 
     setAiChatCreatureState(next==='searching'?'searching':'thinking');
@@ -1591,9 +1280,7 @@ export const AI_CHAT_JS = `
         canvas,
         performance.now()/1000,
         next==='searching'?1:0,
-        next==='generating_voice'?1:0,
-        aiIsCodeState(next)?1:0,
-        aiCodeStateStage(next)
+        next==='generating_voice'?1:0
       );
     }
 
