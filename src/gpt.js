@@ -59,7 +59,7 @@ const GPT_CHAT_ATTACHMENT_MIME = Object.freeze({
   htm: "text/html",
   xml: "text/xml",
   csv: "text/csv",
-  tsv: "text/tab-separated-values",
+  tsv: "text/tsv",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   rtf: "application/rtf",
@@ -176,7 +176,7 @@ export async function editImages(env, prompt, images, options = {}) {
   form.append("quality", GPT_IMAGE_QUALITY);
   form.append("moderation", "low");
   form.append("output_format", "jpeg");
-  form.append("output_compression", 90);
+  form.append("output_compression", "90");
 
   const response = await fetchWithTimeout(
     "https://api.openai.com/v1/images/edits",
@@ -951,6 +951,7 @@ function toFriendlyGptImageError(status, errorBody) {
     status,
     message: String(message || "").slice(0, 1000),
   });
+
 
   if (status === 401 || raw.includes("invalid api key") || raw.includes("unauthorized")) {
     return "AI image connection error. Please try again later.";
