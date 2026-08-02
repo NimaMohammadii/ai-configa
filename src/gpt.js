@@ -59,7 +59,7 @@ const GPT_CHAT_ATTACHMENT_MIME = Object.freeze({
   htm: "text/html",
   xml: "text/xml",
   csv: "text/csv",
-  tsv: "text/tsv",
+  tsv: "text/tab-separated-values",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   rtf: "application/rtf",
@@ -176,7 +176,7 @@ export async function editImages(env, prompt, images, options = {}) {
   form.append("quality", GPT_IMAGE_QUALITY);
   form.append("moderation", "low");
   form.append("output_format", "jpeg");
-  form.append("output_compression", "90");
+  form.append("output_compression", 90);
 
   const response = await fetchWithTimeout(
     "https://api.openai.com/v1/images/edits",
@@ -526,6 +526,28 @@ function aiToolCallId(event) {
   );
 }
 
+function looksLikeGeneratedCode(value) {
+  const text = String(value || "");
+  if (/(^|\n)```(?:[a-z0-9_+#.-]+)?[ \t]*\n/i.test(text)) return true;
+
+  const lines = text.split(/\r?\n/).slice(-24);
+  let signals = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.length > 240) continue;
+
+    if (/^(?:import|export|const|let|var|function|class|interface|type|enum|def|async\s+def|from\s+\S+\s+import|#include|public\s+(?:class|static)|private\s+|protected\s+|SELECT\s+|INSERT\s+|CREATE\s+(?:TABLE|INDEX)|<\/?[a-z][^>]*>|[.#]?[a-z][\w-]*(?:\s+[.#]?[a-z][\w-]*)*\s*\{)/i.test(trimmed)) {
+      signals += 1;
+    }
+    if (/[{};]$/.test(trimmed) || /=>/.test(trimmed) || /^(?:if|for|while|switch|try|catch)\s*\(/.test(trimmed)) {
+      signals += 1;
+    }
+  }
+
+  return signals >= 3;
+}
+
 async function readChatResponseStream(response, onStatus) {
   if (!response.body) throw new Error("AI did not return a response. Please try again.");
 
@@ -533,6 +555,8 @@ async function readChatResponseStream(response, onStatus) {
   const decoder = new TextDecoder();
   const searchingCalls = new Set();
   const activityCalls = new Map();
+  let generatedTextProbe = "";
+  let generatedCodeActive = false;
   let buffer = "";
   let completedResponse = null;
 
@@ -597,6 +621,19 @@ async function readChatResponseStream(response, onStatus) {
       return;
     }
 
+    if (type === "response.output_text.delta") {
+      generatedTextProbe = (generatedTextProbe + String(event?.delta || "")).slice(-8000);
+      if (!generatedCodeActive && looksLikeGeneratedCode(generatedTextProbe)) {
+        generatedCodeActive = true;
+        updateActivity("generated-output-code", {
+          kind: "code_write",
+          name: "output_text",
+          status: "writing_code",
+        });
+      }
+      return;
+    }
+
     if (type === "response.output_item.added") {
       const item = event?.item || {};
       const activityId = aiToolCallId(event);
@@ -615,6 +652,15 @@ async function readChatResponseStream(response, onStatus) {
           });
           return;
         }
+      }
+
+      if (item?.type === "code_interpreter_call") {
+        updateActivity(activityId, {
+          kind: "code_write",
+          name: "code_interpreter",
+          status: "writing_code",
+        });
+        return;
       }
 
       if (item?.type === "apply_patch_call") {
@@ -649,9 +695,41 @@ async function readChatResponseStream(response, onStatus) {
       return;
     }
 
+    if (type === "response.code_interpreter_call_code.delta" || type === "response.code_interpreter_call_code.done" || type === "response.code_interpreter_call.in_progress") {
+      updateActivity(aiToolCallId(event), {
+        kind: "code_write",
+        name: "code_interpreter",
+        status: "writing_code",
+      });
+      return;
+    }
+
+    if (type === "response.code_interpreter_call.interpreting") {
+      updateActivity(aiToolCallId(event), {
+        kind: "check",
+        name: "code_interpreter",
+        status: "checking_changes",
+      });
+      return;
+    }
+
+    if (type === "response.apply_patch_call.in_progress") {
+      updateActivity(aiToolCallId(event), {
+        kind: "apply",
+        name: "apply_patch",
+        status: "applying_changes",
+      });
+      return;
+    }
+
     if (
       type === "response.mcp_call.completed"
       || type === "response.mcp_call.failed"
+      || type === "response.code_interpreter_call.completed"
+      || type === "response.code_interpreter_call.failed"
+      || type === "response.code_interpreter_call.incomplete"
+      || type === "response.apply_patch_call.completed"
+      || type === "response.apply_patch_call.failed"
       || type === "response.output_item.done"
     ) {
       if (finishActivity(aiToolCallId(event))) return;
@@ -873,7 +951,6 @@ function toFriendlyGptImageError(status, errorBody) {
     status,
     message: String(message || "").slice(0, 1000),
   });
-
 
   if (status === 401 || raw.includes("invalid api key") || raw.includes("unauthorized")) {
     return "AI image connection error. Please try again later.";
