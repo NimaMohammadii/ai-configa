@@ -8,8 +8,53 @@ export const DEFAULT_STATE = {
   emotionActive: false,
 };
 
+let demoLanguageColumnReady = false;
+let demoLanguageColumnPromise = null;
+
+function databaseErrorText(error) {
+  return String(error?.message || error || "").toLowerCase();
+}
+
+function isMissingDemoLanguageColumn(error) {
+  const raw = databaseErrorText(error);
+  return raw.includes("demo_language") && (raw.includes("no such column") || raw.includes("has no column"));
+}
+
+function isDuplicateDemoLanguageColumn(error) {
+  const raw = databaseErrorText(error);
+  return raw.includes("demo_language") && (raw.includes("duplicate column") || raw.includes("already exists"));
+}
+
+async function ensureDemoLanguageColumn(env) {
+  if (demoLanguageColumnReady) return;
+
+  if (!demoLanguageColumnPromise) {
+    demoLanguageColumnPromise = (async () => {
+      try {
+        await env.DB.prepare("SELECT demo_language FROM user_state LIMIT 1").first();
+      } catch (error) {
+        if (!isMissingDemoLanguageColumn(error)) throw error;
+
+        try {
+          await env.DB.prepare("ALTER TABLE user_state ADD COLUMN demo_language TEXT").run();
+        } catch (alterError) {
+          if (!isDuplicateDemoLanguageColumn(alterError)) throw alterError;
+        }
+      }
+
+      demoLanguageColumnReady = true;
+    })().catch((error) => {
+      demoLanguageColumnPromise = null;
+      throw error;
+    });
+  }
+
+  await demoLanguageColumnPromise;
+}
+
 export async function getState(env, userId) {
   requireDb(env);
+  await ensureDemoLanguageColumn(env);
 
   const row = await env.DB.prepare(
     "SELECT voice, output, page, menu_message_id, language, demo_language FROM user_state WHERE user_id = ?"
@@ -30,6 +75,7 @@ export async function getState(env, userId) {
 
 export async function saveState(env, userId, state) {
   requireDb(env);
+  await ensureDemoLanguageColumn(env);
 
   const cleanState = {
     voice: state.voice || DEFAULT_STATE.voice,
