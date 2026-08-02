@@ -1,0 +1,105 @@
+name: Apply demo language glass flags fix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/apply-demo-language-glass-flags.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/demo-language-glass-flags
+          path: feature
+          fetch-depth: 0
+
+      - name: Patch exact language picker UI
+        working-directory: feature
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/mini-app/client.js')
+          text = path.read_text()
+
+          def replace_once(old, new):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected one exact match, found {count}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+
+          def replace_regex_once(pattern, replacement):
+              global text
+              text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f'Expected one regex match, found {count}: {pattern!r}')
+
+          replace_once(
+              "  var demoLanguageNames={en:'English',ru:'Русский',de:'Deutsch',fa:'فارسی',tr:'Türkçe',ar:'العربية',zh:'中文',ja:'日本語',es:'Español',hi:'हिन्दी'};",
+              "  var demoLanguageNames={en:'English',ru:'Русский',de:'Deutsch',fa:'Farsi',tr:'Türkçe',ar:'العربية',zh:'中文',ja:'日本語',es:'Español',hi:'हिन्दी'};\n  var demoLanguageCountries={en:'gb',ru:'ru',de:'de',fa:'ir',tr:'tr',ar:'sa',zh:'cn',ja:'jp',es:'es',hi:'in'};"
+          )
+
+          replace_regex_once(
+              r"  function syncDemoLanguagePicker\(\)\{.*?\n  function setDemoLanguageMenu",
+              """  function demoLanguageFlagMarkup(value){var code=normalizeDemoLanguage(value);var country=demoLanguageCountries[code]||'gb';return '<span class=\"demo-language-flag demo-language-flag-'+country+'\" aria-hidden=\"true\"></span>'}
+  function syncDemoLanguagePicker(){var label=q('demoLanguageLabel');if(label)label.textContent=demoLanguageNames[demoLanguage]||demoLanguageNames.en;var buttonFlag=q('demoLanguageButtonFlag');if(buttonFlag)buttonFlag.innerHTML=demoLanguageFlagMarkup(demoLanguage);document.querySelectorAll('[data-demo-language]').forEach(function(option){var active=option.getAttribute('data-demo-language')===demoLanguage;option.classList.toggle('active',active);option.setAttribute('aria-pressed',active?'true':'false')})}
+  function setDemoLanguageMenu"""
+          )
+
+          replace_regex_once(
+              r"  function initializeDemoLanguagePicker\(\)\{.*?\n  function focusReelVoice",
+              """  function initializeDemoLanguagePicker(){var page=q('voicesPage');if(!page||q('demoLanguageWrap'))return;var title=page.querySelector('.voices-page-head h2');if(!title||!title.parentNode)return;var titleRow=document.createElement('div');titleRow.className='demo-language-title-row';title.parentNode.insertBefore(titleRow,title);titleRow.appendChild(title);var wrap=document.createElement('div');wrap.id='demoLanguageWrap';wrap.className='voice-wrap demo-language-wrap';var rows=Object.keys(demoLanguageNames).map(function(code){return '<div class=\"voice-option demo-language-option\"><span class=\"voice-avatar demo-language-avatar\" aria-hidden=\"true\">'+demoLanguageFlagMarkup(code)+'</span><button class=\"voice-select\" data-demo-language=\"'+code+'\" type=\"button\" aria-pressed=\"false\"><span>'+demoLanguageNames[code]+'</span></button></div>'}).join('');wrap.innerHTML='<button id=\"demoLanguageButton\" class=\"voice-btn\" type=\"button\" aria-label=\"Choose demo language\" aria-haspopup=\"true\" aria-expanded=\"false\"><span id=\"demoLanguageButtonFlag\" class=\"voice-button-avatar has-image demo-language-button-avatar\" aria-hidden=\"true\">'+demoLanguageFlagMarkup('en')+'</span><span id=\"demoLanguageLabel\">English</span><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\"><path d=\"M6 9l6 6 6-6\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button><div class=\"voice-menu demo-language-menu\"><div class=\"my-voice-rows\">'+rows+'</div></div>';titleRow.appendChild(wrap);var button=q('demoLanguageButton');if(button)button.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();setDemoLanguageMenu(!demoLanguageMenuOpen)});wrap.addEventListener('click',function(event){var option=event.target&&event.target.closest?event.target.closest('[data-demo-language]'):null;if(!option)return;event.preventDefault();event.stopPropagation();chooseDemoLanguage(option.getAttribute('data-demo-language'))});document.addEventListener('click',function(event){if(demoLanguageMenuOpen&&!wrap.contains(event.target))setDemoLanguageMenu(false)});syncDemoLanguagePicker()}
+  function focusReelVoice"""
+          )
+
+          css_anchor = ".voice-avatar-image.has-image{border-color:rgba(255,255,255,.22);box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}';"
+          css_addition = ".voice-avatar-image.has-image{border-color:rgba(255,255,255,.22);box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}.demo-language-title-row{display:flex;align-items:center;gap:10px;position:relative}.demo-language-wrap{z-index:12}.demo-language-title-row .voice-btn{min-width:116px}.demo-language-wrap .voice-menu{left:0;right:auto;top:44px;width:230px;max-height:min(390px,58vh);transform-origin:top left}.demo-language-button-avatar{display:grid!important;place-items:center!important;overflow:hidden!important;background:none!important;border:1px solid rgba(255,255,255,.16)!important}.demo-language-avatar{display:grid!important;place-items:center!important}.demo-language-option{grid-template-columns:36px minmax(0,1fr)!important}.demo-language-option .voice-select{grid-column:2;height:34px}.demo-language-flag{position:relative;display:block;width:28px;height:18px;border-radius:4px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.2),0 2px 7px rgba(0,0,0,.28)}.demo-language-button-avatar .demo-language-flag{width:22px;height:14px;border-radius:3px;box-shadow:none}.demo-language-flag-gb{background:linear-gradient(33deg,transparent 42%,#fff 42% 47%,#c8102e 47% 52%,#fff 52% 57%,transparent 57%),linear-gradient(-33deg,transparent 42%,#fff 42% 47%,#c8102e 47% 52%,#fff 52% 57%,transparent 57%),linear-gradient(90deg,transparent 42%,#fff 42% 58%,transparent 58%),linear-gradient(transparent 35%,#fff 35% 65%,transparent 65%),linear-gradient(90deg,transparent 46%,#c8102e 46% 54%,transparent 54%),linear-gradient(transparent 43%,#c8102e 43% 57%,transparent 57%),#012169}.demo-language-flag-ru{background:linear-gradient(#fff 0 33.333%,#1c57a7 33.333% 66.666%,#d52b1e 66.666%)}.demo-language-flag-de{background:linear-gradient(#151515 0 33.333%,#dd0000 33.333% 66.666%,#ffce00 66.666%)}.demo-language-flag-ir{background:linear-gradient(#239f40 0 33.333%,#fff 33.333% 66.666%,#da0000 66.666%)}.demo-language-flag-tr{background:#e30a17}.demo-language-flag-tr:before{content:\"\";position:absolute;left:7px;top:4px;width:10px;height:10px;border-radius:50%;background:#fff}.demo-language-flag-tr:after{content:\"\";position:absolute;left:10px;top:4px;width:9px;height:9px;border-radius:50%;background:#e30a17}.demo-language-flag-sa{background:#087a3f}.demo-language-flag-sa:before{content:\"\";position:absolute;left:5px;right:5px;bottom:4px;height:1.5px;border-radius:2px;background:#fff}.demo-language-flag-sa:after{content:\"\";position:absolute;left:8px;right:8px;top:6px;height:2px;border-radius:2px;background:#fff}.demo-language-flag-cn{background:#de2910}.demo-language-flag-cn:before{content:\"\";position:absolute;left:5px;top:4px;width:7px;height:7px;background:#ffde00;clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 94%,50% 72%,21% 94%,32% 57%,2% 35%,39% 35%)}.demo-language-flag-jp{background:#fff}.demo-language-flag-jp:before{content:\"\";position:absolute;left:50%;top:50%;width:9px;height:9px;border-radius:50%;background:#bc002d;transform:translate(-50%,-50%)}.demo-language-flag-es{background:linear-gradient(#aa151b 0 25%,#f1bf00 25% 75%,#aa151b 75%)}.demo-language-flag-in{background:linear-gradient(#ff9933 0 33.333%,#fff 33.333% 66.666%,#138808 66.666%)}.demo-language-flag-in:before{content:\"\";position:absolute;left:50%;top:50%;width:5px;height:5px;border:1px solid #1a4f9c;border-radius:50%;transform:translate(-50%,-50%)}@media(max-width:390px){.demo-language-title-row{gap:7px}.demo-language-title-row .voice-btn{min-width:104px;padding-left:8px!important;padding-right:10px!important;font-size:12px}.demo-language-wrap .voice-menu{width:230px}}';"
+          replace_once(css_anchor, css_addition)
+
+          path.write_text(text)
+          PY
+
+      - name: Validate
+        working-directory: feature
+        run: |
+          node --check src/mini-app/client.js
+          npm test
+
+      - name: Commit fix branch
+        working-directory: feature
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/mini-app/client.js
+          git diff --cached --check
+          git commit -m "Match demo language picker glass style"
+          git push origin HEAD:fix/demo-language-glass-flags
+
+      - name: Checkout main for cleanup
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: cleanup-main
+          fetch-depth: 0
+
+      - name: Remove temporary workflow
+        working-directory: cleanup-main
+        run: |
+          rm -f .github/workflows/apply-demo-language-glass-flags.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/apply-demo-language-glass-flags.yml
+          git diff --cached --check
+          git commit -m "Remove temporary language picker workflow"
+          git push origin HEAD:main
