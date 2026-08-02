@@ -450,68 +450,80 @@ export async function chatWithAi(env, messages, onStatus) {
   }
 }
 
-function resolveAiToolStatus(event, type) {
-  const item = event?.item || event?.output_item || {};
-  const activity = [
-    type,
-    item?.type,
-    event?.tool_type,
-    item?.name,
-    event?.name,
-    event?.tool_name,
-    item?.server_label,
-    event?.server_label,
-    item?.command,
-    event?.command,
-    item?.action,
-    event?.action,
-    item?.operation?.type,
-    event?.operation?.type,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+const AI_REPO_INSPECT_TOOLS = new Set([
+  "get_file_contents",
+  "search_code",
+  "get_commit",
+  "list_commits",
+  "list_branches",
+  "list_tags",
+  "get_latest_release",
+  "get_release_by_tag",
+  "get_repository",
+  "list_pull_requests",
+  "get_pull_request",
+  "get_pull_request_files",
+  "pull_request_read",
+]);
 
-  if (/(apply[_ -]?patch|commit|push|merge|update[_ -]?file|delete[_ -]?file|rename[_ -]?file)/.test(activity)) {
-    return "applying_changes";
-  }
-  if (/(run[_ -]?tests?|test|lint|type[_ -]?check|check[_ -]?changes|verify|build)/.test(activity)) {
-    return "checking_changes";
-  }
-  if (/(write[_ -]?file|edit[_ -]?file|create[_ -]?file|replace[_ -]?file|generate[_ -]?code|code[_ -]?interpreter)/.test(activity)) {
-    return "writing_code";
-  }
-  if (/(github|repository|repo|read[_ -]?file|get[_ -]?file|fetch[_ -]?file|list[_ -]?files|search[_ -]?code|inspect)/.test(activity)) {
-    return "inspecting_repo";
-  }
+const AI_REPO_CODE_WRITE_TOOLS = new Set([
+  "create_or_update_file",
+  "push_files",
+]);
+
+const AI_REPO_APPLY_TOOLS = new Set([
+  "delete_file",
+  "create_branch",
+  "update_pull_request_branch",
+  "create_pull_request",
+  "update_pull_request",
+  "merge_pull_request",
+]);
+
+const AI_REPO_CHECK_TOOLS = new Set([
+  "actions_get",
+  "actions_list",
+  "get_workflow_run",
+  "get_workflow_run_logs",
+  "get_workflow_job",
+  "list_workflow_runs",
+  "get_commit_status",
+  "get_check_run",
+  "list_check_runs",
+]);
+
+function normalizeAiToolName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function resolveAiMcpToolKind(name) {
+  const toolName = normalizeAiToolName(name);
+  if (AI_REPO_CODE_WRITE_TOOLS.has(toolName)) return "code_write";
+  if (AI_REPO_APPLY_TOOLS.has(toolName)) return "apply";
+  if (AI_REPO_CHECK_TOOLS.has(toolName)) return "check";
+  if (AI_REPO_INSPECT_TOOLS.has(toolName)) return "inspect";
   return "";
 }
 
-function aiToolCallId(event, type) {
+function aiToolStatusForKind(kind, phase = "running") {
+  if (kind === "code_write") {
+    return phase === "arguments" ? "writing_code" : "applying_changes";
+  }
+  if (kind === "apply") return "applying_changes";
+  if (kind === "check") return "checking_changes";
+  if (kind === "inspect") return "inspecting_repo";
+  return "";
+}
+
+function aiToolCallId(event) {
   const item = event?.item || event?.output_item || {};
   return String(
     item?.id
-      || item?.call_id
       || event?.item_id
       || event?.call_id
       || event?.output_index
-      || type,
+      || "",
   );
-}
-
-function aiToolEventStarted(type) {
-  return type === "response.output_item.added"
-    || type.endsWith(".in_progress")
-    || type.endsWith(".searching")
-    || type.endsWith(".interpreting")
-    || type.endsWith(".calling");
-}
-
-function aiToolEventFinished(type) {
-  return type === "response.output_item.done"
-    || type.endsWith(".completed")
-    || type.endsWith(".failed")
-    || type.endsWith(".incomplete");
 }
 
 async function readChatResponseStream(response, onStatus) {
@@ -529,11 +541,28 @@ async function readChatResponseStream(response, onStatus) {
   };
 
   const emitCurrentStatus = () => {
-    const activeStatuses = Array.from(activityCalls.values());
+    const activeCalls = Array.from(activityCalls.values());
     emitStatus(
-      activeStatuses[activeStatuses.length - 1]
+      activeCalls[activeCalls.length - 1]?.status
         || (searchingCalls.size ? "searching" : "thinking"),
     );
+  };
+
+  const updateActivity = (id, patch) => {
+    if (!id) return;
+    const current = activityCalls.get(id) || {};
+    const next = { ...current, ...patch };
+    if (!next.kind || !next.status) return;
+    activityCalls.delete(id);
+    activityCalls.set(id, next);
+    emitStatus(next.status);
+  };
+
+  const finishActivity = (id) => {
+    if (!id || !activityCalls.has(id)) return false;
+    activityCalls.delete(id);
+    emitCurrentStatus();
+    return true;
   };
 
   const handleBlock = (block) => {
@@ -568,18 +597,64 @@ async function readChatResponseStream(response, onStatus) {
       return;
     }
 
-    const activityStatus = resolveAiToolStatus(event, type);
-    const activityId = aiToolCallId(event, type);
-    if (activityStatus && aiToolEventStarted(type)) {
-      activityCalls.delete(activityId);
-      activityCalls.set(activityId, activityStatus);
-      emitStatus(activityStatus);
+    if (type === "response.output_item.added") {
+      const item = event?.item || {};
+      const activityId = aiToolCallId(event);
+
+      if (item?.type === "mcp_call") {
+        const kind = resolveAiMcpToolKind(item?.name);
+        const status = aiToolStatusForKind(
+          kind,
+          kind === "code_write" ? "arguments" : "running",
+        );
+        if (kind && status) {
+          updateActivity(activityId, {
+            kind,
+            name: normalizeAiToolName(item?.name),
+            status,
+          });
+          return;
+        }
+      }
+
+      if (item?.type === "apply_patch_call") {
+        updateActivity(activityId, {
+          kind: "apply",
+          name: "apply_patch",
+          status: "applying_changes",
+        });
+        return;
+      }
+    }
+
+    if (type === "response.mcp_call_arguments.delta" || type === "response.mcp_call_arguments.done") {
+      const activityId = aiToolCallId(event);
+      const activity = activityCalls.get(activityId);
+      if (activity?.kind === "code_write") {
+        updateActivity(activityId, {
+          status: aiToolStatusForKind("code_write", "arguments"),
+        });
+      }
       return;
     }
-    if (aiToolEventFinished(type) && activityCalls.has(activityId)) {
-      activityCalls.delete(activityId);
-      emitCurrentStatus();
+
+    if (type === "response.mcp_call.in_progress") {
+      const activityId = aiToolCallId(event);
+      const activity = activityCalls.get(activityId);
+      if (activity?.kind) {
+        updateActivity(activityId, {
+          status: aiToolStatusForKind(activity.kind, "running"),
+        });
+      }
       return;
+    }
+
+    if (
+      type === "response.mcp_call.completed"
+      || type === "response.mcp_call.failed"
+      || type === "response.output_item.done"
+    ) {
+      if (finishActivity(aiToolCallId(event))) return;
     }
 
     if (type === "response.completed") {
