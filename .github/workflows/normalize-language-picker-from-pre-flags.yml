@@ -76,3 +76,5 @@ jobs:
           git diff --cached --check
           git commit -m "Keep only flags and Farsi over pre-flags picker"
           git push origin HEAD:main
+
+# Triggered through a reviewed PR so GitHub Actions executes the normalization.
