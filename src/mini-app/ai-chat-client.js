@@ -230,16 +230,29 @@ export const AI_CHAT_JS = `
       return;
     }
 
+    var previousVoice=aiChatPreferredVoice;
+    var previousSavedVoices=aiChatSavedVoices.slice();
     var wrap=q('aiChatVoiceWrap');
     var card=q('aiChatVoiceCard');
     aiChatVoiceMenuBusy=true;
     stopAiChatVoicePreview();
+    updateAiChatHeader({
+      voice:selectedName,
+      savedVoices:aiChatSavedVoices
+    });
+    setAiChatVoiceMenu(false);
 
     if(wrap){
       wrap.classList.add('updating');
     }
     if(card){
       card.setAttribute('aria-busy','true');
+    }
+
+    if(tg&&tg.HapticFeedback){
+      try{
+        tg.HapticFeedback.impactOccurred('light');
+      }catch(error){}
     }
 
     try{
@@ -256,14 +269,11 @@ export const AI_CHAT_JS = `
           ?data.savedVoices
           :aiChatSavedVoices
       });
-      setAiChatVoiceMenu(false);
-
-      if(tg&&tg.HapticFeedback){
-        try{
-          tg.HapticFeedback.impactOccurred('light');
-        }catch(error){}
-      }
     }catch(error){
+      updateAiChatHeader({
+        voice:previousVoice,
+        savedVoices:previousSavedVoices
+      });
       toast(error.message);
     }finally{
       aiChatVoiceMenuBusy=false;
