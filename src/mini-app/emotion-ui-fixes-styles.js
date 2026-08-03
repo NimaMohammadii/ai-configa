@@ -22,13 +22,12 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 @keyframes emotionButtonLift{from{opacity:0;transform:translateY(12px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:380px){.emotion-card{left:14px!important;right:14px!important;max-height:min(40dvh,320px)!important}body.keyboard-open #flow.active .emotion-trigger,body.keyboard-open.emotion-audio-ready #flow.active .emotion-trigger{right:22px!important;width:42px!important;min-width:42px!important}}
 
-/* Match the current top TTS card and menu without changing the Voices layout. */
-.demo-language-title-row{display:block!important;position:relative!important}
-.demo-language-wrap{position:absolute!important;left:calc(100% + 8px)!important;bottom:-1px!important;z-index:12!important;height:36px!important;min-height:36px!important;max-height:36px!important;align-self:auto!important}
-.demo-language-wrap .voice-btn{height:36px!important;min-height:36px!important;max-height:36px!important;min-width:104px!important;border:0!important;border-radius:16px!important;background:rgba(13,13,13,.62)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22)!important;backdrop-filter:blur(10px) saturate(1.12)!important;-webkit-backdrop-filter:blur(10px) saturate(1.12)!important}
+/* Match the current top TTS card without changing the Voices layout or language menu. */
+.demo-language-title-row{display:block!important;position:static!important}
+.demo-language-wrap{position:absolute!important;left:auto!important;right:126px!important;top:calc(env(safe-area-inset-top,0px) + 8px)!important;bottom:auto!important;z-index:12!important;height:36px!important;min-height:36px!important;max-height:36px!important;align-self:auto!important}
+.demo-language-wrap .voice-btn{width:104px!important;height:36px!important;min-height:36px!important;max-height:36px!important;min-width:104px!important;border:0!important;border-radius:16px!important;background:rgba(13,13,13,.62)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22)!important;backdrop-filter:blur(10px) saturate(1.12)!important;-webkit-backdrop-filter:blur(10px) saturate(1.12)!important;transform:translateX(126px)!important}
 .demo-language-wrap .voice-btn:active{background:rgba(255,255,255,.105)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),0 5px 14px rgba(0,0,0,.2)!important}
 .demo-language-wrap .voice-menu{top:44px!important;width:230px!important}
-.demo-language-button-avatar{display:block!important;width:22px!important;height:14px!important;flex:0 0 22px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;overflow:visible!important}
-.demo-language-button-avatar .demo-language-flag{display:block!important;width:22px!important;height:14px!important;border-radius:3px!important;box-shadow:none!important}
-@media(max-width:390px){.demo-language-wrap{left:calc(100% + 6px)!important}.demo-language-wrap .voice-btn{min-width:96px!important;padding-left:8px!important;padding-right:10px!important}.demo-language-wrap .voice-menu{width:min(230px,calc(100vw - 32px))!important}}
+.demo-language-button-avatar{display:contents!important}
+@media(max-width:390px){.demo-language-wrap{right:134px!important}.demo-language-wrap .voice-btn{width:96px!important;min-width:96px!important;padding-left:8px!important;padding-right:10px!important;transform:translateX(134px)!important}.demo-language-wrap .voice-menu{width:min(230px,calc(100vw - 32px))!important}}
 `;
