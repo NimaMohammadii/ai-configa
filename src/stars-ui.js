@@ -35,6 +35,7 @@ export function customStarsInvoiceText(pack, state = {}) {
     starsAmountLine(pack, lang),
     "",
     lang === "fa" ? `نرخ: <b>هر ۱٬۰۰۰ کردیت = ۱۲ ⭐️</b>` : `Rate: <b>1,000 credits = 12 ⭐️</b>`,
+    lang === "fa" ? "حداقل خرید: <b>۸۰ ⭐️</b>" : "Minimum purchase: <b>80 ⭐️</b>",
     lang === "fa" ? "برای دریافت فاکتور پرداخت تایید کن" : "Confirm to receive the payment invoice",
   ].join("\n");
 }
