@@ -1,6 +1,7 @@
 import { getAdminAction, isAdmin } from "./admin.js";
 import { handleCallback } from "./bot.js";
 import { handleMessage } from "./bot-secure.js";
+import { handleChatGptAppRequest, isChatGptAppRequest } from "./chatgpt-app/router.js";
 import { handleMiniAppRequest, isMiniAppRequest } from "./mini-app/server.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { processPendingImageJobs } from "./image-jobs.js";
@@ -18,6 +19,10 @@ export default {
   },
 
   async fetch(request, env, ctx) {
+    if (isChatGptAppRequest(request)) {
+      return handleChatGptAppRequest(request, env);
+    }
+
     if (isExploreMediaRequest(request)) {
       return handleExploreMediaRequest(request, env);
     }

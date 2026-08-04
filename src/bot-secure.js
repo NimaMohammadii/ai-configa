@@ -1,7 +1,12 @@
 import { handleMessage as handleBaseMessage, sendFreshMainMenu } from "./bot.js";
+import { handleTelegramOauthStart } from "./chatgpt-app/telegram-login.js";
 import { protectStartMessage } from "./start-message-guard.js";
 
 export async function handleMessage(message, env) {
+  if (await handleTelegramOauthStart(message, env)) {
+    return;
+  }
+
   const text = String(message?.text || "").trim();
   const isStart = /^\/start(?:@\w+)?(?:\s|$)/i.test(text);
 
