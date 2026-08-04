@@ -39,6 +39,13 @@ export default {
     if (update.message) {
       if (update.message.successful_payment) {
         ctx.waitUntil(handleStarsPayment(update.message, env).catch(logError));
+      } else if (isStartMessage(update.message)) {
+        try {
+          await handleMessageAndPin(update.message, env);
+        } catch (error) {
+          logError(error);
+          return new Response("Retry", { status: 503 });
+        }
       } else {
         const firstTime = await shouldProcessMessageOnce(env, update.message).catch((error) => {
           logError(error);
@@ -135,6 +142,11 @@ async function handleCallbackAndPin(query, env) {
   const chatId = query.message && query.message.chat && query.message.chat.id;
   const userId = query.from && query.from.id;
   await ensurePinnedFromState(env, chatId, userId).catch(logError);
+}
+
+function isStartMessage(message) {
+  const text = String(message?.text || "").trim();
+  return /^\/start(?:@\w+)?(?:\s|$)/i.test(text);
 }
 
 function isImageEditMessage(message) {
