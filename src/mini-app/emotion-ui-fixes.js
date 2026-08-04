@@ -96,4 +96,81 @@ export const EMOTION_UI_FIXES_JS = String.raw`
   document.body.classList.add('emotion-highlight-ready');
   requestAnimationFrame(syncAll);
 })();
+
+;(function(){
+  var minimumStars=80;
+  var language='en';
+  var supported={en:1,fa:1,ru:1,de:1,tr:1,ar:1,zh:1,ja:1,es:1,hi:1};
+  var rateCopies={
+    en:'1,000 credits = 12 Stars',
+    fa:'هر ۱٬۰۰۰ کردیت = ۱۲ استار',
+    ru:'1 000 кредитов = 12 звёзд',
+    de:'1.000 Credits = 12 Stars',
+    tr:'1.000 kredi = 12 Stars',
+    ar:'١٬٠٠٠ رصيد = ١٢ نجمة',
+    zh:'1,000 积分 = 12 Stars',
+    ja:'1,000クレジット = 12 Stars',
+    es:'1.000 créditos = 12 Stars',
+    hi:'1,000 क्रेडिट = 12 Stars'
+  };
+  var minimumCopies={
+    en:'Minimum purchase: 80 Stars',
+    fa:'حداقل خرید: ۸۰ استار',
+    ru:'Минимальная покупка: 80 звёзд',
+    de:'Mindestkauf: 80 Stars',
+    tr:'Minimum satın alma: 80 Stars',
+    ar:'الحد الأدنى للشراء: ٨٠ نجمة',
+    zh:'最低购买：80 Stars',
+    ja:'最低購入額：80 Stars',
+    es:'Compra mínima: 80 Stars',
+    hi:'न्यूनतम खरीद: 80 Stars'
+  };
+
+  function normalizeLanguage(value){
+    var clean=String(value||'en').trim().toLowerCase().split(/[-_]/)[0];
+    return supported[clean]?clean:'en';
+  }
+
+  function telegramLanguage(){
+    try{return normalizeLanguage(window.Telegram&&window.Telegram.WebApp&&window.Telegram.WebApp.initDataUnsafe&&window.Telegram.WebApp.initDataUnsafe.user&&window.Telegram.WebApp.initDataUnsafe.user.language_code)}catch(error){return'en'}
+  }
+
+  function syncCustomStarsMinimum(){
+    var input=document.getElementById('customCreditsInput');
+    var starsValue=document.getElementById('customStarsValue');
+    var button=document.getElementById('customCreditsBuy');
+    if(!input||!starsValue||!button)return;
+    var credits=Math.min(1000000,Math.max(1,Math.floor(Number(input.value)||0)));
+    var stars=Math.max(minimumStars,Math.ceil(credits*12/1000));
+    var starsLabel=stars.toLocaleString('en-US')+' Stars';
+    if(starsValue.textContent!==starsLabel)starsValue.textContent=starsLabel;
+    var buttonLabel=button.querySelector('span');
+    var buttonText='Continue with '+stars.toLocaleString('en-US')+' Stars';
+    if(buttonLabel&&buttonLabel.textContent!==buttonText)buttonLabel.textContent=buttonText;
+    var rate=document.querySelector('.credits-custom .credits-section-copy small');
+    if(rate){
+      var text=(rateCopies[language]||rateCopies.en)+' · '+(minimumCopies[language]||minimumCopies.en);
+      if(rate.textContent!==text)rate.textContent=text;
+    }
+  }
+
+  function scheduleSync(){requestAnimationFrame(syncCustomStarsMinimum)}
+
+  language=telegramLanguage();
+  var input=document.getElementById('customCreditsInput');
+  var range=document.getElementById('customCreditsRange');
+  var page=document.getElementById('creditsPage');
+  var starsValue=document.getElementById('customStarsValue');
+  if(input)input.addEventListener('input',scheduleSync);
+  if(range)range.addEventListener('input',scheduleSync);
+  if(page)new MutationObserver(scheduleSync).observe(page,{attributes:true,attributeFilter:['class']});
+  if(starsValue)new MutationObserver(scheduleSync).observe(starsValue,{childList:true,subtree:true});
+  scheduleSync();
+
+  try{
+    var tg=window.Telegram&&window.Telegram.WebApp;
+    var initData=tg&&tg.initData||'';
+    if(initData)fetch('/mini-app/api/session',{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData})}).then(function(response){return response.ok?response.json():null}).then(function(data){if(data&&data.language){language=normalizeLanguage(data.language);scheduleSync()}}).catch(function(){});
+  }catch(error){}
+})();
 `;
