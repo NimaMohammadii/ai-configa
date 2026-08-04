@@ -166,11 +166,5 @@ export const EMOTION_UI_FIXES_JS = String.raw`
   if(page)new MutationObserver(scheduleSync).observe(page,{attributes:true,attributeFilter:['class']});
   if(starsValue)new MutationObserver(scheduleSync).observe(starsValue,{childList:true,subtree:true});
   scheduleSync();
-
-  try{
-    var tg=window.Telegram&&window.Telegram.WebApp;
-    var initData=tg&&tg.initData||'';
-    if(initData)fetch('/mini-app/api/session',{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData})}).then(function(response){return response.ok?response.json():null}).then(function(data){if(data&&data.language){language=normalizeLanguage(data.language);scheduleSync()}}).catch(function(){});
-  }catch(error){}
 })();
 `;
