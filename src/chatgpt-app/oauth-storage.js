@@ -97,7 +97,8 @@ export async function approveLoginSession(env, sessionId, telegramUserId) {
   const sessionIdHash = await sha256Hex(sessionId);
   const now = new Date().toISOString();
   const row = await env.DB.prepare(
-    "SELECT status, expires_at FROM chatgpt_oauth_login_sessions WHERE session_id_hash = ?"
+    "SELECT status, expires_at, telegram_user_id " +
+    "FROM chatgpt_oauth_login_sessions WHERE session_id_hash = ?"
   ).bind(sessionIdHash).first();
 
   if (!row) {
@@ -114,7 +115,11 @@ export async function approveLoginSession(env, sessionId, telegramUserId) {
   }
 
   if (String(row.status) === "completed") {
-    return { ok: true, alreadyApproved: true };
+    if (String(row.telegram_user_id || "") === String(telegramUserId)) {
+      return { ok: true, alreadyApproved: true };
+    }
+
+    return { ok: false, reason: "already_used" };
   }
 
   const result = await env.DB.prepare(
