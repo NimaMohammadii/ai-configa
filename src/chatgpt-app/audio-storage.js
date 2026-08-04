@@ -97,6 +97,10 @@ export async function createAudioLink(env, origin, userId, historyId) {
   );
 
   await env.DB.prepare(
+    "DELETE FROM chatgpt_audio_links WHERE expires_at < ?"
+  ).bind(createdAt.toISOString()).run().catch(() => null);
+
+  await env.DB.prepare(
     "INSERT INTO chatgpt_audio_links (" +
       "token_hash, user_id, history_id, created_at, expires_at" +
     ") VALUES (?, ?, ?, ?, ?)"
