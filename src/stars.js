@@ -24,7 +24,7 @@ export function getStarPackage(id) {
 
 export function createCustomStarPackage(credits, discount = null) {
   const cleanCredits = Math.max(1, Math.floor(Number(credits || 0)));
-  const baseStars = Math.max(1, Math.ceil(cleanCredits / CUSTOM_STARS_CREDITS_PER_STAR));
+  const baseStars = Math.max(80, Math.ceil(cleanCredits / CUSTOM_STARS_CREDITS_PER_STAR));
   const discountPercent = Number(discount?.percent || 0);
   const stars = discountPercent > 0 ? Math.max(1, Math.ceil(baseStars * (100 - discountPercent) / 100)) : baseStars;
   const usd = (cleanCredits / 1000) * CUSTOM_STARS_USD_PER_1000_CREDITS;
