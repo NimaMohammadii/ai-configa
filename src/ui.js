@@ -5,8 +5,8 @@ import { VOICE_NAMES } from "./voices.js";
 
 export const CREDIT_PRICE_PER_1000_USD = 0.17;
 export const CREDIT_PER_CHARACTER = 1;
-export const TOMAN_PRICE_PER_1000 = 42000;
-export const TOMAN_MIN_PURCHASE_AMOUNT = 220000;
+export const TOMAN_PRICE_PER_1000 = 39000;
+export const TOMAN_MIN_PURCHASE_AMOUNT = 260000;
 export const MINIMAL_MIC_ICON = "🪼";
 
 export const TOMAN_PACKAGES = {
