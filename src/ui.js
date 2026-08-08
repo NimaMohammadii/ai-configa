@@ -106,6 +106,9 @@ export function tomanPackagesText(state = {}) {
     lang === "fa"
       ? `هر <b>1000 کردیت</b> برابر <b>${formatNumber(TOMAN_PRICE_PER_1000)} تومان</b> است`
       : `Every <b>1,000 credits</b> costs <b>${formatNumber(TOMAN_PRICE_PER_1000)} Toman</b>`,
+    lang === "fa"
+      ? `حداقل خرید <b>${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} تومان</b> است`
+      : `Minimum purchase is <b>${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} Toman</b>`,
     lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست" : "Send your custom credit amount in this chat",
   ].join("\n");
 }
