@@ -20,7 +20,7 @@ export default {
   },
 
   async fetch(request, env, ctx) {
-    if (request.method === "GET" && new URL(request.url).pathname === "/mini-app/assets/toman-checkout-hero-628cea82.png") {
+    if (request.method === "GET" && new URL(request.url).pathname === "/mini-app/assets/toman-checkout-hero-628cea8287db.png") {
       return new Response(TOMAN_CHECKOUT_HERO, {
         headers: {
           "Content-Type": "image/png",
