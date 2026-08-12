@@ -102,7 +102,8 @@ export const MINI_APP_HTML = `<!doctype html>
     .credits-page .toman-upload-icon,.credits-page .toman-back{border-radius:13px}
     .credits-page .credits-amount-field{padding:0 14px}
     .credits-page .credits-pack:active,.credits-page .toman-card:active,.credits-page .toman-receipt-picker:active,.credits-page .toman-back:active,.credits-page .credits-amount-field:focus-within{background:rgba(255,255,255,.105);box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),0 5px 14px rgba(0,0,0,.2)}
-    .credits-page.toman-payment-active .credits-page-head:before{z-index:0}
+    .credits-page.toman-payment-active .credits-page-head{background:#000 url("/mini-app/assets/toman-checkout-hero.png?v=20260812-3") center/cover no-repeat}
+    .credits-page.toman-payment-active .credits-page-head:before{z-index:0;background:linear-gradient(90deg,rgba(0,0,0,.98) 0%,rgba(0,0,0,.72) 36%,rgba(0,0,0,.12) 72%,rgba(0,0,0,.28) 100%)}
   </style>
 </head>
 <body>
@@ -195,7 +196,7 @@ export const MINI_APP_HTML = `<!doctype html>
               <button class="image-size-option" data-action="select-image-size" data-image-size="864x2592" data-size-name="Ultra tall" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-ultra-tall" aria-hidden="true"></span><span><strong>Ultra tall</strong><small>1:3 · 864×2592</small></span></button>
               <button class="image-size-option" data-action="select-image-size" data-image-size="1280x1024" data-size-name="Social landscape" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-landscape" aria-hidden="true"></span><span><strong>Social landscape</strong><small>5:4 · 1280×1024</small></span></button>
               <button class="image-size-option" data-action="select-image-size" data-image-size="1344x960" data-size-name="Photo landscape" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-landscape" aria-hidden="true"></span><span><strong>Photo landscape</strong><small>7:5 · 1344×960</small></span></button>
-              <button class="image-size-option" data-action="select-image-size" data-image-size="1536x1152" data-size-name="Classic landscape" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-landscape" aria-hidden="true"></span><span><strong>Classic landscape</strong><small>4:3 · 1536×1152</small></span></button>
+              <button class="image-size-option" data-action="select-image-size" data-image-size="1536x1152" data-size-name="Classic landscape" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-landscape" aria-hidden="true"></span><span><strong>Classic landscape</strong><small>4:3 · 1152×1536</small></span></button>
               <button class="image-size-option" data-action="select-image-size" data-image-size="1536x1024" data-size-name="Wide" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-landscape" aria-hidden="true"></span><span><strong>Wide</strong><small>3:2 · 1536×1024</small></span></button>
               <button class="image-size-option" data-action="select-image-size" data-image-size="2048x1152" data-size-name="Cinema" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-wide" aria-hidden="true"></span><span><strong>Cinema</strong><small>16:9 · 2048×1152</small></span></button>
               <button class="image-size-option" data-action="select-image-size" data-image-size="1792x768" data-size-name="Ultrawide" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-wide" aria-hidden="true"></span><span><strong>Ultrawide</strong><small>21:9 · 1792×768</small></span></button>
