@@ -248,23 +248,34 @@ export const MINI_APP_HTML = `<!doctype html>
       <p class="credits-footnote"><span>★</span> Secure payment powered by Telegram Stars</p>
       </div>
       <section id="creditsTomanMode" class="credits-payment-mode credits-toman-mode" aria-hidden="true" dir="rtl">
-        <div class="toman-intro"><span>پرداخت مستقیم</span><h3>خرید کردیت با تومان</h3><p>مقدار کردیت را انتخاب کن، کارت‌به‌کارت انجام بده و تصویر رسید را همین‌جا بفرست.</p></div>
-        <div class="toman-calculator">
-          <div class="toman-section-head"><div><span>مقدار دلخواه</span><h4>چند کردیت می‌خواهی؟</h4></div><small>هر ۱٬۰۰۰ کردیت = ۳۹٬۰۰۰ تومان</small></div>
-          <label class="credits-amount-field toman-amount-field" for="tomanCreditsInput"><input id="tomanCreditsInput" type="number" inputmode="numeric" min="1" max="1000000" step="1" value="7000" autocomplete="off"/><span>کردیت</span></label>
-          <input id="tomanCreditsRange" class="credits-amount-range toman-amount-range" type="range" min="1000" max="100000" step="1000" value="7000" aria-label="مقدار کردیت"/>
-          <div class="toman-price-card"><div><small>مبلغ قابل پرداخت</small><strong id="tomanAmountValue">۲۷۳٬۰۰۰ تومان</strong></div><span id="tomanDiscountBadge" aria-hidden="true"></span></div>
-          <p id="tomanMinimumNote" class="toman-minimum-note">حداقل مبلغ خرید ۲۶۰٬۰۰۰ تومان است.</p>
-          <button id="tomanContinueButton" class="credits-primary-button toman-primary-button" data-action="continue-toman-payment" type="button"><span>ادامه و دریافت شماره کارت</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 6-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        </div>
-        <div id="tomanReceiptPanel" class="toman-receipt-panel" aria-hidden="true">
-          <div class="toman-step-head"><span>مرحله آخر</span><h4>واریز و ارسال رسید</h4><p>مبلغ زیر را به شماره کارت واریز کن، سپس تصویر رسید را انتخاب کن.</p></div>
-          <div class="toman-order-summary"><span id="tomanOrderCredits">۷٬۰۰۰ کردیت</span><strong id="tomanOrderAmount">۲۷۳٬۰۰۰ تومان</strong></div>
-          <button id="tomanCardButton" class="toman-card" data-action="copy-toman-card" type="button"><span class="toman-card-bank">شماره کارت</span><strong id="tomanCardNumber" dir="ltr">•••• •••• •••• ••••</strong><small><span>کپی شماره کارت</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M15 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.7"/></svg></small></button>
-          <input id="tomanReceiptInput" type="file" accept="image/jpeg,image/png,image/webp" hidden/>
-          <button id="tomanReceiptPicker" class="toman-receipt-picker" data-action="pick-toman-receipt" type="button"><span class="toman-upload-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V5m0 0L8 9m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="toman-upload-copy"><strong>انتخاب تصویر رسید</strong><small id="tomanReceiptName">JPG، PNG یا WebP</small></span><span class="toman-upload-check">✓</span></button>
-          <button id="tomanSubmitReceipt" class="credits-primary-button toman-submit-button" data-action="submit-toman-receipt" type="button" disabled><span>ارسال رسید برای بررسی</span></button>
-          <p class="toman-review-note"><span></span>پس از تأیید ادمین، کردیت به‌صورت خودکار به حسابت اضافه می‌شود.</p>
+        <figure class="toman-hero" aria-hidden="true"><img src="/mini-app/assets/toman-checkout-hero.png?v=20260812" alt=""/><span></span><figcaption><small>پرداخت تومانی</small><strong>سریع، ساده، همین‌جا</strong></figcaption></figure>
+        <div id="tomanCheckout" class="toman-checkout" data-step="amount">
+          <div class="toman-progress" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="toman-stage">
+            <div id="tomanAmountPanel" class="toman-panel toman-amount-panel">
+              <div class="toman-section-head"><div><span>انتخاب مقدار</span><h3>چقدر کردیت می‌خوای؟</h3></div><small>هر 1,000 کردیت<br/>39,000 تومان</small></div>
+              <label class="toman-amount-field" for="tomanCreditsInput"><input id="tomanCreditsInput" type="number" inputmode="numeric" min="1" max="1000000" step="1" value="7000" autocomplete="off" dir="ltr"/><span>کردیت</span></label>
+              <input id="tomanCreditsRange" class="toman-amount-range" type="range" min="1000" max="100000" step="1000" value="7000" dir="ltr" aria-label="مقدار کردیت"/>
+              <div class="toman-range-labels" dir="ltr"><span>1,000</span><span>100,000</span></div>
+              <div class="toman-price-card"><div><small>جمع پرداختی</small><strong id="tomanAmountValue">273,000 <em>تومان</em></strong></div><span id="tomanDiscountBadge" aria-hidden="true"></span></div>
+              <p id="tomanMinimumNote" class="toman-minimum-note">حداقل خرید 260,000 تومانه.</p>
+              <button id="tomanContinueButton" class="toman-main-button" data-action="continue-toman-payment" type="button"><span>بزن بریم</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 6-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+            <div id="tomanReceiptPanel" class="toman-panel toman-receipt-panel" aria-hidden="true">
+              <button class="toman-back" data-action="reset-toman-payment" type="button" aria-label="برگشت"><svg viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <div class="toman-step-head"><span>حالا پرداخت کن</span><h3>کارت‌به‌کارتش کن</h3><p><b id="tomanOrderAmount">273,000 تومان</b> برای <b id="tomanOrderCredits">7,000 کردیت</b></p></div>
+              <button id="tomanCardButton" class="toman-card" data-action="copy-toman-card" type="button"><small>شماره کارت — برای کپی بزن</small><strong id="tomanCardNumber" dir="ltr">•••• •••• •••• ••••</strong><span>کپی شد ✓</span></button>
+              <input id="tomanReceiptInput" type="file" accept="image/jpeg,image/png,image/webp" hidden/>
+              <button id="tomanReceiptPicker" class="toman-receipt-picker" data-action="pick-toman-receipt" type="button"><span class="toman-upload-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V5m0 0L8 9m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="toman-upload-copy"><strong>عکس رسید رو بنداز اینجا</strong><small id="tomanReceiptName">JPG، PNG یا WebP</small></span><span class="toman-upload-check">✓</span></button>
+              <button id="tomanSubmitReceipt" class="toman-main-button toman-submit-button" data-action="submit-toman-receipt" type="button" disabled><span>رسید رو بفرست</span></button>
+              <p class="toman-review-note"><span></span>ادمین چکش می‌کنه؛ تأیید بشه کردیت خودش میاد.</p>
+            </div>
+            <div id="tomanSuccessPanel" class="toman-panel toman-success-panel" aria-hidden="true">
+              <div class="toman-success-mark"><i></i><svg viewBox="0 0 24 24" fill="none"><path d="m7 12.5 3.2 3.2L17.5 8.5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <span>همه‌چی اوکیه</span><h3>رسیدت رسید ✦</h3><p>الان ادمین چکش می‌کنه.<br/>تأیید که بشه، کردیت خودش میاد تو حسابت.</p>
+              <div class="toman-success-order"><span id="tomanSuccessCredits">7,000 کردیت</span><strong id="tomanSuccessAmount">273,000 تومان</strong></div>
+            </div>
+          </div>
         </div>
       </section>
     </div>

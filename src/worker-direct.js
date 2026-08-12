@@ -12,6 +12,7 @@ import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, handleStarsTextInput, isStarsCallback } from "./stars-flow.js";
 import { handleSupportMessage } from "./support-flow-strict.js";
 import { handleExploreMediaRequest, isExploreMediaRequest } from "./explore-media.js";
+import TOMAN_CHECKOUT_HERO from "./mini-app/assets/toman-checkout-hero.png";
 
 export default {
   async scheduled(event, env, ctx) {
@@ -19,6 +20,15 @@ export default {
   },
 
   async fetch(request, env, ctx) {
+    if (request.method === "GET" && new URL(request.url).pathname === "/mini-app/assets/toman-checkout-hero.png") {
+      return new Response(TOMAN_CHECKOUT_HERO, {
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    }
+
     if (isChatGptAppRequest(request)) {
       return handleChatGptAppRequest(request, env);
     }

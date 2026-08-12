@@ -4,6 +4,11 @@ compatibility_date = "2026-05-28"
 workers_dev = true
 preview_urls = true
 
+[[rules]]
+type = "Data"
+globs = ["**/*.png"]
+fallthrough = true
+
 # Secrets are not written here. Set them with:
 # npx wrangler secret put BOT_TOKEN
 # npx wrangler secret put ELEVEN_API
