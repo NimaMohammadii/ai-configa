@@ -20,6 +20,9 @@ export const AI_CHAT_JS = `
   var aiChatModel='gpt-5.6-terra';
   var aiChatModels=[];
   var aiChatModelMenuBusy=false;
+  var aiChatReasoningEffort='medium';
+  var aiChatReasoningEfforts=[];
+  var aiChatMemory={usedBytes:0,maxBytes:65536,itemCount:0};
   var aiChatAttachmentMaxBytes=10*1024*1024;
   var aiChatAttachmentMimes={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',pdf:'application/pdf',txt:'text/plain',text:'text/plain',md:'text/markdown',markdown:'text/markdown',json:'application/json',html:'text/html',htm:'text/html',xml:'text/xml',csv:'text/csv',tsv:'text/tsv',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',rtf:'application/rtf',odt:'application/vnd.oasis.opendocument.text',ppt:'application/vnd.ms-powerpoint',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',js:'text/javascript',mjs:'text/javascript',ts:'text/x-typescript',tsx:'text/tsx',jsx:'text/jsx',py:'text/x-python',css:'text/css',sql:'text/x-sql',log:'text/plain',yaml:'text/x-yaml',yml:'text/x-yaml',toml:'application/toml',eml:'message/rfc822',ics:'text/calendar',srt:'application/x-subrip',vtt:'text/vtt'};
   var aiThinkingFrame=0;
@@ -136,7 +139,7 @@ export const AI_CHAT_JS = `
       event.stopPropagation();
     }
 
-    setAiChatModelMenu(false);
+    setAiChatMenu(false);
     var wrap=q('aiChatVoiceWrap');
     setAiChatVoiceMenu(
       !(wrap&&wrap.classList.contains('open'))
@@ -277,48 +280,69 @@ export const AI_CHAT_JS = `
     }
   }
 
-  function setAiChatModelMenu(open){
-    var wrap=q('aiChatModelWrap');
-    var button=q('aiChatModelButton');
-    var menu=q('aiChatModelMenu');
-    if(!wrap||!button||!menu)return;
+  function setAiChatMenu(open){
+    var button=q('aiChatMenuButton');
+    var backdrop=q('aiChatMenuBackdrop');
+    if(!button||!backdrop)return;
     var shouldOpen=!!open;
-    wrap.classList.toggle('open',shouldOpen);
+    backdrop.classList.toggle('open',shouldOpen);
+    backdrop.setAttribute('aria-hidden',shouldOpen?'false':'true');
     button.setAttribute('aria-expanded',shouldOpen?'true':'false');
-    menu.setAttribute('aria-hidden',shouldOpen?'false':'true');
+    document.documentElement.classList.toggle('ai-chat-menu-open',shouldOpen);
+    if(shouldOpen)setAiChatVoiceMenu(false);
+  }
+
+  function toggleAiChatMenu(event){
+    if(event){event.preventDefault();event.stopPropagation()}
+    var backdrop=q('aiChatMenuBackdrop');
+    setAiChatMenu(!(backdrop&&backdrop.classList.contains('open')));
   }
 
   function renderAiChatModelMenu(){
     var selected=aiChatModels.find(function(item){return item&&item.id===aiChatModel});
-    var label=q('aiChatModelLabel');
-    if(label)label.textContent=String(selected&&selected.label||aiChatModel.split('-').pop()||'Terra').replace(/^./,function(value){return value.toUpperCase()});
     document.querySelectorAll('.model-option[data-ai-model]').forEach(function(button){
       var active=button.getAttribute('data-ai-model')===aiChatModel;
       button.classList.toggle('active',active);
       button.setAttribute('aria-selected',active?'true':'false');
     });
+    document.querySelectorAll('[data-ai-effort]').forEach(function(button){
+      var active=button.getAttribute('data-ai-effort')===aiChatReasoningEffort;
+      button.classList.toggle('active',active);
+      button.setAttribute('aria-selected',active?'true':'false');
+    });
   }
 
-  function toggleAiChatModelMenu(event){
-    if(event){event.preventDefault();event.stopPropagation()}
-    setAiChatVoiceMenu(false);
-    var wrap=q('aiChatModelWrap');
-    setAiChatModelMenu(!(wrap&&wrap.classList.contains('open')));
+  function formatAiMemoryBytes(value){
+    var bytes=Math.max(0,Number(value)||0);
+    if(bytes<1024)return Math.round(bytes)+' B';
+    return (bytes/1024).toLocaleString('en-US',{maximumFractionDigits:bytes<10240?1:0})+' KB';
+  }
+
+  function renderAiChatMemory(){
+    var used=Math.max(0,Number(aiChatMemory.usedBytes)||0);
+    var max=Math.max(1,Number(aiChatMemory.maxBytes)||65536);
+    var count=Math.max(0,Math.floor(Number(aiChatMemory.itemCount)||0));
+    var fill=q('aiChatMemoryFill');
+    var usage=q('aiChatMemoryUsage');
+    var items=q('aiChatMemoryItems');
+    var clear=q('aiChatMemoryClear');
+    if(fill)fill.style.width=Math.min(100,used/max*100)+'%';
+    if(usage)usage.textContent=formatAiMemoryBytes(used)+' of '+formatAiMemoryBytes(max);
+    if(items)items.textContent=count+' saved';
+    if(clear)clear.disabled=count===0;
   }
 
   async function selectAiChatModel(modelId){
     var selected=String(modelId||'').trim();
-    if(!selected||selected===aiChatModel||aiChatModelMenuBusy){setAiChatModelMenu(false);return}
+    if(!selected||selected===aiChatModel||aiChatModelMenuBusy)return;
     if(!aiChatModels.some(function(item){return item&&item.id===selected}))return;
     var previous=aiChatModel;
     aiChatModel=selected;
     aiChatModelMenuBusy=true;
     renderAiChatModelMenu();
-    setAiChatModelMenu(false);
     try{
       var data=await api('/mini-app/api/ai-chat-model',{model:selected});
-      aiChatModel=String(data.model||selected);
-      renderAiChatModelMenu();
+      updateAiChatHeader(data);
       if(tg&&tg.HapticFeedback)try{tg.HapticFeedback.impactOccurred('light')}catch(error){}
     }catch(error){
       aiChatModel=previous;
@@ -326,6 +350,50 @@ export const AI_CHAT_JS = `
       toast(error.message);
     }finally{
       aiChatModelMenuBusy=false;
+    }
+  }
+
+  async function selectAiChatReasoningEffort(effort){
+    var selected=String(effort||'').trim().toLowerCase();
+    if(!selected||selected===aiChatReasoningEffort||aiChatModelMenuBusy)return;
+    if(!aiChatReasoningEfforts.some(function(item){return item&&item.id===selected}))return;
+    var previous=aiChatReasoningEffort;
+    aiChatReasoningEffort=selected;
+    aiChatModelMenuBusy=true;
+    renderAiChatModelMenu();
+    try{
+      var data=await api('/mini-app/api/ai-chat-model',{reasoningEffort:selected});
+      updateAiChatHeader(data);
+      if(tg&&tg.HapticFeedback)try{tg.HapticFeedback.impactOccurred('light')}catch(error){}
+    }catch(error){
+      aiChatReasoningEffort=previous;
+      renderAiChatModelMenu();
+      toast(error.message);
+    }finally{
+      aiChatModelMenuBusy=false;
+    }
+  }
+
+  function confirmAiMemoryClear(){
+    if(tg&&typeof tg.showConfirm==='function'){
+      return new Promise(function(resolve){tg.showConfirm('Clear everything Vexa remembers about you?',function(value){resolve(!!value)})});
+    }
+    return Promise.resolve(window.confirm('Clear everything Vexa remembers about you?'));
+  }
+
+  async function clearAiChatMemory(){
+    if(!(await confirmAiMemoryClear()))return;
+    var button=q('aiChatMemoryClear');
+    if(button)button.disabled=true;
+    try{
+      var data=await api('/mini-app/api/ai-memory-clear',{});
+      if(data.memory)aiChatMemory=data.memory;
+      renderAiChatMemory();
+      if(tg&&tg.HapticFeedback)try{tg.HapticFeedback.notificationOccurred('success')}catch(error){}
+    }catch(error){
+      toast(error.message);
+    }finally{
+      renderAiChatMemory();
     }
   }
 
@@ -339,6 +407,15 @@ export const AI_CHAT_JS = `
       var selectedModel=String(data.aiChatModel||data.model||'').trim();
       if(selectedModel)aiChatModel=selectedModel;
     }
+    if(Array.isArray(data.aiChatReasoningEfforts)){
+      aiChatReasoningEfforts=data.aiChatReasoningEfforts.filter(function(item){return item&&item.id&&item.label});
+    }
+    if(data.aiChatReasoningEffort||data.reasoningEffort){
+      var selectedEffort=String(data.aiChatReasoningEffort||data.reasoningEffort||'').trim().toLowerCase();
+      if(selectedEffort)aiChatReasoningEffort=selectedEffort;
+    }
+    if(data.aiMemory&&typeof data.aiMemory==='object')aiChatMemory=data.aiMemory;
+    if(data.memory&&typeof data.memory==='object')aiChatMemory=data.memory;
 
     var voice=String(data.voice||'').trim();
     if(voice){
@@ -381,6 +458,7 @@ export const AI_CHAT_JS = `
     );
     renderAiChatVoiceMenu();
     renderAiChatModelMenu();
+    renderAiChatMemory();
   }
 
   function setAiChatCreatureState(state){if(typeof window.aiChatCreatureSetState==='function')window.aiChatCreatureSetState(state)}
@@ -1515,8 +1593,12 @@ export const AI_CHAT_JS = `
     );
   }
 
-  var modelButton=q('aiChatModelButton');
-  if(modelButton)modelButton.addEventListener('click',toggleAiChatModelMenu);
+  var menuButton=q('aiChatMenuButton');
+  if(menuButton)menuButton.addEventListener('click',toggleAiChatMenu);
+  var menuClose=q('aiChatMenuClose');
+  if(menuClose)menuClose.addEventListener('click',function(){setAiChatMenu(false)});
+  var menuBackdrop=q('aiChatMenuBackdrop');
+  if(menuBackdrop)menuBackdrop.addEventListener('pointerdown',function(event){if(event.target===menuBackdrop)setAiChatMenu(false)});
   var modelMenu=q('aiChatModelMenu');
   if(modelMenu)modelMenu.addEventListener('click',function(event){
     var option=event.target&&event.target.closest?event.target.closest('.model-option[data-ai-model]'):null;
@@ -1525,6 +1607,18 @@ export const AI_CHAT_JS = `
     event.stopPropagation();
     selectAiChatModel(option.getAttribute('data-ai-model'));
   });
+  var effortMenu=q('aiChatEffortMenu');
+  if(effortMenu)effortMenu.addEventListener('click',function(event){
+    var option=event.target&&event.target.closest?event.target.closest('[data-ai-effort]'):null;
+    if(!option)return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectAiChatReasoningEffort(option.getAttribute('data-ai-effort'));
+  });
+  var memoryClear=q('aiChatMemoryClear');
+  if(memoryClear)memoryClear.addEventListener('click',clearAiChatMemory);
+  var githubButton=q('aiChatGithubButton');
+  if(githubButton)githubButton.addEventListener('click',function(){setAiChatMenu(false)});
 
   var voiceMenu=q('aiChatVoiceMenu');
   if(voiceMenu){
@@ -1598,13 +1692,12 @@ export const AI_CHAT_JS = `
     if(
       target
       &&target.closest
-      &&(target.closest('#aiChatVoiceWrap')||target.closest('#aiChatModelWrap'))
+      &&(target.closest('#aiChatVoiceWrap')||target.closest('#aiChatMenuPanel')||target.closest('#aiChatMenuButton'))
     ){
       return;
     }
 
     setAiChatVoiceMenu(false);
-    setAiChatModelMenu(false);
   });
   window.addEventListener('pagehide',function(){
     stopAiChatVoicePreview();

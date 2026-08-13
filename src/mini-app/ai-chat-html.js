@@ -23,32 +23,21 @@ export const AI_CHAT_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>AI Chat</title>
-  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260813-model-pricing-1"/>
+  <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260813-chat-menu-memory-1"/>
 </head>
 <body>
   <section id="aiChatPage" class="ai-chat-page" aria-hidden="false">
     <header id="aiChatHead" class="ai-chat-head">
       <div class="credit-tools">
+        <button id="aiChatMenuButton" class="ai-chat-menu-button" type="button" aria-label="Open AI settings" aria-controls="aiChatMenuPanel" aria-expanded="false">
+          <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+        </button>
         <div id="aiChatCreditPill" class="credit-pill" aria-label="Credits">
           <span id="aiChatBalance">—</span>
           <span>credits</span>
         </div>
-        <div id="aiChatModelWrap" class="model-wrap">
-          <button id="aiChatModelButton" class="model-button" type="button" aria-label="AI model" aria-haspopup="listbox" aria-expanded="false">
-            <span id="aiChatModelLabel">Terra</span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 9.5 12 14l5-4.5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-          <div id="aiChatModelMenu" class="model-menu" role="listbox" aria-label="Choose GPT model" aria-hidden="true">
-            <p>Price per 1M tokens</p>
-            <button class="model-option" data-ai-model="gpt-5.6-luna" type="button" role="option"><span><strong>Luna</strong><small>Fast & efficient</small></span><em>$0.20 in · $1.20 out</em></button>
-            <button class="model-option active" data-ai-model="gpt-5.6-terra" type="button" role="option"><span><strong>Terra</strong><small>Balanced</small></span><em>$2 in · $12 out</em></button>
-            <button class="model-option" data-ai-model="gpt-5.6-sol" type="button" role="option"><span><strong>Sol</strong><small>Best for hard coding</small></span><em>$5 in · $30 out</em></button>
-            <div class="model-pricing-note">Actual token usage + 15%</div>
-          </div>
-        </div>
       </div>
       <div class="mode-tools">
-        <button id="aiChatGithubButton" class="ai-github-button" type="button" aria-label="Connect GitHub repository"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .8a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.1 0 0 1-.3 3.1 1.2a10.8 10.8 0 0 1 5.7 0C14.9 5 16 5.3 16 5.3c.6 1.5.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.8 5.4-5.5 5.7.4.4.8 1.1.8 2.2v3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .8Z"/></svg><span class="ai-github-button-label">GitHub</span></button>
         <div id="aiChatVoiceWrap" class="voice-wrap">
           <button id="aiChatVoiceCard" class="voice-btn" data-action="toggle-voice" type="button" aria-label="Selected voice" aria-haspopup="listbox" aria-expanded="false">
             <span id="aiChatVoiceAvatar" class="voice-button-avatar" aria-hidden="true"></span>
@@ -69,6 +58,40 @@ export const AI_CHAT_HTML = `<!doctype html>
         </div>
       </div>
     </header>
+    <div id="aiChatMenuBackdrop" class="ai-chat-menu-backdrop" aria-hidden="true">
+      <aside id="aiChatMenuPanel" class="ai-chat-menu-panel" aria-label="AI settings">
+        <div class="ai-chat-menu-head">
+          <div><small>Vexa</small><strong>AI settings</strong></div>
+          <button id="aiChatMenuClose" type="button" aria-label="Close AI settings">×</button>
+        </div>
+        <section class="ai-chat-menu-section">
+          <p>Model</p>
+          <div id="aiChatModelMenu" class="ai-chat-model-grid" role="listbox" aria-label="Choose GPT model">
+            <button class="model-option" data-ai-model="gpt-5.6-luna" type="button" role="option"><span><strong>Luna <em>5.6</em></strong><small>Fast & efficient</small></span><b aria-hidden="true"></b></button>
+            <button class="model-option active" data-ai-model="gpt-5.6-terra" type="button" role="option"><span><strong>Terra <em>5.6</em></strong><small>Balanced</small></span><b aria-hidden="true"></b></button>
+            <button class="model-option" data-ai-model="gpt-5.6-sol" type="button" role="option"><span><strong>Sol <em>5.6</em></strong><small>Hard coding</small></span><b aria-hidden="true"></b></button>
+          </div>
+        </section>
+        <section class="ai-chat-menu-section">
+          <p>Thinking</p>
+          <div id="aiChatEffortMenu" class="ai-chat-effort-grid" role="listbox" aria-label="Choose reasoning effort">
+            <button data-ai-effort="low" type="button" role="option">Light</button>
+            <button class="active" data-ai-effort="medium" type="button" role="option">Medium</button>
+            <button data-ai-effort="high" type="button" role="option">High</button>
+            <button data-ai-effort="max" type="button" role="option">Max</button>
+          </div>
+        </section>
+        <section class="ai-chat-menu-section ai-chat-menu-github-slot">
+          <p>Repository</p>
+          <button id="aiChatGithubButton" class="ai-github-button" type="button" aria-label="Connect GitHub repository"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .8a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.1 0 0 1-.3 3.1 1.2a10.8 10.8 0 0 1 5.7 0C14.9 5 16 5.3 16 5.3c.6 1.5.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.8 5.4-5.5 5.7.4.4.8 1.1.8 2.2v3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .8Z"/></svg><span class="ai-github-button-label">GitHub</span><span class="ai-chat-menu-chevron">›</span></button>
+        </section>
+        <section class="ai-chat-memory-card" aria-label="AI memory usage">
+          <div class="ai-chat-memory-head"><span><strong>Memory</strong><small id="aiChatMemoryItems">0 saved</small></span><button id="aiChatMemoryClear" type="button">Clear</button></div>
+          <div class="ai-chat-memory-bar" aria-hidden="true"><span id="aiChatMemoryFill"></span></div>
+          <div id="aiChatMemoryUsage" class="ai-chat-memory-usage">0 B of 64 KB</div>
+        </section>
+      </aside>
+    </div>
     <div id="aiChatMessages" class="ai-chat-messages" role="log" aria-live="polite"><div id="aiChatEmpty" class="ai-chat-empty"><span>How can I help?</span><canvas id="aiChatEmptyOrb" class="ai-chat-empty-orb" width="96" height="96" aria-hidden="true"></canvas></div></div>
     <form id="aiChatComposer" class="ai-chat-composer">
       <input id="aiChatFile" type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.txt,.md,.markdown,.json,.html,.htm,.xml,.csv,.tsv,.doc,.docx,.rtf,.odt,.ppt,.pptx,.xls,.xlsx,.js,.mjs,.ts,.tsx,.jsx,.py,.css,.sql,.log,.yaml,.yml,.toml,.eml,.ics,.srt,.vtt"/>
@@ -82,7 +105,7 @@ export const AI_CHAT_HTML = `<!doctype html>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/mini-app/chat/creature.js?v=20260801-ai-chat-creature-rounded-jelly-2"></script>
-  <script type="module" src="/mini-app/chat/app.js?v=20260813-model-pricing-1"></script>
-  <script src="/mini-app/chat/github.js?v=20260813-github-5"></script>
+  <script type="module" src="/mini-app/chat/app.js?v=20260813-chat-menu-memory-1"></script>
+  <script src="/mini-app/chat/github.js?v=20260813-chat-menu-memory-1"></script>
 </body>
 </html>`;

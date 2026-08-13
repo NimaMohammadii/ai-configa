@@ -1,4 +1,5 @@
-import { normalizeAiChatModel } from "./ai-chat-model.js";
+import { normalizeAiChatModel, normalizeAiChatReasoningEffort } from "./ai-chat-model.js";
+import { applyAiMemoryToolCall, buildAiMemoryInstructions, getAiMemoryTools, getUserAiMemory, isAiMemoryToolCall } from "./ai-memory.js";
 import { buildGitHubAiInstructions, executeGitHubAiTool, getGitHubAiContext, getGitHubAiTools, isGitHubAiToolCall } from "./github-ai.js";
 import { VOICE_NAMES } from "./voices.js";
 import { EMOTION_TAGS } from "./mini-app/emotion-tags.js";
@@ -298,7 +299,7 @@ function normalizeChatAttachment(raw) {
   };
 }
 
-function buildAiChatInstructions(preferredVoice, githubContext) {
+function buildAiChatInstructions(preferredVoice, githubContext, memories) {
   const selectedVoice = VOICE_NAMES.includes(preferredVoice) ? preferredVoice : "Nora";
   return [
     "You are Vexa AI, a capable and friendly assistant inside Telegram.",
@@ -316,7 +317,8 @@ function buildAiChatInstructions(preferredVoice, githubContext) {
     "Always use the user’s currently selected voice for speech: " + selectedVoice + ".",
     "Never choose a different voice inside AI Chat; the voice card is the single source of truth.",
     "For web-search answers, do not add sources, citation links, raw URLs, or footnote markers unless the user asks for them.",
-    buildGitHubAiInstructions(githubContext)
+    buildGitHubAiInstructions(githubContext),
+    buildAiMemoryInstructions(memories),
   ].join(" ");
 }
 
@@ -370,12 +372,16 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
   });
 
   const model = normalizeAiChatModel(options.model);
+  const reasoningEffort = normalizeAiChatReasoningEffort(options.reasoningEffort);
   const githubContext = await getGitHubAiContext(env, options.userId);
   const githubTools = getGitHubAiTools(githubContext);
+  const memoryTools = getAiMemoryTools();
+  let memoryEntries = await getUserAiMemory(env, options.userId);
+  let memoryChanged = false;
   const controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort("gpt_chat_timeout"),
-    githubContext ? 180000 : GPT_CHAT_TIMEOUT_MS,
+    githubContext || reasoningEffort === "high" || reasoningEffort === "max" ? 180000 : GPT_CHAT_TIMEOUT_MS,
   );
 
   try {
@@ -419,6 +425,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         strict: true
       },
       ...githubTools,
+      ...memoryTools,
     ];
     const responseInput = inputMessages.slice();
     let webSearchUsed = false;
@@ -435,11 +442,12 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         signal: controller.signal,
         body: JSON.stringify({
           model,
-          instructions: buildAiChatInstructions(latestPreferredVoice, githubContext),
+          instructions: buildAiChatInstructions(latestPreferredVoice, githubContext, memoryEntries),
           input: responseInput,
           tools,
           tool_choice: "auto",
-          max_output_tokens: githubContext ? 12000 : 1400,
+          reasoning: { effort: reasoningEffort },
+          max_output_tokens: githubContext ? 16000 : 8000,
           store: false,
           stream: true,
         }),
@@ -460,16 +468,25 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         (item) => item?.type === "function_call"
           && (item?.name === "generate_image" || item?.name === "generate_speech"),
       );
-      if (terminalCall) {
-        return buildChatResult(data, cleanMessages, { webSearchUsed, webSearchCalls, usage, model });
-      }
-
       const githubCalls = output.filter(isGitHubAiToolCall);
-      if (!githubCalls.length) {
-        return buildChatResult(data, cleanMessages, { webSearchUsed, webSearchCalls, usage, model });
+      const memoryCalls = output.filter(isAiMemoryToolCall);
+      if (!githubCalls.length && !memoryCalls.length) {
+        return buildChatResult(data, cleanMessages, {
+          webSearchUsed, webSearchCalls, usage, model, reasoningEffort, memoryChanged, memoryEntries,
+        });
       }
 
       responseInput.push(...output);
+      for (const call of memoryCalls) {
+        const update = applyAiMemoryToolCall(memoryEntries, call);
+        memoryEntries = update.memories;
+        memoryChanged = memoryChanged || update.changed;
+        responseInput.push({
+          type: "function_call_output",
+          call_id: call.call_id,
+          output: JSON.stringify(update.output),
+        });
+      }
       for (const call of githubCalls) {
         const toolOutput = await executeGitHubAiTool(env, options.userId, call, onStatus);
         responseInput.push({
@@ -478,8 +495,13 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           output: toolOutput,
         });
       }
+      if (terminalCall) {
+        return buildChatResult(data, cleanMessages, {
+          webSearchUsed, webSearchCalls, usage, model, reasoningEffort, memoryChanged, memoryEntries,
+        });
+      }
     }
-    throw new Error("AI used too many repository steps. Ask it to continue with a smaller change.");
+    throw new Error("AI used too many tool steps. Ask it to continue with a smaller task.");
   } catch (error) {
     if (error?.name === "AbortError" || String(error).includes("gpt_chat_timeout")) {
       throw new Error("AI took too long. Please try again.");
@@ -574,9 +596,13 @@ function buildChatResult(data, cleanMessages, options = {}) {
     .find((item) => item?.type === "function_call" && item?.name === "generate_speech");
   const billing = {
     model: normalizeAiChatModel(options.model),
+    reasoningEffort: normalizeAiChatReasoningEffort(options.reasoningEffort),
     usage: Array.isArray(options.usage) ? options.usage : [],
     webSearchCalls: Math.max(0, Math.floor(Number(options.webSearchCalls || 0))),
   };
+  const memoryUpdate = options.memoryChanged && Array.isArray(options.memoryEntries)
+    ? options.memoryEntries
+    : null;
 
   if (speechCall) {
     let args = {};
@@ -602,6 +628,7 @@ function buildChatResult(data, cleanMessages, options = {}) {
       voice,
       webSearchUsed,
       billing,
+      memoryUpdate,
     };
   }
 
@@ -621,6 +648,7 @@ function buildChatResult(data, cleanMessages, options = {}) {
       size: resolveImageSize(args.size),
       webSearchUsed,
       billing,
+      memoryUpdate,
     };
   }
 
@@ -632,6 +660,7 @@ function buildChatResult(data, cleanMessages, options = {}) {
     sources: extractResponseSources(data),
     webSearchUsed,
     billing,
+    memoryUpdate,
   };
 }
 

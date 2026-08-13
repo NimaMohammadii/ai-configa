@@ -8,6 +8,13 @@ export const AI_CHAT_MODELS = Object.freeze([
 ]);
 
 export const DEFAULT_AI_CHAT_MODEL = "gpt-5.6-terra";
+export const AI_CHAT_REASONING_EFFORTS = Object.freeze([
+  Object.freeze({ id: "low", label: "Light" }),
+  Object.freeze({ id: "medium", label: "Medium" }),
+  Object.freeze({ id: "high", label: "High" }),
+  Object.freeze({ id: "max", label: "Max" }),
+]);
+export const DEFAULT_AI_CHAT_REASONING_EFFORT = "medium";
 export const AI_CHAT_MARKUP_RATE = 0.15;
 export const AI_CHAT_WEB_SEARCH_USD_PER_CALL = 0.01;
 export const AI_CHAT_USD_PER_CREDIT = Math.min(
@@ -22,6 +29,13 @@ export function normalizeAiChatModel(modelId) {
   return AI_CHAT_MODELS.some((model) => model.id === value)
     ? value
     : DEFAULT_AI_CHAT_MODEL;
+}
+
+export function normalizeAiChatReasoningEffort(effort) {
+  const value = String(effort || "").trim().toLowerCase();
+  return AI_CHAT_REASONING_EFFORTS.some((item) => item.id === value)
+    ? value
+    : DEFAULT_AI_CHAT_REASONING_EFFORT;
 }
 
 export async function getAiChatModel(env) {
@@ -49,34 +63,55 @@ export async function setAiChatModel(env, modelId) {
 }
 
 export async function getUserAiChatModel(env, userId) {
+  return (await getUserAiChatPreferences(env, userId)).model;
+}
+
+export async function getUserAiChatPreferences(env, userId) {
   requireDb(env);
   await ensureAiChatPreferencesTable(env);
   const row = await env.DB.prepare(
-    "SELECT model FROM ai_chat_preferences WHERE user_id = ?"
+    "SELECT model, reasoning_effort FROM ai_chat_preferences WHERE user_id = ?"
   ).bind(String(userId)).first();
-  return row?.model && AI_CHAT_MODELS.some((model) => model.id === row.model)
+  const model = row?.model && AI_CHAT_MODELS.some((item) => item.id === row.model)
     ? row.model
-    : getAiChatModel(env);
+    : await getAiChatModel(env);
+  return {
+    model,
+    reasoningEffort: normalizeAiChatReasoningEffort(row?.reasoning_effort),
+  };
 }
 
 export async function setUserAiChatModel(env, userId, modelId) {
+  return (await setUserAiChatPreferences(env, userId, { model: modelId })).model;
+}
+
+export async function setUserAiChatPreferences(env, userId, preferences = {}) {
   requireDb(env);
-  const cleanModel = String(modelId || "").trim().toLowerCase();
+  await ensureAiChatPreferencesTable(env);
+  const current = await getUserAiChatPreferences(env, userId);
+  const cleanModel = preferences.model == null
+    ? current.model
+    : String(preferences.model || "").trim().toLowerCase();
   if (!AI_CHAT_MODELS.some((model) => model.id === cleanModel)) {
     throw new Error("Invalid AI chat model selection");
   }
-  await ensureAiChatPreferencesTable(env);
+  const reasoningEffort = preferences.reasoningEffort == null
+    ? current.reasoningEffort
+    : String(preferences.reasoningEffort || "").trim().toLowerCase();
+  if (!AI_CHAT_REASONING_EFFORTS.some((item) => item.id === reasoningEffort)) {
+    throw new Error("Invalid reasoning effort selection");
+  }
   await env.DB.prepare(
-    "INSERT INTO ai_chat_preferences (user_id, model, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) " +
-    "ON CONFLICT(user_id) DO UPDATE SET model = excluded.model, updated_at = CURRENT_TIMESTAMP"
-  ).bind(String(userId), cleanModel).run();
-  return cleanModel;
+    "INSERT INTO ai_chat_preferences (user_id, model, reasoning_effort, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET model = excluded.model, reasoning_effort = excluded.reasoning_effort, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(userId), cleanModel, reasoningEffort).run();
+  return { model: cleanModel, reasoningEffort };
 }
 
 export function calculateAiChatBilling(modelId, billing = {}) {
   const model = AI_CHAT_MODELS.find((item) => item.id === normalizeAiChatModel(modelId));
   const usageEntries = Array.isArray(billing.usage) ? billing.usage : [];
-  const totals = { inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
+  const totals = { inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0, reasoningTokens: 0 };
   let baseUsd = Math.max(0, Math.floor(Number(billing.webSearchCalls || 0))) * AI_CHAT_WEB_SEARCH_USD_PER_CALL;
 
   for (const usage of usageEntries) {
@@ -88,6 +123,7 @@ export function calculateAiChatBilling(modelId, billing = {}) {
     );
     const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens - cacheWriteTokens);
     const outputTokens = wholeTokenCount(usage?.output_tokens);
+    const reasoningTokens = Math.min(outputTokens, wholeTokenCount(usage?.output_tokens_details?.reasoning_tokens));
     const longContext = inputTokens > LONG_CONTEXT_TOKEN_THRESHOLD;
     const inputMultiplier = longContext ? 2 : 1;
     const outputMultiplier = longContext ? 1.5 : 1;
@@ -103,6 +139,7 @@ export function calculateAiChatBilling(modelId, billing = {}) {
     totals.cachedInputTokens += cachedInputTokens;
     totals.cacheWriteTokens += cacheWriteTokens;
     totals.outputTokens += outputTokens;
+    totals.reasoningTokens += reasoningTokens;
   }
 
   const billedUsd = baseUsd * (1 + AI_CHAT_MARKUP_RATE);
@@ -131,6 +168,12 @@ async function ensureAppSettingsTable(env) {
 
 async function ensureAiChatPreferencesTable(env) {
   await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS ai_chat_preferences (user_id TEXT PRIMARY KEY, model TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    "CREATE TABLE IF NOT EXISTS ai_chat_preferences (user_id TEXT PRIMARY KEY, model TEXT NOT NULL, reasoning_effort TEXT NOT NULL DEFAULT 'medium', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
   ).run();
+  const columns = await env.DB.prepare("PRAGMA table_info(ai_chat_preferences)").all();
+  if (!(columns.results || []).some((column) => column.name === "reasoning_effort")) {
+    await env.DB.prepare(
+      "ALTER TABLE ai_chat_preferences ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT 'medium'"
+    ).run();
+  }
 }

@@ -9,7 +9,7 @@ export const GITHUB_CLIENT_JS = `
   function api(path,body){return fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))}).then(async function(response){var data=await response.json().catch(function(){return{error:'Invalid response'}});if(!response.ok)throw new Error(data.error||'Request failed');return data})}
   function shortRepo(fullName){var parts=String(fullName||'').split('/');return parts[parts.length-1]||'GitHub'}
   function inject(){
-    var tools=document.querySelector('.mode-tools');
+    var tools=document.querySelector('.ai-chat-menu-github-slot')||document.querySelector('.mode-tools');
     if(!tools)return;
     var button=q('aiChatGithubButton');
     if(!button){button=document.createElement('button');button.id='aiChatGithubButton';button.type='button';button.className='ai-github-button';button.setAttribute('aria-label','Connect GitHub repository');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .8a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.1 0 0 1-.3 3.1 1.2a10.8 10.8 0 0 1 5.7 0C14.9 5 16 5.3 16 5.3c.6 1.5.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.8 5.4-5.5 5.7.4.4.8 1.1.8 2.2v3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .8Z"/></svg><span class="ai-github-button-label">GitHub</span>';tools.insertBefore(button,tools.firstChild)}
@@ -20,7 +20,7 @@ export const GITHUB_CLIENT_JS = `
   }
   function updateButton(){var button=q('aiChatGithubButton');if(!button)return;button.classList.toggle('connected',!!state.repository);button.querySelector('.ai-github-button-label').textContent=state.repository?shortRepo(state.repository.fullName):'GitHub';button.setAttribute('aria-label',state.repository?'Connected repository '+state.repository.fullName:'Connect GitHub repository')}
   function showError(message){var node=q('aiGithubError');if(!node)return;node.textContent=String(message||'GitHub request failed');node.classList.add('show')}
-  function openModal(){var modal=q('aiChatGithubModal');if(!modal)return;modal.classList.add('open');modal.setAttribute('aria-hidden','false');loadRepositories()}
+  function openModal(){var modal=q('aiChatGithubModal');if(!modal)return;var menu=q('aiChatMenuBackdrop');if(menu){menu.classList.remove('open');menu.setAttribute('aria-hidden','true')}var menuButton=q('aiChatMenuButton');if(menuButton)menuButton.setAttribute('aria-expanded','false');document.documentElement.classList.remove('ai-chat-menu-open');modal.classList.add('open');modal.setAttribute('aria-hidden','false');loadRepositories()}
   function closeModal(){var modal=q('aiChatGithubModal');if(!modal)return;modal.classList.remove('open');modal.setAttribute('aria-hidden','true')}
   function render(){
     updateButton();var body=q('aiGithubBody');if(!body)return;body.replaceChildren();
