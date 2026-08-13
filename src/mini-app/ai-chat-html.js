@@ -83,6 +83,6 @@ export const AI_CHAT_HTML = `<!doctype html>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/mini-app/chat/creature.js?v=20260801-ai-chat-creature-rounded-jelly-2"></script>
   <script type="module" src="/mini-app/chat/app.js?v=20260813-model-pricing-1"></script>
-  <script src="/mini-app/chat/github.js?v=20260813-github-4"></script>
+  <script src="/mini-app/chat/github.js?v=20260813-github-5"></script>
 </body>
 </html>`;
