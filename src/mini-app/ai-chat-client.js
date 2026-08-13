@@ -299,6 +299,25 @@ export const AI_CHAT_JS = `
     });
   }
 
+  function setAiChatMenu(open){
+    var wrap=q('aiChatMenuWrap');
+    var button=q('aiChatMenuButton');
+    var menu=q('aiChatMenu');
+    if(!wrap||!button||!menu)return;
+    var shouldOpen=!!open;
+    wrap.classList.toggle('open',shouldOpen);
+    button.setAttribute('aria-expanded',shouldOpen?'true':'false');
+    menu.setAttribute('aria-hidden',shouldOpen?'false':'true');
+  }
+
+  function toggleAiChatMenu(event){
+    if(event){event.preventDefault();event.stopPropagation()}
+    setAiChatVoiceMenu(false);
+    setAiChatModelMenu(false);
+    var wrap=q('aiChatMenuWrap');
+    setAiChatMenu(!(wrap&&wrap.classList.contains('open')));
+  }
+
   function toggleAiChatModelMenu(event){
     if(event){event.preventDefault();event.stopPropagation()}
     setAiChatVoiceMenu(false);
@@ -1515,6 +1534,8 @@ export const AI_CHAT_JS = `
     );
   }
 
+  var menuButton=q('aiChatMenuButton');
+  if(menuButton)menuButton.addEventListener('click',toggleAiChatMenu);
   var modelButton=q('aiChatModelButton');
   if(modelButton)modelButton.addEventListener('click',toggleAiChatModelMenu);
   var modelMenu=q('aiChatModelMenu');
@@ -1598,13 +1619,14 @@ export const AI_CHAT_JS = `
     if(
       target
       &&target.closest
-      &&(target.closest('#aiChatVoiceWrap')||target.closest('#aiChatModelWrap'))
+      &&(target.closest('#aiChatVoiceWrap')||target.closest('#aiChatModelWrap')||target.closest('#aiChatMenuWrap'))
     ){
       return;
     }
 
     setAiChatVoiceMenu(false);
     setAiChatModelMenu(false);
+    setAiChatMenu(false);
   });
   window.addEventListener('pagehide',function(){
     stopAiChatVoicePreview();

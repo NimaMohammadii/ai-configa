@@ -33,17 +33,24 @@ export const AI_CHAT_HTML = `<!doctype html>
           <span id="aiChatBalance">—</span>
           <span>credits</span>
         </div>
-        <div id="aiChatModelWrap" class="model-wrap">
-          <button id="aiChatModelButton" class="model-button" type="button" aria-label="AI model" aria-haspopup="listbox" aria-expanded="false">
-            <span id="aiChatModelLabel">Terra</span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 9.5 12 14l5-4.5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div id="aiChatMenuWrap" class="ai-chat-menu-wrap">
+          <button id="aiChatMenuButton" class="ai-chat-menu-button" type="button" aria-label="Open AI chat menu" aria-haspopup="true" aria-expanded="false">
+            <span></span><span></span><span></span>
           </button>
-          <div id="aiChatModelMenu" class="model-menu" role="listbox" aria-label="Choose GPT model" aria-hidden="true">
-            <p>Price per 1M tokens</p>
-            <button class="model-option" data-ai-model="gpt-5.6-luna" type="button" role="option"><span><strong>Luna</strong><small>Fast & efficient</small></span><em>$0.20 in · $1.20 out</em></button>
-            <button class="model-option active" data-ai-model="gpt-5.6-terra" type="button" role="option"><span><strong>Terra</strong><small>Balanced</small></span><em>$2 in · $12 out</em></button>
-            <button class="model-option" data-ai-model="gpt-5.6-sol" type="button" role="option"><span><strong>Sol</strong><small>Best for hard coding</small></span><em>$5 in · $30 out</em></button>
-            <div class="model-pricing-note">Actual token usage + 15%</div>
+          <div id="aiChatMenu" class="ai-chat-menu" aria-hidden="true">
+            <div id="aiChatModelWrap" class="model-wrap">
+              <button id="aiChatModelButton" class="model-button" type="button" aria-label="AI model" aria-haspopup="listbox" aria-expanded="false">
+                <span id="aiChatModelLabel">Terra</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 9.5 12 14l5-4.5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div id="aiChatModelMenu" class="model-menu" role="listbox" aria-label="Choose GPT model" aria-hidden="true">
+                <p>Price per 1M tokens</p>
+                <button class="model-option" data-ai-model="gpt-5.6-luna" type="button" role="option"><span><strong>Luna</strong><small>Fast & efficient</small></span><em>$0.20 in · $1.20 out</em></button>
+                <button class="model-option active" data-ai-model="gpt-5.6-terra" type="button" role="option"><span><strong>Terra</strong><small>Balanced</small></span><em>$2 in · $12 out</em></button>
+                <button class="model-option" data-ai-model="gpt-5.6-sol" type="button" role="option"><span><strong>Sol</strong><small>Best for hard coding</small></span><em>$5 in · $30 out</em></button>
+                <div class="model-pricing-note">Actual token usage + 15%</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
