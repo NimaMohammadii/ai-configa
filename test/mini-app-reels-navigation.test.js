@@ -2,6 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { MINI_APP_JS } from "../src/mini-app/client.js";
+import { MINI_APP_BROADCAST_SECTIONS, normalizeMiniAppSection } from "../src/admin.js";
+
+test("admin Mini App buttons can open AI Chat directly", () => {
+  assert.equal(MINI_APP_BROADCAST_SECTIONS.ai_chat, "AI Chat");
+  assert.equal(normalizeMiniAppSection("ai_chat"), "ai_chat");
+  assert.match(MINI_APP_JS, /ai_chat:'ai_chat'/);
+  assert.match(MINI_APP_JS, /section==='ai_chat'\)\{window\.location\.replace\('\/mini-app\/chat'\)/);
+});
 
 test("Reels explicitly start only the visible video", () => {
   assert.match(MINI_APP_JS, /function syncExploreReelPlayback\(\)/);
