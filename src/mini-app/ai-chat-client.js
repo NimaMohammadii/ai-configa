@@ -325,7 +325,7 @@ export const AI_CHAT_JS = `
   function syncAiChatKeyboardOffset(){setAiChatKeyboardOffset(stableViewportHeight-Number(tg&&tg.viewportHeight||stableViewportHeight))}
   document.documentElement.style.setProperty('--ai-chat-page-height',Math.round(stableViewportHeight)+'px');
   if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',syncAiChatKeyboardOffset)}catch(e){}}
-  async function api(path,body){var response;try{response=await fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){throw new Error('Connection interrupted · Try again')}var data=await response.json().catch(function(){return{error:'Invalid response'}});if(!response.ok)throw new Error(data.error||'Request failed');return data}
+  async function api(path,body){var response;try{response=await fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){throw new Error('Connection interrupted · Try again')}var data=await response.json().catch(function(){return{error:'Invalid response'}});if(!response.ok){var requestError=new Error(data.error||'Request failed');requestError.status=response.status;throw requestError}return data}
   function aiOrbSpherePoint(index,count){var golden=Math.PI*(3-Math.sqrt(5));var y=1-2*(index+.5)/count;var radius=Math.sqrt(1-y*y);var angle=index*golden;return[radius*Math.cos(angle),y,radius*Math.sin(angle)]}
   function aiOrbProject(yaw,pitch,cx,cy){var sy=Math.sin(yaw),cyaw=Math.cos(yaw),sp=Math.sin(pitch),cp=Math.cos(pitch);return function(x,y,z){var rx=x*cyaw+z*sy;var rz=-x*sy+z*cyaw;var ry=y*cp-rz*sp;var depth=y*sp+rz*cp;return[cx+rx,cy-ry,depth]}}
   function aiOrbPaint(ctx,dots){
@@ -1387,7 +1387,7 @@ export const AI_CHAT_JS = `
       hideAiImageGenerating();
 
       var errorMessage=error.message||'Could not reach AI';
-      if(String(errorMessage).indexOf('Not enough credits')===0){
+      if(error.status===402||String(errorMessage).indexOf('Not enough credits')===0){
         await appendAiChatMessage(
           'assistant',
           String(errorMessage),

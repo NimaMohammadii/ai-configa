@@ -1017,7 +1017,10 @@ export async function adminSectionOpensText(env) {
 }
 
 export function adminSectionOpensKeyboard() {
-  return { inline_keyboard: [[{ text: "← Back", callback_data: "admin_main" }]] };
+  return { inline_keyboard: [
+    [{ text: "🤖 AI Chat Users", callback_data: "admin_ai_chat_users:0" }],
+    [{ text: "← Back", callback_data: "admin_main" }],
+  ] };
 }
 
 async function getUserMiniAppSectionOpens(env, userId) {

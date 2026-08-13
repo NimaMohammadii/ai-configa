@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { adminImageExploreKeyboard, adminImageExploreVoiceKeyboard } from "../src/admin.js";
+import { adminImageExploreKeyboard, adminImageExploreVoiceKeyboard, adminSectionOpensKeyboard, MINI_APP_TRACKED_SECTIONS } from "../src/admin.js";
 
 function items(count) {
   return Array.from({ length: count }, (_, index) => ({
@@ -43,4 +43,11 @@ test("Explore videos keep an accessible voice selector after upload", () => {
   const rows = adminImageExploreKeyboard(items(11), 1).inline_keyboard;
   assert.equal(rows[1][0].callback_data, "admin_image_explore_voice:11");
   assert.equal(rows[1][1].text, "#11 Upload");
+});
+
+test("admin section analytics includes AI Chat and links to its users", () => {
+  assert.equal(MINI_APP_TRACKED_SECTIONS.ai_chat, "AI Chat");
+  assert.deepEqual(adminSectionOpensKeyboard().inline_keyboard[0], [
+    { text: "🤖 AI Chat Users", callback_data: "admin_ai_chat_users:0" },
+  ]);
 });
