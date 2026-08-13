@@ -3,6 +3,7 @@ import { handleCallback } from "./bot.js";
 import { handleMessage } from "./bot-secure.js";
 import { handleChatGptAppRequest, isChatGptAppRequest } from "./chatgpt-app/router.js";
 import { handleMiniAppRequest, isMiniAppRequest } from "./mini-app/server.js";
+import { handleGitHubRequest, isGitHubRequest } from "./github-app.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { processPendingImageJobs } from "./image-jobs.js";
 import { processPendingBroadcastJobs } from "./broadcast-jobs.js";
@@ -31,6 +32,10 @@ export default {
 
     if (isChatGptAppRequest(request)) {
       return handleChatGptAppRequest(request, env);
+    }
+
+    if (isGitHubRequest(request)) {
+      return handleGitHubRequest(request, env);
     }
 
     if (isExploreMediaRequest(request)) {
@@ -160,3 +165,4 @@ function isImageEditMessage(message) {
 function logError(error) {
   console.error(error && error.stack ? error.stack : error);
 }
+

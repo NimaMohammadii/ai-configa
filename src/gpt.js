@@ -1,4 +1,5 @@
 import { getAiChatModel } from "./ai-chat-model.js";
+import { buildGitHubAiInstructions, executeGitHubAiTool, getGitHubAiContext, getGitHubAiTools, isGitHubAiToolCall } from "./github-ai.js";
 import { VOICE_NAMES } from "./voices.js";
 import { EMOTION_TAGS } from "./mini-app/emotion-tags.js";
 
@@ -297,7 +298,7 @@ function normalizeChatAttachment(raw) {
   };
 }
 
-function buildAiChatInstructions(preferredVoice) {
+function buildAiChatInstructions(preferredVoice, githubContext) {
   const selectedVoice = VOICE_NAMES.includes(preferredVoice) ? preferredVoice : "Nora";
   return [
     "You are Vexa AI, a capable and friendly assistant inside Telegram.",
@@ -314,11 +315,12 @@ function buildAiChatInstructions(preferredVoice) {
     "All 69 catalog tags are available; choose the most contextually accurate tag or combination of tags for the user’s request.",
     "Always use the user’s currently selected voice for speech: " + selectedVoice + ".",
     "Never choose a different voice inside AI Chat; the voice card is the single source of truth.",
-    "For web-search answers, do not add sources, citation links, raw URLs, or footnote markers unless the user asks for them."
+    "For web-search answers, do not add sources, citation links, raw URLs, or footnote markers unless the user asks for them.",
+    buildGitHubAiInstructions(githubContext)
   ].join(" ");
 }
 
-export async function chatWithAi(env, messages, onStatus) {
+export async function chatWithAi(env, messages, onStatus, options = {}) {
   if (!env.GPT_API) throw new Error("GPT service is not configured.");
 
   const cleanMessages = (Array.isArray(messages) ? messages : [])
@@ -368,78 +370,111 @@ export async function chatWithAi(env, messages, onStatus) {
   });
 
   const model = await getAiChatModel(env);
+  const githubContext = await getGitHubAiContext(env, options.userId);
+  const githubTools = getGitHubAiTools(githubContext);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort("gpt_chat_timeout"), GPT_CHAT_TIMEOUT_MS);
+  const timer = setTimeout(
+    () => controller.abort("gpt_chat_timeout"),
+    githubContext ? 180000 : GPT_CHAT_TIMEOUT_MS,
+  );
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + env.GPT_API,
-        "Content-Type": "application/json",
+    const tools = [
+      { type: "web_search" },
+      {
+        type: "function",
+        name: "generate_image",
+        description: "Generate one image with the app's image generator.",
+        parameters: {
+          type: "object",
+          properties: {
+            prompt: { type: "string" },
+            size: { type: "string", enum: Array.from(GPT_IMAGE_SIZES) },
+          },
+          required: ["prompt", "size"],
+          additionalProperties: false,
+        },
+        strict: true,
       },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model,
-        instructions: buildAiChatInstructions(latestPreferredVoice),
-        input: inputMessages,
-        tools: [
-          { type: "web_search" },
-          {
-            type: "function",
-            name: "generate_image",
-            description: "Generate one image with the app's image generator.",
-            parameters: {
-              type: "object",
-              properties: {
-                prompt: { type: "string" },
-                size: {
-                  type: "string",
-                  enum: Array.from(GPT_IMAGE_SIZES),
-                },
-              },
-              required: ["prompt", "size"],
-              additionalProperties: false,
+      {
+        type: "function",
+        name: "generate_speech",
+        description: "Create spoken audio when the user asks for text-to-speech, narration, dubbing, or a voice reading. Add supported repository audio tags when the requested emotion, delivery, reaction, sound, pause, accent, or performance calls for them.",
+        parameters: {
+          type: "object",
+          properties: {
+            text: {
+              type: "string",
+              description: "The exact text to speak, without explanations or Markdown. Include only contextually requested supported audio tags in square brackets."
             },
-            strict: true,
+            voice: {
+              type: "string",
+              enum: [latestPreferredVoice],
+              description: "The exact voice currently selected in the user’s voice card."
+            }
           },
-          {
-            type: "function",
-            name: "generate_speech",
-            description: "Create spoken audio when the user asks for text-to-speech, narration, dubbing, or a voice reading. Add supported repository audio tags when the requested emotion, delivery, reaction, sound, pause, accent, or performance calls for them.",
-            parameters: {
-              type: "object",
-              properties: {
-                text: {
-                  type: "string",
-                  description: "The exact text to speak, without explanations or Markdown. Include only contextually requested supported audio tags in square brackets."
-                },
-                voice: {
-                  type: "string",
-                  enum: [latestPreferredVoice],
-                  description: "The exact voice currently selected in the user’s voice card."
-                }
-              },
-              required: ["text", "voice"],
-              additionalProperties: false
-            },
-            strict: true
-          },
-        ],
-        tool_choice: "auto",
-        max_output_tokens: 1400,
-        store: false,
-        stream: true,
-      }),
-    });
+          required: ["text", "voice"],
+          additionalProperties: false
+        },
+        strict: true
+      },
+      ...githubTools,
+    ];
+    const responseInput = inputMessages.slice();
+    let webSearchUsed = false;
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(toFriendlyGptError(response.status, errorBody));
+    for (let toolRound = 0; toolRound < 6; toolRound += 1) {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + env.GPT_API,
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model,
+          instructions: buildAiChatInstructions(latestPreferredVoice, githubContext),
+          input: responseInput,
+          tools,
+          tool_choice: "auto",
+          max_output_tokens: githubContext ? 12000 : 1400,
+          store: false,
+          stream: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(toFriendlyGptError(response.status, errorBody));
+      }
+
+      const data = await readChatResponseStream(response, onStatus);
+      const output = Array.isArray(data?.output) ? data.output : [];
+      webSearchUsed = webSearchUsed || output.some((item) => item?.type === "web_search_call");
+      const terminalCall = output.find(
+        (item) => item?.type === "function_call"
+          && (item?.name === "generate_image" || item?.name === "generate_speech"),
+      );
+      if (terminalCall) {
+        return buildChatResult(data, cleanMessages, { webSearchUsed });
+      }
+
+      const githubCalls = output.filter(isGitHubAiToolCall);
+      if (!githubCalls.length) {
+        return buildChatResult(data, cleanMessages, { webSearchUsed });
+      }
+
+      responseInput.push(...output);
+      for (const call of githubCalls) {
+        const toolOutput = await executeGitHubAiTool(env, options.userId, call, onStatus);
+        responseInput.push({
+          type: "function_call_output",
+          call_id: call.call_id,
+          output: toolOutput,
+        });
+      }
     }
-
-    const data = await readChatResponseStream(response, onStatus);
-    return buildChatResult(data, cleanMessages);
+    throw new Error("AI used too many repository steps. Ask it to continue with a smaller change.");
   } catch (error) {
     if (error?.name === "AbortError" || String(error).includes("gpt_chat_timeout")) {
       throw new Error("AI took too long. Please try again.");
@@ -524,8 +559,8 @@ async function readChatResponseStream(response, onStatus) {
   return completedResponse;
 }
 
-function buildChatResult(data, cleanMessages) {
-  const webSearchUsed = (Array.isArray(data?.output) ? data.output : [])
+function buildChatResult(data, cleanMessages, options = {}) {
+  const webSearchUsed = Boolean(options.webSearchUsed) || (Array.isArray(data?.output) ? data.output : [])
     .some((item) => item?.type === "web_search_call");
   const imageCall = (Array.isArray(data?.output) ? data.output : [])
     .find((item) => item?.type === "function_call" && item?.name === "generate_image");
@@ -751,3 +786,4 @@ function base64ToArrayBuffer(value) {
   }
   return bytes.buffer;
 }
+

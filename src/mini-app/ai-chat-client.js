@@ -1257,6 +1257,12 @@ export const AI_CHAT_JS = `
     if(state==='searching'){
       next='searching';
       labelText='Searching…';
+    }else if(state==='reading_repository'){
+      next='reading_repository';
+      labelText='Reading repository';
+    }else if(state==='writing_code'){
+      next='writing_code';
+      labelText='Writing code';
     }else if(state==='generating_voice'){
       next='generating_voice';
       labelText='Generating voice';
@@ -1534,3 +1540,4 @@ export const AI_CHAT_JS = `
   syncAiChatEmptyState();startAiThinkingOrb();loadAiChat();
 })();
 `;
+
