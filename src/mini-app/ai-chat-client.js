@@ -17,6 +17,9 @@ export const AI_CHAT_JS = `
   var aiChatActivePreviewButton=null;
   var aiChatActivePreviewVoice='';
   var aiChatAttachment=null;
+  var aiChatModel='gpt-5.6-terra';
+  var aiChatModels=[];
+  var aiChatModelMenuBusy=false;
   var aiChatAttachmentMaxBytes=10*1024*1024;
   var aiChatAttachmentMimes={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',pdf:'application/pdf',txt:'text/plain',text:'text/plain',md:'text/markdown',markdown:'text/markdown',json:'application/json',html:'text/html',htm:'text/html',xml:'text/xml',csv:'text/csv',tsv:'text/tsv',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',rtf:'application/rtf',odt:'application/vnd.oasis.opendocument.text',ppt:'application/vnd.ms-powerpoint',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',js:'text/javascript',mjs:'text/javascript',ts:'text/x-typescript',tsx:'text/tsx',jsx:'text/jsx',py:'text/x-python',css:'text/css',sql:'text/x-sql',log:'text/plain',yaml:'text/x-yaml',yml:'text/x-yaml',toml:'application/toml',eml:'message/rfc822',ics:'text/calendar',srt:'application/x-subrip',vtt:'text/vtt'};
   var aiThinkingFrame=0;
@@ -133,6 +136,7 @@ export const AI_CHAT_JS = `
       event.stopPropagation();
     }
 
+    setAiChatModelMenu(false);
     var wrap=q('aiChatVoiceWrap');
     setAiChatVoiceMenu(
       !(wrap&&wrap.classList.contains('open'))
@@ -273,8 +277,68 @@ export const AI_CHAT_JS = `
     }
   }
 
+  function setAiChatModelMenu(open){
+    var wrap=q('aiChatModelWrap');
+    var button=q('aiChatModelButton');
+    var menu=q('aiChatModelMenu');
+    if(!wrap||!button||!menu)return;
+    var shouldOpen=!!open;
+    wrap.classList.toggle('open',shouldOpen);
+    button.setAttribute('aria-expanded',shouldOpen?'true':'false');
+    menu.setAttribute('aria-hidden',shouldOpen?'false':'true');
+  }
+
+  function renderAiChatModelMenu(){
+    var selected=aiChatModels.find(function(item){return item&&item.id===aiChatModel});
+    var label=q('aiChatModelLabel');
+    if(label)label.textContent=String(selected&&selected.label||aiChatModel.split('-').pop()||'Terra').replace(/^./,function(value){return value.toUpperCase()});
+    document.querySelectorAll('.model-option[data-ai-model]').forEach(function(button){
+      var active=button.getAttribute('data-ai-model')===aiChatModel;
+      button.classList.toggle('active',active);
+      button.setAttribute('aria-selected',active?'true':'false');
+    });
+  }
+
+  function toggleAiChatModelMenu(event){
+    if(event){event.preventDefault();event.stopPropagation()}
+    setAiChatVoiceMenu(false);
+    var wrap=q('aiChatModelWrap');
+    setAiChatModelMenu(!(wrap&&wrap.classList.contains('open')));
+  }
+
+  async function selectAiChatModel(modelId){
+    var selected=String(modelId||'').trim();
+    if(!selected||selected===aiChatModel||aiChatModelMenuBusy){setAiChatModelMenu(false);return}
+    if(!aiChatModels.some(function(item){return item&&item.id===selected}))return;
+    var previous=aiChatModel;
+    aiChatModel=selected;
+    aiChatModelMenuBusy=true;
+    renderAiChatModelMenu();
+    setAiChatModelMenu(false);
+    try{
+      var data=await api('/mini-app/api/ai-chat-model',{model:selected});
+      aiChatModel=String(data.model||selected);
+      renderAiChatModelMenu();
+      if(tg&&tg.HapticFeedback)try{tg.HapticFeedback.impactOccurred('light')}catch(error){}
+    }catch(error){
+      aiChatModel=previous;
+      renderAiChatModelMenu();
+      toast(error.message);
+    }finally{
+      aiChatModelMenuBusy=false;
+    }
+  }
+
   function updateAiChatHeader(data){
     if(!data||typeof data!=='object')return;
+
+    if(Array.isArray(data.aiChatModels)){
+      aiChatModels=data.aiChatModels.filter(function(item){return item&&item.id&&item.label});
+    }
+    if(data.aiChatModel||data.model){
+      var selectedModel=String(data.aiChatModel||data.model||'').trim();
+      if(selectedModel)aiChatModel=selectedModel;
+    }
 
     var voice=String(data.voice||'').trim();
     if(voice){
@@ -316,6 +380,7 @@ export const AI_CHAT_JS = `
       aiChatPreferredVoice
     );
     renderAiChatVoiceMenu();
+    renderAiChatModelMenu();
   }
 
   function setAiChatCreatureState(state){if(typeof window.aiChatCreatureSetState==='function')window.aiChatCreatureSetState(state)}
@@ -1450,6 +1515,17 @@ export const AI_CHAT_JS = `
     );
   }
 
+  var modelButton=q('aiChatModelButton');
+  if(modelButton)modelButton.addEventListener('click',toggleAiChatModelMenu);
+  var modelMenu=q('aiChatModelMenu');
+  if(modelMenu)modelMenu.addEventListener('click',function(event){
+    var option=event.target&&event.target.closest?event.target.closest('.model-option[data-ai-model]'):null;
+    if(!option)return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectAiChatModel(option.getAttribute('data-ai-model'));
+  });
+
   var voiceMenu=q('aiChatVoiceMenu');
   if(voiceMenu){
     voiceMenu.addEventListener('click',function(event){
@@ -1522,12 +1598,13 @@ export const AI_CHAT_JS = `
     if(
       target
       &&target.closest
-      &&target.closest('#aiChatVoiceWrap')
+      &&(target.closest('#aiChatVoiceWrap')||target.closest('#aiChatModelWrap'))
     ){
       return;
     }
 
     setAiChatVoiceMenu(false);
+    setAiChatModelMenu(false);
   });
   window.addEventListener('pagehide',function(){
     stopAiChatVoicePreview();
@@ -1540,4 +1617,3 @@ export const AI_CHAT_JS = `
   syncAiChatEmptyState();startAiThinkingOrb();loadAiChat();
 })();
 `;
-

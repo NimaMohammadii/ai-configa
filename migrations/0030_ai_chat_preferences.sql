@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS ai_chat_preferences (
+  user_id TEXT PRIMARY KEY,
+  model TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

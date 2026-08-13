@@ -239,3 +239,8 @@ CREATE TABLE IF NOT EXISTS github_oauth_states (
 CREATE INDEX IF NOT EXISTS idx_github_oauth_states_expiry
   ON github_oauth_states (expires_at);
 
+CREATE TABLE IF NOT EXISTS ai_chat_preferences (
+  user_id TEXT PRIMARY KEY,
+  model TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

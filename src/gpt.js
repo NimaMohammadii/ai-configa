@@ -1,4 +1,4 @@
-import { getAiChatModel } from "./ai-chat-model.js";
+import { normalizeAiChatModel } from "./ai-chat-model.js";
 import { buildGitHubAiInstructions, executeGitHubAiTool, getGitHubAiContext, getGitHubAiTools, isGitHubAiToolCall } from "./github-ai.js";
 import { VOICE_NAMES } from "./voices.js";
 import { EMOTION_TAGS } from "./mini-app/emotion-tags.js";
@@ -369,7 +369,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     };
   });
 
-  const model = await getAiChatModel(env);
+  const model = normalizeAiChatModel(options.model);
   const githubContext = await getGitHubAiContext(env, options.userId);
   const githubTools = getGitHubAiTools(githubContext);
   const controller = new AbortController();
@@ -422,6 +422,8 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     ];
     const responseInput = inputMessages.slice();
     let webSearchUsed = false;
+    let webSearchCalls = 0;
+    const usage = [];
 
     for (let toolRound = 0; toolRound < 6; toolRound += 1) {
       const response = await fetch("https://api.openai.com/v1/responses", {
@@ -450,18 +452,21 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
 
       const data = await readChatResponseStream(response, onStatus);
       const output = Array.isArray(data?.output) ? data.output : [];
-      webSearchUsed = webSearchUsed || output.some((item) => item?.type === "web_search_call");
+      const roundWebSearchCalls = output.filter((item) => item?.type === "web_search_call").length;
+      webSearchCalls += roundWebSearchCalls;
+      webSearchUsed = webSearchUsed || roundWebSearchCalls > 0;
+      if (data?.usage && typeof data.usage === "object") usage.push(data.usage);
       const terminalCall = output.find(
         (item) => item?.type === "function_call"
           && (item?.name === "generate_image" || item?.name === "generate_speech"),
       );
       if (terminalCall) {
-        return buildChatResult(data, cleanMessages, { webSearchUsed });
+        return buildChatResult(data, cleanMessages, { webSearchUsed, webSearchCalls, usage, model });
       }
 
       const githubCalls = output.filter(isGitHubAiToolCall);
       if (!githubCalls.length) {
-        return buildChatResult(data, cleanMessages, { webSearchUsed });
+        return buildChatResult(data, cleanMessages, { webSearchUsed, webSearchCalls, usage, model });
       }
 
       responseInput.push(...output);
@@ -567,6 +572,11 @@ function buildChatResult(data, cleanMessages, options = {}) {
 
   const speechCall = (Array.isArray(data?.output) ? data.output : [])
     .find((item) => item?.type === "function_call" && item?.name === "generate_speech");
+  const billing = {
+    model: normalizeAiChatModel(options.model),
+    usage: Array.isArray(options.usage) ? options.usage : [],
+    webSearchCalls: Math.max(0, Math.floor(Number(options.webSearchCalls || 0))),
+  };
 
   if (speechCall) {
     let args = {};
@@ -590,7 +600,8 @@ function buildChatResult(data, cleanMessages, options = {}) {
       type: "speech_request",
       text,
       voice,
-      webSearchUsed
+      webSearchUsed,
+      billing,
     };
   }
 
@@ -609,6 +620,7 @@ function buildChatResult(data, cleanMessages, options = {}) {
       prompt,
       size: resolveImageSize(args.size),
       webSearchUsed,
+      billing,
     };
   }
 
@@ -619,6 +631,7 @@ function buildChatResult(data, cleanMessages, options = {}) {
     message: answer,
     sources: extractResponseSources(data),
     webSearchUsed,
+    billing,
   };
 }
 
@@ -786,4 +799,3 @@ function base64ToArrayBuffer(value) {
   }
   return bytes.buffer;
 }
-
