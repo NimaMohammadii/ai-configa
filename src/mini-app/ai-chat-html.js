@@ -29,14 +29,11 @@ export const AI_CHAT_HTML = `<!doctype html>
   <section id="aiChatPage" class="ai-chat-page" aria-hidden="false">
     <header id="aiChatHead" class="ai-chat-head">
       <div class="credit-tools">
-        <div id="aiChatCreditPill" class="credit-pill" aria-label="Credits">
-          <span id="aiChatBalance">—</span>
-          <span>credits</span>
-        </div>
         <div id="aiChatModelWrap" class="model-wrap">
-          <button id="aiChatModelButton" class="model-button" type="button" aria-label="AI model" aria-haspopup="listbox" aria-expanded="false">
-            <span id="aiChatModelLabel">Terra</span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 9.5 12 14l5-4.5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <button id="aiChatModelButton" class="model-button" type="button" aria-label="Choose AI model" aria-haspopup="listbox" aria-expanded="false">
+            <svg class="model-menu-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span class="model-menu-sr-label">Choose AI model</span>
+            <span id="aiChatModelLabel" class="model-current-label">Terra</span>
           </button>
           <div id="aiChatModelMenu" class="model-menu" role="listbox" aria-label="Choose GPT model" aria-hidden="true">
             <p>Price per 1M tokens</p>
@@ -45,6 +42,10 @@ export const AI_CHAT_HTML = `<!doctype html>
             <button class="model-option" data-ai-model="gpt-5.6-sol" type="button" role="option"><span><strong>Sol</strong><small>Best for hard coding</small></span><em>$5 in · $30 out</em></button>
             <div class="model-pricing-note">Actual token usage + 15%</div>
           </div>
+        </div>
+        <div id="aiChatCreditPill" class="credit-pill" aria-label="Credits">
+          <span id="aiChatBalance">—</span>
+          <span>credits</span>
         </div>
       </div>
       <div class="mode-tools">

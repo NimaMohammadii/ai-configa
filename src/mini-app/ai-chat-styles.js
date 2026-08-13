@@ -536,32 +536,44 @@ button{border:0}
 }
 
 .ai-chat-head .model-button{
+  width:36px;
   height:36px;
-  min-width:72px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:5px;
-  padding:0 10px;
+  min-width:36px;
+  padding:0;
+  display:grid;
+  place-items:center;
   border:0;
   border-radius:16px;
   background:var(--ticket-glass-bg);
-  color:#fff;
+  color:rgba(255,255,255,.82);
   box-shadow:var(--ticket-glass-shadow);
   backdrop-filter:blur(10px) saturate(1.12);
   -webkit-backdrop-filter:blur(10px) saturate(1.12);
-  font-size:12px;
-  font-weight:720;
-  line-height:1;
 }
 
-.ai-chat-head .model-button svg{
-  color:rgba(255,255,255,.48);
-  transition:transform .2s ease;
+.ai-chat-head .model-menu-icon{
+  display:block;
+  width:18px;
+  height:18px;
 }
 
-.ai-chat-head .model-wrap.open .model-button svg{
-  transform:rotate(180deg);
+.ai-chat-head .model-menu-sr-label,
+.ai-chat-head .model-current-label{
+  position:absolute;
+  width:1px;
+  height:1px;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0 0 0 0);
+  white-space:nowrap;
+}
+
+.ai-chat-head .model-button:active{
+  background:rgba(255,255,255,.105);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.13),
+    inset 0 -1px 0 rgba(255,255,255,.07),
+    0 5px 14px rgba(0,0,0,.2);
 }
 
 .ai-chat-head .model-menu{
@@ -663,7 +675,7 @@ button{border:0}
   .ai-chat-head .credit-tools,.ai-chat-head .mode-tools{gap:5px}
   .ai-chat-head .credit-pill{padding:0 9px}
   .ai-chat-head .credit-pill span:last-child{display:none}
-  .ai-chat-head .model-button{min-width:63px;padding:0 8px}
+  .ai-chat-head .model-button{width:36px;min-width:36px;padding:0}
   .ai-chat-head .voice-btn{min-width:82px;padding:0 10px}
 }
 
