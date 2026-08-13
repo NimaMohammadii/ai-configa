@@ -242,6 +242,11 @@ CREATE INDEX IF NOT EXISTS idx_github_oauth_states_expiry
 CREATE TABLE IF NOT EXISTS ai_chat_preferences (
   user_id TEXT PRIMARY KEY,
   model TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ai_chat_reasoning_preferences (
+  user_id TEXT PRIMARY KEY,
   reasoning_effort TEXT NOT NULL DEFAULT 'medium',
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

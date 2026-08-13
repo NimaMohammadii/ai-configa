@@ -1,5 +1,8 @@
-ALTER TABLE ai_chat_preferences
-  ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT 'medium';
+CREATE TABLE IF NOT EXISTS ai_chat_reasoning_preferences (
+  user_id TEXT PRIMARY KEY,
+  reasoning_effort TEXT NOT NULL DEFAULT 'medium',
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE IF NOT EXISTS ai_user_memory (
   user_id TEXT PRIMARY KEY,

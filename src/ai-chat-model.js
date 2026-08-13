@@ -69,15 +69,17 @@ export async function getUserAiChatModel(env, userId) {
 export async function getUserAiChatPreferences(env, userId) {
   requireDb(env);
   await ensureAiChatPreferencesTable(env);
-  const row = await env.DB.prepare(
-    "SELECT model, reasoning_effort FROM ai_chat_preferences WHERE user_id = ?"
-  ).bind(String(userId)).first();
-  const model = row?.model && AI_CHAT_MODELS.some((item) => item.id === row.model)
-    ? row.model
+  await ensureAiChatReasoningPreferencesTable(env);
+  const [modelRow, reasoningRow] = await Promise.all([
+    env.DB.prepare("SELECT model FROM ai_chat_preferences WHERE user_id = ?").bind(String(userId)).first(),
+    env.DB.prepare("SELECT reasoning_effort FROM ai_chat_reasoning_preferences WHERE user_id = ?").bind(String(userId)).first(),
+  ]);
+  const model = modelRow?.model && AI_CHAT_MODELS.some((item) => item.id === modelRow.model)
+    ? modelRow.model
     : await getAiChatModel(env);
   return {
     model,
-    reasoningEffort: normalizeAiChatReasoningEffort(row?.reasoning_effort),
+    reasoningEffort: normalizeAiChatReasoningEffort(reasoningRow?.reasoning_effort),
   };
 }
 
@@ -88,6 +90,7 @@ export async function setUserAiChatModel(env, userId, modelId) {
 export async function setUserAiChatPreferences(env, userId, preferences = {}) {
   requireDb(env);
   await ensureAiChatPreferencesTable(env);
+  await ensureAiChatReasoningPreferencesTable(env);
   const current = await getUserAiChatPreferences(env, userId);
   const cleanModel = preferences.model == null
     ? current.model
@@ -102,9 +105,13 @@ export async function setUserAiChatPreferences(env, userId, preferences = {}) {
     throw new Error("Invalid reasoning effort selection");
   }
   await env.DB.prepare(
-    "INSERT INTO ai_chat_preferences (user_id, model, reasoning_effort, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) " +
-    "ON CONFLICT(user_id) DO UPDATE SET model = excluded.model, reasoning_effort = excluded.reasoning_effort, updated_at = CURRENT_TIMESTAMP"
-  ).bind(String(userId), cleanModel, reasoningEffort).run();
+    "INSERT INTO ai_chat_preferences (user_id, model, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET model = excluded.model, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(userId), cleanModel).run();
+  await env.DB.prepare(
+    "INSERT INTO ai_chat_reasoning_preferences (user_id, reasoning_effort, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET reasoning_effort = excluded.reasoning_effort, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(userId), reasoningEffort).run();
   return { model: cleanModel, reasoningEffort };
 }
 
@@ -168,12 +175,12 @@ async function ensureAppSettingsTable(env) {
 
 async function ensureAiChatPreferencesTable(env) {
   await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS ai_chat_preferences (user_id TEXT PRIMARY KEY, model TEXT NOT NULL, reasoning_effort TEXT NOT NULL DEFAULT 'medium', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    "CREATE TABLE IF NOT EXISTS ai_chat_preferences (user_id TEXT PRIMARY KEY, model TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
   ).run();
-  const columns = await env.DB.prepare("PRAGMA table_info(ai_chat_preferences)").all();
-  if (!(columns.results || []).some((column) => column.name === "reasoning_effort")) {
-    await env.DB.prepare(
-      "ALTER TABLE ai_chat_preferences ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT 'medium'"
-    ).run();
-  }
+}
+
+async function ensureAiChatReasoningPreferencesTable(env) {
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS ai_chat_reasoning_preferences (user_id TEXT PRIMARY KEY, reasoning_effort TEXT NOT NULL DEFAULT 'medium', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+  ).run();
 }
