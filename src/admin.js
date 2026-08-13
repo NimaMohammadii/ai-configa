@@ -2197,6 +2197,7 @@ function appendMiniAppSection(url, section = "home") {
 
 export const MINI_APP_BROADCAST_SECTIONS = {
   home: "Home",
+  ai_chat: "AI Chat",
   wheel: "Reward Wheel",
   image: "Image Generator",
   explore: "Explore",
