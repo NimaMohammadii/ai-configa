@@ -94,7 +94,7 @@ export const MINI_APP_HTML = `<!doctype html>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
   <title>Vexa Voice</title>
-  <link rel="stylesheet" href="/mini-app/styles.css?v=20260801-ai-chat-page-1"/>
+  <link rel="stylesheet" href="/mini-app/styles.css?v=20260813-wheel-layout-2"/>
   <style>
     .credits-page{--ticket-glass-bg:rgba(13,13,13,.62);--ticket-glass-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22)}
     .credits-page .credits-payment-switch,.credits-page .credits-custom,.credits-page .credits-pack,.credits-page .credits-amount-field,.credits-page .toman-card,.credits-page .toman-receipt-picker,.credits-page .toman-upload-icon,.credits-page .toman-back{border:0;background:var(--ticket-glass-bg);box-shadow:var(--ticket-glass-shadow);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12)}
@@ -111,7 +111,7 @@ export const MINI_APP_HTML = `<!doctype html>
     <section id="flow" class="view active">
       <div class="tts-page">
         <div class="tts-head">
-          <div class="credit-tools"><div id="creditPill" class="credit-pill" role="button" tabindex="0" aria-label="Buy credits"><span id="balance">—</span><span>credits</span></div><span id="editModeIndicator" class="edit-mode-indicator" aria-hidden="true">EDIT MODE</span></div>
+          <div class="credit-tools"><div id="creditPill" class="credit-pill" role="button" tabindex="0" aria-label="Buy credits"><span id="balance">—</span><span>credits</span></div><button id="wheelOpenButton" class="wheel-open-button" data-action="open-wheel" type="button" aria-label="Open daily reward wheel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.75v4.1M12 16.15v4.1M3.75 12h4.1M16.15 12h4.1M6.16 6.16l2.9 2.9M14.94 14.94l2.9 2.9M17.84 6.16l-2.9 2.9M9.06 14.94l-2.9 2.9" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/><circle cx="12" cy="12" r="2.15" fill="currentColor"/></svg><span class="wheel-ready-dot" aria-hidden="true"></span></button><span id="editModeIndicator" class="edit-mode-indicator" aria-hidden="true">EDIT MODE</span></div>
           <div class="mode-tools"><div id="voiceWrap" class="voice-wrap">
             <button class="voice-btn" data-action="toggle-voice" type="button">
               <span id="voiceButtonAvatar" class="voice-button-avatar" aria-hidden="true"></span>
@@ -221,6 +221,8 @@ export const MINI_APP_HTML = `<!doctype html>
 
 
 
+  <div id="rewardWheelSheet" class="wheel-sheet" aria-hidden="true"><button class="wheel-backdrop" data-action="close-wheel" type="button" aria-label="Close reward wheel"></button><section class="wheel-panel" role="dialog" aria-modal="true" aria-labelledby="wheelTitle"><header class="wheel-panel-head"><div><span>DAILY REWARD</span><h2 id="wheelTitle">Spin & win</h2></div><button data-action="close-wheel" type="button" aria-label="Close reward wheel"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="wheel-stage"><span class="wheel-pointer" aria-hidden="true"></span><div id="wheelRotor" class="wheel-rotor"><span class="wheel-prize" style="--wheel-angle:0deg">30% OFF</span><span class="wheel-prize" style="--wheel-angle:60deg">2,100</span><span class="wheel-prize" style="--wheel-angle:120deg">150</span><span class="wheel-prize" style="--wheel-angle:180deg">250</span><span class="wheel-prize" style="--wheel-angle:240deg">15% OFF</span><span class="wheel-prize" style="--wheel-angle:300deg">80</span><i class="wheel-hub" aria-hidden="true"></i></div></div><p id="wheelResult" class="wheel-result" aria-live="polite">Your daily reward is ready</p><button id="wheelSpinButton" class="wheel-spin-button" data-action="spin-wheel" type="button"><span>Spin the wheel</span></button><small id="wheelCountdown" class="wheel-countdown"></small></section></div>
+
   <section id="explorePage" class="explore-page" aria-hidden="true"><div class="explore-page-head"><div class="explore-page-title"><h2>Explore</h2><button class="explore-reels-open-button" data-action="open-explore-reels" type="button" aria-label="Open reels view"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4.5" y="3.5" width="15" height="17" rx="5" stroke="currentColor" stroke-width="1.7"/><path d="m9.7 8.2 5.5 3.8-5.5 3.8V8.2Z" fill="currentColor"/></svg><span>Reels</span><i aria-hidden="true"></i></button></div><small id="explorePageCount">0 cards</small></div><label class="explore-search"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.1" stroke="currentColor" stroke-width="1.8"/><path d="m15.4 15.4 4.1 4.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="exploreSearch" type="search" autocomplete="off" placeholder="Search tags like Portrait, Fashion, Night"/></label><div id="explorePageGrid" class="explore-page-grid"></div><div id="exploreEmpty" class="explore-empty" aria-hidden="true">No matching images</div></section>
 
   <section id="exploreReelsPage" class="explore-reels-page" aria-hidden="true"><div id="exploreReelsFeed" class="explore-reels-feed"></div><div id="exploreReelsEmpty" class="explore-reels-empty" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4.5" y="3.5" width="15" height="17" rx="5" stroke="currentColor" stroke-width="1.6"/><path d="m9.7 8.2 5.5 3.8-5.5 3.8V8.2Z" fill="currentColor"/></svg><span>No content yet</span></div></section>
@@ -290,6 +292,6 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/app.js?v=20260801-ai-chat-page-1"></script>
+  <script type="module" src="/mini-app/app.js?v=20260813-wheel-layout-2"></script>
 </body>
 </html>`;
