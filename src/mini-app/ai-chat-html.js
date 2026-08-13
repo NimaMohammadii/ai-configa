@@ -48,7 +48,6 @@ export const AI_CHAT_HTML = `<!doctype html>
         </div>
       </div>
       <div class="mode-tools">
-        <button id="aiChatGithubButton" class="ai-github-button" type="button" aria-label="Connect GitHub repository"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .8a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.1 0 0 1-.3 3.1 1.2a10.8 10.8 0 0 1 5.7 0C14.9 5 16 5.3 16 5.3c.6 1.5.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.8 5.4-5.5 5.7.4.4.8 1.1.8 2.2v3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .8Z"/></svg><span class="ai-github-button-label">GitHub</span></button>
         <div id="aiChatVoiceWrap" class="voice-wrap">
           <button id="aiChatVoiceCard" class="voice-btn" data-action="toggle-voice" type="button" aria-label="Selected voice" aria-haspopup="listbox" aria-expanded="false">
             <span id="aiChatVoiceAvatar" class="voice-button-avatar" aria-hidden="true"></span>
