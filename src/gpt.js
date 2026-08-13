@@ -8,6 +8,7 @@ const GPT_TIMEOUT_MS = 45000;
 const GPT_CHAT_TIMEOUT_MS = 90000;
 const GPT_IMAGE_TIMEOUT_MS = 150000;
 const GPT_MODEL = "gpt-5.6-terra";
+const AI_CHAT_CONTEXT_WINDOW = 1050000;
 const MAX_ENHANCE_CHARS = 5000;
 
 const AI_CHAT_AUDIO_TAGS = EMOTION_TAGS.map((item) => {
@@ -375,6 +376,21 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
   const reasoningEffort = normalizeAiChatReasoningEffort(options.reasoningEffort);
   const githubContext = await getGitHubAiContext(env, options.userId);
   const githubTools = getGitHubAiTools(githubContext);
+  const codingActivity = githubContext ? {
+    used: false,
+    repository: githubContext.fullName,
+    defaultBranch: githubContext.defaultBranch,
+    model,
+    reasoningEffort,
+    contextWindow: AI_CHAT_CONTEXT_WINDOW,
+    contextTokens: 0,
+    filesRead: new Set(),
+    events: [],
+    change: null,
+    pullRequest: null,
+    merge: null,
+    applied: null,
+  } : null;
   const memoryTools = getAiMemoryTools();
   let memoryEntries = await getUserAiMemory(env, options.userId);
   let memoryChanged = false;
@@ -433,6 +449,15 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     const usage = [];
 
     for (let toolRound = 0; toolRound < 6; toolRound += 1) {
+      if (toolRound > 0 && codingActivity?.used && typeof onStatus === "function") {
+        onStatus({
+          state: "analyzing_code",
+          label: "Analyzing code context",
+          detail: `${codingActivity.filesRead.size} files in context`,
+          repository: codingActivity.repository,
+          context: codingContextSnapshot(codingActivity),
+        });
+      }
       const response = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
         headers: {
@@ -464,6 +489,12 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       webSearchCalls += roundWebSearchCalls;
       webSearchUsed = webSearchUsed || roundWebSearchCalls > 0;
       if (data?.usage && typeof data.usage === "object") usage.push(data.usage);
+      if (codingActivity) {
+        codingActivity.contextTokens = Math.max(
+          codingActivity.contextTokens,
+          Math.max(0, Number(data?.usage?.input_tokens || 0)),
+        );
+      }
       const terminalCall = output.find(
         (item) => item?.type === "function_call"
           && (item?.name === "generate_image" || item?.name === "generate_speech"),
@@ -471,8 +502,17 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       const githubCalls = output.filter(isGitHubAiToolCall);
       const memoryCalls = output.filter(isAiMemoryToolCall);
       if (!githubCalls.length && !memoryCalls.length) {
+        if (codingActivity?.used && typeof onStatus === "function") {
+          onStatus({
+            state: "finalizing",
+            label: "Finalizing result",
+            detail: codingActivity.change ? "Preparing change report" : "Preparing answer",
+            repository: codingActivity.repository,
+            context: codingContextSnapshot(codingActivity),
+          });
+        }
         return buildChatResult(data, cleanMessages, {
-          webSearchUsed, webSearchCalls, usage, model, reasoningEffort, memoryChanged, memoryEntries,
+          webSearchUsed, webSearchCalls, usage, model, reasoningEffort, memoryChanged, memoryEntries, codingActivity,
         });
       }
 
@@ -488,7 +528,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         });
       }
       for (const call of githubCalls) {
-        const toolOutput = await executeGitHubAiTool(env, options.userId, call, onStatus);
+        const toolOutput = await executeGitHubAiTool(env, options.userId, call, onStatus, codingActivity);
         responseInput.push({
           type: "function_call_output",
           call_id: call.call_id,
@@ -497,7 +537,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       }
       if (terminalCall) {
         return buildChatResult(data, cleanMessages, {
-          webSearchUsed, webSearchCalls, usage, model, reasoningEffort, memoryChanged, memoryEntries,
+          webSearchUsed, webSearchCalls, usage, model, reasoningEffort, memoryChanged, memoryEntries, codingActivity,
         });
       }
     }
@@ -603,6 +643,7 @@ function buildChatResult(data, cleanMessages, options = {}) {
   const memoryUpdate = options.memoryChanged && Array.isArray(options.memoryEntries)
     ? options.memoryEntries
     : null;
+  const codingActivity = finalizeCodingActivity(options.codingActivity);
 
   if (speechCall) {
     let args = {};
@@ -629,6 +670,7 @@ function buildChatResult(data, cleanMessages, options = {}) {
       webSearchUsed,
       billing,
       memoryUpdate,
+      codingActivity,
     };
   }
 
@@ -649,6 +691,7 @@ function buildChatResult(data, cleanMessages, options = {}) {
       webSearchUsed,
       billing,
       memoryUpdate,
+      codingActivity,
     };
   }
 
@@ -661,6 +704,34 @@ function buildChatResult(data, cleanMessages, options = {}) {
     webSearchUsed,
     billing,
     memoryUpdate,
+    codingActivity,
+  };
+}
+
+function codingContextSnapshot(activity) {
+  const tokens = Math.max(0, Math.floor(Number(activity?.contextTokens || 0)));
+  const window = Math.max(1, Math.floor(Number(activity?.contextWindow || AI_CHAT_CONTEXT_WINDOW)));
+  return {
+    tokens,
+    window,
+    percent: Math.min(100, tokens / window * 100),
+    files: Array.from(activity?.filesRead instanceof Set ? activity.filesRead : activity?.filesRead || []),
+  };
+}
+
+function finalizeCodingActivity(activity) {
+  if (!activity?.used) return null;
+  return {
+    repository: String(activity.repository || ""),
+    defaultBranch: String(activity.defaultBranch || ""),
+    model: String(activity.model || ""),
+    reasoningEffort: String(activity.reasoningEffort || ""),
+    context: codingContextSnapshot(activity),
+    events: (Array.isArray(activity.events) ? activity.events : []).slice(-12),
+    change: activity.change || null,
+    pullRequest: activity.pullRequest || null,
+    merge: activity.merge || null,
+    applied: activity.applied || null,
   };
 }
 

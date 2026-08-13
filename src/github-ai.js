@@ -102,6 +102,7 @@ export function getGitHubAiTools(context) {
         type: "object",
         properties: {
           message: { type: "string", description: "Short commit message describing the requested change." },
+          summary: { type: "string", description: "One short user-facing sentence summarizing what the code change accomplishes." },
           files: {
             type: "array",
             minItems: 1,
@@ -130,7 +131,7 @@ export function getGitHubAiTools(context) {
             },
           },
         },
-        required: ["message", "files"],
+        required: ["message", "summary", "files"],
         additionalProperties: false,
       },
       strict: true,
@@ -186,7 +187,7 @@ export function isGitHubAiToolCall(item) {
   return item?.type === "function_call" && GITHUB_TOOL_NAMES.has(String(item.name || ""));
 }
 
-export async function executeGitHubAiTool(env, userId, item, onStatus) {
+export async function executeGitHubAiTool(env, userId, item, onStatus, activity = null) {
   let args;
   try {
     args = JSON.parse(String(item.arguments || "{}"));
@@ -195,44 +196,78 @@ export async function executeGitHubAiTool(env, userId, item, onStatus) {
   }
   try {
     if (item.name === "github_list_files") {
-      emit(onStatus, "reading_repository");
-      return JSON.stringify(await listGitHubRepositoryTree(env, userId, { path: args.path }));
+      markGitHubActivity(activity);
+      emitProgress(onStatus, activity, "scanning_repository", "Scanning repository", args.path || "Repository tree");
+      const result = await listGitHubRepositoryTree(env, userId, { path: args.path });
+      emitProgress(onStatus, activity, "reading_repository", "Repository map ready", `${result.entries?.length || 0} paths found`);
+      return JSON.stringify(result);
     }
     if (item.name === "github_search_paths") {
-      emit(onStatus, "reading_repository");
+      markGitHubActivity(activity);
       const query = String(args.query || "").trim().toLowerCase();
       if (!query) return JSON.stringify({ error: "Search query is empty." });
+      emitProgress(onStatus, activity, "scanning_repository", "Searching repository", query);
       const tree = await listGitHubRepositoryTree(env, userId);
-      return JSON.stringify({
+      const result = {
         repository: tree.repository,
         query,
         matches: tree.entries.filter((entry) => entry.path.toLowerCase().includes(query)).slice(0, 200),
-      });
+      };
+      emitProgress(onStatus, activity, "reading_repository", "Matching paths ready", `${result.matches.length} matches`);
+      return JSON.stringify(result);
     }
     if (item.name === "github_read_file") {
-      emit(onStatus, "reading_repository");
-      return JSON.stringify(await readGitHubRepositoryFile(env, userId, { path: args.path }));
+      markGitHubActivity(activity);
+      const path = String(args.path || "").trim();
+      emitProgress(onStatus, activity, "reading_repository", "Reading source file", path);
+      const result = await readGitHubRepositoryFile(env, userId, { path });
+      addContextFile(activity, result.path);
+      emitProgress(onStatus, activity, "analyzing_code", "Added file to context", result.path);
+      return JSON.stringify(result);
     }
     if (item.name === "github_commit_changes") {
-      emit(onStatus, "writing_code");
-      const prepared = await prepareGitHubChanges(env, userId, args.files);
-      return JSON.stringify(await commitGitHubRepositoryFiles(env, userId, {
+      markGitHubActivity(activity);
+      emitProgress(onStatus, activity, "preparing_changes", "Preparing code changes", `${args.files?.length || 0} files`);
+      const prepared = await prepareGitHubChanges(env, userId, args.files, onStatus, activity);
+      const summary = truncate(args.summary || args.message || "Code changes prepared", 240);
+      prepared.preview.summary = summary;
+      emitProgress(onStatus, activity, "previewing_changes", "Change preview ready", `${prepared.preview.totals.files} files`, {
+        preview: prepared.preview,
+      });
+      emitProgress(onStatus, activity, "committing_changes", "Creating atomic commit", "New Vexa branch");
+      const commit = await commitGitHubRepositoryFiles(env, userId, {
         message: args.message,
         files: prepared.files,
         expectedFiles: prepared.expectedFiles,
-      }));
+      });
+      const result = { ...commit, summary, diff: prepared.preview };
+      if (activity) activity.change = result;
+      emitProgress(onStatus, activity, "commit_ready", "Commit ready", commit.branch, { preview: prepared.preview });
+      return JSON.stringify(result);
     }
     if (item.name === "github_create_pull_request") {
-      emit(onStatus, "writing_code");
-      return JSON.stringify(await createGitHubPullRequest(env, userId, args));
+      markGitHubActivity(activity);
+      emitProgress(onStatus, activity, "creating_pull_request", "Opening pull request", args.title || args.branch);
+      const result = await createGitHubPullRequest(env, userId, args);
+      if (activity) activity.pullRequest = result;
+      emitProgress(onStatus, activity, "pull_request_ready", "Pull request ready", `#${result.number}`);
+      return JSON.stringify(result);
     }
     if (item.name === "github_merge_pull_request") {
-      emit(onStatus, "writing_code");
-      return JSON.stringify(await mergeGitHubPullRequest(env, userId, args));
+      markGitHubActivity(activity);
+      emitProgress(onStatus, activity, "merging_pull_request", "Merging pull request", `#${args.number}`);
+      const result = await mergeGitHubPullRequest(env, userId, args);
+      if (activity) activity.merge = result;
+      emitProgress(onStatus, activity, "changes_applied", "Pull request merged", result.baseBranch);
+      return JSON.stringify(result);
     }
     if (item.name === "github_apply_branch_to_default") {
-      emit(onStatus, "writing_code");
-      return JSON.stringify(await applyGitHubBranchToDefault(env, userId, args));
+      markGitHubActivity(activity);
+      emitProgress(onStatus, activity, "applying_changes", "Applying changes", args.branch);
+      const result = await applyGitHubBranchToDefault(env, userId, args);
+      if (activity) activity.applied = result;
+      emitProgress(onStatus, activity, "changes_applied", "Changes applied", result.baseBranch);
+      return JSON.stringify(result);
     }
     return JSON.stringify({ error: "Unknown GitHub tool." });
   } catch (error) {
@@ -241,15 +276,21 @@ export async function executeGitHubAiTool(env, userId, item, onStatus) {
   }
 }
 
-async function prepareGitHubChanges(env, userId, changes) {
+async function prepareGitHubChanges(env, userId, changes, onStatus, activity) {
   if (!Array.isArray(changes) || !changes.length) {
     throw new Error("No repository changes were supplied.");
   }
   const files = [];
   const expectedFiles = [];
-  for (const change of changes) {
+  const previewFiles = [];
+  for (let changeIndex = 0; changeIndex < changes.length; changeIndex += 1) {
+    const change = changes[changeIndex];
     const path = String(change?.path || "").trim();
     const replacements = Array.isArray(change?.replacements) ? change.replacements : [];
+    emitProgress(onStatus, activity, "preparing_changes", "Building patch", path, {
+      step: changeIndex + 1,
+      stepCount: changes.length,
+    });
     if (!replacements.length) {
       try {
         await readGitHubRepositoryFile(env, userId, { path });
@@ -257,14 +298,21 @@ async function prepareGitHubChanges(env, userId, changes) {
       } catch (error) {
         if (error?.status !== 404) throw error;
       }
-      files.push({ path, content: String(change?.content ?? "") });
+      const content = String(change?.content ?? "");
+      files.push({ path, content });
+      previewFiles.push(buildNewFilePreview(path, content));
       continue;
     }
     if (String(change?.content || "")) {
       throw new Error(`Use replacements or new-file content for ${path}, not both.`);
     }
     const current = await readGitHubRepositoryFile(env, userId, { path });
+    addContextFile(activity, current.path);
+    const originalContent = current.content;
     let content = current.content;
+    const hunks = [];
+    const addedLineNumbers = new Set();
+    const removedLineNumbers = new Set();
     for (const replacement of replacements) {
       const oldText = String(replacement?.oldText ?? "");
       const newText = String(replacement?.newText ?? "");
@@ -273,12 +321,105 @@ async function prepareGitHubChanges(env, userId, changes) {
       if (occurrences !== 1) {
         throw new Error(`An edit for ${path} expected oldText exactly once, but found ${occurrences}. Read the file again and use a more precise block.`);
       }
+      const hunk = buildReplacementHunk(originalContent, content, oldText, newText);
+      for (let offset = 0; offset < hunk.additions; offset += 1) addedLineNumbers.add(hunk.newStart + offset);
+      for (let offset = 0; offset < hunk.deletions; offset += 1) removedLineNumbers.add(hunk.oldStart + offset);
+      hunks.push(hunk);
       content = content.replace(oldText, newText);
     }
     files.push({ path, content });
     expectedFiles.push({ path, sha: current.sha });
+    previewFiles.push({
+      path,
+      status: "modified",
+      additions: addedLineNumbers.size,
+      deletions: removedLineNumbers.size,
+      truncated: hunks.some((hunk) => hunk.truncated),
+      hunks,
+    });
   }
-  return { files, expectedFiles };
+  const totals = previewFiles.reduce((sum, file) => ({
+    files: sum.files + 1,
+    additions: sum.additions + file.additions,
+    deletions: sum.deletions + file.deletions,
+  }), { files: 0, additions: 0, deletions: 0 });
+  return { files, expectedFiles, preview: { summary: "", totals, files: previewFiles } };
+}
+
+function buildNewFilePreview(path, content) {
+  const lines = splitDiffLines(content);
+  const visible = lines.slice(0, 220).map((text, index) => ({ type: "add", oldLine: null, newLine: index + 1, text: clipDiffLine(text) }));
+  return {
+    path,
+    status: "added",
+    additions: lines.length,
+    deletions: 0,
+    truncated: visible.length < lines.length,
+    hunks: [{ oldStart: 0, newStart: 1, lines: visible }],
+  };
+}
+
+function buildReplacementHunk(originalContent, currentContent, oldText, newText) {
+  const currentIndex = currentContent.indexOf(oldText);
+  const originalIndex = originalContent.indexOf(oldText);
+  const oldSource = originalIndex >= 0 ? originalContent : currentContent;
+  const oldStart = countLinesBefore(oldSource.slice(0, originalIndex >= 0 ? originalIndex : currentIndex));
+  const newStart = countLinesBefore(currentContent.slice(0, currentIndex));
+  const oldLines = splitDiffLines(oldText);
+  const newLines = splitDiffLines(newText);
+  const visibleOldLines = oldLines.slice(0, 100);
+  const visibleNewLines = newLines.slice(0, 100);
+  const sourceLines = oldSource.replace(/\r\n/g, "\n").split("\n");
+  const before = sourceLines.slice(Math.max(0, oldStart - 3), Math.max(0, oldStart - 1));
+  const afterStart = oldStart - 1 + Math.max(1, oldLines.length);
+  const after = sourceLines.slice(afterStart, afterStart + 2);
+  const lines = [];
+  before.forEach((text, offset) => {
+    lines.push({
+      type: "context",
+      oldLine: oldStart - before.length + offset,
+      newLine: newStart - before.length + offset,
+      text: clipDiffLine(text),
+    });
+  });
+  visibleOldLines.forEach((text, offset) => {
+    lines.push({ type: "remove", oldLine: oldStart + offset, newLine: null, text: clipDiffLine(text) });
+  });
+  visibleNewLines.forEach((text, offset) => {
+    lines.push({ type: "add", oldLine: null, newLine: newStart + offset, text: clipDiffLine(text) });
+  });
+  after.forEach((text, offset) => {
+    lines.push({
+      type: "context",
+      oldLine: oldStart + oldLines.length + offset,
+      newLine: newStart + newLines.length + offset,
+      text: clipDiffLine(text),
+    });
+  });
+  return {
+    oldStart,
+    newStart,
+    additions: newLines.length,
+    deletions: oldLines.length,
+    truncated: visibleOldLines.length < oldLines.length || visibleNewLines.length < newLines.length,
+    lines,
+  };
+}
+
+function splitDiffLines(value) {
+  const text = String(value ?? "").replace(/\r\n/g, "\n");
+  if (!text) return [];
+  const lines = text.split("\n");
+  if (text.endsWith("\n")) lines.pop();
+  return lines;
+}
+
+function countLinesBefore(value) {
+  return String(value || "").split("\n").length;
+}
+
+function clipDiffLine(value) {
+  return Array.from(String(value ?? "")).slice(0, 600).join("");
 }
 
 async function createGitHubPullRequest(env, userId, options = {}) {
@@ -449,6 +590,34 @@ function base64UrlBytes(bytes) {
   return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-function emit(onStatus, status) {
-  if (typeof onStatus === "function") onStatus(status);
+function markGitHubActivity(activity) {
+  if (activity) activity.used = true;
+}
+
+function addContextFile(activity, path) {
+  if (!activity || !path) return;
+  if (!(activity.filesRead instanceof Set)) activity.filesRead = new Set(activity.filesRead || []);
+  activity.filesRead.add(String(path));
+}
+
+function emitProgress(onStatus, activity, state, label, detail = "", extra = {}) {
+  if (activity) {
+    activity.used = true;
+    activity.events = Array.isArray(activity.events) ? activity.events : [];
+    activity.events.push({ state, label, detail: String(detail || "") });
+    if (activity.events.length > 16) activity.events.shift();
+  }
+  if (typeof onStatus !== "function") return;
+  onStatus({
+    state,
+    label,
+    detail: String(detail || ""),
+    repository: activity?.repository || "",
+    context: activity ? {
+      files: Array.from(activity.filesRead instanceof Set ? activity.filesRead : activity.filesRead || []),
+      tokens: Math.max(0, Number(activity.contextTokens || 0)),
+      window: Math.max(0, Number(activity.contextWindow || 0)),
+    } : null,
+    ...extra,
+  });
 }

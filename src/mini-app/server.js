@@ -9,7 +9,7 @@ import{initializeMiniAppUser as IO}from"./onboarding.js";import{saveAiChatExchan
   const c=new TextEncoder,r=new ReadableStream({async start(l){
     const m=y=>l.enqueue(c.encode(JSON.stringify(y)+String.fromCharCode(10)));
     try{
-      let y=await CA(e,o,(x=>m({type:"status",status:x})),{userId:a.id,model:n.model,reasoningEffort:n.reasoningEffort});
+      let y=await CA(e,o,(x=>m(typeof x==="string"?{type:"status",status:x}:{type:"progress",data:x})),{userId:a.id,model:n.model,reasoningEffort:n.reasoningEffort});
       const x=ABC(n.model,y.billing),mu=Array.isArray(y.memoryUpdate)?y.memoryUpdate:null;
       delete y.billing;
       delete y.memoryUpdate;
@@ -18,7 +18,7 @@ import{initializeMiniAppUser as IO}from"./onboarding.js";import{saveAiChatExchan
         const T=Math.max(0,Math.floor(Number(S.balance||0)));
         const _=T>0?await B(e,a.id,T,"mini_app_ai_chat_partial",{model:x.model,reasoningEffort:n.reasoningEffort,creditsRequired:x.credits,markupRate:x.markupRate,baseUsd:x.baseUsd,billedUsd:x.billedUsd,inputTokens:x.inputTokens,cachedInputTokens:x.cachedInputTokens,cacheWriteTokens:x.cacheWriteTokens,outputTokens:x.outputTokens,reasoningTokens:x.reasoningTokens,webSearchCalls:x.webSearchCalls}):S;
         const O=_.ok?_.balance:S.balance;
-        return void m({type:"result",data:{type:"text",message:"Not enough credits · This request used "+x.credits+" credits · Balance "+O+" credits",balance:O,creditsRequired:x.credits,model:x.model}});
+        return void m({type:"result",data:{type:"text",message:"Not enough credits · This request used "+x.credits+" credits · Balance "+O+" credits",balance:O,creditsRequired:x.credits,model:x.model,codingActivity:y.codingActivity||null}});
       }
       if("image_request"===y.type){
         const T=(await P(e)).activeCost;

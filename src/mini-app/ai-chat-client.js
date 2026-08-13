@@ -28,7 +28,11 @@ export const AI_CHAT_JS = `
   var aiThinkingFrame=0;
   var aiThinkingSearchMix=0;
   var aiThinkingVoiceMix=0;
+  var aiThinkingCodeMix=0;
+  var aiThinkingCommitMix=0;
   var aiThinkingLastFrame=0;
+  var aiCodingProgressEvents=[];
+  var aiCodingPreview=null;
   var stableViewportHeight=Math.max(1,Number(tg&&(tg.viewportStableHeight||tg.viewportHeight))||Number(window.innerHeight)||1);
   function q(id){return document.getElementById(id)}
   function setAiChatVoiceImage(image,voice){
@@ -672,11 +676,68 @@ export const AI_CHAT_JS = `
     });
   }
 
+  function drawAiCodingGlyph(ctx,seconds,codeMix,commitMix,width,height){
+    var amount=Math.max(codeMix,commitMix);
+    if(amount<.01)return;
+    var cx=width/2;
+    var cy=height/2;
+    var scale=Math.min(width,height)/48;
+    ctx.save();
+    ctx.lineCap='round';
+    ctx.lineJoin='round';
+    ctx.strokeStyle='rgba(238,226,255,'+(.86*amount)+')';
+    ctx.fillStyle='rgba(255,255,255,'+(.78*amount)+')';
+    ctx.shadowColor='rgba(163,104,214,'+(.28*amount)+')';
+    ctx.shadowBlur=8*scale;
+    ctx.lineWidth=1.7*scale;
+
+    if(codeMix>.01){
+      var pulse=.94+.06*Math.sin(seconds*3.2);
+      var spread=8.8*scale*pulse;
+      var rise=6.2*scale;
+      ctx.globalAlpha=codeMix;
+      ctx.beginPath();
+      ctx.moveTo(cx-spread+3*scale,cy-rise);
+      ctx.lineTo(cx-spread-2*scale,cy);
+      ctx.lineTo(cx-spread+3*scale,cy+rise);
+      ctx.moveTo(cx+spread-3*scale,cy-rise);
+      ctx.lineTo(cx+spread+2*scale,cy);
+      ctx.lineTo(cx+spread-3*scale,cy+rise);
+      ctx.stroke();
+      for(var dot=0;dot<3;dot+=1){
+        var y=cy+(dot-1)*5.2*scale;
+        var drift=Math.sin(seconds*4+dot*1.8)*1.3*scale;
+        ctx.beginPath();
+        ctx.arc(cx+drift,y,1.05*scale,0,Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    if(commitMix>.01){
+      ctx.globalAlpha=commitMix;
+      var radius=12.2*scale;
+      var sweep=Math.PI*2*(.72+.12*Math.sin(seconds*2.4));
+      ctx.beginPath();
+      ctx.arc(cx,cy,radius,-Math.PI*.72,-Math.PI*.72+sweep);
+      ctx.stroke();
+      var check=Math.min(1,commitMix*1.25);
+      ctx.lineWidth=2.1*scale;
+      ctx.beginPath();
+      ctx.moveTo(cx-6.2*scale,cy+.2*scale);
+      ctx.lineTo(cx-1.5*scale,cy+4.7*scale*check);
+      ctx.lineTo(cx+7*scale*check,cy-5.1*scale*check);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawAiThinkingOrb(
     canvas,
     seconds,
     searchMix,
-    voiceMix
+    voiceMix,
+    codeMix,
+    commitMix
   ){
     if(!canvas)return;
 
@@ -715,6 +776,8 @@ export const AI_CHAT_JS = `
 
     var searchMorph=aiSmoothMorph(searchMix);
     var voiceMorph=aiSmoothMorph(voiceMix);
+    var codeMorph=aiSmoothMorph(codeMix);
+    var commitMorph=aiSmoothMorph(commitMix);
     var searchPulse=
       1+Math.sin(seconds*2.15)*.052*searchMorph;
     var radius=
@@ -883,7 +946,11 @@ export const AI_CHAT_JS = `
       width,
       height
     );
+    ctx.save();
+    ctx.globalAlpha=1-codeMorph*.68-commitMorph*.74;
     aiOrbPaint(ctx,dots);
+    ctx.restore();
+    drawAiCodingGlyph(ctx,seconds,codeMorph,commitMorph,width,height);
   }
 
   function approachAiThinkingMix(
@@ -902,6 +969,14 @@ export const AI_CHAT_JS = `
     return next;
   }
 
+  function isAiCodingState(state){
+    return ['scanning_repository','reading_repository','analyzing_code','preparing_changes','previewing_changes','writing_code','creating_pull_request','merging_pull_request','applying_changes','finalizing'].indexOf(String(state||''))>=0;
+  }
+
+  function isAiCommitState(state){
+    return ['committing_changes','commit_ready','pull_request_ready','changes_applied'].indexOf(String(state||''))>=0;
+  }
+
   function startAiThinkingOrb(){
     stopAiThinkingOrb();
 
@@ -918,6 +993,10 @@ export const AI_CHAT_JS = `
       initialState==='searching'?1:0;
     aiThinkingVoiceMix=
       initialState==='generating_voice'?1:0;
+    aiThinkingCodeMix=
+      isAiCodingState(initialState)?1:0;
+    aiThinkingCommitMix=
+      isAiCommitState(initialState)?1:0;
     aiThinkingLastFrame=0;
 
     var reduced=window.matchMedia
@@ -936,6 +1015,10 @@ export const AI_CHAT_JS = `
         state==='searching'?1:0;
       var voiceTarget=
         state==='generating_voice'?1:0;
+      var codeTarget=
+        isAiCodingState(state)?1:0;
+      var commitTarget=
+        isAiCommitState(state)?1:0;
       var delta=aiThinkingLastFrame
         ?Math.min(.05,seconds-aiThinkingLastFrame)
         :0;
@@ -943,6 +1026,8 @@ export const AI_CHAT_JS = `
       if(reduced){
         aiThinkingSearchMix=searchTarget;
         aiThinkingVoiceMix=voiceTarget;
+        aiThinkingCodeMix=codeTarget;
+        aiThinkingCommitMix=commitTarget;
       }else{
         aiThinkingSearchMix=approachAiThinkingMix(
           aiThinkingSearchMix,
@@ -956,6 +1041,18 @@ export const AI_CHAT_JS = `
           delta,
           1.15
         );
+        aiThinkingCodeMix=approachAiThinkingMix(
+          aiThinkingCodeMix,
+          codeTarget,
+          delta,
+          3.2
+        );
+        aiThinkingCommitMix=approachAiThinkingMix(
+          aiThinkingCommitMix,
+          commitTarget,
+          delta,
+          3.8
+        );
       }
 
       aiThinkingLastFrame=seconds;
@@ -965,7 +1062,9 @@ export const AI_CHAT_JS = `
           canvas,
           seconds,
           aiThinkingSearchMix,
-          aiThinkingVoiceMix
+          aiThinkingVoiceMix,
+          aiThinkingCodeMix,
+          aiThinkingCommitMix
         );
       }
 
@@ -973,6 +1072,8 @@ export const AI_CHAT_JS = `
         drawAiThinkingOrb(
           emptyCanvas,
           seconds,
+          0,
+          0,
           0,
           0
         );
@@ -1389,13 +1490,21 @@ export const AI_CHAT_JS = `
     renderAiChatWaveform(card,source);
   }
 
-  function showAiThinking(){setAiChatCreatureState('thinking');var list=q('aiChatMessages');if(!list)return;hideAiThinking();var row=document.createElement('div');row.id='aiThinkingRow';row.className='ai-thinking-row';row.setAttribute('data-state','thinking');row.innerHTML='<canvas id="aiThinkingOrb" class="ai-thinking-orb" width="96" height="96" aria-hidden="true"></canvas><span>Thinking</span>';list.appendChild(row);syncAiChatEmptyState();var page=q('aiChatPage');if(page)page.classList.add('thinking');startAiThinkingOrb()}
-  function setAiThinkingState(state){
+  function formatAiContextTokens(value){var amount=Math.max(0,Math.floor(Number(value)||0));if(amount>=1000000)return(amount/1000000).toFixed(2)+'M';if(amount>=1000)return(amount/1000).toFixed(amount>=100000?0:1)+'K';return String(amount)}
+  function aiContextLabel(context){var data=context||{};var tokens=Math.max(0,Number(data.tokens)||0);var windowSize=Math.max(1,Number(data.window)||1050000);var percent=Math.min(100,Math.max(0,Number(data.percent)||tokens/windowSize*100));var files=Array.isArray(data.files)?data.files:[];return formatAiContextTokens(tokens)+' / '+formatAiContextTokens(windowSize)+' tokens · '+(percent<.1?percent.toFixed(2):percent.toFixed(1))+'% · '+files.length+' files'}
+  function buildAiDiffPanel(preview,openFirst){var data=preview||{};var wrap=document.createElement('div');wrap.className='ai-diff-panel';(Array.isArray(data.files)?data.files:[]).forEach(function(file,index){var details=document.createElement('details');details.className='ai-diff-file';if(openFirst&&index===0)details.open=true;var summary=document.createElement('summary');var path=document.createElement('span');path.className='ai-diff-path';path.textContent=String(file.path||'file');var stats=document.createElement('span');stats.className='ai-diff-stats';var added=document.createElement('b');added.className='added';added.textContent='+'+Math.max(0,Number(file.additions)||0);var removed=document.createElement('b');removed.className='removed';removed.textContent='−'+Math.max(0,Number(file.deletions)||0);stats.appendChild(added);stats.appendChild(removed);summary.appendChild(path);summary.appendChild(stats);details.appendChild(summary);var body=document.createElement('div');body.className='ai-diff-body';(Array.isArray(file.hunks)?file.hunks:[]).forEach(function(hunk){var header=document.createElement('div');header.className='ai-diff-hunk';header.textContent='@@ -'+Math.max(0,Number(hunk.oldStart)||0)+' +'+Math.max(0,Number(hunk.newStart)||0)+' @@';body.appendChild(header);(Array.isArray(hunk.lines)?hunk.lines:[]).forEach(function(line){var row=document.createElement('div');var type=['add','remove','context'].indexOf(line.type)>=0?line.type:'context';row.className='ai-diff-line '+type;var oldNumber=document.createElement('i');oldNumber.textContent=line.oldLine==null?'':String(line.oldLine);var newNumber=document.createElement('i');newNumber.textContent=line.newLine==null?'':String(line.newLine);var sign=document.createElement('b');sign.textContent=type==='add'?'+':type==='remove'?'−':' ';var code=document.createElement('code');code.textContent=String(line.text==null?'':line.text);row.appendChild(oldNumber);row.appendChild(newNumber);row.appendChild(sign);row.appendChild(code);body.appendChild(row)});});if(file.truncated){var truncated=document.createElement('div');truncated.className='ai-diff-truncated';truncated.textContent='Preview shortened for this file';body.appendChild(truncated)}details.appendChild(body);wrap.appendChild(details)});return wrap}
+  function renderAiCodingProgress(progress){if(!progress||typeof progress!=='object')return;var state=String(progress.state||'');if(!isAiCodingState(state)&&!isAiCommitState(state)&&!progress.preview&&!progress.context)return;var row=q('aiThinkingRow');if(!row)return;var workbench=q('aiCodingWorkbench');if(!workbench){workbench=document.createElement('section');workbench.id='aiCodingWorkbench';workbench.className='ai-coding-workbench';workbench.innerHTML='<div class="ai-coding-top"><span><small>Live workbench</small><strong id="aiCodingRepository">Repository</strong></span><b id="aiCodingContextLabel">Context</b></div><div class="ai-coding-context-bar"><span id="aiCodingContextFill"></span></div><div id="aiCodingContextFiles" class="ai-coding-context-files"></div><div id="aiCodingTimeline" class="ai-coding-timeline"></div><div id="aiCodingLiveDiff" class="ai-coding-live-diff"></div>';row.appendChild(workbench)}var repository=q('aiCodingRepository');if(repository&&progress.repository)repository.textContent=String(progress.repository);var context=progress.context||{};var contextLabel=q('aiCodingContextLabel');if(contextLabel)contextLabel.textContent='Context · '+aiContextLabel(context);var fill=q('aiCodingContextFill');var tokens=Math.max(0,Number(context.tokens)||0);var windowSize=Math.max(1,Number(context.window)||1050000);if(fill)fill.style.width=Math.min(100,tokens/windowSize*100)+'%';var files=q('aiCodingContextFiles');if(files){files.replaceChildren();(Array.isArray(context.files)?context.files:[]).slice(-8).forEach(function(file){var chip=document.createElement('span');chip.textContent=String(file);files.appendChild(chip)})}var event={state:state,label:String(progress.label||'Working'),detail:String(progress.detail||'')};var previous=aiCodingProgressEvents[aiCodingProgressEvents.length-1];if(!previous||previous.state!==event.state||previous.detail!==event.detail)aiCodingProgressEvents.push(event);aiCodingProgressEvents=aiCodingProgressEvents.slice(-5);var timeline=q('aiCodingTimeline');if(timeline){timeline.replaceChildren();aiCodingProgressEvents.forEach(function(item,index){var line=document.createElement('div');line.className='ai-coding-event'+(index===aiCodingProgressEvents.length-1?' active':'');var dot=document.createElement('i');var copy=document.createElement('span');var strong=document.createElement('strong');strong.textContent=item.label;var small=document.createElement('small');small.textContent=item.detail;copy.appendChild(strong);if(item.detail)copy.appendChild(small);line.appendChild(dot);line.appendChild(copy);timeline.appendChild(line)})}if(progress.preview)aiCodingPreview=progress.preview;var live=q('aiCodingLiveDiff');if(live&&aiCodingPreview){live.replaceChildren();var totals=aiCodingPreview.totals||{};var title=document.createElement('div');title.className='ai-coding-preview-title';title.innerHTML='<span>Change preview</span><b><i>+'+Math.max(0,Number(totals.additions)||0)+'</i><em>−'+Math.max(0,Number(totals.deletions)||0)+'</em></b>';live.appendChild(title);live.appendChild(buildAiDiffPanel(aiCodingPreview,false))}workbench.classList.add('visible');requestAnimationFrame(function(){workbench.scrollIntoView({block:'nearest',behavior:window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})})}
+  function appendAiCodingResult(activity){if(!activity||!activity.change)return;var list=q('aiChatMessages');if(!list)return;var change=activity.change||{};var preview=change.diff||{};var totals=preview.totals||{};var item=document.createElement('article');item.className='ai-chat-message assistant ai-coding-result';var card=document.createElement('section');card.className='ai-coding-result-card';var head=document.createElement('div');head.className='ai-coding-result-head';head.innerHTML='<span class="ai-coding-result-check">✓</span><span><small>Completed</small><strong>Code changes ready</strong></span>';card.appendChild(head);var summary=document.createElement('p');summary.className='ai-coding-summary';summary.textContent=String(change.summary||preview.summary||'The requested code changes are ready.');card.appendChild(summary);var stats=document.createElement('div');stats.className='ai-coding-result-stats';stats.innerHTML='<span><b>'+Math.max(0,Number(totals.files)||0)+'</b><small>files</small></span><span class="added"><b>+'+Math.max(0,Number(totals.additions)||0)+'</b><small>added</small></span><span class="removed"><b>−'+Math.max(0,Number(totals.deletions)||0)+'</b><small>removed</small></span>';card.appendChild(stats);var context=document.createElement('div');context.className='ai-coding-result-context';context.innerHTML='<span>Context</span><b></b>';context.querySelector('b').textContent=aiContextLabel(activity.context||{});card.appendChild(context);card.appendChild(buildAiDiffPanel(preview,true));var action=activity.pullRequest||activity.applied||activity.merge||change;var url=String(action&&action.url||'');if(url.indexOf('https://')===0){var link=document.createElement('a');link.className='ai-coding-result-link';link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=activity.pullRequest?'Open pull request':'Open on GitHub';card.appendChild(link)}item.appendChild(card);list.appendChild(item);syncAiChatEmptyState();requestAnimationFrame(function(){item.scrollIntoView({block:'nearest',behavior:window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})})}
+  function showAiThinking(){setAiChatCreatureState('thinking');var list=q('aiChatMessages');if(!list)return;hideAiThinking();aiCodingProgressEvents=[];aiCodingPreview=null;var row=document.createElement('div');row.id='aiThinkingRow';row.className='ai-thinking-row';row.setAttribute('data-state','thinking');row.innerHTML='<div class="ai-thinking-head"><span class="ai-thinking-loader"><canvas id="aiThinkingOrb" class="ai-thinking-orb" width="96" height="96" aria-hidden="true"></canvas></span><span class="ai-thinking-copy"><strong class="ai-thinking-label">Thinking</strong><small class="ai-thinking-detail"></small></span></div>';list.appendChild(row);syncAiChatEmptyState();var page=q('aiChatPage');if(page)page.classList.add('thinking');startAiThinkingOrb()}
+  function setAiThinkingState(payload){
     var row=q('aiThinkingRow');
     if(!row)return;
 
+    var progress=payload&&typeof payload==='object'?payload:null;
+    var state=progress?String(progress.state||'thinking'):String(payload||'thinking');
     var next='thinking';
     var labelText='Thinking';
+    var detailText=progress?String(progress.detail||''):'';
 
     if(state==='searching'){
       next='searching';
@@ -1403,21 +1512,29 @@ export const AI_CHAT_JS = `
     }else if(state==='reading_repository'){
       next='reading_repository';
       labelText='Reading repository';
-    }else if(state==='writing_code'){
-      next='writing_code';
+    }else if(state==='writing_code'||isAiCodingState(state)||isAiCommitState(state)){
+      next=state;
       labelText='Writing code';
     }else if(state==='generating_voice'){
       next='generating_voice';
       labelText='Generating voice';
     }
 
+    if(progress){
+      next=state||next;
+      labelText=String(progress.label||labelText);
+      renderAiCodingProgress(progress);
+    }
+
     setAiChatCreatureState(next==='searching'?'searching':'thinking');
     row.setAttribute('data-state',next);
 
-    var label=row.querySelector('span');
+    var label=row.querySelector('.ai-thinking-label');
     if(label){
       label.textContent=labelText;
     }
+    var detail=row.querySelector('.ai-thinking-detail');
+    if(detail){detail.textContent=detailText;detail.classList.toggle('visible',!!detailText)}
 
     if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){
       var canvas=q('aiThinkingOrb');
@@ -1425,7 +1542,9 @@ export const AI_CHAT_JS = `
         canvas,
         performance.now()/1000,
         next==='searching'?1:0,
-        next==='generating_voice'?1:0
+        next==='generating_voice'?1:0,
+        isAiCodingState(next)?1:0,
+        isAiCommitState(next)?1:0
       );
     }
 
@@ -1525,6 +1644,7 @@ export const AI_CHAT_JS = `
         appendAiChatAudio(audioData);
       }else{
         hideAiThinking();
+        appendAiCodingResult(data.codingActivity);
         await appendAiChatMessage(
           'assistant',
           String(data.message||''),
@@ -1552,7 +1672,7 @@ export const AI_CHAT_JS = `
     }
   }
 
-  async function streamAiChat(body,onStatus){var response;try{response=await fetch('/mini-app/api/chat',{method:'POST',headers:{'content-type':'application/json','accept':'application/x-ndjson'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){throw new Error('Connection interrupted · Try again')}if(!response.ok){var failed=await response.json().catch(function(){return{error:'Request failed'}});throw new Error(failed.error||'Request failed')}if(!response.body)throw new Error('Invalid response');var reader=response.body.getReader();var decoder=new TextDecoder();var buffer='';var result=null;var newline=String.fromCharCode(10);function consume(line){var clean=String(line||'').trim();if(!clean)return;var event;try{event=JSON.parse(clean)}catch(error){return}if(event.type==='status'){if(typeof onStatus==='function')onStatus(event.status);return}if(event.type==='error')throw new Error(event.error||'Could not reach AI');if(event.type==='result')result=event.data}while(true){var chunk=await reader.read();buffer+=decoder.decode(chunk.value||new Uint8Array(),{stream:!chunk.done});var index=buffer.indexOf(newline);while(index>=0){consume(buffer.slice(0,index));buffer=buffer.slice(index+1);index=buffer.indexOf(newline)}if(chunk.done)break}if(buffer.trim())consume(buffer);if(!result)throw new Error('Invalid response');return result}
+  async function streamAiChat(body,onStatus){var response;try{response=await fetch('/mini-app/api/chat',{method:'POST',headers:{'content-type':'application/json','accept':'application/x-ndjson'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){throw new Error('Connection interrupted · Try again')}if(!response.ok){var failed=await response.json().catch(function(){return{error:'Request failed'}});throw new Error(failed.error||'Request failed')}if(!response.body)throw new Error('Invalid response');var reader=response.body.getReader();var decoder=new TextDecoder();var buffer='';var result=null;var newline=String.fromCharCode(10);function consume(line){var clean=String(line||'').trim();if(!clean)return;var event;try{event=JSON.parse(clean)}catch(error){return}if(event.type==='status'||event.type==='progress'){if(typeof onStatus==='function')onStatus(event.type==='progress'?event.data:event.status);return}if(event.type==='error')throw new Error(event.error||'Could not reach AI');if(event.type==='result')result=event.data}while(true){var chunk=await reader.read();buffer+=decoder.decode(chunk.value||new Uint8Array(),{stream:!chunk.done});var index=buffer.indexOf(newline);while(index>=0){consume(buffer.slice(0,index));buffer=buffer.slice(index+1);index=buffer.indexOf(newline)}if(chunk.done)break}if(buffer.trim())consume(buffer);if(!result)throw new Error('Invalid response');return result}
   function closeAiChat(){window.location.replace('/mini-app')}
   function closeAiChatKeyboard(){var input=q('aiChatInput');if(input&&document.activeElement===input)input.blur();if(tg&&typeof tg.hideKeyboard==='function'){try{tg.hideKeyboard()}catch(e){}}}
   function showAiChatLocked(data){var page=q('aiChatPage');if(!page)return;page.innerHTML='<main class="lock-screen"><section class="lock-card" aria-label="AI Chat update"><p class="lock-title"><span>Updating</span><span class="lock-dots" aria-hidden="true"><i></i><i></i><i></i></span></p><div class="lock-bar" aria-hidden="true"><span id="aiChatLockFill"></span></div></section></main>';var fill=q('aiChatLockFill');var serverNow=Number(data.serverNow)||Math.floor(Date.now()/1000);var lockedUntil=Number(data.lockedUntil)||serverNow+60;var lockedFrom=Number(data.lockedFrom)||Math.max(serverNow,lockedUntil-60);var total=Math.max(1,lockedUntil-lockedFrom);var offset=serverNow-Date.now()/1000;function tick(){var now=Date.now()/1000+offset;var progress=Math.min(100,Math.max(0,(now-lockedFrom)/total*100));if(fill)fill.style.width=progress+'%';if(now>=lockedUntil){clearInterval(lockTimer);location.reload()}}tick();lockTimer=setInterval(tick,500)}
