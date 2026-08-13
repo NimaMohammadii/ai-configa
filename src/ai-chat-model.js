@@ -1,5 +1,5 @@
 import { requireDb } from "./state.js";
-import { CUSTOM_STARS_USD_PER_1000_CREDITS } from "./stars.js";
+import { CUSTOM_STARS_USD_PER_1000_CREDITS, MINI_APP_STAR_PACKAGES } from "./stars.js";
 
 export const AI_CHAT_MODELS = Object.freeze([
   Object.freeze({ id: "gpt-5.6-luna", label: "Luna", inputUsd: 0.20, cachedInputUsd: 0.02, cacheWriteUsd: 0.25, outputUsd: 1.20 }),
@@ -10,6 +10,10 @@ export const AI_CHAT_MODELS = Object.freeze([
 export const DEFAULT_AI_CHAT_MODEL = "gpt-5.6-terra";
 export const AI_CHAT_MARKUP_RATE = 0.15;
 export const AI_CHAT_WEB_SEARCH_USD_PER_CALL = 0.01;
+export const AI_CHAT_USD_PER_CREDIT = Math.min(
+  CUSTOM_STARS_USD_PER_1000_CREDITS / 1000,
+  ...Object.values(MINI_APP_STAR_PACKAGES).map((pack) => Number(pack.usd) / Number(pack.totalCredits)),
+);
 const AI_CHAT_MODEL_SETTING_KEY = "ai_chat_model";
 const LONG_CONTEXT_TOKEN_THRESHOLD = 272000;
 
@@ -102,8 +106,7 @@ export function calculateAiChatBilling(modelId, billing = {}) {
   }
 
   const billedUsd = baseUsd * (1 + AI_CHAT_MARKUP_RATE);
-  const usdPerCredit = CUSTOM_STARS_USD_PER_1000_CREDITS / 1000;
-  const credits = Math.max(1, Math.ceil((billedUsd / usdPerCredit) - 1e-12));
+  const credits = Math.max(1, Math.ceil((billedUsd / AI_CHAT_USD_PER_CREDIT) - 1e-12));
   return {
     model: model.id,
     credits,

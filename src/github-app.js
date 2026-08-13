@@ -37,7 +37,7 @@ export async function handleGitHubRequest(request, env) {
       return json(await getConnectionStatus(env, user.id));
     }
     if (url.pathname === "/mini-app/api/github/repositories") {
-      return json(await getRepositoriesForUser(env, user.id));
+      return json(await getRepositoriesForUser(request, env, user.id));
     }
     if (url.pathname === "/mini-app/api/github/select") {
       return json(await selectRepository(env, user.id, payload));
@@ -293,12 +293,16 @@ async function getConnectionStatus(env, userId) {
   };
 }
 
-async function getRepositoriesForUser(env, userId) {
+async function getRepositoriesForUser(request, env, userId) {
   assertGitHubConfigured(env);
   const connection = await getConnectionStatus(env, userId);
-  if (!connection.connected) return { ...connection, repositories: [] };
-  const repositories = await listAccessibleRepositories(env, userId);
-  return { ...connection, repositories };
+  const repositories = connection.connected
+    ? await listAccessibleRepositories(env, userId)
+    : [];
+  const authorizeUrl = !connection.connected || repositories.length === 0
+    ? (await createConnectUrl(request, env, userId)).authorizeUrl
+    : "";
+  return { ...connection, repositories, authorizeUrl };
 }
 
 async function selectRepository(env, userId, payload) {
