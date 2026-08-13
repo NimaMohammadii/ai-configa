@@ -1,5 +1,7 @@
 export const GITHUB_CLIENT_JS = `
 (function(){
+  if(window.__vexaGithubClientLoaded)return;
+  window.__vexaGithubClientLoaded=true;
   var tg=window.Telegram&&window.Telegram.WebApp;
   var initData=(tg&&tg.initData)||'';
   var state={connected:false,login:'',repository:null,repositories:[],authorizeUrl:'',pendingConnect:false,busy:false};
@@ -8,11 +10,9 @@ export const GITHUB_CLIENT_JS = `
   function shortRepo(fullName){var parts=String(fullName||'').split('/');return parts[parts.length-1]||'GitHub'}
   function inject(){
     var tools=document.querySelector('.mode-tools');
-    if(!tools||q('aiChatGithubButton'))return;
-    var button=document.createElement('button');
-    button.id='aiChatGithubButton';button.type='button';button.className='ai-github-button';button.setAttribute('aria-label','Connect GitHub repository');
-    button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .8a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.1 0 0 1-.3 3.1 1.2a10.8 10.8 0 0 1 5.7 0C14.9 5 16 5.3 16 5.3c.6 1.5.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.8 5.4-5.5 5.7.4.4.8 1.1.8 2.2v3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .8Z"/></svg><span class="ai-github-button-label">GitHub</span>';
-    tools.insertBefore(button,tools.firstChild);
+    if(!tools)return;
+    var button=q('aiChatGithubButton');
+    if(!button){button=document.createElement('button');button.id='aiChatGithubButton';button.type='button';button.className='ai-github-button';button.setAttribute('aria-label','Connect GitHub repository');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .8a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.1 0 0 1-.3 3.1 1.2a10.8 10.8 0 0 1 5.7 0C14.9 5 16 5.3 16 5.3c.6 1.5.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.8 5.4-5.5 5.7.4.4.8 1.1.8 2.2v3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .8Z"/></svg><span class="ai-github-button-label">GitHub</span>';tools.insertBefore(button,tools.firstChild)}
     var modal=document.createElement('div');modal.id='aiChatGithubModal';modal.className='ai-github-backdrop';modal.setAttribute('aria-hidden','true');
     modal.innerHTML='<section class="ai-github-sheet" role="dialog" aria-modal="true" aria-labelledby="aiGithubTitle"><header class="ai-github-head"><div class="ai-github-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .8a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.1 0 0 1-.3 3.1 1.2a10.8 10.8 0 0 1 5.7 0C14.9 5 16 5.3 16 5.3c.6 1.5.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.8 5.4-5.5 5.7.4.4.8 1.1.8 2.2v3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .8Z"/></svg><strong id="aiGithubTitle">GitHub</strong></div><button id="aiGithubClose" class="ai-github-close" type="button" aria-label="Close">×</button></header><div id="aiGithubBody" class="ai-github-body"><div class="ai-github-loading">Loading…</div></div></section>';
     document.body.appendChild(modal);
