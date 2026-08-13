@@ -29,14 +29,10 @@ export const AI_CHAT_HTML = `<!doctype html>
   <section id="aiChatPage" class="ai-chat-page" aria-hidden="false">
     <header id="aiChatHead" class="ai-chat-head">
       <div class="credit-tools">
-        <div id="aiChatCreditPill" class="credit-pill" aria-label="Credits">
-          <span id="aiChatBalance">—</span>
-          <span>credits</span>
-        </div>
         <div id="aiChatModelWrap" class="model-wrap">
-          <button id="aiChatModelButton" class="model-button" type="button" aria-label="AI model" aria-haspopup="listbox" aria-expanded="false">
-            <span id="aiChatModelLabel">Terra</span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 9.5 12 14l5-4.5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <button id="aiChatModelButton" class="model-button" type="button" aria-label="Choose AI model" aria-haspopup="listbox" aria-expanded="false">
+            <span class="model-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span id="aiChatModelLabel" class="sr-only">Terra</span>
           </button>
           <div id="aiChatModelMenu" class="model-menu" role="listbox" aria-label="Choose GPT model" aria-hidden="true">
             <p>Price per 1M tokens</p>

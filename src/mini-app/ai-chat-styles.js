@@ -536,13 +536,12 @@ button{border:0}
 }
 
 .ai-chat-head .model-button{
+  width:36px;
   height:36px;
-  min-width:72px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:5px;
-  padding:0 10px;
+  min-width:36px;
+  display:grid;
+  place-items:center;
+  padding:0;
   border:0;
   border-radius:16px;
   background:var(--ticket-glass-bg);
@@ -550,18 +549,48 @@ button{border:0}
   box-shadow:var(--ticket-glass-shadow);
   backdrop-filter:blur(10px) saturate(1.12);
   -webkit-backdrop-filter:blur(10px) saturate(1.12);
-  font-size:12px;
-  font-weight:720;
   line-height:1;
 }
 
-.ai-chat-head .model-button svg{
-  color:rgba(255,255,255,.48);
-  transition:transform .2s ease;
+.ai-chat-head .model-menu-icon{
+  width:16px;
+  height:14px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
 }
 
-.ai-chat-head .model-wrap.open .model-button svg{
-  transform:rotate(180deg);
+.ai-chat-head .model-menu-icon i{
+  display:block;
+  width:16px;
+  height:1.8px;
+  border-radius:999px;
+  background:currentColor;
+  transition:transform .2s ease,opacity .2s ease;
+}
+
+.ai-chat-head .model-wrap.open .model-menu-icon i:nth-child(1){
+  transform:translateY(6.1px) rotate(45deg);
+}
+
+.ai-chat-head .model-wrap.open .model-menu-icon i:nth-child(2){
+  opacity:0;
+}
+
+.ai-chat-head .model-wrap.open .model-menu-icon i:nth-child(3){
+  transform:translateY(-6.1px) rotate(-45deg);
+}
+
+.ai-chat-head .sr-only{
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap;
+  border:0;
 }
 
 .ai-chat-head .model-menu{
