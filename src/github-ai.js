@@ -242,8 +242,8 @@ export async function executeGitHubAiTool(env, userId, item, onStatus, activity 
       });
       const result = { ...commit, summary, diff: prepared.preview };
       if (activity) activity.change = result;
-      emitProgress(onStatus, activity, "commit_ready", "Commit ready", commit.branch, { preview: prepared.preview });
-      return JSON.stringify(result);
+      emitProgress(onStatus, activity, "commit_ready", "Commit ready", commit.branch);
+      return JSON.stringify({ ...commit, summary });
     }
     if (item.name === "github_create_pull_request") {
       markGitHubActivity(activity);
@@ -334,7 +334,6 @@ async function prepareGitHubChanges(env, userId, changes, onStatus, activity) {
       status: "modified",
       additions: addedLineNumbers.size,
       deletions: removedLineNumbers.size,
-      truncated: hunks.some((hunk) => hunk.truncated),
       hunks,
     });
   }
@@ -348,14 +347,16 @@ async function prepareGitHubChanges(env, userId, changes, onStatus, activity) {
 
 function buildNewFilePreview(path, content) {
   const lines = splitDiffLines(content);
-  const visible = lines.slice(0, 220).map((text, index) => ({ type: "add", oldLine: null, newLine: index + 1, text: clipDiffLine(text) }));
   return {
     path,
     status: "added",
     additions: lines.length,
     deletions: 0,
-    truncated: visible.length < lines.length,
-    hunks: [{ oldStart: 0, newStart: 1, lines: visible }],
+    hunks: [{
+      oldStart: 0,
+      newStart: 1,
+      lines: lines.map((text, index) => ({ type: "add", oldLine: null, newLine: index + 1, text })),
+    }],
   };
 }
 
@@ -367,8 +368,6 @@ function buildReplacementHunk(originalContent, currentContent, oldText, newText)
   const newStart = countLinesBefore(currentContent.slice(0, currentIndex));
   const oldLines = splitDiffLines(oldText);
   const newLines = splitDiffLines(newText);
-  const visibleOldLines = oldLines.slice(0, 100);
-  const visibleNewLines = newLines.slice(0, 100);
   const sourceLines = oldSource.replace(/\r\n/g, "\n").split("\n");
   const before = sourceLines.slice(Math.max(0, oldStart - 3), Math.max(0, oldStart - 1));
   const afterStart = oldStart - 1 + Math.max(1, oldLines.length);
@@ -379,21 +378,21 @@ function buildReplacementHunk(originalContent, currentContent, oldText, newText)
       type: "context",
       oldLine: oldStart - before.length + offset,
       newLine: newStart - before.length + offset,
-      text: clipDiffLine(text),
+      text,
     });
   });
-  visibleOldLines.forEach((text, offset) => {
-    lines.push({ type: "remove", oldLine: oldStart + offset, newLine: null, text: clipDiffLine(text) });
+  oldLines.forEach((text, offset) => {
+    lines.push({ type: "remove", oldLine: oldStart + offset, newLine: null, text });
   });
-  visibleNewLines.forEach((text, offset) => {
-    lines.push({ type: "add", oldLine: null, newLine: newStart + offset, text: clipDiffLine(text) });
+  newLines.forEach((text, offset) => {
+    lines.push({ type: "add", oldLine: null, newLine: newStart + offset, text });
   });
   after.forEach((text, offset) => {
     lines.push({
       type: "context",
       oldLine: oldStart + oldLines.length + offset,
       newLine: newStart + newLines.length + offset,
-      text: clipDiffLine(text),
+      text,
     });
   });
   return {
@@ -401,7 +400,6 @@ function buildReplacementHunk(originalContent, currentContent, oldText, newText)
     newStart,
     additions: newLines.length,
     deletions: oldLines.length,
-    truncated: visibleOldLines.length < oldLines.length || visibleNewLines.length < newLines.length,
     lines,
   };
 }
@@ -416,10 +414,6 @@ function splitDiffLines(value) {
 
 function countLinesBefore(value) {
   return String(value || "").split("\n").length;
-}
-
-function clipDiffLine(value) {
-  return Array.from(String(value ?? "")).slice(0, 600).join("");
 }
 
 async function createGitHubPullRequest(env, userId, options = {}) {
