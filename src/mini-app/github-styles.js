@@ -16,10 +16,5 @@ export const GITHUB_STYLES = `
 #aiThinkingRow .ai-thinking-loader{width:44px;height:44px;flex:0 0 44px;border:0;border-radius:0;background:transparent;box-shadow:none;transition:none}
 #aiThinkingRow .ai-thinking-loader .ai-thinking-orb{display:block;width:44px;height:44px;flex-basis:44px;filter:drop-shadow(0 0 10px rgba(190,145,255,.16));animation:aiOrbReveal .78s cubic-bezier(.16,1,.3,1) both,aiOrbBreathe 2.8s ease-in-out .78s infinite}
 #aiThinkingRow .ai-thinking-loader::after{content:none;display:none}
-#aiThinkingRow .ai-thinking-copy{position:relative}
-#aiThinkingRow .ai-thinking-label{display:block!important;font-size:14px!important;font-weight:620!important;line-height:1.15!important;letter-spacing:-.018em!important;color:transparent!important;background:linear-gradient(100deg,rgba(255,255,255,.44),rgba(255,255,255,.96),rgba(218,190,241,.82),rgba(255,255,255,.48))!important;background-size:240% 100%!important;-webkit-background-clip:text!important;background-clip:text!important;text-shadow:none!important;animation:aiThinkingShine 2.1s ease-in-out infinite!important;will-change:opacity,transform,filter}
-#aiThinkingRow .ai-thinking-detail{display:block!important;max-width:min(72vw,430px)!important;overflow:hidden!important;color:rgba(255,255,255,.34)!important;background:none!important;-webkit-background-clip:border-box!important;background-clip:border-box!important;font-size:10px!important;font-weight:520!important;line-height:1.3!important;letter-spacing:-.005em!important;white-space:nowrap!important;text-overflow:ellipsis!important;opacity:0;transform:translateY(-2px)!important;animation:none!important;transition:opacity .25s ease,transform .32s cubic-bezier(.16,1,.3,1)!important;will-change:opacity,transform,filter}
-#aiThinkingRow .ai-thinking-detail.visible{opacity:1;transform:none!important}
-#aiThinkingRow .ai-thinking-motion-ghost{position:absolute!important;z-index:2;pointer-events:none!important;margin:0!important}
 @media(max-width:360px){.ai-chat-menu-panel{width:min(78vw,278px)!important;left:10px!important}}
 `;
