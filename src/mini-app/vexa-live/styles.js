@@ -47,7 +47,7 @@ button {
   width: min(100%, 560px);
   min-height: var(--tg-viewport-height, 100dvh);
   margin: 0 auto;
-  padding: calc(18px + env(safe-area-inset-top)) 16px calc(22px + env(safe-area-inset-bottom));
+  padding: calc(48px + env(safe-area-inset-top)) 16px calc(22px + env(safe-area-inset-bottom));
   overflow: hidden;
 }
 
@@ -637,49 +637,97 @@ button {
   transform: translate(-50%, 0) scale(1);
 }
 
-.live-lock {
-  position: fixed;
-  inset: 0;
-  z-index: 500;
-  display: grid;
-  place-items: center;
-  padding: 24px;
+.is-locked {
   background: #000000;
 }
 
-.live-lock-card {
-  width: min(280px, 82vw);
+.lock-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #000000;
+  padding: 28px;
+}
+
+.lock-card {
+  width: min(74vw, 420px);
   text-align: center;
 }
 
-.live-lock-title {
-  margin: 0 0 15px;
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 12px;
-  font-weight: 720;
-  letter-spacing: 0.02em;
+.lock-title {
+  margin: 0 0 18px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
 }
 
-.live-lock-bar {
-  position: relative;
+.lock-title > span:first-child {
+  letter-spacing: 0.34em;
+}
+
+.lock-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: -2px;
+}
+
+.lock-dots i {
+  display: block;
+  width: 3px;
   height: 3px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  background: #ffffff;
+  opacity: 0.25;
+  animation: lockDot 1.05s ease-in-out infinite;
 }
 
-.live-lock-bar span {
+.lock-dots i:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.lock-dots i:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+.lock-bar {
+  direction: ltr;
+  height: 4px;
+  border-radius: 999px;
+  background: #121212;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 18px 60px rgba(255, 255, 255, 0.12);
+}
+
+.lock-bar span {
   display: block;
   width: 0;
+  transform-origin: left center;
   height: 100%;
-  border-radius: inherit;
-  background: rgba(255, 255, 255, 0.78);
-  transition: width 0.4s linear;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffffff, #8f8f8f, #ffffff);
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.72);
+  transition: width 0.45s ease;
 }
 
-.live-lock.indefinite .live-lock-bar span {
-  width: 34%;
-  animation: lockIndeterminate 1.4s ease-in-out infinite;
+@keyframes lockDot {
+  0%,
+  70%,
+  100% {
+    opacity: 0.22;
+    transform: translateY(0) scale(0.82);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1);
+  }
 }
 
 @keyframes headerIn {
@@ -787,13 +835,9 @@ button {
   }
 }
 
-@keyframes lockIndeterminate {
-  0% {
-    transform: translateX(-120%);
-  }
-  55%,
-  100% {
-    transform: translateX(185%);
+@media (max-width: 520px) {
+  .lock-card {
+    width: min(82vw, 360px);
   }
 }
 
