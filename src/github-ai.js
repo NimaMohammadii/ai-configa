@@ -22,7 +22,8 @@ export function buildGitHubAiInstructions(context) {
     "Use github_resume_task with the exact taskId returned by github_list_tasks or supplied in the saved task instructions. Resuming a task changes the active coding workspace, so only the root coordinator may do it.",
     "For a non-trivial coding task with multiple files, independent workstreams, or several validation stages, create a concise structured plan with github_update_plan before the first write. Keep steps outcome-focused, update the plan after meaningful milestones, and keep at most one step in_progress. Include a final validation/review outcome in that plan. Simple focused edits do not need a plan.",
     "For non-trivial or multi-file changes when Multi-Agent is available, delegate at least one independent read-only review after the final diff is available and before completing the final validation/review plan step. Ask that reviewer to look specifically for regressions, missing edge cases, security issues, scope creep, stale API assumptions, and weak or missing tests. The root coordinator must independently reconcile that critique with real diff, shell, CI, browser, docs, or observability evidence and remains the only agent allowed to write.",
-    "The coding plan is visible operational state, not hidden reasoning. Mark a step completed only after its concrete work is done, and use blocked only when a real external or technical blocker prevents completion. Do not finish a planned task while pending or in_progress steps remain. Final branch review will reject completion while such steps remain.",
+    "The coding plan is visible operational state, not hidden reasoning. Mark a step completed only after its concrete work is done, and use blocked only when a real external or technical blocker prevents completion. Do not finish a planned task while pending, in_progress, or blocked steps remain. Final branch review will reject completion while such steps remain.",
+    "When the user explicitly asks to merge a pull request, first resume the exact task that owns that PR, validate and review its current commit, then call github_merge_pull_request with that exact taskId. Never merge one task while another task is active.",
     "Starting a new independent request from the default branch does not overwrite older task state; the first write creates a separate persisted task branch.",
   ].join(" ");
 }
@@ -30,7 +31,7 @@ export function buildGitHubAiInstructions(context) {
 export function getGitHubAiTools(context) {
   const tools = core.getGitHubAiTools(context);
   if (!context) return tools;
-  const withoutLegacyResume = tools.filter((tool) => tool?.name !== "github_resume_task");
+  const withoutFacadeOverrides = tools.filter((tool) => !["github_resume_task", "github_merge_pull_request"].includes(tool?.name));
   return [
     {
       type: "function",
@@ -92,7 +93,23 @@ export function getGitHubAiTools(context) {
       strict: true,
       defer_loading: true,
     },
-    ...withoutLegacyResume,
+    {
+      type: "function",
+      name: "github_merge_pull_request",
+      description: "Merge a Vexa AI pull request into the connected repository's default branch only after the user explicitly requested the merge, the exact owning task is resumed, its current commit is reviewed, and any structured plan is complete.",
+      parameters: {
+        type: "object",
+        properties: {
+          number: { type: "integer", minimum: 1, description: "Pull request number in the connected repository." },
+          taskId: { type: "string", description: "Exact resumed vexa/ai-* task ID that owns this pull request." },
+        },
+        required: ["number", "taskId"],
+        additionalProperties: false,
+      },
+      strict: true,
+      defer_loading: true,
+    },
+    ...withoutFacadeOverrides,
   ];
 }
 
@@ -203,6 +220,47 @@ export async function executeGitHubAiTool(env, userId, item, onStatus, activity 
     return JSON.stringify({ ok: true, plan: summarizeCodingPlan(plan) });
   }
 
+  if (item?.name === "github_merge_pull_request") {
+    if (!isRootAgentItem(item)) {
+      return JSON.stringify({ error: "Only the root coordinator may merge a pull request." });
+    }
+    let args = {};
+    try {
+      args = JSON.parse(String(item.arguments || "{}"));
+    } catch {
+      return JSON.stringify({ error: "The pull request merge arguments were invalid." });
+    }
+    const taskId = String(args.taskId || "").trim();
+    if (!isVexaTaskId(taskId)) return JSON.stringify({ error: "Use the exact vexa/ai-* task ID that owns this pull request." });
+    if (!activity || String(activity.currentBranch || "") !== taskId) {
+      return JSON.stringify({ error: "Resume the exact owning coding task before merging this pull request." });
+    }
+    const repository = await core.getGitHubAiContext(env, userId);
+    const saved = repository ? await getAiCodingTaskState(env, userId, repository, taskId) : null;
+    if (!saved || String(saved.commitSha || "") !== String(activity.currentCommitSha || "")) {
+      return JSON.stringify({ error: "The owning task changed or is not active. Resume it again and review the current commit before merging." });
+    }
+    const plan = summarizeCodingPlan(activity.plan);
+    if (plan && !plan.complete) {
+      return JSON.stringify({ error: "The coding plan is not complete. Resolve pending, in-progress, or blocked steps before merging." });
+    }
+    if (activity.needsReview || !activity.reviewCompleted || String(activity.lastReview?.commitSha || "") !== String(activity.currentCommitSha || "")) {
+      return JSON.stringify({ error: "Review the exact current task commit before merging this pull request." });
+    }
+    const coreItem = {
+      ...item,
+      arguments: JSON.stringify({ number: args.number }),
+    };
+    const output = await core.executeGitHubAiTool(env, userId, coreItem, onStatus, activity);
+    try {
+      const parsed = JSON.parse(String(output || "{}"));
+      if (parsed?.merged === true) await clearAiCodingTaskState(env, userId, taskId);
+    } catch {
+      // Keep the original tool output; no task is cleared unless merge success is explicit.
+    }
+    return output;
+  }
+
   let output = await core.executeGitHubAiTool(env, userId, item, onStatus, activity);
   if (item?.name === "github_review_branch" && activity?.plan) {
     const plan = summarizeCodingPlan(activity.plan);
@@ -211,7 +269,7 @@ export async function executeGitHubAiTool(env, userId, item, onStatus, activity 
       if (!passed && activity) {
         activity.needsReview = true;
         activity.reviewCompleted = false;
-        markActivity(activity, "finalizing", "Plan still has unfinished steps", `${plan.counts.pending + plan.counts.inProgress} remaining`);
+        markActivity(activity, "finalizing", "Plan still has unfinished steps", `${plan.counts.pending + plan.counts.inProgress + plan.counts.blocked} remaining or blocked`);
       }
       try {
         const parsed = JSON.parse(String(output || "{}"));
