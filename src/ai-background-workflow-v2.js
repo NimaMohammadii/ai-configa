@@ -50,12 +50,12 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
         );
 
         if (!phaseResult?.ok) {
-          const recoverable = isRecoverablePhaseError(phaseResult?.error);
+          const recoverable = Boolean(currentCodingTaskId) && isRecoverablePhaseError(phaseResult?.error);
           const recovered = recoverable
             ? await step.do(`recover phase ${phase} checkpoint`, async () => {
-                const active = await readCodingTask(this.env, userId, currentCodingTaskId);
-                const after = taskFingerprint(active);
-                return hasTaskProgress(before, after) ? checkpointFromTask(active) : null;
+                const exactTask = await readCodingTask(this.env, userId, currentCodingTaskId);
+                const after = taskFingerprint(exactTask);
+                return hasTaskProgress(before, after) ? checkpointFromTask(exactTask) : null;
               })
             : null;
           if (!recovered?.taskId) throw new Error(phaseResult?.error || "Background AI phase failed.");
@@ -124,8 +124,9 @@ async function runOneAiPhase(env, user, messages, workflowTaskId, phase) {
 }
 
 async function readCodingTask(env, userId, exactTaskId = "") {
-  if (exactTaskId) return getAiCodingTaskState(env, userId, null, exactTaskId).catch(() => null);
-  return getAiCodingTaskState(env, userId).catch(() => null);
+  const taskId = cleanCodingTaskId(exactTaskId);
+  if (!taskId) return null;
+  return getAiCodingTaskState(env, userId, null, taskId).catch(() => null);
 }
 
 function checkpointFromTask(task, result = null) {
