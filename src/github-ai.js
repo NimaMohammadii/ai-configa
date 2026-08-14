@@ -8,6 +8,7 @@ import { clearAiCodingTaskState, getAiCodingTaskState, saveAiCodingTaskState } f
 
 const GITHUB_TOOL_NAMES = new Set([
   "github_resume_task",
+  "github_sync_task_branch",
   "github_list_files",
   "github_search_paths",
   "github_search_code",
@@ -16,6 +17,14 @@ const GITHUB_TOOL_NAMES = new Set([
   "github_read_ci",
   "github_read_ci_failure_logs",
   "github_review_branch",
+  "github_commit_changes",
+  "github_create_pull_request",
+  "github_merge_pull_request",
+  "github_apply_branch_to_default",
+]);
+
+const GITHUB_WRITE_TOOL_NAMES = new Set([
+  "github_sync_task_branch",
   "github_commit_changes",
   "github_create_pull_request",
   "github_merge_pull_request",
@@ -115,6 +124,7 @@ export function buildGitHubAiInstructions(context) {
     "Prefer apply_patch for precise file creation, updates, or deletions. When using github_commit_changes, submit small exact oldText/newText replacements copied from the file you read; for a new file, submit its complete content.",
     "Change only files required by the request and preserve unrelated behavior.",
     "A write creates a Vexa AI branch. Additional writes in the same task continue from the latest Vexa branch so earlier changes are preserved.",
+    "If github_review_branch reports that the Vexa branch is behind the current default branch, do not declare completion. Call github_sync_task_branch to merge the latest default branch into the current Vexa task branch, then refresh validation and review the new commit again. If GitHub reports a merge conflict, stop and inspect the conflicting code instead of forcing the sync.",
     "Use github_read_ci when repository CI status can verify the current working commit. Do not claim CI passed when GitHub returned no check or workflow evidence. If CI fails, use github_read_ci_failure_logs with the failing workflow run ID before guessing at the cause.",
     "Use github_review_branch during the final review of a code-changing task to inspect the actual default-branch-to-working-branch diff and verify scope before declaring completion. For executable code changes, the review can require post-write shell or passing CI evidence before it is accepted.",
     "If the user explicitly asks for a pull request, call github_create_pull_request after a code-write tool returns a Vexa branch, using that exact branch.",
@@ -134,6 +144,14 @@ export function getGitHubAiTools(context) {
       type: "function",
       name: "github_resume_task",
       description: "Resume the saved Vexa coding branch from a previous chat turn only when the latest user message clearly continues, corrects, tests, reviews, or asks follow-up work on that same coding task. Never use it for an unrelated new task.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      strict: true,
+      ...deferredDirect,
+    },
+    {
+      type: "function",
+      name: "github_sync_task_branch",
+      description: "Merge the latest connected repository default branch into the current Vexa task branch when final review shows the task branch is behind. This never force-pushes. It fails on merge conflicts or if the task branch changed unexpectedly, and invalidates prior validation so the merged result must be tested and reviewed again.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       strict: true,
       ...deferredDirect,
@@ -251,7 +269,7 @@ export function getGitHubAiTools(context) {
     {
       type: "function",
       name: "github_review_branch",
-      description: "Compare the current Vexa working branch with the repository default branch and return actual changed-file stats, bounded patches, and validation-gate evidence for mandatory final code review. Executable code changes may require post-write shell or passing CI evidence before review is accepted.",
+      description: "Compare the current Vexa working branch with the repository default branch and return actual changed-file stats, bounded patches, base-drift status, and validation-gate evidence for mandatory final code review. A branch behind the current default branch cannot pass review until github_sync_task_branch succeeds and the merged commit is validated again.",
       parameters: {
         type: "object",
         properties: {
@@ -367,6 +385,9 @@ export async function executeGitHubAiTool(env, userId, item, onStatus, activity 
     return JSON.stringify({ error: "The GitHub tool arguments were invalid." });
   }
   try {
+    if (GITHUB_WRITE_TOOL_NAMES.has(String(item.name || "")) && !isRootGitHubAgentItem(item)) {
+      return JSON.stringify({ error: "Only the root coordinator may perform GitHub write, sync, pull-request, merge, or default-branch actions." });
+    }
     const workingBranch = getWorkingBranch(activity);
     if (item.name === "github_resume_task") {
       markGitHubActivity(activity);
@@ -403,6 +424,29 @@ export async function executeGitHubAiTool(env, userId, item, onStatus, activity 
         changedFiles: saved.changedFiles,
         reviewCompleted: Boolean(saved.lastReview?.commitSha && saved.lastReview.commitSha === saved.commitSha),
       });
+    }
+    if (item.name === "github_sync_task_branch") {
+      markGitHubActivity(activity);
+      emitProgress(onStatus, activity, "analyzing_code", "Syncing task branch", activity?.defaultBranch || "Default branch");
+      const result = await syncGitHubTaskBranch(env, userId, activity);
+      if (activity) {
+        const previousChange = activity.change || {};
+        activity.currentBranch = result.branch;
+        activity.currentCommitSha = result.commitSha;
+        activity.change = {
+          ...previousChange,
+          branch: result.branch,
+          commitSha: result.commitSha,
+        };
+        activity.lastReview = null;
+        activity.lastCi = null;
+        activity.reviewCompleted = false;
+        activity.needsReview = true;
+        activity.postWriteShellUsed = false;
+        await saveAiCodingTaskState(env, userId, activity).catch((error) => console.error("save synced coding task failed", error?.message || error));
+      }
+      emitProgress(onStatus, activity, "commit_ready", result.changed ? "Task branch synced" : "Task branch already current", result.commitSha.slice(0, 12));
+      return JSON.stringify(result);
     }
     if (item.name === "github_list_files") {
       markGitHubActivity(activity);
@@ -543,6 +587,72 @@ export async function executeGitHubAiTool(env, userId, item, onStatus, activity 
     console.error("github AI tool failed", item.name, error?.stack || error);
     return JSON.stringify({ error: String(error?.message || "GitHub operation failed.").slice(0, 500) });
   }
+}
+
+async function syncGitHubTaskBranch(env, userId, activity) {
+  const repository = await requireGitHubRepository(env, userId);
+  const branch = cleanVexaBranch(activity?.currentBranch);
+  const expectedSha = String(activity?.currentCommitSha || "").trim();
+  if (!/^[a-f0-9]{40}$/i.test(expectedSha)) throw new Error("The current coding task commit is missing. Resume or re-read the task before syncing.");
+  const token = await createAiInstallationToken(env, repository.installationId);
+  const repo = repoPath(repository.fullName);
+  const [branchRef, defaultRef] = await Promise.all([
+    aiGitHubRequest(`/repos/${repo}/git/ref/heads/${encodeURIComponent(branch)}`, { token }),
+    aiGitHubRequest(`/repos/${repo}/git/ref/heads/${encodeURIComponent(repository.defaultBranch)}`, { token }),
+  ]);
+  const branchSha = String(branchRef?.object?.sha || "");
+  const defaultSha = String(defaultRef?.object?.sha || "");
+  if (branchSha !== expectedSha) {
+    throw new Error("The Vexa task branch changed while AI was working. Resume and re-read the latest task state before syncing.");
+  }
+  if (!/^[a-f0-9]{40}$/i.test(defaultSha)) throw new Error("GitHub did not return the current default-branch commit.");
+  const compare = await aiGitHubRequest(
+    `/repos/${repo}/compare/${encodeURIComponent(repository.defaultBranch)}...${encodeURIComponent(branch)}`,
+    { token },
+  );
+  const behindBy = Math.max(0, Number(compare?.behind_by || 0));
+  if (behindBy === 0) {
+    return {
+      repository: repository.fullName,
+      branch,
+      baseBranch: repository.defaultBranch,
+      baseCommitSha: defaultSha,
+      commitSha: branchSha,
+      changed: false,
+      behindBy: 0,
+      url: `https://github.com/${repository.fullName}/tree/${branch}`,
+    };
+  }
+  try {
+    await aiGitHubRequest(`/repos/${repo}/merges`, {
+      method: "POST",
+      token,
+      body: {
+        base: branch,
+        head: repository.defaultBranch,
+        commit_message: `Sync ${repository.defaultBranch} into ${branch}`,
+      },
+    });
+  } catch (error) {
+    if (/conflict/i.test(String(error?.message || ""))) {
+      throw new Error(`The latest ${repository.defaultBranch} conflicts with the Vexa task branch. Inspect and resolve the conflicting code; the sync was not forced.`);
+    }
+    throw error;
+  }
+  const refreshedRef = await aiGitHubRequest(`/repos/${repo}/git/ref/heads/${encodeURIComponent(branch)}`, { token });
+  const commitSha = String(refreshedRef?.object?.sha || "");
+  if (!/^[a-f0-9]{40}$/i.test(commitSha)) throw new Error("GitHub did not return the synced task commit.");
+  return {
+    repository: repository.fullName,
+    branch,
+    baseBranch: repository.defaultBranch,
+    baseCommitSha: defaultSha,
+    previousCommitSha: branchSha,
+    commitSha,
+    changed: commitSha !== branchSha,
+    behindBy,
+    url: `https://github.com/${repository.fullName}/tree/${branch}`,
+  };
 }
 
 async function searchGitHubCode(env, userId, rawQuery, workingBranch) {
@@ -840,14 +950,15 @@ async function reviewGitHubBranch(env, userId, requestedBranch, activity) {
     patch: String(file.patch || "").slice(0, MAX_REVIEW_PATCH_CHARS),
   }));
   const reviewedCommitSha = String(compare?.commits?.at?.(-1)?.sha || activity?.currentCommitSha || "");
-  const validation = buildReviewValidation(files, activity, reviewedCommitSha);
+  const behindBy = Math.max(0, Number(compare?.behind_by || 0));
+  const validation = buildReviewValidation(files, activity, reviewedCommitSha, behindBy);
   return {
     repository: repository.fullName,
     baseBranch: repository.defaultBranch,
     branch,
     status: String(compare?.status || ""),
     aheadBy: Number(compare?.ahead_by || 0),
-    behindBy: Number(compare?.behind_by || 0),
+    behindBy,
     totalCommits: Number(compare?.total_commits || 0),
     reviewedCommitSha,
     commitSha: validation.satisfied ? reviewedCommitSha : "",
@@ -863,8 +974,9 @@ async function reviewGitHubBranch(env, userId, requestedBranch, activity) {
   };
 }
 
-function buildReviewValidation(files, activity, reviewedCommitSha) {
+function buildReviewValidation(files, activity, reviewedCommitSha, behindBy = 0) {
   const executableChange = (Array.isArray(files) ? files : []).some((file) => !isDocumentationOnlyPath(file?.path));
+  const baseUpToDate = Math.max(0, Number(behindBy || 0)) === 0;
   const workspaceReady = Boolean(
     reviewedCommitSha
     && String(activity?.workspaceCommitSha || "") === reviewedCommitSha
@@ -876,12 +988,16 @@ function buildReviewValidation(files, activity, reviewedCommitSha) {
   const ciEvidenceAvailable = Boolean(ciTargetsCommit && ci?.evidenceAvailable);
   const ciPassing = Boolean(ciTargetsCommit && hasPassingCiEvidence(ci));
   const evidenceSourceAvailable = workspaceReady || ciEvidenceAvailable;
-  const required = executableChange && evidenceSourceAvailable;
-  const satisfied = !required || shellEvidence || ciPassing;
+  const executableValidationRequired = executableChange && evidenceSourceAvailable;
+  const executableValidationSatisfied = !executableValidationRequired || shellEvidence || ciPassing;
+  const required = !baseUpToDate || executableValidationRequired;
+  const satisfied = baseUpToDate && executableValidationSatisfied;
   let message = "Documentation-only diff does not require executable validation.";
-  if (executableChange && !evidenceSourceAvailable) {
+  if (!baseUpToDate) {
+    message = `The task branch is behind the current default branch by ${Math.max(0, Number(behindBy || 0))} commit(s). Run github_sync_task_branch, then validate and review the synced commit again.`;
+  } else if (executableChange && !evidenceSourceAvailable) {
     message = "No post-write shell workspace or current-commit CI evidence is available. Review may proceed, but report executable validation as unavailable.";
-  } else if (required && !satisfied) {
+  } else if (executableValidationRequired && !executableValidationSatisfied) {
     message = "Run a relevant deterministic check in the refreshed post-write shell workspace, or load passing CI evidence for this exact commit, then review the branch again.";
   } else if (shellEvidence) {
     message = "Post-write shell validation evidence exists for the current workspace. Confirm the actual command output before claiming success.";
@@ -892,6 +1008,8 @@ function buildReviewValidation(files, activity, reviewedCommitSha) {
     executableChange,
     required,
     satisfied,
+    baseUpToDate,
+    behindBy: Math.max(0, Number(behindBy || 0)),
     workspaceReady,
     postWriteShellUsed: shellEvidence,
     ciEvidenceAvailable,
@@ -908,7 +1026,7 @@ function hasPassingCiEvidence(ci) {
   const failed = statuses.some((item) => ["failure", "error"].includes(String(item?.state || "")))
     || [...checks, ...workflows].some((item) => ["failure", "cancelled", "timed_out", "action_required", "startup_failure"].includes(String(item?.conclusion || "")));
   const pending = statuses.some((item) => ["pending", "expected"].includes(String(item?.state || "")))
-    || [...checks, ...workflows].some((item) => ["queued", "in_progress", "pending", "requested", "waiting"].includes(String(item?.status || "")));
+    || [...checks, ...workflows].some((item) => ["queued", "in_progress", "pending", "requested", "waiting"].includes(String(item?.status || item?.state || "")));
   const successful = statuses.some((item) => String(item?.state || "") === "success")
     || checks.some((item) => String(item?.status || "") === "completed" && String(item?.conclusion || "") === "success")
     || workflows.some((item) => String(item?.status || "") === "completed" && String(item?.conclusion || "") === "success")
@@ -1243,6 +1361,11 @@ function base64UrlBytes(bytes) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function isRootGitHubAgentItem(item) {
+  const name = String(item?.agent?.agent_name || item?.agent_name || "").trim();
+  return !name || name === "/root" || name === "root";
 }
 
 function markGitHubActivity(activity) {
