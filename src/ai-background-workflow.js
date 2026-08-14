@@ -1,4 +1,5 @@
-import { NonRetryableError, WorkflowEntrypoint } from "cloudflare:workers";
+import { WorkflowEntrypoint } from "cloudflare:workers";
+import { NonRetryableError } from "cloudflare:workflows";
 import { runWithCreditIdempotency } from "./credit-idempotency.js";
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
 import { handleMiniAppRequest } from "./mini-app/server.js";
