@@ -1,9 +1,9 @@
 import worker from "./worker-direct.js";
 import {
-  AiCodingWorkflow,
   handleAiBackgroundTaskRequest,
   isAiBackgroundTaskRequest,
 } from "./ai-background-workflow.js";
+import { AiCodingWorkflowV2 as AiCodingWorkflow } from "./ai-background-workflow-v2.js";
 import {
   handleAiBackgroundTasksClientRequest,
   injectAiBackgroundTasksClient,
