@@ -117,6 +117,20 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
       }
       if (!finalResult) throw new Error("Background AI task finished without a result.");
 
+      if (lastCheckpoint?.blocked) {
+        const message = blockedPlanMessage(lastCheckpoint.plan);
+        await step.do("store task blocker", async () => {
+          await updateTask(this.env, taskId, userId, {
+            status: "failed",
+            result: finalResult,
+            completedAt: true,
+            error: message,
+          });
+          return { taskId, status: "failed", blocked: true };
+        });
+        return { taskId, status: "failed", blocked: true, error: message, result: finalResult };
+      }
+
       await step.do("store task result", async () => {
         await updateTask(this.env, taskId, userId, {
           status: "completed",
@@ -193,6 +207,14 @@ function hasTaskProgress(before, after) {
   if (before.taskId !== after.taskId) return true;
   if (before.commitSha !== after.commitSha) return true;
   return Boolean(after.planUpdatedAt && before.planUpdatedAt !== after.planUpdatedAt);
+}
+
+function blockedPlanMessage(plan) {
+  const blocked = Array.isArray(plan?.steps)
+    ? plan.steps.filter((step) => step.status === "blocked").map((step) => step.title).slice(0, 4)
+    : [];
+  const detail = blocked.length ? `: ${blocked.join("; ")}` : "";
+  return `Coding task stopped at a real blocker${detail}. The task branch and plan were preserved so it can be resumed.`.slice(0, MAX_TASK_ERROR_CHARS);
 }
 
 function addBackgroundExecutionInstruction(messages) {
