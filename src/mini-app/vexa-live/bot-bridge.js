@@ -167,7 +167,7 @@ async function accessPanelText(env) {
   const lines = [
     baseText,
     "",
-    "🎬 <b>Vexa Live</b>",
+    "<b>Vexa Live</b>",
     "Status: <b>" + (live.adminOnly ? "Admin only" : "Open for everyone") + "</b>",
   ];
 
@@ -191,8 +191,8 @@ async function accessPanelKeyboard(env) {
   );
 
   const liveRow = live.adminOnly
-    ? [{ text: "🎬 🔓 Open Vexa Live now", callback_data: "admin_vexa_live_unlock" }]
-    : [{ text: "🎬 🔒 Lock Vexa Live", callback_data: "admin_vexa_live_lock_prompt" }];
+    ? [{ text: "🔓 Open Vexa Live now", callback_data: "admin_vexa_live_unlock" }]
+    : [{ text: "🔒 Lock Vexa Live", callback_data: "admin_vexa_live_lock_prompt" }];
 
   const backIndex = rows.findIndex((row) =>
     row.some((button) => button.callback_data === "admin_main")
@@ -209,7 +209,7 @@ async function accessPanelKeyboard(env) {
 
 function vexaLiveLockPromptText() {
   return [
-    "🎬 <b>Lock Vexa Live</b>",
+    "<b>Lock Vexa Live</b>",
     "",
     "Send how many minutes Vexa Live should stay admin-only.",
     "Example: <code>15</code>",
