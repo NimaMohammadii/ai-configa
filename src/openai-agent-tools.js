@@ -332,6 +332,7 @@ export async function executeOpenAiApplyPatchCalls(env, userId, calls, onStatus,
       activity.lastReview = null;
       activity.reviewCompleted = false;
       activity.needsReview = true;
+      activity.postWriteShellUsed = false;
       await saveAiCodingTaskState(env, userId, activity).catch((error) => console.error("save native patch task failed", error?.message || error));
     }
     emitProgress(onStatus, activity, "commit_ready", "Patch committed", commit.branch);
