@@ -488,7 +488,12 @@ export const VEXA_LIVE_JS = `
     await new Promise(function (resolve, reject) {
       let settled = false;
 
+      socket.onmessage = function (event) {
+        handleScribeMessage(event, generation);
+      };
+
       socket.onopen = function () {
+        if (settled) return;
         settled = true;
         resolve();
       };
@@ -497,17 +502,58 @@ export const VEXA_LIVE_JS = `
         if (!settled) {
           settled = true;
           reject(new Error("Could not connect to live captions"));
+          return;
+        }
+
+        if (generation === sessionGeneration && scribeSocket === socket) {
+          setStatus("Connection issue", false);
+        }
+      };
+
+      socket.onclose = function () {
+        if (!settled) {
+          settled = true;
+          reject(new Error("Live captions connection closed"));
+          return;
+        }
+
+        if (generation !== sessionGeneration || scribeSocket !== socket) return;
+        scribeSocket = null;
+
+        const preview = q("videoPreview");
+        if (preview && !preview.paused && !preview.ended && reconnectAttempts < 1) {
+          reconnectAttempts += 1;
+          setStatus("Reconnecting", true);
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(function () {
+            ensureCaptionSession().catch(handleCaptionError);
+          }, 700);
+        } else if (preview && !preview.ended) {
+          setStatus("Play to reconnect", false);
         }
       };
     });
 
-    if (generation !== sessionGeneration || scribeSocket !== socket) {
+    if (
+      generation !== sessionGeneration ||
+      scribeSocket !== socket ||
+      socket.readyState !== WebSocket.OPEN
+    ) {
       try { socket.close(); } catch (error) {}
       return;
     }
 
     audioChunkCount = 0;
     await ensureAudioCapture();
+
+    if (
+      generation !== sessionGeneration ||
+      scribeSocket !== socket ||
+      socket.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
+
     reconnectAttempts = 0;
     setStatus("Waiting for audio", true);
 
@@ -525,32 +571,6 @@ export const VEXA_LIVE_JS = `
         toast("Could not read audio from this video");
       }
     }, 3200);
-
-    socket.onmessage = function (event) {
-      handleScribeMessage(event, generation);
-    };
-
-    socket.onerror = function () {
-      if (generation !== sessionGeneration) return;
-      setStatus("Connection issue", false);
-    };
-
-    socket.onclose = function () {
-      if (generation !== sessionGeneration || scribeSocket !== socket) return;
-      scribeSocket = null;
-
-      const preview = q("videoPreview");
-      if (preview && !preview.paused && !preview.ended && reconnectAttempts < 1) {
-        reconnectAttempts += 1;
-        setStatus("Reconnecting", true);
-        clearTimeout(reconnectTimer);
-        reconnectTimer = setTimeout(function () {
-          ensureCaptionSession().catch(handleCaptionError);
-        }, 700);
-      } else if (preview && !preview.ended) {
-        setStatus("Play to reconnect", false);
-      }
-    };
   }
 
   function handleScribeMessage(event, generation) {
