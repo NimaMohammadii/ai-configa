@@ -5,6 +5,7 @@ import {
   saveAiCodingTaskState,
 } from "./ai-coding-task.js";
 import { normalizeCodingPlan, summarizeCodingPlan } from "./ai-coding-plan.js";
+import { getGitHubAiCumulativeDiff, requestGitHubAiApproval } from "./github-ai-approval.js";
 import * as core from "./github-ai-core.js";
 
 const MULTI_TASK_TOOL_NAMES = new Set(["github_list_tasks", "github_resume_task", "github_update_plan"]);
@@ -24,6 +25,9 @@ export function buildGitHubAiInstructions(context) {
     "For non-trivial or multi-file changes when Multi-Agent is available, delegate at least one independent read-only review after the final diff is available and before completing the final validation/review plan step. Ask that reviewer to look specifically for regressions, missing edge cases, security issues, scope creep, stale API assumptions, and weak or missing tests. The root coordinator must independently reconcile that critique with real diff, shell, CI, browser, docs, or observability evidence and remains the only agent allowed to write.",
     "The coding plan is visible operational state, not hidden reasoning. Mark a step completed only after its concrete work is done, and use blocked only when a real external or technical blocker prevents completion. Do not finish a planned task while pending, in_progress, or blocked steps remain. Final branch review will reject completion while such steps remain.",
     "When the user explicitly asks to merge a pull request, first resume the exact task that owns that PR, validate and review its current commit, then call github_merge_pull_request with that exact taskId. Never merge one task while another task is active.",
+    "Every code write is deterministically gated by github_project_instructions for the exact target paths. If a write is rejected for missing project-instruction resolution, resolve those target paths on the current working branch and retry; after each successful write or branch sync, resolve instructions again before another write.",
+    "The final github_review_branch result is expanded into the cumulative default-branch-to-task-branch diff, so the user-facing report must describe the whole task rather than only the most recent commit.",
+    "github_merge_pull_request and github_apply_branch_to_default never change the default branch immediately. They can only prepare a short-lived, single-use approval bound to the exact reviewed branch/base SHAs. Tell the user to confirm the action in the AI Chat approval card; only that authenticated UI confirmation can execute the default-branch change.",
     "Starting a new independent request from the default branch does not overwrite older task state; the first write creates a separate persisted task branch.",
   ].join(" ");
 }
@@ -96,7 +100,7 @@ export function getGitHubAiTools(context) {
     {
       type: "function",
       name: "github_merge_pull_request",
-      description: "Merge a Vexa AI pull request into the connected repository's default branch only after the user explicitly requested the merge, the exact owning task is resumed, its current commit is reviewed, and any structured plan is complete.",
+      description: "Prepare a user-confirmed merge of a Vexa AI pull request into the connected repository's default branch only after the user explicitly requested the merge, the exact owning task is resumed, its current commit is reviewed, and any structured plan is complete. This tool never merges immediately; the authenticated user must confirm the prepared action in AI Chat.",
       parameters: {
         type: "object",
         properties: {
@@ -170,6 +174,7 @@ export async function executeGitHubAiTool(env, userId, item, onStatus, activity 
         activity.reviewCompleted = false;
         activity.needsReview = true;
         activity.postWriteShellUsed = false;
+        clearResolvedInstructionTargets(activity);
         if (!(activity.filesRead instanceof Set)) activity.filesRead = new Set(activity.filesRead || []);
         for (const path of saved.contextFiles || []) activity.filesRead.add(path);
         activity.change = {
@@ -220,21 +225,64 @@ export async function executeGitHubAiTool(env, userId, item, onStatus, activity 
     return JSON.stringify({ ok: true, plan: summarizeCodingPlan(plan) });
   }
 
+  if (item?.name === "github_commit_changes") {
+    const targets = githubCommitTargetPaths(item);
+    const missing = unresolvedInstructionTargets(activity, targets);
+    if (missing.length) {
+      return JSON.stringify({
+        error: "Project instructions were not resolved on the current working branch for every write target. Call github_project_instructions for these exact paths before writing: " + missing.slice(0, 12).join(", "),
+        missingProjectInstructionTargets: missing,
+      });
+    }
+  }
+
   if (item?.name === "github_merge_pull_request") {
-    if (!isRootAgentItem(item)) {
-      return JSON.stringify({ error: "Only the root coordinator may merge a pull request." });
-    }
-    let args = {};
-    try {
-      args = JSON.parse(String(item.arguments || "{}"));
-    } catch {
-      return JSON.stringify({ error: "The pull request merge arguments were invalid." });
-    }
-    const taskId = String(args.taskId || "").trim();
-    if (!isVexaTaskId(taskId)) return JSON.stringify({ error: "Use the exact vexa/ai-* task ID that owns this pull request." });
-    if (!activity || String(activity.currentBranch || "") !== taskId) {
-      return JSON.stringify({ error: "Resume the exact owning coding task before merging this pull request." });
-    }
+    return preparePullRequestMergeApproval(env, userId, item, activity);
+  }
+
+  if (item?.name === "github_apply_branch_to_default") {
+    return prepareBranchApplyApproval(env, userId, item, activity);
+  }
+
+  let output = await core.executeGitHubAiTool(env, userId, item, onStatus, activity);
+
+  if (item?.name === "github_project_instructions") {
+    recordResolvedInstructionTargets(activity, output);
+  }
+
+  if (item?.name === "github_review_branch") {
+    output = applyPlanReviewGate(output, activity);
+    output = await attachCumulativeReviewDiff(env, userId, output, activity);
+  }
+
+  if (
+    (item?.name === "github_commit_changes" || item?.name === "github_sync_task_branch")
+    && toolOutputSucceeded(output)
+  ) {
+    clearResolvedInstructionTargets(activity);
+  }
+
+  return output;
+}
+
+async function preparePullRequestMergeApproval(env, userId, item, activity) {
+  if (!isRootAgentItem(item)) {
+    return JSON.stringify({ error: "Only the root coordinator may prepare a pull-request merge approval." });
+  }
+  let args = {};
+  try {
+    args = JSON.parse(String(item.arguments || "{}"));
+  } catch {
+    return JSON.stringify({ error: "The pull request merge arguments were invalid." });
+  }
+  const taskId = String(args.taskId || "").trim();
+  if (!isVexaTaskId(taskId)) {
+    return JSON.stringify({ error: "Use the exact vexa/ai-* task ID that owns this pull request." });
+  }
+  if (!activity || String(activity.currentBranch || "") !== taskId) {
+    return JSON.stringify({ error: "Resume the exact owning coding task before preparing this pull-request merge." });
+  }
+  try {
     const repository = await core.getGitHubAiContext(env, userId);
     const saved = repository ? await getAiCodingTaskState(env, userId, repository, taskId) : null;
     if (!saved || String(saved.commitSha || "") !== String(activity.currentCommitSha || "")) {
@@ -244,71 +292,212 @@ export async function executeGitHubAiTool(env, userId, item, onStatus, activity 
     if (plan && !plan.complete) {
       return JSON.stringify({ error: "The coding plan is not complete. Resolve pending, in-progress, or blocked steps before merging." });
     }
-    if (activity.needsReview || !activity.reviewCompleted || String(activity.lastReview?.commitSha || "") !== String(activity.currentCommitSha || "")) {
-      return JSON.stringify({ error: "Review the exact current task commit before merging this pull request." });
+    if (
+      activity.needsReview
+      || !activity.reviewCompleted
+      || String(activity.lastReview?.commitSha || "") !== String(activity.currentCommitSha || "")
+    ) {
+      return JSON.stringify({ error: "Review the exact current task commit before preparing this pull-request merge." });
     }
-    const coreItem = {
-      ...item,
-      arguments: JSON.stringify({ number: args.number }),
-    };
-    const output = await core.executeGitHubAiTool(env, userId, coreItem, onStatus, activity);
-    try {
-      const parsed = JSON.parse(String(output || "{}"));
-      if (parsed?.merged === true) await clearAiCodingTaskState(env, userId, taskId);
-    } catch {
-      // Keep the original tool output; no task is cleared unless merge success is explicit.
+    const approval = await requestGitHubAiApproval(env, userId, {
+      type: "merge_pull_request",
+      number: args.number,
+    });
+    if (String(approval.branch || "") && String(approval.branch || "") !== taskId) {
+      return JSON.stringify({ error: "That pull request does not belong to the resumed coding task." });
     }
-    return output;
+    recordPreparedApproval(activity, "merge", approval);
+    if (activity?.currentBranch) await saveAiCodingTaskState(env, userId, activity).catch(() => null);
+    return JSON.stringify(approval);
+  } catch (error) {
+    return JSON.stringify({ error: String(error?.message || "Could not prepare pull-request approval.").slice(0, 500) });
   }
-
-  let output = await core.executeGitHubAiTool(env, userId, item, onStatus, activity);
-  if (item?.name === "github_review_branch" && activity?.plan) {
-    const plan = summarizeCodingPlan(activity.plan);
-    if (plan) {
-      const passed = Boolean(plan.complete);
-      if (!passed && activity) {
-        activity.needsReview = true;
-        activity.reviewCompleted = false;
-        markActivity(activity, "finalizing", "Plan still has unfinished steps", `${plan.counts.pending + plan.counts.inProgress + plan.counts.blocked} remaining or blocked`);
-      }
-      try {
-        const parsed = JSON.parse(String(output || "{}"));
-        parsed.planGate = {
-          passed,
-          pending: plan.counts.pending,
-          inProgress: plan.counts.inProgress,
-          completed: plan.counts.completed,
-          blocked: plan.counts.blocked,
-        };
-        output = JSON.stringify(parsed);
-      } catch {
-        // Keep the original tool output if it is not JSON.
-      }
-    }
-  }
-  await completeExactTaskAfterTerminalAction(env, userId, item, activity).catch((error) => {
-    console.error("complete exact coding task failed", error?.message || error);
-  });
-  return output;
 }
 
-async function completeExactTaskAfterTerminalAction(env, userId, item, activity) {
-  if (item?.name === "github_apply_branch_to_default") {
-    let args = {};
-    try { args = JSON.parse(String(item.arguments || "{}")); } catch { args = {}; }
-    if (isVexaTaskId(args.branch)) await clearAiCodingTaskState(env, userId, args.branch);
-    return;
+async function prepareBranchApplyApproval(env, userId, item, activity) {
+  if (!isRootAgentItem(item)) {
+    return JSON.stringify({ error: "Only the root coordinator may prepare a default-branch apply approval." });
   }
-  if (item?.name !== "github_merge_pull_request") return;
   let args = {};
-  try { args = JSON.parse(String(item.arguments || "{}")); } catch { args = {}; }
-  const pullRequest = activity?.pullRequest;
-  if (
-    Number(pullRequest?.number || 0) === Number(args.number || 0)
-    && isVexaTaskId(pullRequest?.branch)
-  ) {
-    await clearAiCodingTaskState(env, userId, pullRequest.branch);
+  try {
+    args = JSON.parse(String(item.arguments || "{}"));
+  } catch {
+    return JSON.stringify({ error: "The default-branch apply arguments were invalid." });
   }
+  const branch = String(args.branch || "").trim();
+  if (!isVexaTaskId(branch)) {
+    return JSON.stringify({ error: "Use the exact vexa/ai-* task branch to prepare this action." });
+  }
+  if (!activity || String(activity.currentBranch || "") !== branch) {
+    return JSON.stringify({ error: "Resume the exact coding task before preparing an apply-to-default action." });
+  }
+  try {
+    const repository = await core.getGitHubAiContext(env, userId);
+    const saved = repository ? await getAiCodingTaskState(env, userId, repository, branch) : null;
+    if (!saved || String(saved.commitSha || "") !== String(activity.currentCommitSha || "")) {
+      return JSON.stringify({ error: "The coding task changed or is not active. Resume it again and review the current commit before applying." });
+    }
+    const plan = summarizeCodingPlan(activity.plan);
+    if (plan && !plan.complete) {
+      return JSON.stringify({ error: "The coding plan is not complete. Resolve pending, in-progress, or blocked steps before applying." });
+    }
+    if (
+      activity.needsReview
+      || !activity.reviewCompleted
+      || String(activity.lastReview?.commitSha || "") !== String(activity.currentCommitSha || "")
+    ) {
+      return JSON.stringify({ error: "Review the exact current task commit before preparing this default-branch action." });
+    }
+    const approval = await requestGitHubAiApproval(env, userId, { type: "apply_branch", branch });
+    recordPreparedApproval(activity, "applied", approval);
+    if (activity?.currentBranch) await saveAiCodingTaskState(env, userId, activity).catch(() => null);
+    return JSON.stringify(approval);
+  } catch (error) {
+    return JSON.stringify({ error: String(error?.message || "Could not prepare default-branch approval.").slice(0, 500) });
+  }
+}
+
+function recordPreparedApproval(activity, field, approval) {
+  if (!activity) return;
+  activity.used = true;
+  activity[field] = approval;
+  markActivity(
+    activity,
+    "finalizing",
+    approval?.confirmationRequired ? "Waiting for your confirmation" : "GitHub action already complete",
+    approval?.confirmationRequired
+      ? String(approval?.title || "Default branch approval")
+      : String(approval?.commitSha || "").slice(0, 12),
+  );
+}
+
+async function attachCumulativeReviewDiff(env, userId, output, activity) {
+  let review;
+  try { review = JSON.parse(String(output || "{}")); } catch { return output; }
+  if (!review || review.error || !activity?.currentBranch) return output;
+  try {
+    const cumulative = await getGitHubAiCumulativeDiff(env, userId, activity.currentBranch);
+    const previous = activity.change || {};
+    const summary = String(previous.summary || "Code changes prepared");
+    cumulative.summary = summary;
+    activity.change = {
+      ...previous,
+      branch: activity.currentBranch,
+      commitSha: activity.currentCommitSha || cumulative.commitSha,
+      changedFiles: cumulative.files.map((file) => file.path).filter(Boolean),
+      summary,
+      diff: cumulative,
+    };
+    markActivity(
+      activity,
+      "finalizing",
+      "Cumulative task diff ready",
+      `${cumulative.totals.files} files · +${cumulative.totals.additions} −${cumulative.totals.deletions}`,
+    );
+    await saveAiCodingTaskState(env, userId, activity).catch(() => null);
+    return JSON.stringify({
+      ...review,
+      cumulativeDiff: {
+        totals: cumulative.totals,
+        changedFiles: activity.change.changedFiles,
+        truncated: cumulative.truncated,
+        fileListLimitReached: cumulative.fileListLimitReached,
+        patchBudgetTruncated: cumulative.patchBudgetTruncated,
+        url: cumulative.url,
+      },
+    });
+  } catch (error) {
+    console.error("cumulative GitHub review diff failed", error?.message || error);
+    return output;
+  }
+}
+
+function applyPlanReviewGate(output, activity) {
+  if (!activity?.plan) return output;
+  const plan = summarizeCodingPlan(activity.plan);
+  if (!plan) return output;
+  const passed = Boolean(plan.complete);
+  if (!passed) {
+    activity.needsReview = true;
+    activity.reviewCompleted = false;
+    if (activity.lastReview && typeof activity.lastReview === "object") {
+      activity.lastReview = { ...activity.lastReview, commitSha: "" };
+    }
+    markActivity(
+      activity,
+      "finalizing",
+      "Plan still has unfinished steps",
+      `${plan.counts.pending + plan.counts.inProgress + plan.counts.blocked} remaining or blocked`,
+    );
+  }
+  try {
+    const parsed = JSON.parse(String(output || "{}"));
+    if (!passed) parsed.commitSha = "";
+    parsed.planGate = {
+      passed,
+      pending: plan.counts.pending,
+      inProgress: plan.counts.inProgress,
+      completed: plan.counts.completed,
+      blocked: plan.counts.blocked,
+    };
+    return JSON.stringify(parsed);
+  } catch {
+    return output;
+  }
+}
+
+function recordResolvedInstructionTargets(activity, output) {
+  if (!activity) return;
+  let result;
+  try { result = JSON.parse(String(output || "{}")); } catch { return; }
+  if (!result || result.error || !Array.isArray(result.targets)) return;
+  if (!(activity.resolvedProjectInstructionTargets instanceof Set)) {
+    activity.resolvedProjectInstructionTargets = new Set();
+  }
+  for (const target of result.targets) {
+    const path = cleanRepoPath(target?.path);
+    if (!path) continue;
+    const chain = Array.isArray(target?.chain) ? target.chain : [];
+    const complete = chain.every((entry) => !entry?.error && !entry?.truncated);
+    if (complete) activity.resolvedProjectInstructionTargets.add(path);
+    else activity.resolvedProjectInstructionTargets.delete(path);
+  }
+}
+
+function githubCommitTargetPaths(item) {
+  let args = {};
+  try { args = JSON.parse(String(item?.arguments || "{}")); } catch { return []; }
+  return (Array.isArray(args.files) ? args.files : [])
+    .map((file) => cleanRepoPath(file?.path))
+    .filter(Boolean);
+}
+
+function unresolvedInstructionTargets(activity, paths) {
+  const resolved = activity?.resolvedProjectInstructionTargets instanceof Set
+    ? activity.resolvedProjectInstructionTargets
+    : new Set();
+  return Array.from(new Set((Array.isArray(paths) ? paths : []).filter(Boolean)))
+    .filter((path) => !resolved.has(path));
+}
+
+function clearResolvedInstructionTargets(activity) {
+  if (!activity) return;
+  activity.resolvedProjectInstructionTargets = new Set();
+}
+
+function toolOutputSucceeded(output) {
+  try {
+    const value = JSON.parse(String(output || "{}"));
+    return value && !value.error;
+  } catch {
+    return false;
+  }
+}
+
+function cleanRepoPath(value) {
+  const path = String(value || "").trim().replace(/^\/+|\/+$/g, "");
+  if (!path || path.length > 500 || path.split("/").some((part) => !part || part === "." || part === "..")) return "";
+  return path;
 }
 
 function isVexaTaskId(value) {
