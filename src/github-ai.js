@@ -23,7 +23,7 @@ export function buildGitHubAiInstructions(context) {
     "Use github_resume_task with the exact taskId returned by github_list_tasks or supplied in the saved task instructions. Resuming a task changes the active coding workspace, so only the root coordinator may do it.",
     "For a non-trivial coding task with multiple files, independent workstreams, or several validation stages, create a concise structured plan with github_update_plan before the first write. Keep steps outcome-focused, update the plan after meaningful milestones, and keep at most one step in_progress. Include a final validation/review outcome in that plan. Simple focused edits do not need a plan.",
     "For non-trivial or multi-file changes when Multi-Agent is available, delegate at least one independent read-only review after the final diff is available and before completing the final validation/review plan step. Ask that reviewer to look specifically for regressions, missing edge cases, security issues, scope creep, stale API assumptions, and weak or missing tests. The root coordinator must independently reconcile that critique with real diff, shell, CI, browser, docs, or observability evidence and remains the only agent allowed to write.",
-    "The coding plan is visible operational state, not hidden reasoning. Mark a step completed only after its concrete work is done, and use blocked only when a real external or technical blocker prevents completion. Do not finish a planned task while pending, in_progress, or blocked steps remain. Final branch review will reject completion while such steps remain.",
+    "The coding plan is visible operational state, not hidden reasoning. Mark a step completed only after its concrete work is done, and use blocked only when a real external or technical blocker prevents completion. Do not finish a planned task while pending, in_progress, or blocked steps remain. A blocked task should stop with a clear blocker report while preserving its task branch and plan for later resumption; it must never be reported as successfully completed.",
     "When the user explicitly asks to merge a pull request, first resume the exact task that owns that PR, validate and review its current commit, then call github_merge_pull_request with that exact taskId. Never merge one task while another task is active.",
     "Every code write is deterministically gated by github_project_instructions for the exact target paths. If a write is rejected for missing project-instruction resolution, resolve those target paths on the current working branch and retry; after each successful write or branch sync, resolve instructions again before another write.",
     "The final github_review_branch result is expanded into the cumulative default-branch-to-task-branch diff, so the user-facing report must describe the whole task rather than only the most recent commit.",
@@ -418,7 +418,8 @@ function applyPlanReviewGate(output, activity) {
   if (!plan) return output;
   const passed = Boolean(plan.complete);
   if (!passed) {
-    activity.needsReview = true;
+    const blocked = plan.counts.blocked > 0;
+    activity.needsReview = !blocked;
     activity.reviewCompleted = false;
     if (activity.lastReview && typeof activity.lastReview === "object") {
       activity.lastReview = { ...activity.lastReview, commitSha: "" };
@@ -426,8 +427,10 @@ function applyPlanReviewGate(output, activity) {
     markActivity(
       activity,
       "finalizing",
-      "Plan still has unfinished steps",
-      `${plan.counts.pending + plan.counts.inProgress + plan.counts.blocked} remaining or blocked`,
+      blocked ? "Coding task blocked" : "Plan still has unfinished steps",
+      blocked
+        ? `${plan.counts.blocked} blocked step(s); task preserved for resume`
+        : `${plan.counts.pending + plan.counts.inProgress} remaining`,
     );
   }
   try {
