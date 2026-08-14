@@ -9,7 +9,7 @@ export const VEXA_LIVE_HTML = `<!doctype html>
   <meta name="theme-color" content="#000000" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>Vexa Live</title>
-  <link rel="stylesheet" href="/mini-app/live/styles.css?v=20260814-1" />
+  <link rel="stylesheet" href="/mini-app/live/styles.css?v=20260814-2" />
 </head>
 <body>
   <main class="live-app">
@@ -41,11 +41,57 @@ export const VEXA_LIVE_HTML = `<!doctype html>
       </div>
       <p class="live-kicker">VIDEO · LIVE TEXT</p>
       <h1 id="liveTitle">See every word.</h1>
-      <p class="live-copy">Choose a video. Watch captions appear as it plays.</p>
+      <p class="live-copy">Pick the video language and the subtitle language, then choose your video.</p>
     </section>
 
     <section id="videoPickerState" class="video-picker-state">
-      <button id="chooseVideoButton" class="video-picker" type="button" data-action="pick-video">
+      <div class="language-setup" aria-label="Caption languages">
+        <label class="language-field" for="sourceLanguage">
+          <span>VIDEO LANGUAGE</span>
+          <span class="language-select-wrap">
+            <select id="sourceLanguage" aria-label="Video language">
+              <option value="">Choose language</option>
+              <option value="en">English</option>
+              <option value="fa">Persian</option>
+              <option value="ru">Russian</option>
+              <option value="de">German</option>
+              <option value="tr">Turkish</option>
+              <option value="ar">Arabic</option>
+              <option value="es">Spanish</option>
+              <option value="hi">Hindi</option>
+              <option value="zh">Chinese</option>
+              <option value="ja">Japanese</option>
+            </select>
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m8 10 4 4 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
+        </label>
+
+        <label class="language-field" for="subtitleLanguage">
+          <span>SUBTITLE LANGUAGE</span>
+          <span class="language-select-wrap">
+            <select id="subtitleLanguage" aria-label="Subtitle language">
+              <option value="">Choose language</option>
+              <option value="en">English</option>
+              <option value="fa">Persian</option>
+              <option value="ru">Russian</option>
+              <option value="de">German</option>
+              <option value="tr">Turkish</option>
+              <option value="ar">Arabic</option>
+              <option value="es">Spanish</option>
+              <option value="hi">Hindi</option>
+              <option value="zh">Chinese</option>
+              <option value="ja">Japanese</option>
+            </select>
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m8 10 4 4 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
+        </label>
+      </div>
+
+      <button id="chooseVideoButton" class="video-picker" type="button" data-action="pick-video" disabled>
         <span class="video-picker-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
             <rect x="3.75" y="5" width="16.5" height="14" rx="4" stroke="currentColor" stroke-width="1.55" />
@@ -54,7 +100,7 @@ export const VEXA_LIVE_HTML = `<!doctype html>
         </span>
         <span class="video-picker-copy">
           <strong>Choose a video</strong>
-          <small>MP4 · MOV · WEBM</small>
+          <small id="languageRoute">SELECT BOTH LANGUAGES FIRST</small>
         </span>
         <span class="video-picker-arrow" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
@@ -63,25 +109,12 @@ export const VEXA_LIVE_HTML = `<!doctype html>
         </span>
       </button>
       <input id="videoFile" type="file" accept="video/*" hidden />
-
-      <div class="live-feature-row" aria-label="Caption settings preview">
-        <div class="live-feature">
-          <span class="feature-icon" aria-hidden="true">A</span>
-          <span><small>LANGUAGE</small><strong>Auto detect</strong></span>
-        </div>
-        <div class="live-feature">
-          <span class="feature-icon caption-feature-icon" aria-hidden="true">
-            <i></i><i></i>
-          </span>
-          <span><small>MODE</small><strong>Live captions</strong></span>
-        </div>
-      </div>
     </section>
 
     <section id="videoReadyState" class="video-ready-state" aria-hidden="true">
       <div class="video-ready-head">
         <div>
-          <span>VIDEO READY</span>
+          <span id="captionModeLabel">LIVE CAPTIONS</span>
           <strong id="videoName">Video</strong>
         </div>
         <button type="button" data-action="change-video">Change</button>
@@ -95,25 +128,20 @@ export const VEXA_LIVE_HTML = `<!doctype html>
           webkit-playsinline
           preload="metadata"
         ></video>
-        <div class="caption-preview" aria-hidden="true">
-          <span>Captions will appear here</span>
+        <div id="captionPreview" class="caption-preview" aria-live="polite">
+          <span id="liveCaptionText"></span>
         </div>
       </div>
 
       <div class="video-meta-row">
         <span id="videoMeta">Local preview</span>
-        <span class="ready-chip"><i></i> Ready</span>
+        <span id="captionStatus" class="ready-chip"><i></i><b>Play to start</b></span>
       </div>
-
-      <button id="startCaptionsButton" class="start-captions" type="button" disabled>
-        <span>Start live captions</span>
-        <small>Scribe connection next</small>
-      </button>
     </section>
 
     <footer class="live-footer">
       <span class="footer-line"></span>
-      <small>Designed for Scribe v2 Realtime</small>
+      <small>Scribe v2 Realtime</small>
       <span class="footer-line"></span>
     </footer>
   </main>
@@ -121,6 +149,6 @@ export const VEXA_LIVE_HTML = `<!doctype html>
   <div id="liveToast" class="live-toast" role="status" aria-live="polite"></div>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/live/app.js?v=20260814-1"></script>
+  <script type="module" src="/mini-app/live/app.js?v=20260814-2"></script>
 </body>
 </html>`;
