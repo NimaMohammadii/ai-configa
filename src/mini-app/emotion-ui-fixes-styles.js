@@ -51,8 +51,8 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 .tts-generate{height:38px!important;min-height:38px!important}
 body.keyboard-open:not(.image-mode) #flow.active .tts-bottom,body.keyboard-closing:not(.image-mode) #flow.active .tts-bottom{bottom:48px!important}
 
-/* History uses its own full black surface; the backdrop stays only as the close target. */
-.history-sheet{background:#000!important}
+/* History only paints the panel itself; the page above stays visible. */
+.history-sheet{background:transparent!important}
 .history-backdrop{background:transparent!important}
-.history-card{padding:0 16px!important;background:transparent!important;box-shadow:none!important}
+.history-card{padding:0 16px!important;background:#000!important;box-shadow:none!important}
 `;
