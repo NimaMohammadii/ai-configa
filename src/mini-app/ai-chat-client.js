@@ -7,6 +7,8 @@ export const AI_CHAT_JS = `
   var lockTimer=null;
   var aiChatOpen=true;
   var aiChatBusy=false;
+  var aiChatActiveRequest=null;
+  var aiChatSendIconMarkup='';
   var aiChatSendKeepsKeyboard=false;
   var aiChatMessages=[];
   var aiChatAudioUrls=[];
@@ -472,7 +474,7 @@ export const AI_CHAT_JS = `
   function syncAiChatKeyboardOffset(){setAiChatKeyboardOffset(stableViewportHeight-Number(tg&&tg.viewportHeight||stableViewportHeight))}
   document.documentElement.style.setProperty('--ai-chat-page-height',Math.round(stableViewportHeight)+'px');
   if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',syncAiChatKeyboardOffset)}catch(e){}}
-  async function api(path,body){var response;try{response=await fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){throw new Error('Connection interrupted · Try again')}var data=await response.json().catch(function(){return{error:'Invalid response'}});if(!response.ok){var requestError=new Error(data.error||'Request failed');requestError.status=response.status;throw requestError}return data}
+  async function api(path,body,signal){var response;try{response=await fetch(path,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',signal:signal,body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){if(signal&&signal.aborted)throw error;throw new Error('Connection interrupted · Try again')}var data=await response.json().catch(function(){return{error:'Invalid response'}});if(!response.ok){var requestError=new Error(data.error||'Request failed');requestError.status=response.status;throw requestError}return data}
   function aiOrbSpherePoint(index,count){var golden=Math.PI*(3-Math.sqrt(5));var y=1-2*(index+.5)/count;var radius=Math.sqrt(1-y*y);var angle=index*golden;return[radius*Math.cos(angle),y,radius*Math.sin(angle)]}
   function aiOrbProject(yaw,pitch,cx,cy){var sy=Math.sin(yaw),cyaw=Math.cos(yaw),sp=Math.sin(pitch),cp=Math.cos(pitch);return function(x,y,z){var rx=x*cyaw+z*sy;var rz=-x*sy+z*cyaw;var ry=y*cp-rz*sp;var depth=y*sp+rz*cp;return[cx+rx,cy-ry,depth]}}
   function aiOrbPaint(ctx,dots){
@@ -1553,6 +1555,39 @@ export const AI_CHAT_JS = `
 
   }
   function hideAiThinking(){setAiChatCreatureState('idle');stopAiThinkingOrb();var row=q('aiThinkingRow');if(row)row.remove();var page=q('aiChatPage');if(page)page.classList.remove('thinking')}
+  function setAiChatRequestUi(active){
+    var send=q('aiChatSend');
+    var attach=q('aiChatAttach');
+    if(send){
+      if(!aiChatSendIconMarkup)aiChatSendIconMarkup=send.innerHTML;
+      send.disabled=false;
+      send.classList.toggle('is-stop',!!active);
+      send.setAttribute('aria-label',active?'Stop generating':'Send message');
+      send.innerHTML=active
+        ?'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2.2" fill="currentColor"/></svg>'
+        :aiChatSendIconMarkup;
+    }
+    if(attach)attach.disabled=!!active;
+  }
+  function releaseAiChatRequest(request){
+    if(aiChatActiveRequest!==request)return;
+    aiChatActiveRequest=null;
+    aiChatBusy=false;
+    setAiChatRequestUi(false);
+  }
+  function stopAiChatGeneration(){
+    var request=aiChatActiveRequest;
+    if(!aiChatBusy||!request)return;
+    request.stopped=true;
+    aiChatSendKeepsKeyboard=false;
+    request.controller.abort('user_stop');
+    hideAiThinking();
+    hideAiImageGenerating();
+    releaseAiChatRequest(request);
+    var input=q('aiChatInput');
+    if(input)input.focus();
+    if(tg&&tg.HapticFeedback){try{tg.HapticFeedback.impactOccurred('light')}catch(error){}}
+  }
   async function sendAiChat(){
     if(aiChatBusy)return;
 
@@ -1592,12 +1627,10 @@ export const AI_CHAT_JS = `
       resizeAiChatInput();
     }
 
+    var request={controller:new AbortController(),stopped:false};
+    aiChatActiveRequest=request;
     aiChatBusy=true;
-    var send=q('aiChatSend');
-    var attach=q('aiChatAttach');
-
-    if(send)send.disabled=true;
-    if(attach)attach.disabled=true;
+    setAiChatRequestUi(true);
     showAiThinking();
 
     try{
@@ -1615,8 +1648,10 @@ export const AI_CHAT_JS = `
 
       var data=await streamAiChat(
         {messages:requestMessages},
-        setAiThinkingState
+        setAiThinkingState,
+        request.controller.signal
       );
+      if(request.stopped||request.controller.signal.aborted||aiChatActiveRequest!==request)return;
       updateAiChatHeader(data);
 
       if(data.type==='image_request'){
@@ -1626,7 +1661,8 @@ export const AI_CHAT_JS = `
         var imageData=await api('/mini-app/api/image',{
           prompt:String(data.prompt||message),
           size:String(data.size||'1024x1024')
-        });
+        },request.controller.signal);
+        if(request.stopped||request.controller.signal.aborted||aiChatActiveRequest!==request)return;
 
         hideAiImageGenerating();
         imageData.prompt=String(data.prompt||message);
@@ -1638,7 +1674,8 @@ export const AI_CHAT_JS = `
         var audioData=await api('/mini-app/api/tts',{
           text:String(data.text||''),
           voice:String(data.voice||'Nora')
-        });
+        },request.controller.signal);
+        if(request.stopped||request.controller.signal.aborted||aiChatActiveRequest!==request)return;
 
         hideAiThinking();
         audioData.text=String(data.text||'');
@@ -1646,6 +1683,7 @@ export const AI_CHAT_JS = `
         appendAiChatAudio(audioData);
       }else{
         hideAiThinking();
+        releaseAiChatRequest(request);
         appendAiCodingResult(data.codingActivity);
         await appendAiChatMessage(
           'assistant',
@@ -1654,6 +1692,7 @@ export const AI_CHAT_JS = `
         );
       }
     }catch(error){
+      if(request.stopped||request.controller.signal.aborted)return;
       hideAiThinking();
       hideAiImageGenerating();
 
@@ -1668,13 +1707,11 @@ export const AI_CHAT_JS = `
         toast(errorMessage);
       }
     }finally{
-      aiChatBusy=false;
-      if(send)send.disabled=false;
-      if(attach)attach.disabled=false;
+      releaseAiChatRequest(request);
     }
   }
 
-  async function streamAiChat(body,onStatus){var response;try{response=await fetch('/mini-app/api/chat',{method:'POST',headers:{'content-type':'application/json','accept':'application/x-ndjson'},cache:'no-store',body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){throw new Error('Connection interrupted · Try again')}if(!response.ok){var failed=await response.json().catch(function(){return{error:'Request failed'}});throw new Error(failed.error||'Request failed')}if(!response.body)throw new Error('Invalid response');var reader=response.body.getReader();var decoder=new TextDecoder();var buffer='';var result=null;var newline=String.fromCharCode(10);function consume(line){var clean=String(line||'').trim();if(!clean)return;var event;try{event=JSON.parse(clean)}catch(error){return}if(event.type==='status'||event.type==='progress'){if(typeof onStatus==='function')onStatus(event.type==='progress'?event.data:event.status);return}if(event.type==='error')throw new Error(event.error||'Could not reach AI');if(event.type==='result')result=event.data}while(true){var chunk=await reader.read();buffer+=decoder.decode(chunk.value||new Uint8Array(),{stream:!chunk.done});var index=buffer.indexOf(newline);while(index>=0){consume(buffer.slice(0,index));buffer=buffer.slice(index+1);index=buffer.indexOf(newline)}if(chunk.done)break}if(buffer.trim())consume(buffer);if(!result)throw new Error('Invalid response');return result}
+  async function streamAiChat(body,onStatus,signal){var response;try{response=await fetch('/mini-app/api/chat',{method:'POST',headers:{'content-type':'application/json','accept':'application/x-ndjson'},cache:'no-store',signal:signal,body:JSON.stringify(Object.assign({initData:initData},body||{}))})}catch(error){if(signal&&signal.aborted)throw error;throw new Error('Connection interrupted · Try again')}if(!response.ok){var failed=await response.json().catch(function(){return{error:'Request failed'}});throw new Error(failed.error||'Request failed')}if(!response.body)throw new Error('Invalid response');var reader=response.body.getReader();var decoder=new TextDecoder();var buffer='';var result=null;var newline=String.fromCharCode(10);function consume(line){var clean=String(line||'').trim();if(!clean)return;var event;try{event=JSON.parse(clean)}catch(error){return}if(event.type==='status'||event.type==='progress'){if(typeof onStatus==='function')onStatus(event.type==='progress'?event.data:event.status);return}if(event.type==='error')throw new Error(event.error||'Could not reach AI');if(event.type==='result')result=event.data}while(true){var chunk=await reader.read();buffer+=decoder.decode(chunk.value||new Uint8Array(),{stream:!chunk.done});var index=buffer.indexOf(newline);while(index>=0){consume(buffer.slice(0,index));buffer=buffer.slice(index+1);index=buffer.indexOf(newline)}if(chunk.done)break}if(buffer.trim())consume(buffer);if(!result)throw new Error('Invalid response');return result}
   function closeAiChat(){window.location.replace('/mini-app')}
   function closeAiChatKeyboard(){var input=q('aiChatInput');if(input&&document.activeElement===input)input.blur();if(tg&&typeof tg.hideKeyboard==='function'){try{tg.hideKeyboard()}catch(e){}}}
   function showAiChatLocked(data){var page=q('aiChatPage');if(!page)return;page.innerHTML='<main class="lock-screen"><section class="lock-card" aria-label="AI Chat update"><p class="lock-title"><span>Updating</span><span class="lock-dots" aria-hidden="true"><i></i><i></i><i></i></span></p><div class="lock-bar" aria-hidden="true"><span id="aiChatLockFill"></span></div></section></main>';var fill=q('aiChatLockFill');var serverNow=Number(data.serverNow)||Math.floor(Date.now()/1000);var lockedUntil=Number(data.lockedUntil)||serverNow+60;var lockedFrom=Number(data.lockedFrom)||Math.max(serverNow,lockedUntil-60);var total=Math.max(1,lockedUntil-lockedFrom);var offset=serverNow-Date.now()/1000;function tick(){var now=Date.now()/1000+offset;var progress=Math.min(100,Math.max(0,(now-lockedFrom)/total*100));if(fill)fill.style.width=progress+'%';if(now>=lockedUntil){clearInterval(lockTimer);location.reload()}}tick();lockTimer=setInterval(tick,500)}
@@ -1701,7 +1738,7 @@ export const AI_CHAT_JS = `
   }
   if(tg&&tg.BackButton){try{tg.BackButton.show();tg.BackButton.onClick(closeAiChat)}catch(e){}}
   requestAnimationFrame(function(){document.documentElement.classList.add('ai-chat-ready')})
-  var composer=q('aiChatComposer');if(composer)composer.addEventListener('submit',function(event){event.preventDefault();sendAiChat()});
+  var composer=q('aiChatComposer');if(composer)composer.addEventListener('submit',function(event){event.preventDefault();if(aiChatBusy)stopAiChatGeneration();else sendAiChat()});
   var send=q('aiChatSend');if(send)send.addEventListener('pointerdown',function(){var input=q('aiChatInput');aiChatSendKeepsKeyboard=!!(input&&document.activeElement===input)});
   var page=q('aiChatPage');if(page)page.addEventListener('pointerdown',function(event){var target=event.target;if(target&&target.closest&&target.closest('#aiChatComposer'))return;closeAiChatKeyboard()});
   var input=q('aiChatInput');if(input)input.addEventListener('input',resizeAiChatInput)
@@ -1822,6 +1859,10 @@ export const AI_CHAT_JS = `
     setAiChatVoiceMenu(false);
   });
   window.addEventListener('pagehide',function(){
+    if(aiChatActiveRequest){
+      aiChatActiveRequest.stopped=true;
+      aiChatActiveRequest.controller.abort('pagehide');
+    }
     stopAiChatVoicePreview();
 
     aiChatAudioUrls.forEach(function(url){
