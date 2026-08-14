@@ -21,6 +21,7 @@ const GPT_CHAT_TIMEOUT_MS = 90000;
 const GPT_IMAGE_TIMEOUT_MS = 150000;
 const GPT_MODEL = "gpt-5.6-terra";
 const AI_CHAT_CONTEXT_WINDOW = 1050000;
+const AI_CHAT_COMPACTION_THRESHOLD = 700000;
 const MAX_ENHANCE_CHARS = 5000;
 const MAX_AGENT_TOOL_ROUNDS = 14;
 
@@ -159,7 +160,7 @@ export async function editImage(env, prompt, imageBuffer, filename = "telegram-i
 
 export async function editImages(env, prompt, images, options = {}) {
   if (!env.GPT_API) {
-    throw new Error("GPT image service is not configured.");
+    throw new Error("GPT service is not configured.");
   }
 
   const cleanPrompt = String(prompt || "").trim();
@@ -343,6 +344,18 @@ function buildAiChatInstructions(preferredVoice, githubContext, memories, model,
   ].filter(Boolean).join(" ");
 }
 
+async function buildAiChatSafetyIdentifier(userId) {
+  const value = String(userId || "").trim();
+  if (!value) return "";
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode("vexa-ai-chat:" + value),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function makeAiChatAbortError() {
   const error = new Error("AI request cancelled.");
   error.name = "AbortError";
@@ -404,6 +417,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
 
   const model = normalizeAiChatModel(options.model);
   const reasoningEffort = normalizeAiChatReasoningEffort(options.reasoningEffort);
+  const safetyIdentifier = await buildAiChatSafetyIdentifier(options.userId);
   const githubContext = await getGitHubAiContext(env, options.userId);
   const githubTools = getGitHubAiTools(githubContext);
   const mcpTools = getAiMcpTools(env);
@@ -618,6 +632,15 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
             ...(reviewRequested ? { mode: "pro" } : {}),
           },
           ...(multiAgentEnabled ? { multi_agent: { enabled: true } } : {}),
+          ...(safetyIdentifier ? {
+            safety_identifier: safetyIdentifier,
+            prompt_cache_key: safetyIdentifier,
+          } : {}),
+          prompt_cache_options: { mode: "implicit", ttl: "30m" },
+          context_management: [{
+            type: "compaction",
+            compact_threshold: AI_CHAT_COMPACTION_THRESHOLD,
+          }],
           max_output_tokens: githubContext ? 16000 : 8000,
           store: false,
           stream: true,
@@ -682,7 +705,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           const reviewedCurrentCommit = Boolean(
             codingActivity.lastReview
             && currentSha
-            && String(codingActivity.lastReview.commitSha || currentSha) === currentSha,
+            && String(codingActivity.lastReview.commitSha || "") === currentSha,
           );
           if (!reviewRequested || !reviewedCurrentCommit || reviewedCommitSha !== currentSha) {
             responseInput.push(...prepareOpenAiToolReplayItems(output));
@@ -750,7 +773,8 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           responseInput.push(computerOutput);
           if (codingActivity && Array.isArray(codingActivity.events)) {
             codingActivity.used = true;
-            codingActivity.events.push({ state: "analyzing_code", label: "UI verified in browser", detail: `${Array.isArray(call.actions) ? call.actions.length : 0} actions`, at: Date.now() });
+            const actionCount = Array.isArray(call.actions) ? call.actions.length : call.action ? 1 : 0;
+            codingActivity.events.push({ state: "analyzing_code", label: "UI verified in browser", detail: `${actionCount} actions`, at: Date.now() });
           }
         } catch (error) {
           throw new Error("Computer Use failed: " + String(error?.message || "browser action failed").slice(0, 500));
