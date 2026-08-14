@@ -120,6 +120,7 @@ export async function generateImage(env, prompt, options = {}) {
         output_format: "jpeg",
         output_compression: 90,
       }),
+      signal: options.signal,
     },
     GPT_IMAGE_TIMEOUT_MS,
     "AI image generation took too long. Please try again with a simpler prompt.",
@@ -189,6 +190,7 @@ export async function editImages(env, prompt, images, options = {}) {
         "Authorization": "Bearer " + env.GPT_API,
       },
       body: form,
+      signal: options.signal,
     },
     GPT_IMAGE_TIMEOUT_MS,
     "AI image editing took too long. Please try again with a simpler instruction.",
@@ -835,24 +837,48 @@ function preservesOriginalSpeech(original, enhanced) {
   return normalize(original) === normalize(speechOnly);
 }
 
+function requestAbortError(message = "AI request cancelled.") {
+  const error = new Error(message);
+  error.name = "AbortError";
+  return error;
+}
+
 async function fetchWithTimeout(
   url,
   options,
   timeoutMs = GPT_TIMEOUT_MS,
   timeoutMessage = "AI took too long. Please try a shorter text.",
 ) {
+  const externalSignal = options?.signal && typeof options.signal.addEventListener === "function"
+    ? options.signal
+    : null;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort("gpt_timeout"), timeoutMs);
+  let externalAborted = false;
+  let timedOut = false;
+  const abortFromExternal = () => {
+    externalAborted = true;
+    if (!controller.signal.aborted) controller.abort();
+  };
+  if (externalSignal) {
+    if (externalSignal.aborted) abortFromExternal();
+    else externalSignal.addEventListener("abort", abortFromExternal, { once: true });
+  }
+  const timer = setTimeout(() => {
+    timedOut = true;
+    if (!controller.signal.aborted) controller.abort();
+  }, timeoutMs);
 
   try {
+    if (externalAborted || externalSignal?.aborted) throw requestAbortError();
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
-    if (error?.name === "AbortError" || String(error).includes("gpt_timeout")) {
-      throw new Error(timeoutMessage);
-    }
+    if (externalAborted || externalSignal?.aborted) throw requestAbortError();
+    if (timedOut) throw new Error(timeoutMessage);
+    if (error?.name === "AbortError") throw error;
     throw error;
   } finally {
     clearTimeout(timer);
+    if (externalSignal) externalSignal.removeEventListener("abort", abortFromExternal);
   }
 }
 
