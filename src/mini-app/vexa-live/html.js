@@ -9,7 +9,201 @@ export const VEXA_LIVE_HTML = `<!doctype html>
   <meta name="theme-color" content="#000000" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>Vexa Live</title>
-  <link rel="stylesheet" href="/mini-app/live/styles.css?v=20260814-3" />
+  <link rel="stylesheet" href="/mini-app/live/styles.css?v=20260814-4" />
+  <style>
+    .caption-mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin: 0 0 8px;
+      padding: 4px;
+      border-radius: 17px;
+      background: rgba(255, 255, 255, 0.035);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.065);
+    }
+
+    .caption-mode-switch button {
+      min-height: 48px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      border-radius: 13px;
+      color: rgba(255, 255, 255, 0.42);
+      background: transparent;
+      transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .caption-mode-switch button.active {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.085);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 22px rgba(0, 0, 0, 0.18);
+    }
+
+    .caption-mode-switch button:active {
+      transform: scale(0.97);
+    }
+
+    .caption-mode-switch strong {
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: -0.025em;
+    }
+
+    .caption-mode-switch small {
+      font-size: 7.5px;
+      font-weight: 680;
+      letter-spacing: 0.02em;
+      opacity: 0.58;
+    }
+
+    .live-source-switch {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin: 0 0 8px;
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+
+    .live-source-switch.show {
+      display: grid;
+      opacity: 1;
+      transform: translateY(0);
+      animation: panelIn 0.28s ease both;
+    }
+
+    .live-source-switch button {
+      height: 36px;
+      border-radius: 12px;
+      color: rgba(255, 255, 255, 0.38);
+      background: rgba(255, 255, 255, 0.025);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+      font-size: 10px;
+      font-weight: 720;
+      transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+    }
+
+    .live-source-switch button.active {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.075);
+    }
+
+    .live-source-switch button:active {
+      transform: scale(0.97);
+    }
+
+    .is-hidden {
+      display: none !important;
+    }
+
+    .youtube-input-state {
+      display: none;
+      margin-top: 0;
+    }
+
+    .youtube-input-state.show {
+      display: block;
+      animation: panelIn 0.32s ease both;
+    }
+
+    .youtube-link-card {
+      min-height: 66px;
+      display: grid;
+      grid-template-columns: 38px 1fr auto;
+      align-items: center;
+      gap: 9px;
+      padding: 10px;
+      border-radius: 18px;
+      background: rgba(13, 13, 13, 0.66);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.09),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .youtube-link-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 13px;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.065);
+    }
+
+    .youtube-link-icon svg {
+      width: 21px;
+      height: 21px;
+    }
+
+    .youtube-link-card input {
+      min-width: 0;
+      height: 38px;
+      padding: 0 3px;
+      border: 0;
+      outline: 0;
+      color: #ffffff;
+      background: transparent;
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 620;
+      letter-spacing: -0.018em;
+    }
+
+    .youtube-link-card input::placeholder {
+      color: rgba(255, 255, 255, 0.28);
+    }
+
+    .youtube-link-card button {
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 11px;
+      color: #000000;
+      background: #ffffff;
+      font-size: 10px;
+      font-weight: 780;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+
+    .youtube-link-card button:active:not(:disabled) {
+      transform: scale(0.94);
+    }
+
+    .youtube-link-card button:disabled {
+      opacity: 0.25;
+    }
+
+    .youtube-note {
+      display: block;
+      margin: 8px 4px 0;
+      color: rgba(255, 255, 255, 0.28);
+      font-size: 8px;
+      font-weight: 560;
+      line-height: 1.45;
+    }
+
+    .youtube-ready-state {
+      display: none;
+      animation: panelIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .youtube-ready-state.show {
+      display: block;
+    }
+
+    .youtube-stage iframe {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #050505;
+    }
+  </style>
 </head>
 <body>
   <main class="live-app">
@@ -41,10 +235,26 @@ export const VEXA_LIVE_HTML = `<!doctype html>
       </div>
       <p class="live-kicker">VIDEO · SMART TEXT</p>
       <h1 id="liveTitle">See every word.</h1>
-      <p class="live-copy">Pick the video language and the subtitle language, then choose your video.</p>
+      <p class="live-copy">Choose accurate captions first, or switch to Live for subtitles while the video plays.</p>
     </section>
 
     <section id="videoPickerState" class="video-picker-state">
+      <div class="caption-mode-switch" aria-label="Caption mode">
+        <button class="active" type="button" data-caption-mode="standard" aria-pressed="true">
+          <strong>Standard</strong>
+          <small>Ready first</small>
+        </button>
+        <button type="button" data-caption-mode="live" aria-pressed="false">
+          <strong>Live</strong>
+          <small>While playing</small>
+        </button>
+      </div>
+
+      <div id="liveSourceSwitch" class="live-source-switch" aria-label="Live video source">
+        <button class="active" type="button" data-live-source="file" aria-pressed="true">Video file</button>
+        <button type="button" data-live-source="youtube" aria-pressed="false">YouTube</button>
+      </div>
+
       <div class="language-setup" aria-label="Caption languages">
         <label class="language-field" for="sourceLanguage">
           <span>VIDEO LANGUAGE</span>
@@ -109,6 +319,20 @@ export const VEXA_LIVE_HTML = `<!doctype html>
         </span>
       </button>
       <input id="videoFile" type="file" accept="video/*" hidden />
+
+      <div id="youtubeInputState" class="youtube-input-state">
+        <div class="youtube-link-card">
+          <span class="youtube-link-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M8.2 6.7h7.6c2.6 0 3.5.9 3.5 3.4v3.8c0 2.5-.9 3.4-3.5 3.4H8.2c-2.6 0-3.5-.9-3.5-3.4v-3.8c0-2.5.9-3.4 3.5-3.4Z" stroke="currentColor" stroke-width="1.5" />
+              <path d="m10.6 9.7 4 2.3-4 2.3V9.7Z" fill="currentColor" />
+            </svg>
+          </span>
+          <input id="youtubeUrl" type="url" inputmode="url" autocomplete="off" placeholder="Paste YouTube link" aria-label="YouTube link" />
+          <button id="openYoutubeButton" type="button" data-action="open-youtube" disabled>Open</button>
+        </div>
+        <small class="youtube-note">Live YouTube uses captions available inside the official YouTube player. If a target-language caption is not available, upload the video file for Vexa captions.</small>
+      </div>
     </section>
 
     <section id="videoReadyState" class="video-ready-state" aria-hidden="true">
@@ -138,9 +362,34 @@ export const VEXA_LIVE_HTML = `<!doctype html>
       </div>
     </section>
 
+    <section id="youtubeReadyState" class="youtube-ready-state" aria-hidden="true">
+      <div class="video-ready-head">
+        <div>
+          <span>YOUTUBE · LIVE</span>
+          <strong id="youtubeVideoName">YouTube</strong>
+        </div>
+        <button type="button" data-action="change-youtube">Change</button>
+      </div>
+
+      <div class="video-stage youtube-stage">
+        <iframe
+          id="youtubePlayer"
+          title="YouTube video player"
+          src="about:blank"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowfullscreen
+        ></iframe>
+      </div>
+
+      <div class="video-meta-row">
+        <span>Official YouTube player</span>
+        <span class="ready-chip"><i></i><b>Captions if available</b></span>
+      </div>
+    </section>
+
     <footer class="live-footer">
       <span class="footer-line"></span>
-      <small>Scribe v2</small>
+      <small id="engineLabel">Scribe v2</small>
       <span class="footer-line"></span>
     </footer>
   </main>
@@ -148,6 +397,6 @@ export const VEXA_LIVE_HTML = `<!doctype html>
   <div id="liveToast" class="live-toast" role="status" aria-live="polite"></div>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/live/app.js?v=20260814-3"></script>
+  <script type="module" src="/mini-app/live/app.js?v=20260814-4"></script>
 </body>
 </html>`;
