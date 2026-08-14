@@ -1,15 +1,29 @@
 import * as core from "./openai-agent-tools-core.js";
+import { buildAiCodingTaskInstructions, getAiCodingTaskState } from "./ai-coding-task.js";
 
 export {
   buildOpenAiAgentInstructions,
   executeOpenAiApplyPatchCalls,
   isOpenAiApplyPatchCall,
-  prepareOpenAiAgentTools,
   prepareOpenAiToolReplayItems,
   refreshOpenAiCodingWorkspace,
 } from "./openai-agent-tools-core.js";
 
 const BILLING_ONLY_CONTAINER_PREFIX = "billing-shell:";
+
+export async function prepareOpenAiAgentTools(env, userId, options = {}) {
+  const state = await core.prepareOpenAiAgentTools(env, userId, options);
+  const pinnedTaskId = cleanVexaTaskId(env?.AI_CODING_TASK_ID);
+  if (!pinnedTaskId || !options.githubContext) return state;
+  const exactTask = await getAiCodingTaskState(env, userId, options.githubContext, pinnedTaskId).catch(() => null);
+  if (!exactTask) return state;
+  state.runtimeInstructions = [
+    String(state.runtimeInstructions || ""),
+    `INTERNAL DURABLE TASK PIN: this execution phase belongs specifically to coding task ${pinnedTaskId}. This exact task pin overrides any generic active-task hint from another concurrent workflow. Call github_resume_task with exactly ${pinnedTaskId} before repository work and never switch to another task unless the user explicitly asks to do so.`,
+    buildAiCodingTaskInstructions(exactTask),
+  ].filter(Boolean).join(" ");
+  return state;
+}
 
 export function inspectOpenAiShellUsage(output) {
   const items = Array.isArray(output) ? output : [];
@@ -103,4 +117,11 @@ function isDeterministicValidationCommand(value) {
     /(?:^|[;&|]\s*)(?:npx\s+)?wrangler\s+(?:deploy\s+--dry-run|types)(?:\s|$)/,
   ];
   return patterns.some((pattern) => pattern.test(command));
+}
+
+function cleanVexaTaskId(value) {
+  const id = String(value || "").trim();
+  return id.startsWith("vexa/ai-") && id.length <= 255 && !id.includes("..") && !/[~^:?*[\\\s]/.test(id)
+    ? id
+    : "";
 }
