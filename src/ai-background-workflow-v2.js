@@ -9,6 +9,8 @@ const MAX_BACKGROUND_PHASES = 12;
 const MAX_TASK_ERROR_CHARS = 1000;
 const MAX_TASK_RESULT_CHARS = 500000;
 const PHASE_TIMEOUT = "10 minutes";
+const PINNED_PHASE_RETRY_LIMIT = 2;
+const PINNED_PHASE_RETRY_DELAY = "2 seconds";
 
 export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
   async run(event, step) {
@@ -33,28 +35,51 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
           return taskFingerprint(await readCodingTask(this.env, userId, currentCodingTaskId));
         });
 
-        const phaseResult = await step.do(
-          `run AI phase ${phase}`,
-          { retries: { limit: 0, delay: "1 second" }, timeout: PHASE_TIMEOUT },
-          async () => {
-            try {
-              const result = await runOneAiPhase(
-                this.env,
-                payload.user || { id: userId },
-                phaseMessages,
-                taskId,
-                phase,
-                currentCodingTaskId,
-              );
-              return { ok: true, result };
-            } catch (error) {
-              return {
-                ok: false,
-                error: String(error?.message || "Background AI execution failed.").slice(0, MAX_TASK_ERROR_CHARS),
-              };
-            }
-          },
-        );
+        let phaseResult;
+        try {
+          phaseResult = await step.do(
+            `run AI phase ${phase}`,
+            {
+              retries: {
+                limit: currentCodingTaskId ? PINNED_PHASE_RETRY_LIMIT : 0,
+                delay: PINNED_PHASE_RETRY_DELAY,
+                backoff: "exponential",
+              },
+              timeout: PHASE_TIMEOUT,
+            },
+            async () => {
+              try {
+                const result = await runOneAiPhase(
+                  this.env,
+                  payload.user || { id: userId },
+                  phaseMessages,
+                  taskId,
+                  phase,
+                  currentCodingTaskId,
+                );
+                return { ok: true, result };
+              } catch (error) {
+                const message = String(error?.message || "Background AI execution failed.")
+                  .slice(0, MAX_TASK_ERROR_CHARS);
+                if (currentCodingTaskId && isTransientPhaseError(message)) {
+                  const afterFailure = taskFingerprint(
+                    await readCodingTask(this.env, userId, currentCodingTaskId),
+                  );
+                  if (!hasTaskProgress(before, afterFailure)) {
+                    throw new Error(message);
+                  }
+                }
+                return { ok: false, error: message };
+              }
+            },
+          );
+        } catch (error) {
+          phaseResult = {
+            ok: false,
+            error: String(error?.message || "Background AI execution failed after retrying.")
+              .slice(0, MAX_TASK_ERROR_CHARS),
+          };
+        }
 
         if (!phaseResult?.ok) {
           const recoverable = Boolean(currentCodingTaskId) && isRecoverablePhaseError(phaseResult?.error);
@@ -225,12 +250,32 @@ function cleanWorkflowTaskId(value) {
   return /^ai-[a-f0-9-]{36}$/i.test(id) ? id : "";
 }
 
+function isTransientPhaseError(value) {
+  const message = String(value || "").toLowerCase();
+  return message.includes("temporarily unavailable")
+    || message.includes("temporarily busy")
+    || message.includes("connection interrupted")
+    || message.includes("rate limit")
+    || message.includes("too long")
+    || message.includes("timed out")
+    || message.includes("timeout")
+    || message.includes("bad gateway")
+    || message.includes("service unavailable")
+    || /\b(?:429|502|503|504)\b/.test(message);
+}
+
 function isRecoverablePhaseError(value) {
   const message = String(value || "").toLowerCase();
   return message.includes("too long")
     || message.includes("too many tool steps")
     || message.includes("request cancelled")
-    || message.includes("temporarily unavailable");
+    || message.includes("temporarily unavailable")
+    || message.includes("temporarily busy")
+    || message.includes("connection interrupted")
+    || message.includes("rate limit")
+    || message.includes("timed out")
+    || message.includes("timeout")
+    || /\b(?:429|502|503|504)\b/.test(message);
 }
 
 async function parseAiChatResponse(response) {
