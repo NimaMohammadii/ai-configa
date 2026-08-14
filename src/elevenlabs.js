@@ -27,7 +27,7 @@ const ELEVEN_ERROR_MESSAGES = {
   },
   ru: {
     missingApi: "Сервис озвучивания еще не настроен. Попробуйте позже.",
-    emptyText: "Текст пустой.",
+    emptyText: "Текст пуст.",
     textTooLong: "Текст слишком длинный. Отправьте более короткий текст.",
     timeout: "Создание голоса заняло слишком много времени. Отправьте более короткий текст или попробуйте снова.",
     quota: "У сервиса озвучивания временно нет доступной емкости. Попробуйте немного позже.",
@@ -100,7 +100,7 @@ const ELEVEN_ERROR_MESSAGES = {
     auth: "Error de conexión con el servicio de voz. Inténtalo de nuevo en breve.",
     rateLimit: "Hay demasiadas solicitudes ahora. Inténtalo de nuevo en unos momentos.",
     unavailable: "El servicio de voz no está disponible temporalmente. Inténtalo de nuevo en breve.",
-    generic: "No se pudo convertir el texto a voz. Envía un texto más corto o inténtalo de nuevo.",
+    generic: "No se pudo convertir el texto en voz. Envía un texto más corto o inténtalo de nuevo.",
   },
   hi: {
     missingApi: "वॉइस सेवा अभी कॉन्फ़िगर नहीं है। कृपया बाद में फिर कोशिश करें।",
@@ -115,7 +115,7 @@ const ELEVEN_ERROR_MESSAGES = {
   },
 };
 
-export async function textToDialogue(env, inputs, lang = "en") {
+export async function textToDialogue(env, inputs, lang = "en", options = {}) {
   const apiKey = await getSelectedElevenApiKey(env);
   if (!apiKey) {
     throw new Error(elevenError(lang, "missingApi"));
@@ -150,6 +150,7 @@ export async function textToDialogue(env, inputs, lang = "en") {
       inputs: cleanInputs,
       model_id: "eleven_v3",
     }),
+    signal: options.signal,
   }, lang);
 
   if (!response.ok) {
@@ -160,7 +161,7 @@ export async function textToDialogue(env, inputs, lang = "en") {
   return await response.arrayBuffer();
 }
 
-export async function textToSpeech(env, text, voiceId, lang = "en") {
+export async function textToSpeech(env, text, voiceId, lang = "en", options = {}) {
   const apiKey = await getSelectedElevenApiKey(env);
   if (!apiKey) {
     throw new Error(elevenError(lang, "missingApi"));
@@ -186,6 +187,7 @@ export async function textToSpeech(env, text, voiceId, lang = "en") {
       text: cleanText,
       model_id: "eleven_v3",
     }),
+    signal: options.signal,
   }, lang);
 
   if (!response.ok) {
@@ -229,6 +231,7 @@ export async function textToSpeechWithTimestamps(env, text, voiceId, lang = "en"
         "xi-api-key": apiKey,
       },
       body: JSON.stringify(body),
+      signal: context?.signal,
     },
     lang
   );
@@ -275,19 +278,43 @@ export async function getSelectedElevenApiKey(env) {
   return String(env[keyName] || "").trim();
 }
 
+function elevenAbortError() {
+  const error = new Error("Voice request cancelled.");
+  error.name = "AbortError";
+  return error;
+}
+
 async function fetchWithTimeout(url, options, lang) {
+  const externalSignal = options?.signal && typeof options.signal.addEventListener === "function"
+    ? options.signal
+    : null;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort("elevenlabs_timeout"), ELEVEN_TIMEOUT_MS);
+  let externalAborted = false;
+  let timedOut = false;
+  const abortFromExternal = () => {
+    externalAborted = true;
+    if (!controller.signal.aborted) controller.abort();
+  };
+  if (externalSignal) {
+    if (externalSignal.aborted) abortFromExternal();
+    else externalSignal.addEventListener("abort", abortFromExternal, { once: true });
+  }
+  const timer = setTimeout(() => {
+    timedOut = true;
+    if (!controller.signal.aborted) controller.abort();
+  }, ELEVEN_TIMEOUT_MS);
 
   try {
+    if (externalAborted || externalSignal?.aborted) throw elevenAbortError();
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
-    if (error?.name === "AbortError" || String(error).includes("elevenlabs_timeout")) {
-      throw new Error(elevenError(lang, "timeout"));
-    }
+    if (externalAborted || externalSignal?.aborted) throw elevenAbortError();
+    if (timedOut) throw new Error(elevenError(lang, "timeout"));
+    if (error?.name === "AbortError") throw error;
     throw error;
   } finally {
     clearTimeout(timer);
+    if (externalSignal) externalSignal.removeEventListener("abort", abortFromExternal);
   }
 }
 
