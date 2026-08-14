@@ -69,7 +69,7 @@ export class AiCodingWorkflow extends WorkflowEntrypoint {
               return parseAiChatResponse(response);
             });
           } catch (error) {
-            throw new NonRetryableError(String(error?.message || "Background AI execution failed.").slice(0, MAX_TASK_ERROR_CHARS));
+            throw new Error(String(error?.message || "Background AI execution failed.").slice(0, MAX_TASK_ERROR_CHARS));
           }
         },
       );
@@ -337,7 +337,7 @@ function mapWorkflowStatus(value) {
   if (status === "complete") return "completed";
   if (status === "errored") return "failed";
   if (status === "terminated") return "cancelled";
-  if (["queued", "running", "paused", "waiting", "waitingForPause"].includes(status)) return status === "queued" ? "queued" : "running";
+  if (["queued", "running", "paused", "waiting", "waitingForPause", "rollingBack"].includes(status)) return status === "queued" ? "queued" : "running";
   return "";
 }
 
