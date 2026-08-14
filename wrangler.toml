@@ -1,6 +1,7 @@
 name = "ai-configa"
 main = "src/worker-direct.js"
 compatibility_date = "2026-05-28"
+compatibility_flags = ["enable_request_signal", "request_signal_passthrough"]
 workers_dev = true
 preview_urls = true
 
