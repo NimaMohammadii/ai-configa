@@ -203,7 +203,7 @@ async function translateCaption(request, env) {
     return { text };
   }
 
-  const apiKey = String(env.OPENAI_API_KEY || "").trim();
+  const apiKey = String(env.GPT_API || "").trim();
   if (!apiKey) {
     throw httpError("Translation is unavailable", 503);
   }
