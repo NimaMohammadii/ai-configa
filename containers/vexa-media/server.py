@@ -17,6 +17,7 @@ SESSION_TTL = 60 * 60
 MAX_HEIGHT = 720
 YT_DLP_TIMEOUT = 75
 DOWNLOAD_TIMEOUT = 20 * 60
+YOUTUBE_EXTRACTOR_ARGS = "youtube:player_client=mweb"
 ALLOWED_HOSTS = {
     "youtube.com",
     "www.youtube.com",
@@ -150,6 +151,8 @@ async def extract_info(url):
         "--no-warnings",
         "--js-runtimes",
         "node",
+        "--extractor-args",
+        YOUTUBE_EXTRACTOR_ARGS,
         "--dump-single-json",
         url,
     )
@@ -216,6 +219,8 @@ async def download(request):
         "--no-warnings",
         "--js-runtimes",
         "node",
+        "--extractor-args",
+        YOUTUBE_EXTRACTOR_ARGS,
         "--format",
         "bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/b[height<=720][ext=mp4]/b[height<=720]",
         "--merge-output-format",
