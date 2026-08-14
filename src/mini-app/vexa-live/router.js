@@ -21,8 +21,10 @@ import {
 
 const LIVE_ROOT = "/mini-app/live";
 const INTEGRATION_VERSION = "20260814-2";
-const SCRIBE_MODEL = "scribe_v2_realtime";
+const SCRIBE_MODEL = "scribe_v2";
 const MAX_TRANSLATION_TEXT = 1200;
+const MAX_TRANSLATION_SEGMENTS = 30;
+const MAX_TRANSLATION_BATCH_CHARS = 9000;
 
 const SUPPORTED_LANGUAGES = Object.freeze({
   en: "English",
@@ -158,7 +160,7 @@ async function createScribeToken(request, env) {
   }
 
   const response = await fetch(
-    "https://api.elevenlabs.io/v1/single-use-token/realtime_scribe",
+    "https://api.elevenlabs.io/v1/single-use-token/batch_scribe",
     {
       method: "POST",
       headers: {
@@ -175,7 +177,7 @@ async function createScribeToken(request, env) {
       response.status,
       String(data?.detail?.message || data?.detail || data?.message || "unknown error")
     );
-    throw httpError("Could not start live captions", 502);
+    throw httpError("Could not start video captions", 502);
   }
 
   return {
@@ -192,8 +194,25 @@ async function translateCaption(request, env) {
 
   const sourceLanguage = normalizeLanguage(payload.sourceLanguage);
   const targetLanguage = normalizeLanguage(payload.targetLanguage);
-  const text = String(payload.text || "").trim();
 
+  if (Array.isArray(payload.segments)) {
+    const segments = normalizeTranslationSegments(payload.segments);
+
+    if (sourceLanguage === targetLanguage) {
+      return { segments };
+    }
+
+    const translated = await translateSegments(
+      env,
+      segments,
+      sourceLanguage,
+      targetLanguage
+    );
+
+    return { segments: translated };
+  }
+
+  const text = String(payload.text || "").trim();
   if (!text) return { text: "" };
   if (text.length > MAX_TRANSLATION_TEXT) {
     throw httpError("Subtitle segment is too long", 413);
@@ -203,6 +222,49 @@ async function translateCaption(request, env) {
     return { text };
   }
 
+  const translated = await translateSegments(
+    env,
+    [{ id: 0, text }],
+    sourceLanguage,
+    targetLanguage
+  );
+
+  return { text: translated[0]?.text || "" };
+}
+
+function normalizeTranslationSegments(value) {
+  const source = value.slice(0, MAX_TRANSLATION_SEGMENTS);
+  const segments = [];
+  let totalChars = 0;
+
+  for (const item of source) {
+    const id = Number(item?.id);
+    const text = String(item?.text || "").trim();
+
+    if (!Number.isInteger(id) || id < 0 || !text) {
+      throw httpError("Invalid subtitle segment", 400);
+    }
+
+    if (text.length > MAX_TRANSLATION_TEXT) {
+      throw httpError("Subtitle segment is too long", 413);
+    }
+
+    totalChars += text.length;
+    if (totalChars > MAX_TRANSLATION_BATCH_CHARS) {
+      throw httpError("Subtitle batch is too large", 413);
+    }
+
+    segments.push({ id, text });
+  }
+
+  if (!segments.length) {
+    throw httpError("Subtitle segments are empty", 400);
+  }
+
+  return segments;
+}
+
+async function translateSegments(env, segments, sourceLanguage, targetLanguage) {
   const apiKey = String(env.GPT_API || "").trim();
   if (!apiKey) {
     throw httpError("Translation is unavailable", 503);
@@ -222,7 +284,8 @@ async function translateCaption(request, env) {
     body: JSON.stringify({
       model,
       store: false,
-      max_output_tokens: 300,
+      reasoning: { effort: "none" },
+      max_output_tokens: 4000,
       input: [
         {
           role: "system",
@@ -230,17 +293,22 @@ async function translateCaption(request, env) {
             {
               type: "input_text",
               text:
-                "Translate subtitle text from " +
+                "Translate subtitle segments from " +
                 SUPPORTED_LANGUAGES[sourceLanguage] +
                 " to " +
                 SUPPORTED_LANGUAGES[targetLanguage] +
-                ". Return only the translated subtitle text. Preserve names, numbers, tone and punctuation. Never explain or add commentary.",
+                ". Return ONLY valid JSON. The output must be a JSON array of objects in the exact same order, each with exactly two fields: id and text. Keep every input id unchanged. Translate only the text. Do not merge, split, omit, reorder, explain, or add markdown.",
             },
           ],
         },
         {
           role: "user",
-          content: [{ type: "input_text", text }],
+          content: [
+            {
+              type: "input_text",
+              text: JSON.stringify(segments),
+            },
+          ],
         },
       ],
     }),
@@ -253,15 +321,50 @@ async function translateCaption(request, env) {
       response.status,
       String(data?.error?.message || "unknown error")
     );
-    throw httpError("Could not translate this caption", 502);
+    throw httpError("Could not translate captions", 502);
   }
 
-  const translated = extractResponseText(data).trim();
-  if (!translated) {
-    throw httpError("Could not translate this caption", 502);
+  const parsed = parseTranslatedSegments(extractResponseText(data));
+  const byId = new Map();
+
+  for (const item of parsed) {
+    const id = Number(item?.id);
+    const text = String(item?.text || "").trim();
+    if (Number.isInteger(id) && text) {
+      byId.set(id, text);
+    }
   }
 
-  return { text: translated };
+  const translated = segments.map((segment) => ({
+    id: segment.id,
+    text: byId.get(segment.id) || "",
+  }));
+
+  if (translated.some((segment) => !segment.text)) {
+    throw httpError("Could not translate captions", 502);
+  }
+
+  return translated;
+}
+
+function parseTranslatedSegments(value) {
+  let text = String(value || "").trim();
+  text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+
+  const arrayStart = text.indexOf("[");
+  const arrayEnd = text.lastIndexOf("]");
+
+  if (arrayStart >= 0 && arrayEnd > arrayStart) {
+    text = text.slice(arrayStart, arrayEnd + 1);
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed?.segments)) return parsed.segments;
+  } catch (error) {}
+
+  throw httpError("Could not translate captions", 502);
 }
 
 async function assertLiveAccess(env, userId) {
