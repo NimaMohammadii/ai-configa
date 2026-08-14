@@ -17,6 +17,9 @@ export const AI_CHAT_REASONING_EFFORTS = Object.freeze([
 export const DEFAULT_AI_CHAT_REASONING_EFFORT = "medium";
 export const AI_CHAT_MARKUP_RATE = 0.15;
 export const AI_CHAT_WEB_SEARCH_USD_PER_CALL = 0.01;
+export const AI_CHAT_FILE_SEARCH_USD_PER_CALL = 0.0025;
+export const AI_CHAT_CONTAINER_1GB_USD_PER_SESSION = 0.03;
+export const AI_CHAT_VECTOR_STORAGE_USD_PER_GB_DAY = 0.10;
 export const AI_CHAT_USD_PER_CREDIT = Math.min(
   CUSTOM_STARS_USD_PER_1000_CREDITS / 1000,
   ...Object.values(MINI_APP_STAR_PACKAGES).map((pack) => Number(pack.usd) / Number(pack.totalCredits)),
@@ -119,7 +122,15 @@ export function calculateAiChatBilling(modelId, billing = {}) {
   const model = AI_CHAT_MODELS.find((item) => item.id === normalizeAiChatModel(modelId));
   const usageEntries = Array.isArray(billing.usage) ? billing.usage : [];
   const totals = { inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0, reasoningTokens: 0 };
-  let baseUsd = Math.max(0, Math.floor(Number(billing.webSearchCalls || 0))) * AI_CHAT_WEB_SEARCH_USD_PER_CALL;
+  const webSearchCalls = wholeCount(billing.webSearchCalls);
+  const fileSearchCalls = wholeCount(billing.fileSearchCalls);
+  const containerSessions = wholeCount(billing.containerSessions);
+  const vectorStorageGbDays = nonNegativeNumber(billing.vectorStorageGbDays);
+  const webSearchUsd = webSearchCalls * AI_CHAT_WEB_SEARCH_USD_PER_CALL;
+  const fileSearchUsd = fileSearchCalls * AI_CHAT_FILE_SEARCH_USD_PER_CALL;
+  const containerUsd = containerSessions * AI_CHAT_CONTAINER_1GB_USD_PER_SESSION;
+  const vectorStorageUsd = vectorStorageGbDays * AI_CHAT_VECTOR_STORAGE_USD_PER_GB_DAY;
+  let baseUsd = webSearchUsd + fileSearchUsd + containerUsd + vectorStorageUsd;
 
   for (const usage of usageEntries) {
     const inputTokens = wholeTokenCount(usage?.input_tokens);
@@ -157,14 +168,30 @@ export function calculateAiChatBilling(modelId, billing = {}) {
     baseUsd,
     billedUsd,
     markupRate: AI_CHAT_MARKUP_RATE,
-    webSearchCalls: Math.max(0, Math.floor(Number(billing.webSearchCalls || 0))),
+    webSearchCalls,
+    fileSearchCalls,
+    containerSessions,
+    vectorStorageGbDays,
+    webSearchUsd,
+    fileSearchUsd,
+    containerUsd,
+    vectorStorageUsd,
     ...totals,
   };
 }
 
 function wholeTokenCount(value) {
+  return wholeCount(value);
+}
+
+function wholeCount(value) {
   const number = Number(value || 0);
   return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
+}
+
+function nonNegativeNumber(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
 async function ensureAppSettingsTable(env) {
