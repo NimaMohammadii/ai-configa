@@ -740,6 +740,8 @@ export const AI_CHAT_JS = `
     commitMix
   ){
     if(!canvas)return;
+    codeMix=0;
+    commitMix=0;
 
     var bounds=canvas.getBoundingClientRect();
     var width=Math.max(
