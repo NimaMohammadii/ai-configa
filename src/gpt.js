@@ -323,6 +323,16 @@ function buildAiChatInstructions(preferredVoice, githubContext, memories) {
   ].join(" ");
 }
 
+function makeAiChatAbortError() {
+  const error = new Error("AI request cancelled.");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAiChatAborted(signal) {
+  if (signal?.aborted) throw makeAiChatAbortError();
+}
+
 export async function chatWithAi(env, messages, onStatus, options = {}) {
   if (!env.GPT_API) throw new Error("GPT service is not configured.");
 
@@ -394,13 +404,30 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
   const memoryTools = getAiMemoryTools();
   let memoryEntries = await getUserAiMemory(env, options.userId);
   let memoryChanged = false;
+  const requestSignal = options.signal && typeof options.signal.addEventListener === "function"
+    ? options.signal
+    : null;
   const controller = new AbortController();
+  let requestAborted = false;
+  let timedOut = false;
+  const abortFromRequest = () => {
+    requestAborted = true;
+    if (!controller.signal.aborted) controller.abort();
+  };
+  if (requestSignal) {
+    if (requestSignal.aborted) abortFromRequest();
+    else requestSignal.addEventListener("abort", abortFromRequest, { once: true });
+  }
   const timer = setTimeout(
-    () => controller.abort("gpt_chat_timeout"),
+    () => {
+      timedOut = true;
+      if (!controller.signal.aborted) controller.abort();
+    },
     githubContext || reasoningEffort === "high" || reasoningEffort === "max" ? 180000 : GPT_CHAT_TIMEOUT_MS,
   );
 
   try {
+    throwIfAiChatAborted(controller.signal);
     const tools = [
       { type: "web_search" },
       {
@@ -449,6 +476,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     const usage = [];
 
     for (let toolRound = 0; toolRound < 6; toolRound += 1) {
+      throwIfAiChatAborted(controller.signal);
       if (toolRound > 0 && codingActivity?.used && typeof onStatus === "function") {
         onStatus({
           state: "analyzing_code",
@@ -484,6 +512,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       }
 
       const data = await readChatResponseStream(response, onStatus);
+      throwIfAiChatAborted(controller.signal);
       const output = Array.isArray(data?.output) ? data.output : [];
       const roundWebSearchCalls = output.filter((item) => item?.type === "web_search_call").length;
       webSearchCalls += roundWebSearchCalls;
@@ -502,6 +531,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       const githubCalls = output.filter(isGitHubAiToolCall);
       const memoryCalls = output.filter(isAiMemoryToolCall);
       if (!githubCalls.length && !memoryCalls.length) {
+        throwIfAiChatAborted(controller.signal);
         if (codingActivity?.used && typeof onStatus === "function") {
           onStatus({
             state: "finalizing",
@@ -518,6 +548,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
 
       responseInput.push(...output);
       for (const call of memoryCalls) {
+        throwIfAiChatAborted(controller.signal);
         const update = applyAiMemoryToolCall(memoryEntries, call);
         memoryEntries = update.memories;
         memoryChanged = memoryChanged || update.changed;
@@ -528,7 +559,9 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         });
       }
       for (const call of githubCalls) {
+        throwIfAiChatAborted(controller.signal);
         const toolOutput = await executeGitHubAiTool(env, options.userId, call, onStatus, codingActivity);
+        throwIfAiChatAborted(controller.signal);
         responseInput.push({
           type: "function_call_output",
           call_id: call.call_id,
@@ -536,6 +569,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         });
       }
       if (terminalCall) {
+        throwIfAiChatAborted(controller.signal);
         return buildChatResult(data, cleanMessages, {
           webSearchUsed, webSearchCalls, usage, model, reasoningEffort, memoryChanged, memoryEntries, codingActivity,
         });
@@ -543,12 +577,17 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     }
     throw new Error("AI used too many tool steps. Ask it to continue with a smaller task.");
   } catch (error) {
-    if (error?.name === "AbortError" || String(error).includes("gpt_chat_timeout")) {
+    if (requestAborted || requestSignal?.aborted) {
+      throw makeAiChatAbortError();
+    }
+    if (timedOut) {
       throw new Error("AI took too long. Please try again.");
     }
+    if (error?.name === "AbortError") throw error;
     throw error;
   } finally {
     clearTimeout(timer);
+    if (requestSignal) requestSignal.removeEventListener("abort", abortFromRequest);
   }
 }
 
