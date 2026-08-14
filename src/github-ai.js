@@ -155,7 +155,7 @@ export function getGitHubAiTools(context) {
     {
       type: "function",
       name: "github_merge_pull_request",
-      description: "Merge a Vexa AI pull request into the connected repository's default branch. Use only after the user explicitly asks to merge it.",
+      description: "Merge a Vexa AI pull request into the connected repository's default branch. Use only when the user explicitly asks to merge it.",
       parameters: {
         type: "object",
         properties: {
@@ -169,7 +169,7 @@ export function getGitHubAiTools(context) {
     {
       type: "function",
       name: "github_apply_branch_to_default",
-      description: "Fast-forward the connected repository's default branch to a Vexa AI branch. Use only after the user explicitly asks to apply the prepared changes directly to main/default branch. This never force-pushes.",
+      description: "Fast-forward the connected repository's default branch to a Vexa AI branch. Use only when the user explicitly asks to apply the prepared changes directly to main/default branch. This never force-pushes.",
       parameters: {
         type: "object",
         properties: {
