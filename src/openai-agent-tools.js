@@ -4,6 +4,7 @@ import {
   readGitHubRepositoryFile,
 } from "./github-app.js";
 import { getGitHubRepositorySnapshot } from "./github-ai.js";
+import { saveAiCodingTaskState } from "./ai-coding-task.js";
 
 const OPENAI_API = "https://api.openai.com/v1";
 const CODING_SKILL_KEY = "vexa_coding_skill_v2";
@@ -292,7 +293,10 @@ export async function executeOpenAiApplyPatchCalls(env, userId, calls, onStatus,
       activity.change = result;
       activity.currentBranch = commit.branch;
       activity.currentCommitSha = commit.commitSha;
+      activity.lastReview = null;
+      activity.reviewCompleted = false;
       activity.needsReview = true;
+      await saveAiCodingTaskState(env, userId, activity).catch((error) => console.error("save native patch task failed", error?.message || error));
     }
     emitProgress(onStatus, activity, "commit_ready", "Patch committed", commit.branch);
 
