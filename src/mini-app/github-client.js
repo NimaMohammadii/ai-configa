@@ -18,6 +18,10 @@ export const GITHUB_CLIENT_JS = `
     var anchorReady=false;
     var manualScroll=false;
     var frame=0;
+    var observedTail=null;
+    var tailResizeObserver=typeof ResizeObserver==='function'
+      ?new ResizeObserver(function(){schedule()})
+      :null;
 
     function latestUserMessage(){
       var users=list.querySelectorAll('.ai-chat-message.user');
@@ -41,6 +45,13 @@ export const GITHUB_CLIENT_JS = `
       });
     }
 
+    function observeTail(tail){
+      if(!tailResizeObserver||tail===observedTail)return;
+      if(observedTail)tailResizeObserver.unobserve(observedTail);
+      observedTail=tail||null;
+      if(observedTail)tailResizeObserver.observe(observedTail);
+    }
+
     function sync(){
       frame=0;
       if(manualScroll||!anchorReady||!anchorUser||!anchorUser.isConnected)return;
@@ -48,6 +59,7 @@ export const GITHUB_CLIENT_JS = `
       var userIndex=children.indexOf(anchorUser);
       if(userIndex<0)return;
       var tail=children[children.length-1];
+      observeTail(tail);
       if(!tail||tail===anchorUser)return;
 
       var listRect=list.getBoundingClientRect();
@@ -75,6 +87,7 @@ export const GITHUB_CLIENT_JS = `
 
     var observer=new MutationObserver(refresh);
     observer.observe(list,{childList:true,subtree:true,characterData:true});
+    list.addEventListener('scroll',function(){if(!manualScroll)schedule()},{passive:true});
     list.addEventListener('pointerdown',function(){manualScroll=true},{passive:true});
     list.addEventListener('touchstart',function(){manualScroll=true},{passive:true});
     list.addEventListener('wheel',function(){manualScroll=true},{passive:true});
