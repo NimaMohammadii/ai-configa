@@ -9,7 +9,7 @@ export const VEXA_LIVE_HTML = `<!doctype html>
   <meta name="theme-color" content="#000000" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>Vexa Live</title>
-  <link rel="stylesheet" href="/mini-app/live/styles.css?v=20260814-2" />
+  <link rel="stylesheet" href="/mini-app/live/styles.css?v=20260814-3" />
 </head>
 <body>
   <main class="live-app">
@@ -39,7 +39,7 @@ export const VEXA_LIVE_HTML = `<!doctype html>
         <span class="orbit-line orbit-line-two"></span>
         <span class="orbit-cursor"></span>
       </div>
-      <p class="live-kicker">VIDEO · LIVE TEXT</p>
+      <p class="live-kicker">VIDEO · SMART TEXT</p>
       <h1 id="liveTitle">See every word.</h1>
       <p class="live-copy">Pick the video language and the subtitle language, then choose your video.</p>
     </section>
@@ -114,7 +114,7 @@ export const VEXA_LIVE_HTML = `<!doctype html>
     <section id="videoReadyState" class="video-ready-state" aria-hidden="true">
       <div class="video-ready-head">
         <div>
-          <span id="captionModeLabel">LIVE CAPTIONS</span>
+          <span id="captionModeLabel">CAPTIONS</span>
           <strong id="videoName">Video</strong>
         </div>
         <button type="button" data-action="change-video">Change</button>
@@ -123,7 +123,6 @@ export const VEXA_LIVE_HTML = `<!doctype html>
       <div class="video-stage">
         <video
           id="videoPreview"
-          controls
           playsinline
           webkit-playsinline
           preload="metadata"
@@ -135,13 +134,13 @@ export const VEXA_LIVE_HTML = `<!doctype html>
 
       <div class="video-meta-row">
         <span id="videoMeta">Local preview</span>
-        <span id="captionStatus" class="ready-chip"><i></i><b>Play to start</b></span>
+        <span id="captionStatus" class="ready-chip"><i></i><b>Preparing captions</b></span>
       </div>
     </section>
 
     <footer class="live-footer">
       <span class="footer-line"></span>
-      <small>Scribe v2 Realtime</small>
+      <small>Scribe v2</small>
       <span class="footer-line"></span>
     </footer>
   </main>
@@ -149,6 +148,6 @@ export const VEXA_LIVE_HTML = `<!doctype html>
   <div id="liveToast" class="live-toast" role="status" aria-live="polite"></div>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/live/app.js?v=20260814-2"></script>
+  <script type="module" src="/mini-app/live/app.js?v=20260814-3"></script>
 </body>
 </html>`;
