@@ -11,6 +11,7 @@ export const VEXA_LIVE_JS = `
   let lockTimer = null;
   let captionTimer = null;
   let reconnectTimer = null;
+  let audioWatchdogTimer = null;
   let reconnectAttempts = 0;
   let scribeSocket = null;
   let startingSession = null;
@@ -19,6 +20,9 @@ export const VEXA_LIVE_JS = `
   let audioContext = null;
   let mediaSource = null;
   let captureNode = null;
+  let audioChunkCount = 0;
+  let lastSettledText = "";
+  let lastSettledAt = 0;
 
   if (tg) {
     try {
@@ -46,7 +50,7 @@ export const VEXA_LIVE_JS = `
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
       node.classList.remove("show");
-    }, 3000);
+    }, 3200);
   }
 
   async function api(path, body) {
@@ -270,13 +274,40 @@ export const VEXA_LIVE_JS = `
     if (input) input.click();
   }
 
+  function primeAudioContext() {
+    if (!videoUrl) return;
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass || !window.AudioWorkletNode) return;
+
+    if (!audioContext) {
+      try {
+        audioContext = new AudioContextClass();
+      } catch (error) {
+        return;
+      }
+    }
+
+    if (audioContext.state !== "running") {
+      try {
+        const resumeResult = audioContext.resume();
+        if (resumeResult && typeof resumeResult.catch === "function") {
+          resumeResult.catch(function () {});
+        }
+      } catch (error) {}
+    }
+  }
+
   async function ensureAudioCapture() {
     const preview = q("videoPreview");
     if (!preview) throw new Error("Video player is unavailable");
 
     if (audioContext && mediaSource && captureNode) {
-      if (audioContext.state === "suspended") {
+      if (audioContext.state !== "running") {
         await audioContext.resume();
+      }
+      if (audioContext.state !== "running") {
+        throw new Error("Tap the video once, then press play again");
       }
       return;
     }
@@ -286,7 +317,14 @@ export const VEXA_LIVE_JS = `
       throw new Error("Live captions need a newer browser");
     }
 
-    audioContext = new AudioContextClass();
+    if (!audioContext) {
+      audioContext = new AudioContextClass();
+    }
+
+    if (audioContext.state !== "running") {
+      await audioContext.resume();
+    }
+
     const processorSource = [
       "class VexaLivePcmProcessor extends AudioWorkletProcessor {",
       "  constructor() {",
@@ -364,14 +402,23 @@ export const VEXA_LIVE_JS = `
           message_type: "input_audio_chunk",
           audio_base_64: arrayBufferToBase64(event.data),
         }));
+        audioChunkCount += 1;
+        if (audioChunkCount === 1) {
+          clearTimeout(audioWatchdogTimer);
+          setStatus("Listening", true);
+        }
       } catch (error) {}
     };
 
     mediaSource.connect(captureNode);
     captureNode.connect(audioContext.destination);
 
-    if (audioContext.state === "suspended") {
+    if (audioContext.state !== "running") {
       await audioContext.resume();
+    }
+
+    if (audioContext.state !== "running") {
+      throw new Error("Tap the video once, then press play again");
     }
   }
 
@@ -410,7 +457,7 @@ export const VEXA_LIVE_JS = `
       scribeSocket &&
       (scribeSocket.readyState === WebSocket.OPEN || scribeSocket.readyState === WebSocket.CONNECTING)
     ) {
-      if (audioContext && audioContext.state === "suspended") {
+      if (audioContext && audioContext.state !== "running") {
         await audioContext.resume().catch(function () {});
       }
       return;
@@ -459,9 +506,25 @@ export const VEXA_LIVE_JS = `
       return;
     }
 
+    audioChunkCount = 0;
     await ensureAudioCapture();
     reconnectAttempts = 0;
-    setStatus("Listening", true);
+    setStatus("Waiting for audio", true);
+
+    clearTimeout(audioWatchdogTimer);
+    audioWatchdogTimer = setTimeout(function () {
+      const preview = q("videoPreview");
+      if (
+        generation === sessionGeneration &&
+        preview &&
+        !preview.paused &&
+        !preview.ended &&
+        audioChunkCount === 0
+      ) {
+        setStatus("No audio detected", false);
+        toast("Could not read audio from this video");
+      }
+    }, 3200);
 
     socket.onmessage = function (event) {
       handleScribeMessage(event, generation);
@@ -504,7 +567,7 @@ export const VEXA_LIVE_JS = `
     const text = String(data.text || "").trim();
 
     if (type === "session_started") {
-      setStatus("Listening", true);
+      if (audioChunkCount > 0) setStatus("Listening", true);
       return;
     }
 
@@ -515,27 +578,75 @@ export const VEXA_LIVE_JS = `
       return;
     }
 
-    if (type === "committed_transcript") {
-      if (!text) return;
-      if (sourceLanguage === targetLanguage) {
-        showCaption(text, true);
-      } else {
-        queueTranslation(text, generation);
-      }
+    if (
+      type === "final_transcript" ||
+      type === "final_transcript_with_timestamps" ||
+      type === "committed_transcript" ||
+      type === "committed_transcript_with_timestamps"
+    ) {
+      handleSettledTranscript(text, generation);
       return;
     }
 
-    if (
-      type === "auth_error" ||
+    if (isScribeError(type)) {
+      handleScribeError(data, type);
+    }
+  }
+
+  function handleSettledTranscript(text, generation) {
+    if (!text) return;
+
+    const now = Date.now();
+    if (text === lastSettledText && now - lastSettledAt < 2500) {
+      return;
+    }
+    lastSettledText = text;
+    lastSettledAt = now;
+
+    if (sourceLanguage === targetLanguage) {
+      showCaption(text, true);
+    } else {
+      queueTranslation(text, generation);
+    }
+  }
+
+  function isScribeError(type) {
+    return type === "auth_error" ||
       type === "quota_exceeded" ||
       type === "rate_limited" ||
       type === "transcriber_error" ||
       type === "input_error" ||
-      type === "error"
-    ) {
-      const message = String(data.error || data.message || "Live captions stopped");
-      toast(message);
-      setStatus("Stopped", false);
+      type === "error" ||
+      type === "commit_throttled" ||
+      type === "unaccepted_terms" ||
+      type === "queue_overflow" ||
+      type === "resource_exhausted" ||
+      type === "session_time_limit_exceeded" ||
+      type === "chunk_size_exceeded" ||
+      type === "insufficient_audio_activity";
+  }
+
+  function handleScribeError(data, type) {
+    let message = String(data.error || data.message || "Live captions stopped");
+
+    if (type === "unaccepted_terms") {
+      message = "Accept the Scribe terms in ElevenLabs first";
+    } else if (type === "insufficient_audio_activity") {
+      message = "No audio activity reached live captions";
+    } else if (type === "auth_error") {
+      message = "Live captions authentication failed";
+    }
+
+    setStatus("Stopped", false);
+    toast(message);
+
+    const socket = scribeSocket;
+    scribeSocket = null;
+    if (socket) {
+      try {
+        socket.onclose = null;
+        socket.close();
+      } catch (error) {}
     }
   }
 
@@ -570,7 +681,11 @@ export const VEXA_LIVE_JS = `
   function stopScribe() {
     sessionGeneration += 1;
     clearTimeout(reconnectTimer);
+    clearTimeout(audioWatchdogTimer);
     reconnectAttempts = 0;
+    audioChunkCount = 0;
+    lastSettledText = "";
+    lastSettledAt = 0;
     translationQueue = Promise.resolve();
 
     const socket = scribeSocket;
@@ -587,7 +702,10 @@ export const VEXA_LIVE_JS = `
     const preview = q("videoPreview");
     if (!preview) return;
 
+    preview.addEventListener("pointerdown", primeAudioContext, { passive: true });
+
     preview.addEventListener("play", function () {
+      primeAudioContext();
       ensureCaptionSession().catch(handleCaptionError);
     });
 
@@ -603,6 +721,7 @@ export const VEXA_LIVE_JS = `
 
     preview.addEventListener("seeked", function () {
       if (!preview.paused && !preview.ended) {
+        primeAudioContext();
         ensureCaptionSession().catch(handleCaptionError);
       } else {
         setStatus("Play to start", false);
