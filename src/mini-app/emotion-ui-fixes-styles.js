@@ -35,7 +35,7 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 .demo-language-button-avatar .demo-language-flag{display:block!important;width:28px!important;height:18px!important;flex:0 0 28px!important;border:0!important;border-radius:0!important;outline:0!important;box-shadow:none!important;filter:none!important}
 @media(max-width:390px){.demo-language-wrap .voice-btn{min-width:112px!important;max-width:124px!important;padding:0 8px!important;gap:6px!important;font-size:12px!important}.demo-language-wrap .voice-menu{width:min(230px,calc(100vw - 32px))!important}}
 
-/* Move the shared mini-app top content down by 15px. */
-.app{padding-top:calc(37px + env(safe-area-inset-top))!important}
-.tts-head:before{top:calc(-37px - env(safe-area-inset-top))!important}
+/* Move the shared mini-app top content down by 18px. */
+.app{padding-top:calc(40px + env(safe-area-inset-top))!important}
+.tts-head:before{top:calc(-40px - env(safe-area-inset-top))!important}
 `;
