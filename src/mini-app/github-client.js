@@ -10,6 +10,76 @@ export const GITHUB_CLIENT_JS = `
   function shortRepo(fullName){var parts=String(fullName||'').split('/');return parts[parts.length-1]||'GitHub'}
   function repoOwner(fullName){var parts=String(fullName||'').split('/');return parts.length>1?parts[0]:''}
   function githubIcon(){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .8a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.1 0 0 1-.3 3.1 1.2a10.8 10.8 0 0 1 5.7 0C14.9 5 16 5.3 16 5.3c.6 1.5.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.8 5.4-5.5 5.7.4.4.8 1.1.8 2.2v3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .8Z"/></svg>'}
+  function installAiChatTurnScrollGuard(){
+    var list=q('aiChatMessages');
+    if(!list||typeof MutationObserver!=='function')return;
+    var anchorUser=null;
+    var anchorScrollTop=0;
+    var anchorReady=false;
+    var manualScroll=false;
+    var frame=0;
+
+    function latestUserMessage(){
+      var users=list.querySelectorAll('.ai-chat-message.user');
+      return users.length?users[users.length-1]:null;
+    }
+
+    function schedule(){
+      if(frame)return;
+      frame=requestAnimationFrame(sync);
+    }
+
+    function capture(user){
+      anchorUser=user;
+      anchorReady=false;
+      manualScroll=false;
+      requestAnimationFrame(function(){
+        if(anchorUser!==user||!user.isConnected)return;
+        anchorScrollTop=list.scrollTop;
+        anchorReady=true;
+        schedule();
+      });
+    }
+
+    function sync(){
+      frame=0;
+      if(manualScroll||!anchorReady||!anchorUser||!anchorUser.isConnected)return;
+      var children=Array.prototype.slice.call(list.children);
+      var userIndex=children.indexOf(anchorUser);
+      if(userIndex<0)return;
+      var tail=children[children.length-1];
+      if(!tail||tail===anchorUser)return;
+
+      var listRect=list.getBoundingClientRect();
+      var tailRect=tail.getBoundingClientRect();
+      var composer=q('aiChatComposer');
+      var composerRect=composer&&composer.getBoundingClientRect();
+      var bottomLimit=listRect.height-18;
+      if(composerRect&&composerRect.top>listRect.top&&composerRect.top<listRect.bottom){
+        bottomLimit=Math.min(bottomLimit,composerRect.top-listRect.top-18);
+      }
+      bottomLimit=Math.max(80,bottomLimit);
+
+      var contentBottom=list.scrollTop+(tailRect.bottom-listRect.top);
+      var overflow=Math.max(0,contentBottom-anchorScrollTop-bottomLimit);
+      var maxScroll=Math.max(0,list.scrollHeight-list.clientHeight);
+      var desired=Math.min(maxScroll,anchorScrollTop+overflow);
+      if(Math.abs(list.scrollTop-desired)>1)list.scrollTop=desired;
+    }
+
+    function refresh(){
+      var user=latestUserMessage();
+      if(user&&user!==anchorUser)capture(user);
+      else schedule();
+    }
+
+    var observer=new MutationObserver(refresh);
+    observer.observe(list,{childList:true,subtree:true,characterData:true});
+    list.addEventListener('pointerdown',function(){manualScroll=true},{passive:true});
+    list.addEventListener('touchstart',function(){manualScroll=true},{passive:true});
+    list.addEventListener('wheel',function(){manualScroll=true},{passive:true});
+    refresh();
+  }
   function inject(){
     var slot=document.querySelector('.ai-chat-menu-github-slot')||document.querySelector('.mode-tools');
     var panel=q('aiChatMenuPanel');
@@ -42,7 +112,7 @@ export const GITHUB_CLIENT_JS = `
   async function selectRepo(repo){if(state.busy)return;state.busy=true;try{var data=await api('/mini-app/api/github/select',{installationId:repo.installationId,repoId:repo.id});state.repository=data.repository||repo;render();if(tg&&tg.HapticFeedback)try{tg.HapticFeedback.notificationOccurred('success')}catch(error){}setTimeout(closeRepositoryView,120)}catch(error){showError(error.message)}finally{state.busy=false}}
   async function disconnectGithub(){if(state.busy)return;state.busy=true;try{await api('/mini-app/api/github/disconnect',{});state.connected=false;state.login='';state.repository=null;state.repositories=[];state.authorizeUrl='';await loadRepositories()}catch(error){showError(error.message)}finally{state.busy=false}}
   document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'&&state.pendingConnect){state.pendingConnect=false;loadRepositories()}});
-  function start(){inject();refreshStatus()}
+  function start(){installAiChatTurnScrollGuard();inject();refreshStatus()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 `;
