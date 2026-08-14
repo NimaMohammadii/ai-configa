@@ -65,37 +65,28 @@ export const VEXA_LIVE_JS = `
   }
 
   function showLock(data) {
-    const app = document.querySelector(".live-app");
-    if (app) app.setAttribute("aria-hidden", "true");
+    document.body.classList.add("is-locked");
+    document.body.innerHTML =
+      '<main class="lock-screen">' +
+        '<section class="lock-card" aria-label="Mini app update">' +
+          '<p class="lock-title">' +
+            '<span>Updating</span>' +
+            '<span class="lock-dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
+          '</p>' +
+          '<div class="lock-bar" aria-hidden="true"><span id="lockFill"></span></div>' +
+        '</section>' +
+      '</main>';
 
-    const lock = document.createElement("main");
-    lock.className = "live-lock";
-    lock.innerHTML =
-      '<section class="live-lock-card" aria-label="Vexa Live update">' +
-        '<p class="live-lock-title">Updating Vexa Live</p>' +
-        '<div class="live-lock-bar" aria-hidden="true"><span></span></div>' +
-      '</section>';
-    document.body.appendChild(lock);
-
-    const fill = lock.querySelector(".live-lock-bar span");
+    const fill = q("lockFill");
     const serverNow = Number(data.serverNow) || Math.floor(Date.now() / 1000);
-    const lockedFrom = Number(data.lockedFrom) || 0;
-    const lockedUntil = Number(data.lockedUntil) || 0;
-
-    if (!lockedUntil || lockedUntil <= serverNow) {
-      lock.classList.add("indefinite");
-      return;
-    }
-
-    const start = lockedFrom > 0 && lockedFrom < lockedUntil
-      ? lockedFrom
-      : serverNow;
-    const total = Math.max(1, lockedUntil - start);
+    const lockedUntil = Number(data.lockedUntil) || serverNow + 60;
+    const lockedFrom = Number(data.lockedFrom) || Math.max(serverNow, lockedUntil - 60);
+    const total = Math.max(1, lockedUntil - lockedFrom);
     const offset = serverNow - Date.now() / 1000;
 
     function tick() {
       const now = Date.now() / 1000 + offset;
-      const progress = Math.min(100, Math.max(0, (now - start) / total * 100));
+      const progress = Math.min(100, Math.max(0, (now - lockedFrom) / total * 100));
       if (fill) fill.style.width = progress + "%";
 
       if (now >= lockedUntil) {
