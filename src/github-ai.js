@@ -122,7 +122,6 @@ export function getGitHubAiTools(context) {
       name: "github_resume_task",
       description: "Resume the saved Vexa coding branch from a previous chat turn only when the latest user message clearly continues, corrects, tests, reviews, or asks follow-up work on that same coding task. Never use it for an unrelated new task.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
-      required: [],
       strict: true,
       ...deferredDirect,
     },
