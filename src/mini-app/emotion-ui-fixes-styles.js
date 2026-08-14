@@ -38,6 +38,16 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 /* Shared top spacing. */
 .app{padding-top:calc(41px + env(safe-area-inset-top))!important}
 .tts-head:before{top:calc(-41px - env(safe-area-inset-top))!important}
-.voices-page{padding-top:20px!important}
+.voices-page{padding-top:22px!important}
 .credits-page-scroll{padding-top:20px!important}
+
+/* Credits hero fine positioning. */
+.credits-page-head{background-position:center calc(50% + 6px)!important}
+.credits-balance{bottom:18px!important}
+@media(max-width:370px){.credits-page-head{background-position:center calc(50% + 6px)!important}.credits-balance{bottom:15px!important}}
+
+/* Lower TTS bottom controls without changing the rest of the page. */
+.tts-bottom{bottom:calc(10px + env(safe-area-inset-bottom,0px))!important}
+.tts-generate{height:40px!important;min-height:40px!important}
+body.keyboard-open:not(.image-mode) #flow.active .tts-bottom,body.keyboard-closing:not(.image-mode) #flow.active .tts-bottom{bottom:54px!important}
 `;
