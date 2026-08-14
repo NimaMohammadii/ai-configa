@@ -2,27 +2,20 @@ export const VEXA_LIVE_JS = `
 (function () {
   const tg = window.Telegram && window.Telegram.WebApp;
   const initData = (tg && tg.initData) || "";
-  const SCRIBE_URL = "wss://api.elevenlabs.io/v1/speech-to-text/realtime";
+  const SCRIBE_URL = "https://api.elevenlabs.io/v1/speech-to-text";
+  const SCRIBE_MODEL = "scribe_v2";
+  const TRANSLATION_BATCH_SIZE = 24;
 
   let videoUrl = "";
+  let videoFile = null;
   let sourceLanguage = "";
   let targetLanguage = "";
   let toastTimer = null;
   let lockTimer = null;
-  let captionTimer = null;
-  let reconnectTimer = null;
-  let audioWatchdogTimer = null;
-  let reconnectAttempts = 0;
-  let scribeSocket = null;
-  let startingSession = null;
-  let sessionGeneration = 0;
-  let translationQueue = Promise.resolve();
-  let audioContext = null;
-  let mediaSource = null;
-  let captureNode = null;
-  let audioChunkCount = 0;
-  let lastSettledText = "";
-  let lastSettledAt = 0;
+  let generation = 0;
+  let cues = [];
+  let activeCueIndex = -1;
+  let captionsReady = false;
 
   if (tg) {
     try {
@@ -50,7 +43,7 @@ export const VEXA_LIVE_JS = `
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
       node.classList.remove("show");
-    }, 3200);
+    }, 3400);
   }
 
   async function api(path, body) {
@@ -140,6 +133,60 @@ export const VEXA_LIVE_JS = `
     return option && option.value ? String(option.textContent || "").trim() : "";
   }
 
+  function setStatus(text, active) {
+    const status = q("captionStatus");
+    if (!status) return;
+    const label = status.querySelector("b");
+    if (label) label.textContent = text;
+    status.classList.toggle("active", Boolean(active));
+  }
+
+  function setPlaybackEnabled(enabled) {
+    const preview = q("videoPreview");
+    if (!preview) return;
+    preview.controls = Boolean(enabled);
+    if (!enabled) {
+      try { preview.pause(); } catch (error) {}
+    }
+  }
+
+  function clearCaption() {
+    activeCueIndex = -1;
+    const wrap = q("captionPreview");
+    const text = q("liveCaptionText");
+    if (text) text.textContent = "";
+    if (wrap) wrap.classList.remove("show");
+  }
+
+  function showCaption(value) {
+    const textValue = String(value || "").trim();
+    if (!textValue) {
+      clearCaption();
+      return;
+    }
+
+    const wrap = q("captionPreview");
+    const text = q("liveCaptionText");
+    if (!wrap || !text) return;
+
+    text.textContent = textValue;
+    text.dir = targetLanguage === "fa" || targetLanguage === "ar" ? "rtl" : "ltr";
+    wrap.classList.add("show");
+  }
+
+  function resetVideoUrl() {
+    if (!videoUrl) return;
+    URL.revokeObjectURL(videoUrl);
+    videoUrl = "";
+  }
+
+  function resetCaptions() {
+    generation += 1;
+    captionsReady = false;
+    cues = [];
+    clearCaption();
+  }
+
   function updateLanguages() {
     const source = q("sourceLanguage");
     const target = q("subtitleLanguage");
@@ -158,10 +205,14 @@ export const VEXA_LIVE_JS = `
     }
 
     if (q("videoReadyState")?.classList.contains("show")) {
-      stopScribe();
-      clearCaption();
+      resetCaptions();
       updateReadyLanguageLabel();
-      setStatus("Play to start", false);
+      setPlaybackEnabled(false);
+      if (videoFile && ready) {
+        prepareCaptions(videoFile, generation).catch(handlePrepareError);
+      } else {
+        setStatus("Choose languages", false);
+      }
     }
   }
 
@@ -174,48 +225,8 @@ export const VEXA_LIVE_JS = `
     const sourceName = selectedLabel(source);
     const targetName = selectedLabel(target);
     label.textContent = sourceLanguage === targetLanguage
-      ? "LIVE · " + targetName.toUpperCase()
+      ? "CAPTIONS · " + targetName.toUpperCase()
       : sourceName.toUpperCase() + " → " + targetName.toUpperCase();
-  }
-
-  function setStatus(text, active) {
-    const status = q("captionStatus");
-    if (!status) return;
-    const label = status.querySelector("b");
-    if (label) label.textContent = text;
-    status.classList.toggle("active", Boolean(active));
-  }
-
-  function clearCaption() {
-    clearTimeout(captionTimer);
-    const wrap = q("captionPreview");
-    const text = q("liveCaptionText");
-    if (text) text.textContent = "";
-    if (wrap) wrap.classList.remove("show");
-  }
-
-  function showCaption(value, committed) {
-    const textValue = String(value || "").trim();
-    if (!textValue) return;
-
-    const wrap = q("captionPreview");
-    const text = q("liveCaptionText");
-    if (!wrap || !text) return;
-
-    text.textContent = textValue;
-    text.dir = targetLanguage === "fa" || targetLanguage === "ar" ? "rtl" : "ltr";
-    wrap.classList.add("show");
-
-    if (committed) {
-      clearTimeout(captionTimer);
-      captionTimer = setTimeout(clearCaption, 4200);
-    }
-  }
-
-  function resetVideoUrl() {
-    if (!videoUrl) return;
-    URL.revokeObjectURL(videoUrl);
-    videoUrl = "";
   }
 
   function showVideo(file) {
@@ -229,9 +240,9 @@ export const VEXA_LIVE_JS = `
       return;
     }
 
-    stopScribe();
-    clearCaption();
+    resetCaptions();
     resetVideoUrl();
+    videoFile = file;
     videoUrl = URL.createObjectURL(file);
 
     const preview = q("videoPreview");
@@ -241,10 +252,11 @@ export const VEXA_LIVE_JS = `
     const meta = q("videoMeta");
 
     if (name) name.textContent = file.name || "Video";
-    if (meta) meta.textContent = formatBytes(file.size) + " · Local preview";
+    if (meta) meta.textContent = formatBytes(file.size) + " · Preparing captions";
 
     if (preview) {
       preview.src = videoUrl;
+      preview.controls = false;
       preview.load();
       preview.addEventListener("loadedmetadata", function onMetadata() {
         preview.removeEventListener("loadedmetadata", onMetadata);
@@ -261,8 +273,10 @@ export const VEXA_LIVE_JS = `
     }
 
     updateReadyLanguageLabel();
-    setStatus("Play to start", false);
+    setStatus("Generating captions", true);
     haptic("medium");
+
+    prepareCaptions(file, generation).catch(handlePrepareError);
   }
 
   function pickVideo() {
@@ -274,485 +288,256 @@ export const VEXA_LIVE_JS = `
     if (input) input.click();
   }
 
-  function primeAudioContext() {
-    if (!videoUrl) return;
-
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass || !window.AudioWorkletNode) return;
-
-    if (!audioContext) {
-      try {
-        audioContext = new AudioContextClass();
-      } catch (error) {
-        return;
-      }
-    }
-
-    if (audioContext.state !== "running") {
-      try {
-        const resumeResult = audioContext.resume();
-        if (resumeResult && typeof resumeResult.catch === "function") {
-          resumeResult.catch(function () {});
-        }
-      } catch (error) {}
-    }
-  }
-
-  async function ensureAudioCapture() {
-    const preview = q("videoPreview");
-    if (!preview) throw new Error("Video player is unavailable");
-
-    if (audioContext && mediaSource && captureNode) {
-      if (audioContext.state !== "running") {
-        await audioContext.resume();
-      }
-      if (audioContext.state !== "running") {
-        throw new Error("Tap the video once, then press play again");
-      }
-      return;
-    }
-
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass || !window.AudioWorkletNode) {
-      throw new Error("Live captions need a newer browser");
-    }
-
-    if (!audioContext) {
-      audioContext = new AudioContextClass();
-    }
-
-    if (audioContext.state !== "running") {
-      await audioContext.resume();
-    }
-
-    const processorSource = [
-      "class VexaLivePcmProcessor extends AudioWorkletProcessor {",
-      "  constructor() {",
-      "    super();",
-      "    this.phase = 0;",
-      "    this.sum = 0;",
-      "    this.count = 0;",
-      "    this.pending = [];",
-      "  }",
-      "  process(inputs, outputs) {",
-      "    const input = inputs[0];",
-      "    const output = outputs[0];",
-      "    if (!input || !input.length || !input[0]) return true;",
-      "    for (let channel = 0; channel < output.length; channel += 1) {",
-      "      const source = input[Math.min(channel, input.length - 1)] || input[0];",
-      "      if (source) output[channel].set(source);",
-      "    }",
-      "    const frames = input[0].length;",
-      "    for (let index = 0; index < frames; index += 1) {",
-      "      let sample = 0;",
-      "      for (let channel = 0; channel < input.length; channel += 1) {",
-      "        sample += input[channel][index] || 0;",
-      "      }",
-      "      sample /= Math.max(1, input.length);",
-      "      this.sum += sample;",
-      "      this.count += 1;",
-      "      this.phase += 16000 / sampleRate;",
-      "      if (this.phase >= 1) {",
-      "        const averaged = this.count ? this.sum / this.count : 0;",
-      "        const clipped = Math.max(-1, Math.min(1, averaged));",
-      "        this.pending.push(clipped < 0 ? clipped * 32768 : clipped * 32767);",
-      "        this.phase -= 1;",
-      "        this.sum = 0;",
-      "        this.count = 0;",
-      "      }",
-      "    }",
-      "    while (this.pending.length >= 3200) {",
-      "      const chunk = new Int16Array(3200);",
-      "      for (let index = 0; index < chunk.length; index += 1) {",
-      "        chunk[index] = this.pending[index];",
-      "      }",
-      "      this.pending.splice(0, chunk.length);",
-      "      this.port.postMessage(chunk.buffer, [chunk.buffer]);",
-      "    }",
-      "    return true;",
-      "  }",
-      "}",
-      "registerProcessor('vexa-live-pcm', VexaLivePcmProcessor);",
-    ].join("\\n");
-
-    const workletUrl = URL.createObjectURL(
-      new Blob([processorSource], { type: "application/javascript" })
-    );
-
-    try {
-      await audioContext.audioWorklet.addModule(workletUrl);
-    } finally {
-      URL.revokeObjectURL(workletUrl);
-    }
-
-    mediaSource = audioContext.createMediaElementSource(preview);
-    captureNode = new AudioWorkletNode(audioContext, "vexa-live-pcm", {
-      numberOfInputs: 1,
-      numberOfOutputs: 1,
-      outputChannelCount: [2],
-    });
-
-    captureNode.port.onmessage = function (event) {
-      if (!scribeSocket || scribeSocket.readyState !== WebSocket.OPEN) return;
-      if (preview.paused || preview.seeking || preview.ended) return;
-      if (!(event.data instanceof ArrayBuffer)) return;
-
-      try {
-        scribeSocket.send(JSON.stringify({
-          message_type: "input_audio_chunk",
-          audio_base_64: arrayBufferToBase64(event.data),
-        }));
-        audioChunkCount += 1;
-        if (audioChunkCount === 1) {
-          clearTimeout(audioWatchdogTimer);
-          setStatus("Listening", true);
-        }
-      } catch (error) {}
-    };
-
-    mediaSource.connect(captureNode);
-    captureNode.connect(audioContext.destination);
-
-    if (audioContext.state !== "running") {
-      await audioContext.resume();
-    }
-
-    if (audioContext.state !== "running") {
-      throw new Error("Tap the video once, then press play again");
-    }
-  }
-
-  function arrayBufferToBase64(buffer) {
-    const bytes = new Uint8Array(buffer);
-    let binary = "";
-    const step = 8192;
-
-    for (let offset = 0; offset < bytes.length; offset += step) {
-      const slice = bytes.subarray(offset, Math.min(bytes.length, offset + step));
-      binary += String.fromCharCode.apply(null, slice);
-    }
-
-    return btoa(binary);
-  }
-
-  function scribeSocketUrl(token) {
-    const params = new URLSearchParams();
-    params.set("model_id", "scribe_v2_realtime");
-    params.set("token", token);
-    params.set("audio_format", "pcm_16000");
-    params.set("language_code", sourceLanguage);
-    params.set("commit_strategy", "vad");
-    params.set("vad_threshold", "0.4");
-    params.set("vad_silence_threshold_secs", "0.7");
-    params.set("min_speech_duration_ms", "100");
-    params.set("min_silence_duration_ms", "100");
-    params.set("no_verbatim", "true");
-    return SCRIBE_URL + "?" + params.toString();
-  }
-
-  async function ensureCaptionSession() {
-    if (!sourceLanguage || !targetLanguage || !videoUrl) return;
-
-    if (
-      scribeSocket &&
-      (scribeSocket.readyState === WebSocket.OPEN || scribeSocket.readyState === WebSocket.CONNECTING)
-    ) {
-      if (audioContext && audioContext.state !== "running") {
-        await audioContext.resume().catch(function () {});
-      }
-      return;
-    }
-
-    if (startingSession) return startingSession;
-
-    const generation = ++sessionGeneration;
-    startingSession = startCaptionSession(generation).finally(function () {
-      startingSession = null;
-    });
-    return startingSession;
-  }
-
-  async function startCaptionSession(generation) {
-    setStatus("Connecting", true);
-
+  async function prepareCaptions(file, currentGeneration) {
     const tokenData = await api("/mini-app/live/api/scribe-token", {
       sourceLanguage: sourceLanguage,
       targetLanguage: targetLanguage,
     });
 
-    if (generation !== sessionGeneration) return;
+    if (currentGeneration !== generation || file !== videoFile) return;
 
-    const socket = new WebSocket(scribeSocketUrl(tokenData.token));
-    scribeSocket = socket;
+    setStatus("Reading video", true);
+    const transcript = await transcribeVideo(file, tokenData.token);
 
-    await new Promise(function (resolve, reject) {
-      let settled = false;
+    if (currentGeneration !== generation || file !== videoFile) return;
 
-      socket.onmessage = function (event) {
-        handleScribeMessage(event, generation);
-      };
+    let nextCues = buildCues(transcript);
+    if (!nextCues.length) {
+      throw new Error("No speech was found in this video");
+    }
 
-      socket.onopen = function () {
-        if (settled) return;
-        settled = true;
-        resolve();
-      };
+    if (sourceLanguage !== targetLanguage) {
+      setStatus("Translating captions", true);
+      nextCues = await translateCues(nextCues, currentGeneration);
+    }
 
-      socket.onerror = function () {
-        if (!settled) {
-          settled = true;
-          reject(new Error("Could not connect to live captions"));
-          return;
-        }
+    if (currentGeneration !== generation || file !== videoFile) return;
 
-        if (generation === sessionGeneration && scribeSocket === socket) {
-          setStatus("Connection issue", false);
-        }
-      };
+    cues = nextCues;
+    captionsReady = true;
+    setPlaybackEnabled(true);
+    setStatus("Captions ready", false);
+    syncCaptionToVideo();
+    haptic("light");
+  }
 
-      socket.onclose = function () {
-        if (!settled) {
-          settled = true;
-          reject(new Error("Live captions connection closed"));
-          return;
-        }
+  async function transcribeVideo(file, token) {
+    const form = new FormData();
+    form.append("file", file, file.name || "video");
+    form.append("model_id", SCRIBE_MODEL);
+    form.append("language_code", sourceLanguage);
+    form.append("timestamps_granularity", "word");
+    form.append("tag_audio_events", "false");
+    form.append("diarize", "false");
+    form.append("no_verbatim", "true");
 
-        if (generation !== sessionGeneration || scribeSocket !== socket) return;
-        scribeSocket = null;
+    const response = await fetch(
+      SCRIBE_URL + "?token=" + encodeURIComponent(String(token || "")),
+      {
+        method: "POST",
+        body: form,
+      }
+    );
 
-        const preview = q("videoPreview");
-        if (preview && !preview.paused && !preview.ended && reconnectAttempts < 1) {
-          reconnectAttempts += 1;
-          setStatus("Reconnecting", true);
-          clearTimeout(reconnectTimer);
-          reconnectTimer = setTimeout(function () {
-            ensureCaptionSession().catch(handleCaptionError);
-          }, 700);
-        } else if (preview && !preview.ended) {
-          setStatus("Play to reconnect", false);
-        }
-      };
+    const data = await response.json().catch(function () {
+      return {};
     });
 
-    if (
-      generation !== sessionGeneration ||
-      scribeSocket !== socket ||
-      socket.readyState !== WebSocket.OPEN
-    ) {
-      try { socket.close(); } catch (error) {}
-      return;
+    if (!response.ok) {
+      const detail =
+        data?.detail?.message ||
+        data?.detail ||
+        data?.message ||
+        data?.error ||
+        "Could not generate captions";
+      throw new Error(typeof detail === "string" ? detail : "Could not generate captions");
     }
 
-    audioChunkCount = 0;
-    await ensureAudioCapture();
-
-    if (
-      generation !== sessionGeneration ||
-      scribeSocket !== socket ||
-      socket.readyState !== WebSocket.OPEN
-    ) {
-      return;
-    }
-
-    reconnectAttempts = 0;
-    setStatus("Waiting for audio", true);
-
-    clearTimeout(audioWatchdogTimer);
-    audioWatchdogTimer = setTimeout(function () {
-      const preview = q("videoPreview");
-      if (
-        generation === sessionGeneration &&
-        preview &&
-        !preview.paused &&
-        !preview.ended &&
-        audioChunkCount === 0
-      ) {
-        setStatus("No audio detected", false);
-        toast("Could not read audio from this video");
-      }
-    }, 3200);
+    return data;
   }
 
-  function handleScribeMessage(event, generation) {
-    if (generation !== sessionGeneration) return;
-
-    let data;
-    try {
-      data = JSON.parse(event.data);
-    } catch (error) {
-      return;
-    }
-
-    const type = String(data.message_type || "");
-    const text = String(data.text || "").trim();
-
-    if (type === "session_started") {
-      if (audioChunkCount > 0) setStatus("Listening", true);
-      return;
-    }
-
-    if (type === "partial_transcript") {
-      if (sourceLanguage === targetLanguage && text) {
-        showCaption(text, false);
-      }
-      return;
-    }
-
-    if (
-      type === "final_transcript" ||
-      type === "final_transcript_with_timestamps" ||
-      type === "committed_transcript" ||
-      type === "committed_transcript_with_timestamps"
-    ) {
-      handleSettledTranscript(text, generation);
-      return;
-    }
-
-    if (isScribeError(type)) {
-      handleScribeError(data, type);
-    }
-  }
-
-  function handleSettledTranscript(text, generation) {
-    if (!text) return;
-
-    const now = Date.now();
-    if (text === lastSettledText && now - lastSettledAt < 2500) {
-      return;
-    }
-    lastSettledText = text;
-    lastSettledAt = now;
-
-    if (sourceLanguage === targetLanguage) {
-      showCaption(text, true);
-    } else {
-      queueTranslation(text, generation);
-    }
-  }
-
-  function isScribeError(type) {
-    return type === "auth_error" ||
-      type === "quota_exceeded" ||
-      type === "rate_limited" ||
-      type === "transcriber_error" ||
-      type === "input_error" ||
-      type === "error" ||
-      type === "commit_throttled" ||
-      type === "unaccepted_terms" ||
-      type === "queue_overflow" ||
-      type === "resource_exhausted" ||
-      type === "session_time_limit_exceeded" ||
-      type === "chunk_size_exceeded" ||
-      type === "insufficient_audio_activity";
-  }
-
-  function handleScribeError(data, type) {
-    let message = String(data.error || data.message || "Live captions stopped");
-
-    if (type === "unaccepted_terms") {
-      message = "Accept the Scribe terms in ElevenLabs first";
-    } else if (type === "insufficient_audio_activity") {
-      message = "No audio activity reached live captions";
-    } else if (type === "auth_error") {
-      message = "Live captions authentication failed";
-    }
-
-    setStatus("Stopped", false);
-    toast(message);
-
-    const socket = scribeSocket;
-    scribeSocket = null;
-    if (socket) {
-      try {
-        socket.onclose = null;
-        socket.close();
-      } catch (error) {}
-    }
-  }
-
-  function queueTranslation(text, generation) {
-    translationQueue = translationQueue.then(async function () {
-      if (generation !== sessionGeneration) return;
-      setStatus("Translating", true);
-
-      const data = await api("/mini-app/live/api/translate", {
-        text: text,
-        sourceLanguage: sourceLanguage,
-        targetLanguage: targetLanguage,
+  function buildCues(transcript) {
+    const rawWords = Array.isArray(transcript?.words) ? transcript.words : [];
+    const words = rawWords
+      .map(function (item) {
+        return {
+          text: String(item?.text || "").trim(),
+          start: Number(item?.start),
+          end: Number(item?.end),
+        };
+      })
+      .filter(function (item) {
+        return item.text &&
+          Number.isFinite(item.start) &&
+          Number.isFinite(item.end) &&
+          item.end >= item.start;
       });
 
-      if (generation !== sessionGeneration) return;
-      showCaption(data.text, true);
-
+    if (!words.length) {
+      const fallbackText = String(transcript?.text || "").trim();
       const preview = q("videoPreview");
-      setStatus(preview && preview.paused ? "Paused" : "Listening", !preview || !preview.paused);
-    }).catch(function (error) {
-      if (generation !== sessionGeneration) return;
-      toast(error.message || "Could not translate caption");
-      setStatus("Translation issue", false);
-    });
-  }
-
-  function handleCaptionError(error) {
-    setStatus("Could not start", false);
-    toast(error?.message || "Could not start live captions");
-  }
-
-  function stopScribe() {
-    sessionGeneration += 1;
-    clearTimeout(reconnectTimer);
-    clearTimeout(audioWatchdogTimer);
-    reconnectAttempts = 0;
-    audioChunkCount = 0;
-    lastSettledText = "";
-    lastSettledAt = 0;
-    translationQueue = Promise.resolve();
-
-    const socket = scribeSocket;
-    scribeSocket = null;
-    if (socket) {
-      try {
-        socket.onclose = null;
-        socket.close();
-      } catch (error) {}
+      const duration = Number(preview?.duration);
+      if (fallbackText && Number.isFinite(duration) && duration > 0) {
+        return [{ id: 0, start: 0, end: duration, text: fallbackText }];
+      }
+      return [];
     }
+
+    const result = [];
+    let group = [];
+
+    function flush() {
+      if (!group.length) return;
+      const first = group[0];
+      const last = group[group.length - 1];
+      const text = joinTokens(group.map(function (item) { return item.text; }));
+      if (text) {
+        result.push({
+          id: result.length,
+          start: Math.max(0, first.start - 0.06),
+          end: Math.max(first.start + 0.15, last.end + 0.22),
+          text: text,
+        });
+      }
+      group = [];
+    }
+
+    for (let index = 0; index < words.length; index += 1) {
+      const word = words[index];
+      group.push(word);
+
+      const first = group[0];
+      const duration = word.end - first.start;
+      const next = words[index + 1];
+      const hasPause = Boolean(next && next.start - word.end > 0.72);
+      const endsSentence = /[.!?؟。！？]$/.test(word.text);
+      const tooManyWords = group.length >= 10;
+      const longEnough = duration >= 3.15;
+      const sentenceReady = endsSentence && duration >= 1.0;
+
+      if (!next || hasPause || tooManyWords || longEnough || sentenceReady) {
+        flush();
+      }
+    }
+
+    return result;
+  }
+
+  function joinTokens(tokens) {
+    if (sourceLanguage === "zh" || sourceLanguage === "ja") {
+      return tokens.join("")
+        .replace(/\\s+/g, "")
+        .trim();
+    }
+
+    return tokens.join(" ")
+      .replace(/\\s+([,.;:!?؟،؛。！？])/g, "$1")
+      .replace(/([([{«])\\s+/g, "$1")
+      .replace(/\\s+([)\\]}»])/g, "$1")
+      .replace(/\\s+/g, " ")
+      .trim();
+  }
+
+  async function translateCues(sourceCues, currentGeneration) {
+    const translated = sourceCues.map(function (cue) {
+      return Object.assign({}, cue);
+    });
+
+    for (let offset = 0; offset < sourceCues.length; offset += TRANSLATION_BATCH_SIZE) {
+      if (currentGeneration !== generation) return translated;
+
+      const batch = sourceCues.slice(offset, offset + TRANSLATION_BATCH_SIZE);
+      const data = await api("/mini-app/live/api/translate", {
+        sourceLanguage: sourceLanguage,
+        targetLanguage: targetLanguage,
+        segments: batch.map(function (cue) {
+          return { id: cue.id, text: cue.text };
+        }),
+      });
+
+      if (currentGeneration !== generation) return translated;
+
+      const items = Array.isArray(data?.segments) ? data.segments : [];
+      const byId = new Map(items.map(function (item) {
+        return [Number(item.id), String(item.text || "").trim()];
+      }));
+
+      for (const cue of batch) {
+        const text = byId.get(cue.id);
+        if (!text) {
+          throw new Error("Could not translate captions");
+        }
+        translated[cue.id].text = text;
+      }
+
+      const done = Math.min(sourceCues.length, offset + batch.length);
+      const percent = Math.round(done / sourceCues.length * 100);
+      setStatus("Translating " + percent + "%", true);
+    }
+
+    return translated;
+  }
+
+  function findCueIndex(time) {
+    let low = 0;
+    let high = cues.length - 1;
+
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      const cue = cues[mid];
+
+      if (time < cue.start) {
+        high = mid - 1;
+      } else if (time > cue.end) {
+        low = mid + 1;
+      } else {
+        return mid;
+      }
+    }
+
+    return -1;
+  }
+
+  function syncCaptionToVideo() {
+    const preview = q("videoPreview");
+    if (!preview || !captionsReady || !cues.length) {
+      clearCaption();
+      return;
+    }
+
+    const index = findCueIndex(Number(preview.currentTime) || 0);
+    if (index === activeCueIndex) return;
+
+    activeCueIndex = index;
+    if (index < 0) {
+      const wrap = q("captionPreview");
+      const text = q("liveCaptionText");
+      if (text) text.textContent = "";
+      if (wrap) wrap.classList.remove("show");
+      return;
+    }
+
+    showCaption(cues[index].text);
+  }
+
+  function handlePrepareError(error) {
+    captionsReady = false;
+    setPlaybackEnabled(true);
+    setStatus("Captions failed", false);
+    const message = String(error?.message || "Could not generate captions");
+    toast(message.length > 180 ? "Could not generate captions" : message);
   }
 
   function configureVideoEvents() {
     const preview = q("videoPreview");
     if (!preview) return;
 
-    preview.addEventListener("pointerdown", primeAudioContext, { passive: true });
-
-    preview.addEventListener("play", function () {
-      primeAudioContext();
-      ensureCaptionSession().catch(handleCaptionError);
-    });
-
-    preview.addEventListener("pause", function () {
-      if (!preview.ended) setStatus("Paused", false);
-    });
-
-    preview.addEventListener("seeking", function () {
-      stopScribe();
-      clearCaption();
-      setStatus("Seeking", false);
-    });
-
-    preview.addEventListener("seeked", function () {
-      if (!preview.paused && !preview.ended) {
-        primeAudioContext();
-        ensureCaptionSession().catch(handleCaptionError);
-      } else {
-        setStatus("Play to start", false);
-      }
-    });
-
-    preview.addEventListener("ended", function () {
-      stopScribe();
-      clearCaption();
-      setStatus("Finished", false);
-    });
+    preview.addEventListener("timeupdate", syncCaptionToVideo);
+    preview.addEventListener("seeking", syncCaptionToVideo);
+    preview.addEventListener("seeked", syncCaptionToVideo);
+    preview.addEventListener("play", syncCaptionToVideo);
+    preview.addEventListener("pause", syncCaptionToVideo);
+    preview.addEventListener("ended", clearCaption);
   }
 
   function configureBackButton() {
@@ -814,14 +599,9 @@ export const VEXA_LIVE_JS = `
   }
 
   window.addEventListener("pagehide", function () {
-    stopScribe();
+    resetCaptions();
     resetVideoUrl();
-    clearCaption();
     clearInterval(lockTimer);
-
-    if (audioContext) {
-      audioContext.close().catch(function () {});
-    }
 
     if (tg && tg.BackButton) {
       try {
