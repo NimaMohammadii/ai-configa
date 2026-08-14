@@ -613,7 +613,13 @@ export const VEXA_LIVE_YOUTUBE_JS = `
       const modeButton = event.target && event.target.closest ? event.target.closest("[data-caption-mode]") : null;
       if (modeButton) {
         resetPluginMedia();
-        setTimeout(syncSourceUi, 0);
+        setTimeout(function () {
+          syncSourceUi();
+          if (currentMode() === "live" && youtubeSelected) {
+            const youtubeButton = document.querySelector('[data-live-source="youtube"]');
+            if (youtubeButton) youtubeButton.click();
+          }
+        }, 0);
       }
       const changeButton = event.target && event.target.closest ? event.target.closest("[data-action='change-video'],[data-action='change-youtube']") : null;
       if (changeButton) {
