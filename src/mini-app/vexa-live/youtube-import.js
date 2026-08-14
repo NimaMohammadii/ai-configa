@@ -586,9 +586,18 @@ export const VEXA_LIVE_YOUTUBE_JS = `
     document.addEventListener("click", function (event) {
       const sourceButton = event.target && event.target.closest ? event.target.closest("[data-live-source]") : null;
       if (sourceButton) {
+        const selectsYoutube = sourceButton.getAttribute("data-live-source") === "youtube";
+
+        if (currentMode() === "live") {
+          resetPluginMedia();
+          youtubeSelected = selectsYoutube;
+          setTimeout(syncSourceUi, 0);
+          return;
+        }
+
         event.preventDefault();
         event.stopImmediatePropagation();
-        setYoutubeSelected(sourceButton.getAttribute("data-live-source") === "youtube");
+        setYoutubeSelected(selectsYoutube);
         return;
       }
 
