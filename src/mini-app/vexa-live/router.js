@@ -22,6 +22,7 @@ import {
 const LIVE_ROOT = "/mini-app/live";
 const INTEGRATION_VERSION = "20260814-2";
 const SCRIBE_MODEL = "scribe_v2";
+const REALTIME_SCRIBE_MODEL = "scribe_v2_realtime";
 const MAX_TRANSLATION_TEXT = 1200;
 const MAX_TRANSLATION_SEGMENTS = 30;
 const MAX_TRANSLATION_BATCH_CHARS = 9000;
@@ -153,6 +154,10 @@ async function createScribeToken(request, env) {
   const sourceLanguage = normalizeLanguage(payload.sourceLanguage);
   normalizeLanguage(payload.targetLanguage);
 
+  const liveMode = String(payload.mode || "").trim().toLowerCase() === "live";
+  const tokenType = liveMode ? "realtime_scribe" : "batch_scribe";
+  const modelId = liveMode ? REALTIME_SCRIBE_MODEL : SCRIBE_MODEL;
+
   const selectedKeyName = await getElevenApiSetting(env);
   const apiKey = String(env[selectedKeyName] || "").trim();
   if (!apiKey) {
@@ -160,7 +165,7 @@ async function createScribeToken(request, env) {
   }
 
   const response = await fetch(
-    "https://api.elevenlabs.io/v1/single-use-token/batch_scribe",
+    "https://api.elevenlabs.io/v1/single-use-token/" + tokenType,
     {
       method: "POST",
       headers: {
@@ -177,12 +182,16 @@ async function createScribeToken(request, env) {
       response.status,
       String(data?.detail?.message || data?.detail || data?.message || "unknown error")
     );
-    throw httpError("Could not start video captions", 502);
+    throw httpError(
+      liveMode ? "Could not start live captions" : "Could not start video captions",
+      502
+    );
   }
 
   return {
     token: data.token,
-    modelId: SCRIBE_MODEL,
+    mode: liveMode ? "live" : "standard",
+    modelId,
     languageCode: sourceLanguage,
   };
 }
