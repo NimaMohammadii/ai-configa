@@ -17,6 +17,7 @@ const GITHUB_TOOL_NAMES = new Set([
 
 const GITHUB_API = "https://api.github.com";
 const GITHUB_API_VERSION = "2022-11-28";
+const MAX_AI_REPOSITORY_ARCHIVE_BYTES = 24 * 1024 * 1024;
 
 export async function getGitHubAiContext(env, userId) {
   if (!userId) return null;
@@ -24,6 +25,58 @@ export async function getGitHubAiContext(env, userId) {
     console.error("github AI context failed", error?.message || error);
     return null;
   });
+}
+
+export async function getGitHubRepositorySnapshot(env, userId, options = {}) {
+  const repository = await requireGitHubRepository(env, userId);
+  const token = await createAiInstallationToken(env, repository.installationId);
+  const repo = repoPath(repository.fullName);
+  let commitSha = String(options.commitSha || "").trim();
+  if (!/^[a-f0-9]{40}$/i.test(commitSha)) {
+    const ref = await aiGitHubRequest(
+      `/repos/${repo}/git/ref/heads/${encodeURIComponent(repository.defaultBranch)}`,
+      { token },
+    );
+    commitSha = String(ref?.object?.sha || "");
+  }
+  if (!/^[a-f0-9]{40}$/i.test(commitSha)) throw new Error("GitHub did not return the repository head commit.");
+
+  const result = {
+    repository: repository.fullName,
+    branch: repository.defaultBranch,
+    commitSha,
+  };
+  if (options.includeArchive !== true) return result;
+
+  const response = await fetch(`${GITHUB_API}/repos/${repo}/zipball/${encodeURIComponent(commitSha)}`, {
+    headers: {
+      "Accept": "application/vnd.github+json",
+      "Authorization": `Bearer ${token}`,
+      "X-GitHub-Api-Version": GITHUB_API_VERSION,
+      "User-Agent": "Vexa-AI-GitHub-App",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(response.status === 403
+      ? "The GitHub App does not have permission to download this repository snapshot."
+      : response.status === 404
+        ? "The repository snapshot was not found."
+        : "GitHub could not download the repository snapshot.");
+  }
+  const declaredBytes = Number(response.headers.get("content-length") || 0);
+  if (declaredBytes > MAX_AI_REPOSITORY_ARCHIVE_BYTES) {
+    throw new Error("The connected repository is too large for the hosted coding container snapshot.");
+  }
+  const bytes = await response.arrayBuffer();
+  if (!bytes.byteLength || bytes.byteLength > MAX_AI_REPOSITORY_ARCHIVE_BYTES) {
+    throw new Error("The connected repository snapshot is empty or too large for the hosted coding container.");
+  }
+  return {
+    ...result,
+    filename: `vexa-repository-${commitSha.slice(0, 12)}.zip`,
+    mimeType: "application/zip",
+    bytes,
+  };
 }
 
 export function buildGitHubAiInstructions(context) {
