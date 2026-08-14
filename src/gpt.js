@@ -4,9 +4,11 @@ import { buildGitHubAiInstructions, executeGitHubAiTool, getGitHubAiContext, get
 import {
   buildOpenAiAgentInstructions,
   executeOpenAiApplyPatchCalls,
+  inspectOpenAiShellUsage,
   isOpenAiApplyPatchCall,
   prepareOpenAiAgentTools,
   prepareOpenAiToolReplayItems,
+  reuseOpenAiShellContainer,
 } from "./openai-agent-tools.js";
 import { VOICE_NAMES } from "./voices.js";
 import { EMOTION_TAGS } from "./mini-app/emotion-tags.js";
@@ -25,7 +27,7 @@ const AI_CHAT_AUDIO_TAGS = EMOTION_TAGS.map((item) => {
   return "[" + tag + "] (" + category + ": " + description + ")";
 }).join("; ");
 
-const ELEVENLABS_ENHANCE_PROMPT = "# Instructions\n## 1. Role and Goal\nYou are an AI assistant specializing in enhancing dialogue text for speech generation.\nYour **PRIMARY GOAL** is to dynamically integrate **audio tags** (e.g., [laughing], [sighs]) into dialogue, making it more expressive and engaging for auditory experiences, while **STRICTLY** preserving the original text and meaning.\nIt is imperative that you follow these system instructions to the fullest.\n## 2. Core Directives\nFollow these directives meticulously to ensure high-quality output.\n### Positive Imperatives (DO):\n* DO integrate **audio tags** from the \"Audio Tags\" list (or similar contextually appropriate **audio tags**) to add expression, emotion, and realism to the dialogue. These tags MUST describe something auditory.\n* DO ensure that all **audio tags** are contextually appropriate and genuinely enhance the emotion or subtext of the dialogue line they are associated with.\n* DO strive for a diverse range of emotional expressions (e.g., energetic, relaxed, casual, surprised, thoughtful) across the dialogue, reflecting the nuances of human conversation.\n* DO place **audio tags** strategically to maximize impact, typically immediately before the dialogue segment they modify or immediately after. (e.g., [annoyed] This is hard. or This is hard. [sighs]).\n* DO ensure **audio tags** contribute to the enjoyment and engagement of spoken dialogue.\n### Negative Imperatives (DO NOT):\n* DO NOT alter, add, or remove any words from the original dialogue text itself. Your role is to *prepend* **audio tags**, not to *edit* the speech. **This also applies to any narrative text provided; you must *never* place original text inside brackets or modify it in any way.**\n* DO NOT create **audio tags** from existing narrative descriptions. **Audio tags** are *new additions* for expression, not reformatting of the original text. (e.g., if the text says \"He laughed loudly,\" do not change it to \"[laughing loudly] He laughed.\" Instead, add a tag if appropriate, e.g., \"He laughed loudly [chuckles].\")\n* DO NOT use tags such as [standing], [grinning], [pacing], [music].\n* DO NOT use tags for anything other than the voice such as music or sound effects.\n* DO NOT invent new dialogue lines.\n* DO NOT select **audio tags** that contradict or alter the original meaning or intent of the dialogue.\n* DO NOT introduce or imply any sensitive topics, including but not limited to: politics, religion, child exploitation, profanity, hate speech, or other NSFW content.\n## 3. Workflow\n1. **Analyze Dialogue**: Carefully read and understand the mood, context, and emotional tone of **EACH** line of dialogue provided in the input.\n2. **Select Tag(s)**: Based on your analysis, choose one or more suitable **audio tags**. Ensure they are relevant to the dialogue's specific emotions and dynamics.\n3. **Integrate Tag(s)**: Place the selected **audio tag(s)** in square brackets strategically before or after the relevant dialogue segment, or at a natural pause if it enhances clarity.\n4. **Add Emphasis:** You cannot change the text at all, but you can add emphasis by making some words capital, adding a question mark or adding an exclamation mark where it makes sense, or adding ellipses as well too.\n5. **Verify Appropriateness**: Review the enhanced dialogue to confirm:\n    * The **audio tag** fits naturally.\n    * It enhances meaning without altering it.\n    * It adheres to all Core Directives.\n## 4. Output Format\n* Present ONLY the enhanced dialogue text in a conversational format.\n* **Audio tags** **MUST** be enclosed in square brackets (e.g., [laughing]).\n* The output should maintain the narrative flow of the original dialogue.\n## 5. Audio Tags (Non-Exhaustive)\nUse these as a guide. You can infer similar, contextually appropriate **audio tags**.\n**Directions:**\n* [happy]\n* [sad]\n* [excited]\n* [angry]\n* [whisper]\n* [annoyed]\n* [appalled]\n* [thoughtful]\n* [surprised]\n* *(and similar emotional/delivery directions)*\n**Non-verbal:**\n* [laughing]\n* [chuckles]\n* [sighs]\n* [clears throat]\n* [short pause]\n* [long pause]\n* [exhales sharply]\n* [inhales deeply]\n* *(and similar non-verbal sounds)*\n## 6. Examples of Enhancement\n**Input**:\n\"Are you serious? I can't believe you did that!\"\n**Enhanced Output**:\n\"[appalled] Are you serious? [sighs] I can't believe you did that!\"\n---\n**Input**:\n\"That's amazing, I didn't know you could sing!\"\n**Enhanced Output**:\n\"[laughing] That's amazing, [singing] I didn't know you could sing!\"\n---\n**Input**:\n\"I guess you're right. It's just... difficult.\"\n**Enhanced Output**:\n\"I guess you're right. [sighs] It's just... [muttering] difficult.\"\n# Instructions Summary\n1. Add audio tags from the audio tags list. These must describe something auditory but only for the voice.\n2. Enhance emphasis without altering meaning or text.\n3. Reply ONLY with the enhanced text.";
+const ELEVENLABS_ENHANCE_PROMPT = "# Instructions\n## 1. Role and Goal\nYou are an AI assistant specializing in enhancing dialogue text for speech generation.\nYour **PRIMARY GOAL** is to dynamically integrate **audio tags** (e.g., [laughing], [sighs]) into dialogue, making it more expressive and engaging for auditory experiences, while **STRICTLY** preserving the original text and meaning.\nIt is imperative that you follow these system instructions to the fullest.\n## 2. Core Directives\nFollow these directives meticulously to ensure high-quality output.\n### Positive Imperatives (DO):\n* DO integrate **audio tags** from the \"Audio Tags\" list (or similar contextually appropriate **audio tags**) to add expression, emotion, and realism to the dialogue. These tags MUST describe something auditory.\n* DO ensure that all **audio tags** are contextually appropriate and genuinely enhance the emotion or subtext of the dialogue line they are associated with.\n* DO strive for a diverse range of emotional expressions (e.g., energetic, relaxed, casual, surprised, thoughtful) across the dialogue, reflecting the nuances of human conversation.\n* DO place **audio tags** strategically to maximize impact, typically immediately before the dialogue segment they modify or immediately after. (e.g., [annoyed] This is hard. or This is hard. [sighs]).\n* DO ensure **audio tags** contribute to the enjoyment and engagement of spoken dialogue.\n### Negative Imperatives (DO NOT):\n* DO NOT alter, add, or remove any words from the original dialogue text itself. Your role is to *prepend* **audio tags**, not to *edit* the speech. **This also applies to any narrative text provided; you must *never* place original text inside brackets or modify it in any way.**\n* DO NOT create **audio tags** from existing narrative descriptions. **Audio tags** are *new additions* for expression, not reformatting the original text. (e.g., if the text says \"He laughed loudly,\" do not change it to \"[laughing loudly] He laughed.\" Instead, add a tag if appropriate, e.g., \"He laughed loudly [chuckles].\")\n* DO NOT use tags such as [standing], [grinning], [pacing], [music].\n* DO NOT use tags for anything other than the voice such as music or sound effects.\n* DO NOT invent new dialogue lines.\n* DO NOT select **audio tags** that contradict or alter the original meaning or intent of the dialogue.\n* DO NOT introduce or imply any sensitive topics, including but not limited to: politics, religion, child exploitation, profanity, hate speech, or other NSFW content.\n## 3. Workflow\n1. **Analyze Dialogue**: Carefully read and understand the mood, context, and emotional tone of **EACH** line of dialogue provided in the input.\n2. **Select Tag(s)**: Based on your analysis, choose one or more suitable **audio tags**. Ensure they are relevant to the dialogue's specific emotions and dynamics.\n3. **Integrate Tag(s)**: Place the selected **audio tag(s)** in square brackets strategically before or after the relevant dialogue segment, or at a natural pause if it enhances clarity.\n4. **Add Emphasis:** You cannot change the text at all, but you can add emphasis by making some words capital, adding a question mark or adding an exclamation mark where it makes sense, or adding ellipses as well too.\n5. **Verify Appropriateness**: Review the enhanced dialogue to confirm:\n    * The **audio tag** fits naturally.\n    * It enhances meaning without altering it.\n    * It adheres to all Core Directives.\n## 4. Output Format\n* Present ONLY the enhanced dialogue text in a conversational format.\n* **Audio tags** **MUST** be enclosed in square brackets (e.g., [laughing]).\n* The output should maintain the narrative flow of the original dialogue.\n## 5. Audio Tags (Non-Exhaustive)\nUse these as a guide. You can infer similar, contextually appropriate **audio tags**.\n**Directions:**\n* [happy]\n* [sad]\n* [excited]\n* [angry]\n* [whisper]\n* [annoyed]\n* [appalled]\n* [thoughtful]\n* [surprised]\n* *(and similar emotional/delivery directions)*\n**Non-verbal:**\n* [laughing]\n* [chuckles]\n* [sighs]\n* [clears throat]\n* [short pause]\n* [long pause]\n* [exhales sharply]\n* [inhales deeply]\n* *(and similar non-verbal sounds)*\n## 6. Examples of Enhancement\n**Input**:\n\"Are you serious? I can't believe you did that!\"\n**Enhanced Output**:\n\"[appalled] Are you serious? [sighs] I can't believe you did that!\"\n---\n**Input**:\n\"That's amazing, I didn't know you could sing!\"\n**Enhanced Output**:\n\"[laughing] That's amazing, [singing] I didn't know you could sing!\"\n---\n**Input**:\n\"I guess you're right. It's just... difficult.\"\n**Enhanced Output**:\n\"I guess you're right. [sighs] It's just... [muttering] difficult.\"\n# Instructions Summary\n1. Add audio tags from the audio tags list. These must describe something auditory but only for the voice.\n2. Enhance emphasis without altering meaning or text.\n3. Reply ONLY with the enhanced text.";
 
 const GPT_IMAGE_MODEL = "gpt-image-2";
 const GPT_IMAGE_SIZE = "1024x1024";
@@ -69,7 +71,7 @@ const GPT_CHAT_ATTACHMENT_MIME = Object.freeze({
   htm: "text/html",
   xml: "text/xml",
   csv: "text/csv",
-  tsv: "text/tsv",
+  tsv: "text/tab-separated-values",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   rtf: "application/rtf",
@@ -490,7 +492,24 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     const responseInput = inputMessages.slice();
     let webSearchUsed = false;
     let webSearchCalls = 0;
+    let fileSearchCalls = 0;
+    let unidentifiedContainerSessions = 0;
+    let activeShellContainerId = "";
+    const shellContainerIds = new Set();
     const usage = [];
+    const resultOptions = () => ({
+      webSearchUsed,
+      webSearchCalls,
+      fileSearchCalls,
+      containerSessions: shellContainerIds.size + unidentifiedContainerSessions,
+      vectorStorageGbDays: Math.max(0, Number(openAiAgent.vectorStorageGbDays || 0)),
+      usage,
+      model,
+      reasoningEffort,
+      memoryChanged,
+      memoryEntries,
+      codingActivity,
+    });
 
     for (let toolRound = 0; toolRound < 6; toolRound += 1) {
       throwIfAiChatAborted(controller.signal);
@@ -538,8 +557,18 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       throwIfAiChatAborted(controller.signal);
       const output = Array.isArray(data?.output) ? data.output : [];
       const roundWebSearchCalls = output.filter((item) => item?.type === "web_search_call").length;
+      const roundFileSearchCalls = output.filter((item) => item?.type === "file_search_call").length;
       webSearchCalls += roundWebSearchCalls;
+      fileSearchCalls += roundFileSearchCalls;
       webSearchUsed = webSearchUsed || roundWebSearchCalls > 0;
+      const shellUsage = inspectOpenAiShellUsage(output);
+      if (shellUsage.containerIds.length) {
+        for (const containerId of shellUsage.containerIds) shellContainerIds.add(containerId);
+        const reusableContainerId = shellUsage.containerIds[shellUsage.containerIds.length - 1];
+        if (reuseOpenAiShellContainer(tools, reusableContainerId)) activeShellContainerId = reusableContainerId;
+      } else if (shellUsage.used && !activeShellContainerId) {
+        unidentifiedContainerSessions += 1;
+      }
       if (data?.usage && typeof data.usage === "object") usage.push(data.usage);
       if (codingActivity) {
         codingActivity.contextTokens = Math.max(
@@ -565,9 +594,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
             context: codingContextSnapshot(codingActivity),
           });
         }
-        return buildChatResult(data, cleanMessages, {
-          webSearchUsed, webSearchCalls, usage, model, reasoningEffort, memoryChanged, memoryEntries, codingActivity,
-        });
+        return buildChatResult(data, cleanMessages, resultOptions());
       }
 
       responseInput.push(...prepareOpenAiToolReplayItems(output));
@@ -606,9 +633,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       }
       if (terminalCall) {
         throwIfAiChatAborted(controller.signal);
-        return buildChatResult(data, cleanMessages, {
-          webSearchUsed, webSearchCalls, usage, model, reasoningEffort, memoryChanged, memoryEntries, codingActivity,
-        });
+        return buildChatResult(data, cleanMessages, resultOptions());
       }
     }
     throw new Error("AI used too many tool steps. Ask it to continue with a smaller task.");
@@ -714,6 +739,9 @@ function buildChatResult(data, cleanMessages, options = {}) {
     reasoningEffort: normalizeAiChatReasoningEffort(options.reasoningEffort),
     usage: Array.isArray(options.usage) ? options.usage : [],
     webSearchCalls: Math.max(0, Math.floor(Number(options.webSearchCalls || 0))),
+    fileSearchCalls: Math.max(0, Math.floor(Number(options.fileSearchCalls || 0))),
+    containerSessions: Math.max(0, Math.floor(Number(options.containerSessions || 0))),
+    vectorStorageGbDays: Math.max(0, Number(options.vectorStorageGbDays || 0)),
   };
   const memoryUpdate = options.memoryChanged && Array.isArray(options.memoryEntries)
     ? options.memoryEntries
