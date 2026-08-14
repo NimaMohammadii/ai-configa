@@ -816,7 +816,7 @@ function buildChatResult(data, cleanMessages, options = {}) {
 
 function codingContextSnapshot(activity) {
   const tokens = Math.max(0, Math.floor(Number(activity?.contextTokens || 0)));
-  const window = Math.max(1, Math.floor(Number(activity?.contextWindow || AI_CHAT_CONTEXT_WINDOW));
+  const window = Math.max(1, Math.floor(Number(activity?.contextWindow || AI_CHAT_CONTEXT_WINDOW)));
   return {
     tokens,
     window,
