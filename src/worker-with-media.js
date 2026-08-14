@@ -5,10 +5,19 @@ import {
 } from "./ai-background-workflow.js";
 import { AiCodingWorkflowV2 as AiCodingWorkflow } from "./ai-background-workflow-v2.js";
 import {
+  handleGitHubAiApprovalRequest,
+  isGitHubAiApprovalRequest,
+} from "./github-ai-approval.js";
+import {
   handleAiBackgroundTasksClientRequest,
   injectAiBackgroundTasksClient,
   isAiBackgroundTasksClientRequest,
 } from "./mini-app/ai-background-tasks-client.js";
+import {
+  handleAiGitHubApprovalClientRequest,
+  injectAiGitHubApprovalClient,
+  isAiGitHubApprovalClientRequest,
+} from "./mini-app/ai-github-approval-client.js";
 import {
   handleVexaYoutubeRequest,
   injectVexaYoutubeClient,
@@ -25,8 +34,16 @@ export default {
       return handleAiBackgroundTaskRequest(request, env);
     }
 
+    if (isGitHubAiApprovalRequest(request)) {
+      return handleGitHubAiApprovalRequest(request, env);
+    }
+
     if (isAiBackgroundTasksClientRequest(request)) {
       return handleAiBackgroundTasksClientRequest();
+    }
+
+    if (isAiGitHubApprovalClientRequest(request)) {
+      return handleAiGitHubApprovalClientRequest();
     }
 
     if (isVexaYoutubeRequest(request)) {
@@ -38,7 +55,9 @@ export default {
       request.method === "GET" &&
       (url.pathname === "/mini-app/chat" || url.pathname === "/mini-app/chat/")
     ) {
-      return injectAiBackgroundTasksClient(await worker.fetch(request, env, ctx));
+      let response = await worker.fetch(request, env, ctx);
+      response = await injectAiBackgroundTasksClient(response);
+      return injectAiGitHubApprovalClient(response);
     }
 
     if (
