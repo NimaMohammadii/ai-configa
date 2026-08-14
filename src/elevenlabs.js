@@ -27,7 +27,7 @@ const ELEVEN_ERROR_MESSAGES = {
   },
   ru: {
     missingApi: "Сервис озвучивания еще не настроен. Попробуйте позже.",
-    emptyText: "Текст пуст.",
+    emptyText: "Текст пустой.",
     textTooLong: "Текст слишком длинный. Отправьте более короткий текст.",
     timeout: "Создание голоса заняло слишком много времени. Отправьте более короткий текст или попробуйте снова.",
     quota: "У сервиса озвучивания временно нет доступной емкости. Попробуйте немного позже.",
@@ -100,7 +100,7 @@ const ELEVEN_ERROR_MESSAGES = {
     auth: "Error de conexión con el servicio de voz. Inténtalo de nuevo en breve.",
     rateLimit: "Hay demasiadas solicitudes ahora. Inténtalo de nuevo en unos momentos.",
     unavailable: "El servicio de voz no está disponible temporalmente. Inténtalo de nuevo en breve.",
-    generic: "No se pudo convertir el texto en voz. Envía un texto más corto o inténtalo de nuevo.",
+    generic: "No se pudo convertir el texto a voz. Envía un texto más corto o inténtalo de nuevo.",
   },
   hi: {
     missingApi: "वॉइस सेवा अभी कॉन्फ़िगर नहीं है। कृपया बाद में फिर कोशिश करें।",
