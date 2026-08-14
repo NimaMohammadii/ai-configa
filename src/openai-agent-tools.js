@@ -105,6 +105,17 @@ export function isOpenAiApplyPatchCall(item) {
   return item?.type === "apply_patch_call" && item?.call_id && item?.operation;
 }
 
+export function prepareOpenAiToolReplayItems(output) {
+  return (Array.isArray(output) ? output : []).map((item) => {
+    if (item?.type !== "shell_call_output") return item;
+    const replay = { ...item };
+    delete replay.status;
+    delete replay.shell_output;
+    delete replay.provider_data;
+    return replay;
+  });
+}
+
 export async function executeOpenAiApplyPatchCalls(env, userId, calls, onStatus, activity = null) {
   const items = (Array.isArray(calls) ? calls : []).filter(isOpenAiApplyPatchCall);
   if (!items.length) return [];
@@ -198,7 +209,6 @@ export async function executeOpenAiApplyPatchCalls(env, userId, calls, onStatus,
     return items.map((call) => ({
       type: "apply_patch_call_output",
       call_id: call.call_id,
-      status: "completed",
       output: JSON.stringify({
         ok: true,
         repository: commit.repository,
@@ -216,7 +226,6 @@ export async function executeOpenAiApplyPatchCalls(env, userId, calls, onStatus,
     return items.map((call) => ({
       type: "apply_patch_call_output",
       call_id: call.call_id,
-      status: "failed",
       output: message,
     }));
   }
