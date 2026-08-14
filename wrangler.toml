@@ -1,7 +1,7 @@
 name = "ai-configa"
 main = "src/worker-direct.js"
 compatibility_date = "2026-05-28"
-compatibility_flags = ["enable_request_signal", "request_signal_passthrough"]
+compatibility_flags = ["enable_request_signal", "request_signal_passthrough", "nodejs_compat"]
 workers_dev = true
 preview_urls = true
 
@@ -22,6 +22,9 @@ database_id = "33c8cf30-4daa-498a-8706-d457869f5d25"
 [[r2_buckets]]
 binding = "EXPLORE_MEDIA"
 bucket_name = "ai-configa-explore-media"
+
+[browser]
+binding = "BROWSER"
 
 [triggers]
 crons = ["* * * * *"]
