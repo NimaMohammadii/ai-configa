@@ -115,6 +115,7 @@ export const AI_CHAT_HTML = `<!doctype html>
     var userId=tgUser&&tgUser.id!=null?String(tgUser.id):'local';
     var storageKey='vexa:ai-chat:conversation:v1:'+userId;
     var restoredContext=[];
+    var restoredScroll=null;
     var saveTimer=0;
 
     function normalizeEntry(value){
@@ -128,24 +129,43 @@ export const AI_CHAT_HTML = `<!doctype html>
     function readHistory(){
       try{
         var raw=localStorage.getItem(storageKey);
-        if(!raw)return [];
+        if(!raw)return {messages:[],scroll:null};
         var parsed=JSON.parse(raw);
         var source=Array.isArray(parsed)?parsed:Array.isArray(parsed&&parsed.messages)?parsed.messages:[];
-        return source.map(normalizeEntry).filter(Boolean).slice(-200);
+        var scroll=parsed&&typeof parsed==='object'&&!Array.isArray(parsed)&&parsed.scroll&&typeof parsed.scroll==='object'?parsed.scroll:null;
+        return {messages:source.map(normalizeEntry).filter(Boolean).slice(-200),scroll:scroll};
       }catch(error){
-        return [];
+        return {messages:[],scroll:null};
       }
+    }
+
+    function captureScroll(){
+      var messages=list.querySelectorAll('.ai-chat-message');
+      if(!messages.length)return {top:Math.max(0,list.scrollTop||0),index:-1,offset:0};
+      var listRect=list.getBoundingClientRect();
+      var index=0;
+      for(var i=0;i<messages.length;i+=1){
+        if(messages[i].getBoundingClientRect().bottom>listRect.top+1){index=i;break}
+        index=i;
+      }
+      return {
+        top:Math.max(0,list.scrollTop||0),
+        index:index,
+        offset:messages[index].getBoundingClientRect().top-listRect.top
+      };
     }
 
     function writeHistory(entries){
       var keep=entries.slice(-200);
+      var scroll=captureScroll();
       while(keep.length){
         try{
-          localStorage.setItem(storageKey,JSON.stringify({version:1,messages:keep}));
+          localStorage.setItem(storageKey,JSON.stringify({version:1,messages:keep,scroll:scroll}));
           return;
         }catch(error){
           if(keep.length<=20)return;
           keep=keep.slice(Math.min(10,keep.length-20));
+          if(scroll.index>=0)scroll.index=Math.max(0,scroll.index-Math.min(10,keep.length-20));
         }
       }
     }
@@ -192,7 +212,9 @@ export const AI_CHAT_HTML = `<!doctype html>
       list.appendChild(item);
     }
 
-    var restored=readHistory();
+    var stored=readHistory();
+    var restored=stored.messages;
+    restoredScroll=stored.scroll;
     restoredContext=restored.map(function(entry){return {role:entry.role,content:entry.content}});
     restored.forEach(restoreMessage);
 
@@ -201,8 +223,16 @@ export const AI_CHAT_HTML = `<!doctype html>
       if(empty)empty.classList.add('hidden');
       requestAnimationFrame(function(){
         var messages=list.querySelectorAll('.ai-chat-message');
-        var last=messages[messages.length-1];
-        if(last)list.scrollTop=Math.max(0,last.offsetTop-24);
+        var scroll=restoredScroll;
+        if(scroll&&Number.isFinite(Number(scroll.index))&&Number(scroll.index)>=0&&messages.length){
+          var index=Math.min(messages.length-1,Math.max(0,Math.floor(Number(scroll.index))));
+          var listRect=list.getBoundingClientRect();
+          var target=messages[index];
+          var offset=Number(scroll.offset)||0;
+          list.scrollTop=Math.max(0,list.scrollTop+target.getBoundingClientRect().top-listRect.top-offset);
+        }else if(scroll&&Number.isFinite(Number(scroll.top))){
+          list.scrollTop=Math.max(0,Number(scroll.top));
+        }
       });
     }
 
@@ -211,6 +241,7 @@ export const AI_CHAT_HTML = `<!doctype html>
       observer.observe(list,{childList:true,subtree:true,characterData:true});
     }
 
+    list.addEventListener('scroll',scheduleSave,{passive:true});
     window.addEventListener('pagehide',saveNow);
 
     var nativeFetch=window.fetch.bind(window);
