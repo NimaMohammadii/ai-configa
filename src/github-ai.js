@@ -41,7 +41,7 @@ export function buildGitHubAiInstructions(context) {
     "Prefer apply_patch for precise file creation, updates, or deletions. When using github_commit_changes, submit small exact oldText/newText replacements copied from the file you read; for a new file, submit its complete content.",
     "Change only files required by the request and preserve unrelated behavior.",
     "github_commit_changes creates an atomic commit on a new vexa/ai- branch and does not change the default branch by itself.",
-    "If the user explicitly asks for a pull request, call github_create_pull_request after github_commit_changes using the returned branch.",
+    "If the user explicitly asks for a pull request, call github_create_pull_request after a code-write tool returns a Vexa branch, using that exact branch.",
     "Only call github_merge_pull_request when the user explicitly asks to merge the pull request. Never merge merely because a PR exists.",
     `Only call github_apply_branch_to_default when the user explicitly asks to apply the changes directly to the main/default branch (${context.defaultBranch}); never infer permission to do this.`,
     "Never force-push the default branch. Direct application must remain a fast-forward and must fail if the default branch moved incompatibly.",
@@ -143,7 +143,7 @@ export function getGitHubAiTools(context) {
       parameters: {
         type: "object",
         properties: {
-          branch: { type: "string", description: "The exact vexa/ai- branch returned by github_commit_changes." },
+          branch: { type: "string", description: "The exact vexa/ai- branch returned by apply_patch or github_commit_changes." },
           title: { type: "string", description: "Short pull request title." },
           body: { type: "string", description: "Concise pull request description." },
         },
@@ -173,7 +173,7 @@ export function getGitHubAiTools(context) {
       parameters: {
         type: "object",
         properties: {
-          branch: { type: "string", description: "The exact vexa/ai- branch returned by github_commit_changes." },
+          branch: { type: "string", description: "The exact vexa/ai- branch returned by apply_patch or github_commit_changes." },
         },
         required: ["branch"],
         additionalProperties: false,
