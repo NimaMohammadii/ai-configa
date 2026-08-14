@@ -7,8 +7,8 @@ const MAX_INSTALLATIONS = 20;
 const MAX_REPOSITORIES = 500;
 const MAX_TREE_ENTRIES = 4000;
 const MAX_FILE_BYTES = 120 * 1024;
-const MAX_COMMIT_FILES = 8;
-const MAX_COMMIT_BYTES = 400 * 1024;
+const MAX_COMMIT_FILES = 24;
+const MAX_COMMIT_BYTES = 1024 * 1024;
 
 export function isGitHubRequest(request) {
   const path = new URL(request.url).pathname;
@@ -181,12 +181,23 @@ export async function commitGitHubRepositoryFiles(env, userId, options = {}) {
     token,
     body: { message, tree: tree.sha, parents: [baseSha] },
   });
-  const branch = `vexa/ai-${Date.now().toString(36)}-${randomToken(4).toLowerCase()}`;
-  await githubRequest(`/repos/${repoPath(repository.fullName)}/git/refs`, {
-    method: "POST",
-    token,
-    body: { ref: `refs/heads/${branch}`, sha: commit.sha },
-  });
+
+  let branch = baseBranch;
+  if (isVexaAiBranch(baseBranch)) {
+    await githubRequest(`/repos/${repoPath(repository.fullName)}/git/refs/heads/${encodeURIComponent(baseBranch)}`, {
+      method: "PATCH",
+      token,
+      body: { sha: commit.sha, force: false },
+    });
+  } else {
+    branch = `vexa/ai-${Date.now().toString(36)}-${randomToken(4).toLowerCase()}`;
+    await githubRequest(`/repos/${repoPath(repository.fullName)}/git/refs`, {
+      method: "POST",
+      token,
+      body: { ref: `refs/heads/${branch}`, sha: commit.sha },
+    });
+  }
+
   return {
     repository: repository.fullName,
     baseBranch,
@@ -605,6 +616,11 @@ function cleanBranch(value) {
     throw httpError("Use a valid Git branch name.", 400);
   }
   return branch;
+}
+
+function isVexaAiBranch(value) {
+  const branch = String(value || "").trim();
+  return branch.startsWith("vexa/ai-");
 }
 
 function decodeGitHubContent(content, encoding) {
