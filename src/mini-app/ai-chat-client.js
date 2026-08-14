@@ -31,7 +31,6 @@ export const AI_CHAT_JS = `
   var aiThinkingCodeMix=0;
   var aiThinkingCommitMix=0;
   var aiThinkingLastFrame=0;
-  var aiThinkingTextMotion=new WeakMap();
   var aiCodingProgressEvents=[];
   var aiCodingPreview=null;
   var stableViewportHeight=Math.max(1,Number(tg&&(tg.viewportStableHeight||tg.viewportHeight))||Number(window.innerHeight)||1);
@@ -1497,63 +1496,6 @@ export const AI_CHAT_JS = `
   function renderAiCodingProgress(progress){if(!progress||typeof progress!=='object')return;var state=String(progress.state||'');if(!isAiCodingState(state)&&!isAiCommitState(state)&&!progress.preview&&!progress.context)return;var row=q('aiThinkingRow');if(!row)return;var workbench=q('aiCodingWorkbench');if(!workbench){workbench=document.createElement('section');workbench.id='aiCodingWorkbench';workbench.className='ai-coding-workbench';workbench.innerHTML='<div class="ai-coding-top"><span><small>Live workbench</small><strong id="aiCodingRepository">Repository</strong></span><b id="aiCodingContextLabel">Context</b></div><div class="ai-coding-context-bar"><span id="aiCodingContextFill"></span></div><div id="aiCodingContextFiles" class="ai-coding-context-files"></div><div id="aiCodingTimeline" class="ai-coding-timeline"></div><div id="aiCodingLiveDiff" class="ai-coding-live-diff"></div>';row.appendChild(workbench)}var repository=q('aiCodingRepository');if(repository&&progress.repository)repository.textContent=String(progress.repository);var context=progress.context||{};var contextLabel=q('aiCodingContextLabel');if(contextLabel)contextLabel.textContent='Context · '+aiContextLabel(context);var fill=q('aiCodingContextFill');var tokens=Math.max(0,Number(context.tokens)||0);var windowSize=Math.max(1,Number(context.window)||1050000);if(fill)fill.style.width=Math.min(100,tokens/windowSize*100)+'%';var files=q('aiCodingContextFiles');if(files){files.replaceChildren();(Array.isArray(context.files)?context.files:[]).slice(-8).forEach(function(file){var chip=document.createElement('span');chip.textContent=String(file);files.appendChild(chip)})}var event={state:state,label:String(progress.label||'Working'),detail:String(progress.detail||'')};var previous=aiCodingProgressEvents[aiCodingProgressEvents.length-1];if(!previous||previous.state!==event.state||previous.detail!==event.detail)aiCodingProgressEvents.push(event);aiCodingProgressEvents=aiCodingProgressEvents.slice(-5);var timeline=q('aiCodingTimeline');if(timeline){timeline.replaceChildren();aiCodingProgressEvents.forEach(function(item,index){var line=document.createElement('div');line.className='ai-coding-event'+(index===aiCodingProgressEvents.length-1?' active':'');var dot=document.createElement('i');var copy=document.createElement('span');var strong=document.createElement('strong');strong.textContent=item.label;var small=document.createElement('small');small.textContent=item.detail;copy.appendChild(strong);if(item.detail)copy.appendChild(small);line.appendChild(dot);line.appendChild(copy);timeline.appendChild(line)})}if(progress.preview)aiCodingPreview=progress.preview;var live=q('aiCodingLiveDiff');if(live&&aiCodingPreview){live.replaceChildren();var totals=aiCodingPreview.totals||{};var title=document.createElement('div');title.className='ai-coding-preview-title';title.innerHTML='<span>Change preview</span><b><i>+'+Math.max(0,Number(totals.additions)||0)+'</i><em>−'+Math.max(0,Number(totals.deletions)||0)+'</em></b>';live.appendChild(title);live.appendChild(buildAiDiffPanel(aiCodingPreview,false))}workbench.classList.add('visible');requestAnimationFrame(function(){workbench.scrollIntoView({block:'nearest',behavior:window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})})}
   function appendAiCodingResult(activity){if(!activity||!activity.change)return;var list=q('aiChatMessages');if(!list)return;var change=activity.change||{};var preview=change.diff||{};var totals=preview.totals||{};var item=document.createElement('article');item.className='ai-chat-message assistant ai-coding-result';var card=document.createElement('section');card.className='ai-coding-result-card';var head=document.createElement('div');head.className='ai-coding-result-head';head.innerHTML='<span class="ai-coding-result-check">✓</span><span><small>Completed</small><strong>Code changes ready</strong></span>';card.appendChild(head);var summary=document.createElement('p');summary.className='ai-coding-summary';summary.textContent=String(change.summary||preview.summary||'The requested code changes are ready.');card.appendChild(summary);var stats=document.createElement('div');stats.className='ai-coding-result-stats';stats.innerHTML='<span><b>'+Math.max(0,Number(totals.files)||0)+'</b><small>files</small></span><span class="added"><b>+'+Math.max(0,Number(totals.additions)||0)+'</b><small>added</small></span><span class="removed"><b>−'+Math.max(0,Number(totals.deletions)||0)+'</b><small>removed</small></span>';card.appendChild(stats);var context=document.createElement('div');context.className='ai-coding-result-context';context.innerHTML='<span>Context</span><b></b>';context.querySelector('b').textContent=aiContextLabel(activity.context||{});card.appendChild(context);card.appendChild(buildAiDiffPanel(preview,true));var action=activity.pullRequest||activity.applied||activity.merge||change;var url=String(action&&action.url||'');if(url.indexOf('https://')===0){var link=document.createElement('a');link.className='ai-coding-result-link';link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=activity.pullRequest?'Open pull request':'Open on GitHub';card.appendChild(link)}item.appendChild(card);list.appendChild(item);syncAiChatEmptyState();requestAnimationFrame(function(){item.scrollIntoView({block:'nearest',behavior:window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})})}
   function showAiThinking(){setAiChatCreatureState('thinking');var list=q('aiChatMessages');if(!list)return;hideAiThinking();aiCodingProgressEvents=[];aiCodingPreview=null;var row=document.createElement('div');row.id='aiThinkingRow';row.className='ai-thinking-row';row.setAttribute('data-state','thinking');row.innerHTML='<div class="ai-thinking-head"><span class="ai-thinking-loader"><canvas id="aiThinkingOrb" class="ai-thinking-orb" width="96" height="96" aria-hidden="true"></canvas></span><span class="ai-thinking-copy"><strong class="ai-thinking-label">Thinking</strong><small class="ai-thinking-detail"></small></span></div>';list.appendChild(row);syncAiChatEmptyState();var page=q('aiChatPage');if(page)page.classList.add('thinking');startAiThinkingOrb()}
-  function setAiThinkingText(node,nextText,visible){
-    if(!node)return;
-    var nextValue=String(nextText==null?'':nextText);
-    var previousValue=String(node.textContent||'');
-    var previousMotion=aiThinkingTextMotion.get(node);
-    if(previousMotion){
-      if(previousMotion.enter)previousMotion.enter.cancel();
-      if(previousMotion.exit)previousMotion.exit.cancel();
-      if(previousMotion.ghost&&previousMotion.ghost.remove)previousMotion.ghost.remove();
-      aiThinkingTextMotion.delete(node);
-    }
-    if(previousValue===nextValue){
-      if(visible!==undefined)node.classList.toggle('visible',!!visible);
-      return;
-    }
-    var reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if(reduced||typeof node.animate!=='function'){
-      node.textContent=nextValue;
-      if(visible!==undefined)node.classList.toggle('visible',!!visible);
-      return;
-    }
-    var parent=node.parentElement;
-    var ghost=null;
-    if(parent&&previousValue){
-      if(getComputedStyle(parent).position==='static')parent.style.position='relative';
-      ghost=node.cloneNode(false);
-      ghost.textContent=previousValue;
-      ghost.removeAttribute('id');
-      ghost.setAttribute('aria-hidden','true');
-      ghost.style.position='absolute';
-      ghost.style.left=node.offsetLeft+'px';
-      ghost.style.top=node.offsetTop+'px';
-      ghost.style.width=Math.max(1,node.offsetWidth)+'px';
-      ghost.style.margin='0';
-      ghost.style.pointerEvents='none';
-      parent.appendChild(ghost);
-    }
-    node.textContent=nextValue;
-    if(visible!==undefined)node.classList.toggle('visible',!!visible);
-    var enter=nextValue?node.animate([
-      {opacity:0,transform:'translate3d(0,6px,0)',filter:'blur(2.5px)'},
-      {opacity:1,transform:'translate3d(0,0,0)',filter:'blur(0)'}
-    ],{duration:300,easing:'cubic-bezier(.16,1,.3,1)',fill:'none'}):null;
-    var exit=ghost?ghost.animate([
-      {opacity:1,transform:'translate3d(0,0,0)',filter:'blur(0)'},
-      {opacity:0,transform:'translate3d(0,-5px,0)',filter:'blur(2.5px)'}
-    ],{duration:190,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'}):null;
-    var motion={enter:enter,exit:exit,ghost:ghost};
-    aiThinkingTextMotion.set(node,motion);
-    function finish(){
-      if(ghost&&ghost.remove)ghost.remove();
-      if(aiThinkingTextMotion.get(node)===motion)aiThinkingTextMotion.delete(node);
-    }
-    if(enter){enter.onfinish=finish;enter.oncancel=function(){if(ghost&&ghost.remove)ghost.remove()}}
-    else if(exit){exit.onfinish=finish;exit.oncancel=finish}
-    else finish();
-  }
   function setAiThinkingState(payload){
     var row=q('aiThinkingRow');
     if(!row)return;
@@ -1588,9 +1530,11 @@ export const AI_CHAT_JS = `
     row.setAttribute('data-state',next);
 
     var label=row.querySelector('.ai-thinking-label');
-    setAiThinkingText(label,labelText);
+    if(label){
+      label.textContent=labelText;
+    }
     var detail=row.querySelector('.ai-thinking-detail');
-    setAiThinkingText(detail,detailText,!!detailText);
+    if(detail){detail.textContent=detailText;detail.classList.toggle('visible',!!detailText)}
 
     if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){
       var canvas=q('aiThinkingOrb');
