@@ -133,7 +133,7 @@ export const AI_CHAT_HTML = `<!doctype html>
         var parsed=JSON.parse(raw);
         var source=Array.isArray(parsed)?parsed:Array.isArray(parsed&&parsed.messages)?parsed.messages:[];
         var scroll=parsed&&typeof parsed==='object'&&!Array.isArray(parsed)&&parsed.scroll&&typeof parsed.scroll==='object'?parsed.scroll:null;
-        return {messages:source.map(normalizeEntry).filter(Boolean).slice(-200),scroll:scroll};
+        return {messages:source.map(normalizeEntry).filter(Boolean).slice(-2000),scroll:scroll};
       }catch(error){
         return {messages:[],scroll:null};
       }
@@ -156,7 +156,7 @@ export const AI_CHAT_HTML = `<!doctype html>
     }
 
     function writeHistory(entries){
-      var keep=entries.slice(-200);
+      var keep=entries.slice(-2000);
       var scroll=captureScroll();
       while(keep.length){
         try{
@@ -184,7 +184,7 @@ export const AI_CHAT_HTML = `<!doctype html>
         var text=messageText(content);
         if(!role||!text)return null;
         return {role:role,content:text,rtl:item.classList.contains('rtl')};
-      }).filter(Boolean).slice(-200);
+      }).filter(Boolean).slice(-2000);
     }
 
     function saveNow(){
