@@ -12,7 +12,11 @@ import{initializeMiniAppUser as IO}from"./onboarding.js";import{saveAiChatExchan
     const m=y=>{if(signal?.aborted)return!1;try{return l.enqueue(c.encode(JSON.stringify(y)+String.fromCharCode(10))),!0}catch{return!1}};
     try{
       active();
-      let y=await CA(e,o,(x=>m(typeof x==="string"?{type:"status",status:x}:{type:"progress",data:x})),{userId:a.id,model:n.model,reasoningEffort:n.reasoningEffort,signal});
+      let y=await CA(e,o,(x=>{
+        if(typeof x==="string")return m({type:"status",status:x});
+        if(x&&x.type==="text_delta")return m({type:"delta",delta:String(x.delta||"")});
+        return m({type:"progress",data:x});
+      }),{userId:a.id,model:n.model,reasoningEffort:n.reasoningEffort,signal});
       active();
       const x=ABC(n.model,y.billing),mu=Array.isArray(y.memoryUpdate)?y.memoryUpdate:null;
       delete y.billing;
