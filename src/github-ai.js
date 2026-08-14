@@ -21,7 +21,7 @@ export function buildGitHubAiInstructions(context) {
     "Use github_list_tasks when the user asks what coding tasks exist, refers to an older task, or the intended task is ambiguous. Never guess a task ID.",
     "Use github_resume_task with the exact taskId returned by github_list_tasks or supplied in the saved task instructions. Resuming a task changes the active coding workspace, so only the root coordinator may do it.",
     "For a non-trivial coding task with multiple files, independent workstreams, or several validation stages, create a concise structured plan with github_update_plan before the first write. Keep steps outcome-focused, update the plan after meaningful milestones, and keep at most one step in_progress. Simple focused edits do not need a plan.",
-    "The coding plan is visible operational state, not hidden reasoning. Mark a step completed only after its concrete work is done, and use blocked only when a real external or technical blocker prevents completion. Do not finish a planned task while pending or in_progress steps remain.",
+    "The coding plan is visible operational state, not hidden reasoning. Mark a step completed only after its concrete work is done, and use blocked only when a real external or technical blocker prevents completion. Do not finish a planned task while pending or in_progress steps remain. Final branch review will reject completion while such steps remain.",
     "Starting a new independent request from the default branch does not overwrite older task state; the first write creates a separate persisted task branch.",
   ].join(" ");
 }
@@ -202,7 +202,31 @@ export async function executeGitHubAiTool(env, userId, item, onStatus, activity 
     return JSON.stringify({ ok: true, plan: summarizeCodingPlan(plan) });
   }
 
-  const output = await core.executeGitHubAiTool(env, userId, item, onStatus, activity);
+  let output = await core.executeGitHubAiTool(env, userId, item, onStatus, activity);
+  if (item?.name === "github_review_branch" && activity?.plan) {
+    const plan = summarizeCodingPlan(activity.plan);
+    if (plan) {
+      const passed = Boolean(plan.complete);
+      if (!passed && activity) {
+        activity.needsReview = true;
+        activity.reviewCompleted = false;
+        markActivity(activity, "finalizing", "Plan still has unfinished steps", `${plan.counts.pending + plan.counts.inProgress} remaining`);
+      }
+      try {
+        const parsed = JSON.parse(String(output || "{}"));
+        parsed.planGate = {
+          passed,
+          pending: plan.counts.pending,
+          inProgress: plan.counts.inProgress,
+          completed: plan.counts.completed,
+          blocked: plan.counts.blocked,
+        };
+        output = JSON.stringify(parsed);
+      } catch {
+        // Keep the original tool output if it is not JSON.
+      }
+    }
+  }
   await completeExactTaskAfterTerminalAction(env, userId, item, activity).catch((error) => {
     console.error("complete exact coding task failed", error?.message || error);
   });
