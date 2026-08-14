@@ -41,8 +41,13 @@ export const GITHUB_CLIENT_JS = `
   function connectGithub(){if(state.busy)return;var authorizeUrl=String(state.authorizeUrl||'');var authorize=null;try{authorize=new URL(authorizeUrl)}catch(error){}if(!authorize||authorize.protocol!=='https:'||authorize.hostname!=='github.com'||authorize.pathname!=='/login/oauth/authorize'){showError('GitHub connection is not ready. Close this window and try again.');return}state.pendingConnect=true;window.location.assign(authorizeUrl)}
   async function selectRepo(repo){if(state.busy)return;state.busy=true;try{var data=await api('/mini-app/api/github/select',{installationId:repo.installationId,repoId:repo.id});state.repository=data.repository||repo;render();if(tg&&tg.HapticFeedback)try{tg.HapticFeedback.notificationOccurred('success')}catch(error){}setTimeout(closeRepositoryView,120)}catch(error){showError(error.message)}finally{state.busy=false}}
   async function disconnectGithub(){if(state.busy)return;state.busy=true;try{await api('/mini-app/api/github/disconnect',{});state.connected=false;state.login='';state.repository=null;state.repositories=[];state.authorizeUrl='';await loadRepositories()}catch(error){showError(error.message)}finally{state.busy=false}}
+  function keepOriginalLoaderDuringCoding(){
+    var codingStates={scanning_repository:1,reading_repository:1,analyzing_code:1,preparing_changes:1,previewing_changes:1,writing_code:1,creating_pull_request:1,merging_pull_request:1,applying_changes:1,finalizing:1,committing_changes:1,commit_ready:1,pull_request_ready:1,changes_applied:1};
+    var observer=new MutationObserver(function(){var row=q('aiThinkingRow');if(!row)return;var current=String(row.getAttribute('data-state')||'');if(codingStates[current])row.setAttribute('data-state','thinking')});
+    observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['data-state']});
+  }
   document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'&&state.pendingConnect){state.pendingConnect=false;loadRepositories()}});
-  function start(){inject();refreshStatus()}
+  function start(){inject();keepOriginalLoaderDuringCoding();refreshStatus()}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 `;
