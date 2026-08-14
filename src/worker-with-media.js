@@ -1,15 +1,25 @@
 import worker from "./worker-direct.js";
 import {
+  AiCodingWorkflow,
+  handleAiBackgroundTaskRequest,
+  isAiBackgroundTaskRequest,
+} from "./ai-background-workflow.js";
+import {
   handleVexaYoutubeRequest,
   injectVexaYoutubeClient,
   isVexaYoutubeRequest,
 } from "./mini-app/vexa-live/youtube-router.js";
 
+export { AiCodingWorkflow };
 export { VexaMediaContainer } from "./mini-app/vexa-live/media-container.js";
 
 export default {
   ...worker,
   async fetch(request, env, ctx) {
+    if (isAiBackgroundTaskRequest(request)) {
+      return handleAiBackgroundTaskRequest(request, env);
+    }
+
     if (isVexaYoutubeRequest(request)) {
       return handleVexaYoutubeRequest(request, env);
     }

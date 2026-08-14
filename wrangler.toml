@@ -26,6 +26,11 @@ bucket_name = "ai-configa-explore-media"
 [browser]
 binding = "BROWSER"
 
+[[workflows]]
+name = "vexa-ai-coding-tasks"
+binding = "AI_CODING_WORKFLOW"
+class_name = "AiCodingWorkflow"
+
 [[containers]]
 class_name = "VexaMediaContainer"
 image = "./containers/vexa-media/Dockerfile"
