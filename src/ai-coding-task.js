@@ -129,9 +129,11 @@ function normalizeStrings(value, limit) {
 
 function normalizeReview(value) {
   if (!value || typeof value !== "object") return null;
+  const commitSha = cleanCommitSha(value.commitSha);
+  if (!commitSha) return null;
   return {
     branch: String(value.branch || "").slice(0, 255),
-    commitSha: cleanCommitSha(value.commitSha),
+    commitSha,
     status: String(value.status || "").slice(0, 80),
     aheadBy: Math.max(0, Number(value.aheadBy || 0)),
     behindBy: Math.max(0, Number(value.behindBy || 0)),
