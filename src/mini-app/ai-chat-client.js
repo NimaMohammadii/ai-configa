@@ -1,1 +1,1 @@
-placeholder
+export const AI_CHAT_JS = ``;
