@@ -1,8 +1,12 @@
 import { getAdminAction, isAdmin } from "./admin.js";
-import { handleCallback } from "./bot.js";
-import { handleMessage } from "./bot-secure.js";
+import { handleCallback, handleMessage } from "./mini-app/vexa-live/bot-bridge.js";
 import { handleChatGptAppRequest, isChatGptAppRequest } from "./chatgpt-app/router.js";
-import { handleMiniAppRequest, isMiniAppRequest } from "./mini-app/server.js";
+import { isMiniAppRequest } from "./mini-app/server.js";
+import {
+  handleMiniAppWithVexaLive,
+  handleVexaLiveRequest,
+  isVexaLiveRequest,
+} from "./mini-app/vexa-live/router.js";
 import { handleGitHubRequest, isGitHubRequest } from "./github-app.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { processPendingImageJobs } from "./image-jobs.js";
@@ -42,8 +46,12 @@ export default {
       return handleExploreMediaRequest(request, env);
     }
 
+    if (isVexaLiveRequest(request)) {
+      return handleVexaLiveRequest(request, env);
+    }
+
     if (isMiniAppRequest(request)) {
-      return handleMiniAppRequest(request, env);
+      return handleMiniAppWithVexaLive(request, env);
     }
 
     if (request.method === "GET") return new Response("ai-configa worker is running");
@@ -165,4 +173,3 @@ function isImageEditMessage(message) {
 function logError(error) {
   console.error(error && error.stack ? error.stack : error);
 }
-
