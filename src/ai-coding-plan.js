@@ -81,7 +81,7 @@ export function summarizeCodingPlan(plan) {
     explanation: normalized.explanation,
     steps: normalized.steps,
     counts,
-    complete: counts.pending === 0 && counts.inProgress === 0,
+    complete: counts.pending === 0 && counts.inProgress === 0 && counts.blocked === 0,
   };
 }
 
