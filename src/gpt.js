@@ -624,6 +624,11 @@ async function readChatResponseStream(response, onStatus) {
     }
 
     const type = String(event?.type || eventName || "");
+    if (type === "response.output_text.delta") {
+      const delta = String(event?.delta || "");
+      if (delta) emitStatus({ type: "text_delta", delta });
+      return;
+    }
     if (type === "response.web_search_call.in_progress" || type === "response.web_search_call.searching") {
       const callId = String(event?.item_id || event?.call_id || event?.output_index || "web-search");
       const wasSearching = searchingCalls.size > 0;
