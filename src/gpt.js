@@ -1,6 +1,8 @@
 import { normalizeAiChatModel, normalizeAiChatReasoningEffort } from "./ai-chat-model.js";
 import { applyAiMemoryToolCall, buildAiMemoryInstructions, getAiMemoryTools, getUserAiMemory, isAiMemoryToolCall } from "./ai-memory.js";
 import { buildGitHubAiInstructions, executeGitHubAiTool, getGitHubAiContext, getGitHubAiTools, isGitHubAiToolCall } from "./github-ai.js";
+import { buildAiMcpInstructions, getAiMcpTools } from "./ai-mcp.js";
+import { createAiComputerSession, getAiComputerTools, isAiComputerCall, isAiComputerFunctionCall } from "./ai-computer.js";
 import {
   buildOpenAiAgentInstructions,
   executeOpenAiApplyPatchCalls,
@@ -8,6 +10,7 @@ import {
   isOpenAiApplyPatchCall,
   prepareOpenAiAgentTools,
   prepareOpenAiToolReplayItems,
+  refreshOpenAiCodingWorkspace,
   reuseOpenAiShellContainer,
 } from "./openai-agent-tools.js";
 import { VOICE_NAMES } from "./voices.js";
@@ -19,6 +22,7 @@ const GPT_IMAGE_TIMEOUT_MS = 150000;
 const GPT_MODEL = "gpt-5.6-terra";
 const AI_CHAT_CONTEXT_WINDOW = 1050000;
 const MAX_ENHANCE_CHARS = 5000;
+const MAX_AGENT_TOOL_ROUNDS = 14;
 
 const AI_CHAT_AUDIO_TAGS = EMOTION_TAGS.map((item) => {
   const category = item[0];
@@ -311,7 +315,7 @@ function normalizeChatAttachment(raw) {
   };
 }
 
-function buildAiChatInstructions(preferredVoice, githubContext, memories, model, agentInstructions = "") {
+function buildAiChatInstructions(preferredVoice, githubContext, memories, model, agentInstructions = "", mcpInstructions = "", runtimeInstructions = "") {
   const selectedVoice = VOICE_NAMES.includes(preferredVoice) ? preferredVoice : "Nora";
   const selectedModel = normalizeAiChatModel(model);
   return [
@@ -330,7 +334,10 @@ function buildAiChatInstructions(preferredVoice, githubContext, memories, model,
     "Always use the user’s currently selected voice for speech: " + selectedVoice + ".",
     "Never choose a different voice inside AI Chat; the voice card is the single source of truth.",
     "For web-search answers, do not add sources, citation links, raw URLs, or footnote markers unless the user asks for them.",
+    "When multiple subagents are available, delegate only independent read-only research, inspection, testing hypotheses, or review work that can safely run in parallel. The root coordinator alone should make code writes, create or merge pull requests, apply branches to default, or perform other side-effecting actions.",
     agentInstructions,
+    mcpInstructions,
+    runtimeInstructions,
     buildGitHubAiInstructions(githubContext),
     buildAiMemoryInstructions(memories),
   ].filter(Boolean).join(" ");
@@ -399,15 +406,22 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
   const reasoningEffort = normalizeAiChatReasoningEffort(options.reasoningEffort);
   const githubContext = await getGitHubAiContext(env, options.userId);
   const githubTools = getGitHubAiTools(githubContext);
+  const mcpTools = getAiMcpTools(env);
+  const computerTools = getAiComputerTools(env);
+  const computerSession = createAiComputerSession(env);
   const openAiAgent = await prepareOpenAiAgentTools(env, options.userId, {
     attachment: cleanMessages[cleanMessages.length - 1]?.attachment || null,
     githubContext,
   });
   const openAiAgentInstructions = buildOpenAiAgentInstructions(openAiAgent, githubContext);
+  const mcpInstructions = buildAiMcpInstructions(mcpTools);
   const codingActivity = githubContext ? {
     used: false,
     repository: githubContext.fullName,
     defaultBranch: githubContext.defaultBranch,
+    currentBranch: "",
+    currentCommitSha: String(openAiAgent.repositorySnapshot?.commitSha || ""),
+    workspaceCommitSha: String(openAiAgent.repositorySnapshot?.commitSha || ""),
     model,
     reasoningEffort,
     contextWindow: AI_CHAT_CONTEXT_WINDOW,
@@ -418,6 +432,10 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     pullRequest: null,
     merge: null,
     applied: null,
+    lastCi: null,
+    lastReview: null,
+    needsReview: false,
+    reviewCompleted: false,
   } : null;
   const memoryTools = getAiMemoryTools();
   let memoryEntries = await getUserAiMemory(env, options.userId);
@@ -441,12 +459,12 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       timedOut = true;
       if (!controller.signal.aborted) controller.abort();
     },
-    githubContext || reasoningEffort === "high" || reasoningEffort === "max" ? 180000 : GPT_CHAT_TIMEOUT_MS,
+    githubContext || reasoningEffort === "high" || reasoningEffort === "max" ? 300000 : GPT_CHAT_TIMEOUT_MS,
   );
 
   try {
     throwIfAiChatAborted(controller.signal);
-    const tools = [
+    const coreTools = [
       { type: "web_search" },
       {
         type: "function",
@@ -485,9 +503,23 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         },
         strict: true
       },
+    ];
+    const delegatedTools = [
       ...openAiAgent.tools,
       ...githubTools,
+      ...mcpTools,
+      ...computerTools,
       ...memoryTools,
+    ];
+    const hasDeferredTools = delegatedTools.some((tool) => tool?.defer_loading === true);
+    const hasProgrammaticTools = delegatedTools.some(
+      (tool) => Array.isArray(tool?.allowed_callers) && tool.allowed_callers.includes("programmatic"),
+    );
+    const tools = [
+      ...coreTools,
+      ...(hasDeferredTools ? [{ type: "tool_search" }] : []),
+      ...(hasProgrammaticTools ? [{ type: "programmatic_tool_calling" }] : []),
+      ...delegatedTools,
     ];
     const responseInput = inputMessages.slice();
     let webSearchUsed = false;
@@ -497,12 +529,16 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     let activeShellContainerId = "";
     const shellContainerIds = new Set();
     const usage = [];
+    let reviewRequested = false;
+    let reviewedCommitSha = "";
+    const multiAgentEnabled = Boolean(githubContext);
     const resultOptions = () => ({
       webSearchUsed,
       webSearchCalls,
       fileSearchCalls,
       containerSessions: shellContainerIds.size + unidentifiedContainerSessions,
       vectorStorageGbDays: Math.max(0, Number(openAiAgent.vectorStorageGbDays || 0)),
+      browserDurationMs: computerSession.usage().durationMs,
       usage,
       model,
       reasoningEffort,
@@ -511,22 +547,55 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       codingActivity,
     });
 
-    for (let toolRound = 0; toolRound < 6; toolRound += 1) {
+    const refreshWorkspaceIfNeeded = async () => {
+      if (!codingActivity?.currentCommitSha || codingActivity.currentCommitSha === codingActivity.workspaceCommitSha) return;
+      const snapshot = await refreshOpenAiCodingWorkspace(
+        env,
+        options.userId,
+        tools,
+        openAiAgent,
+        codingActivity.currentCommitSha,
+      );
+      if (!snapshot) return;
+      codingActivity.workspaceCommitSha = codingActivity.currentCommitSha;
+      codingActivity.lastReview = null;
+      codingActivity.reviewCompleted = false;
+      activeShellContainerId = "";
+      reviewRequested = false;
+      reviewedCommitSha = "";
+      if (Array.isArray(codingActivity.events)) {
+        codingActivity.events.push({
+          state: "analyzing_code",
+          label: "Workspace refreshed",
+          detail: codingActivity.currentCommitSha.slice(0, 12),
+          at: Date.now(),
+        });
+      }
+    };
+
+    for (let toolRound = 0; toolRound < MAX_AGENT_TOOL_ROUNDS; toolRound += 1) {
       throwIfAiChatAborted(controller.signal);
       if (toolRound > 0 && codingActivity?.used && typeof onStatus === "function") {
         onStatus({
-          state: "analyzing_code",
-          label: "Analyzing code context",
+          state: reviewRequested ? "finalizing" : "analyzing_code",
+          label: reviewRequested ? "Reviewing final changes" : "Analyzing code context",
           detail: `${codingActivity.filesRead.size} files in context`,
           repository: codingActivity.repository,
           context: codingContextSnapshot(codingActivity),
         });
       }
-      const response = await fetch("https://api.openai.com/v1/responses", {
+      const reviewInstruction = reviewRequested
+        ? "MANDATORY FINAL CODING REVIEW: This is a review pass after a code write. Use github_review_branch on the current Vexa branch if it has not been reviewed for the current commit. Re-read any critical changed files if needed. Run the relevant available build, test, lint, typecheck, syntax, or deterministic checks against the refreshed post-write shell workspace when they materially validate the change. Use github_read_ci when GitHub CI evidence exists or could matter. Check that the diff is limited to the user's request, that no unrelated behavior changed, and that external API/library assumptions match current official documentation when relevant. If you find a defect, fix it with a precise write and then review the new commit again. Do not claim validation succeeded unless a tool actually showed it. Only after the current commit passes this review should you produce the final user-facing answer."
+        : "";
+      const responseUrl = multiAgentEnabled
+        ? "https://api.openai.com/v1/responses?beta=true"
+        : "https://api.openai.com/v1/responses";
+      const response = await fetch(responseUrl, {
         method: "POST",
         headers: {
           "Authorization": "Bearer " + env.GPT_API,
           "Content-Type": "application/json",
+          ...(multiAgentEnabled ? { "OpenAI-Beta": "responses_multi_agent=v1" } : {}),
         },
         signal: controller.signal,
         body: JSON.stringify({
@@ -537,11 +606,18 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
             memoryEntries,
             model,
             openAiAgentInstructions,
+            mcpInstructions,
+            reviewInstruction,
           ),
           input: responseInput,
           tools,
           tool_choice: "auto",
-          reasoning: { effort: reasoningEffort },
+          reasoning: {
+            effort: reasoningEffort,
+            context: "all_turns",
+            ...(reviewRequested ? { mode: "pro" } : {}),
+          },
+          ...(multiAgentEnabled ? { multi_agent: { enabled: true } } : {}),
           max_output_tokens: githubContext ? 16000 : 8000,
           store: false,
           stream: true,
@@ -561,6 +637,9 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       webSearchCalls += roundWebSearchCalls;
       fileSearchCalls += roundFileSearchCalls;
       webSearchUsed = webSearchUsed || roundWebSearchCalls > 0;
+      if (roundWebSearchCalls && codingActivity && Array.isArray(codingActivity.events)) {
+        codingActivity.events.push({ state: "analyzing_code", label: "Web research used", detail: `${roundWebSearchCalls} searches`, at: Date.now() });
+      }
       const shellUsage = inspectOpenAiShellUsage(output);
       if (shellUsage.containerIds.length) {
         if (!activeShellContainerId && unidentifiedContainerSessions > 0) {
@@ -572,6 +651,9 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       } else if (shellUsage.used && !activeShellContainerId) {
         unidentifiedContainerSessions += 1;
       }
+      if (shellUsage.used && codingActivity?.currentCommitSha && codingActivity.currentCommitSha === codingActivity.workspaceCommitSha) {
+        codingActivity.postWriteShellUsed = true;
+      }
       if (data?.usage && typeof data.usage === "object") usage.push(data.usage);
       if (codingActivity) {
         codingActivity.contextTokens = Math.max(
@@ -579,25 +661,62 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           Math.max(0, Number(data?.usage?.input_tokens || 0)),
         );
       }
+
       const terminalCall = output.find(
-        (item) => item?.type === "function_call"
+        (item) => isRootAgentItem(item)
+          && item?.type === "function_call"
           && (item?.name === "generate_image" || item?.name === "generate_speech"),
       );
       const githubCalls = output.filter(isGitHubAiToolCall);
       const memoryCalls = output.filter(isAiMemoryToolCall);
       const patchCalls = output.filter(isOpenAiApplyPatchCall);
-      if (!githubCalls.length && !memoryCalls.length && !patchCalls.length) {
+      const browserOpenCalls = output.filter(isAiComputerFunctionCall);
+      const computerCalls = output.filter(isAiComputerCall);
+      const hasClientCalls = githubCalls.length || memoryCalls.length || patchCalls.length || browserOpenCalls.length || computerCalls.length;
+      const hasRootMessage = output.some((item) => item?.type === "message" && isRootAgentItem(item));
+
+      if (!hasClientCalls && hasRootMessage) {
         throwIfAiChatAborted(controller.signal);
+        if (codingActivity?.needsReview) {
+          const currentSha = String(codingActivity.currentCommitSha || "");
+          const reviewedCurrentCommit = Boolean(
+            codingActivity.lastReview
+            && currentSha
+            && String(codingActivity.lastReview.commitSha || currentSha) === currentSha,
+          );
+          if (!reviewRequested || !reviewedCurrentCommit || reviewedCommitSha !== currentSha) {
+            responseInput.push(...prepareOpenAiToolReplayItems(output));
+            reviewRequested = true;
+            reviewedCommitSha = reviewedCurrentCommit ? currentSha : "";
+            if (typeof onStatus === "function") {
+              onStatus({
+                state: "finalizing",
+                label: "Running final review",
+                detail: codingActivity.currentBranch || "Vexa branch",
+                repository: codingActivity.repository,
+                context: codingContextSnapshot(codingActivity),
+              });
+            }
+            continue;
+          }
+          codingActivity.needsReview = false;
+          codingActivity.reviewCompleted = true;
+        }
         if (codingActivity?.used && typeof onStatus === "function") {
           onStatus({
             state: "finalizing",
             label: "Finalizing result",
-            detail: codingActivity.change ? "Preparing change report" : "Preparing answer",
+            detail: codingActivity.change ? "Preparing reviewed change report" : "Preparing answer",
             repository: codingActivity.repository,
             context: codingContextSnapshot(codingActivity),
           });
         }
         return buildChatResult(data, cleanMessages, resultOptions());
+      }
+
+      if (!hasClientCalls && !hasRootMessage) {
+        responseInput.push(...prepareOpenAiToolReplayItems(output));
+        continue;
       }
 
       responseInput.push(...prepareOpenAiToolReplayItems(output));
@@ -606,33 +725,80 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         const update = applyAiMemoryToolCall(memoryEntries, call);
         memoryEntries = update.memories;
         memoryChanged = memoryChanged || update.changed;
-        responseInput.push({
-          type: "function_call_output",
-          call_id: call.call_id,
-          output: JSON.stringify(update.output),
-        });
+        responseInput.push(functionCallOutput(call, JSON.stringify(update.output)));
+      }
+      for (const call of browserOpenCalls) {
+        throwIfAiChatAborted(controller.signal);
+        let args = {};
+        try { args = JSON.parse(String(call.arguments || "{}")); } catch { args = {}; }
+        let toolOutput;
+        try {
+          toolOutput = JSON.stringify(await computerSession.openUrl(args.url));
+          if (codingActivity && Array.isArray(codingActivity.events)) {
+            codingActivity.used = true;
+            codingActivity.events.push({ state: "analyzing_code", label: "Browser preview opened", detail: String(args.url || "").slice(0, 180), at: Date.now() });
+          }
+        } catch (error) {
+          toolOutput = JSON.stringify({ error: String(error?.message || "Browser could not open the URL.").slice(0, 500) });
+        }
+        responseInput.push(functionCallOutput(call, toolOutput));
+      }
+      for (const call of computerCalls) {
+        throwIfAiChatAborted(controller.signal);
+        try {
+          const computerOutput = await computerSession.executeComputerCall(call);
+          responseInput.push(computerOutput);
+          if (codingActivity && Array.isArray(codingActivity.events)) {
+            codingActivity.used = true;
+            codingActivity.events.push({ state: "analyzing_code", label: "UI verified in browser", detail: `${Array.isArray(call.actions) ? call.actions.length : 0} actions`, at: Date.now() });
+          }
+        } catch (error) {
+          throw new Error("Computer Use failed: " + String(error?.message || "browser action failed").slice(0, 500));
+        }
       }
       for (const call of githubCalls) {
         throwIfAiChatAborted(controller.signal);
+        if (!isRootAgentItem(call) && isGitHubWriteCall(call)) {
+          responseInput.push(functionCallOutput(call, JSON.stringify({ error: "Only the root coordinator may perform GitHub write actions." })));
+          continue;
+        }
+        const beforeSha = String(codingActivity?.currentCommitSha || "");
         const toolOutput = await executeGitHubAiTool(env, options.userId, call, onStatus, codingActivity);
         throwIfAiChatAborted(controller.signal);
-        responseInput.push({
-          type: "function_call_output",
-          call_id: call.call_id,
-          output: toolOutput,
-        });
+        responseInput.push(functionCallOutput(call, toolOutput));
+        const afterSha = String(codingActivity?.currentCommitSha || "");
+        if (afterSha && afterSha !== beforeSha) {
+          await refreshWorkspaceIfNeeded();
+        }
       }
       if (patchCalls.length) {
-        throwIfAiChatAborted(controller.signal);
-        const patchOutputs = await executeOpenAiApplyPatchCalls(
-          env,
-          options.userId,
-          patchCalls,
-          onStatus,
-          codingActivity,
-        );
-        throwIfAiChatAborted(controller.signal);
-        responseInput.push(...patchOutputs);
+        const rootPatchCalls = patchCalls.filter(isRootAgentItem);
+        const delegatedPatchCalls = patchCalls.filter((call) => !isRootAgentItem(call));
+        for (const call of delegatedPatchCalls) {
+          responseInput.push({
+            type: "apply_patch_call_output",
+            call_id: call.call_id,
+            status: "failed",
+            output: "Only the root coordinator may perform code writes.",
+          });
+        }
+        if (rootPatchCalls.length) {
+          throwIfAiChatAborted(controller.signal);
+          const beforeSha = String(codingActivity?.currentCommitSha || "");
+          const patchOutputs = await executeOpenAiApplyPatchCalls(
+            env,
+            options.userId,
+            rootPatchCalls,
+            onStatus,
+            codingActivity,
+          );
+          throwIfAiChatAborted(controller.signal);
+          responseInput.push(...patchOutputs);
+          const afterSha = String(codingActivity?.currentCommitSha || "");
+          if (afterSha && afterSha !== beforeSha) {
+            await refreshWorkspaceIfNeeded();
+          }
+        }
       }
       if (terminalCall) {
         throwIfAiChatAborted(controller.signal);
@@ -652,7 +818,31 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
   } finally {
     clearTimeout(timer);
     if (requestSignal) requestSignal.removeEventListener("abort", abortFromRequest);
+    await computerSession.close();
   }
+}
+
+function functionCallOutput(call, output) {
+  return {
+    type: "function_call_output",
+    call_id: call.call_id,
+    output: String(output ?? ""),
+    ...(call?.caller ? { caller: call.caller } : {}),
+  };
+}
+
+function isRootAgentItem(item) {
+  const name = String(item?.agent?.agent_name || item?.agent_name || "").trim();
+  return !name || name === "/root" || name === "root";
+}
+
+function isGitHubWriteCall(item) {
+  return [
+    "github_commit_changes",
+    "github_create_pull_request",
+    "github_merge_pull_request",
+    "github_apply_branch_to_default",
+  ].includes(String(item?.name || ""));
 }
 
 async function readChatResponseStream(response, onStatus) {
@@ -733,10 +923,10 @@ function buildChatResult(data, cleanMessages, options = {}) {
   const webSearchUsed = Boolean(options.webSearchUsed) || (Array.isArray(data?.output) ? data.output : [])
     .some((item) => item?.type === "web_search_call");
   const imageCall = (Array.isArray(data?.output) ? data.output : [])
-    .find((item) => item?.type === "function_call" && item?.name === "generate_image");
+    .find((item) => isRootAgentItem(item) && item?.type === "function_call" && item?.name === "generate_image");
 
   const speechCall = (Array.isArray(data?.output) ? data.output : [])
-    .find((item) => item?.type === "function_call" && item?.name === "generate_speech");
+    .find((item) => isRootAgentItem(item) && item?.type === "function_call" && item?.name === "generate_speech");
   const billing = {
     model: normalizeAiChatModel(options.model),
     reasoningEffort: normalizeAiChatReasoningEffort(options.reasoningEffort),
@@ -745,6 +935,7 @@ function buildChatResult(data, cleanMessages, options = {}) {
     fileSearchCalls: Math.max(0, Math.floor(Number(options.fileSearchCalls || 0))),
     containerSessions: Math.max(0, Math.floor(Number(options.containerSessions || 0))),
     vectorStorageGbDays: Math.max(0, Number(options.vectorStorageGbDays || 0)),
+    browserDurationMs: Math.max(0, Number(options.browserDurationMs || 0)),
   };
   const memoryUpdate = options.memoryChanged && Array.isArray(options.memoryEntries)
     ? options.memoryEntries
@@ -830,11 +1021,18 @@ function finalizeCodingActivity(activity) {
   return {
     repository: String(activity.repository || ""),
     defaultBranch: String(activity.defaultBranch || ""),
+    currentBranch: String(activity.currentBranch || ""),
+    currentCommitSha: String(activity.currentCommitSha || ""),
+    workspaceCommitSha: String(activity.workspaceCommitSha || ""),
     model: String(activity.model || ""),
     reasoningEffort: String(activity.reasoningEffort || ""),
+    reviewCompleted: Boolean(activity.reviewCompleted),
+    postWriteShellUsed: Boolean(activity.postWriteShellUsed),
     context: codingContextSnapshot(activity),
     events: (Array.isArray(activity.events) ? activity.events : []).slice(-12),
     change: activity.change || null,
+    lastCi: activity.lastCi || null,
+    lastReview: activity.lastReview || null,
     pullRequest: activity.pullRequest || null,
     merge: activity.merge || null,
     applied: activity.applied || null,
@@ -851,24 +1049,25 @@ function cleanChatAnswer(value) {
 }
 
 function extractResponseText(data) {
-  if (String(data?.output_text || "").trim()) return cleanChatAnswer(data.output_text);
-  const parts = [];
+  const rootParts = [];
   for (const item of Array.isArray(data?.output) ? data.output : []) {
-    if (item?.type !== "message") continue;
+    if (item?.type !== "message" || !isRootAgentItem(item)) continue;
     for (const content of Array.isArray(item.content) ? item.content : []) {
       if (content?.type === "output_text" && String(content.text || "").trim()) {
-        parts.push(String(content.text).trim());
+        rootParts.push(String(content.text).trim());
       }
     }
   }
-  return cleanChatAnswer(parts.join("\n\n"));
+  if (rootParts.length) return cleanChatAnswer(rootParts.join("\n\n"));
+  if (String(data?.output_text || "").trim()) return cleanChatAnswer(data.output_text);
+  return "";
 }
 
 function extractResponseSources(data) {
   const seen = new Set();
   const sources = [];
   for (const item of Array.isArray(data?.output) ? data.output : []) {
-    if (item?.type !== "message") continue;
+    if (item?.type !== "message" || !isRootAgentItem(item)) continue;
     for (const content of Array.isArray(item.content) ? item.content : []) {
       for (const annotation of Array.isArray(content?.annotations) ? content.annotations : []) {
         const citation = annotation?.url_citation || annotation;
