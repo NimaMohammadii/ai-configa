@@ -1,4 +1,5 @@
 import {
+  clearAiCodingTaskState,
   getAiCodingTaskState,
   listAiCodingTaskStates,
   saveAiCodingTaskState,
@@ -140,7 +141,35 @@ export async function executeGitHubAiTool(env, userId, item, onStatus, activity 
     }
   }
 
-  return core.executeGitHubAiTool(env, userId, item, onStatus, activity);
+  const output = await core.executeGitHubAiTool(env, userId, item, onStatus, activity);
+  await completeExactTaskAfterTerminalAction(env, userId, item, activity).catch((error) => {
+    console.error("complete exact coding task failed", error?.message || error);
+  });
+  return output;
+}
+
+async function completeExactTaskAfterTerminalAction(env, userId, item, activity) {
+  if (item?.name === "github_apply_branch_to_default") {
+    let args = {};
+    try { args = JSON.parse(String(item.arguments || "{}")); } catch { args = {}; }
+    if (isVexaTaskId(args.branch)) await clearAiCodingTaskState(env, userId, args.branch);
+    return;
+  }
+  if (item?.name !== "github_merge_pull_request") return;
+  let args = {};
+  try { args = JSON.parse(String(item.arguments || "{}")); } catch { args = {}; }
+  const pullRequest = activity?.pullRequest;
+  if (
+    Number(pullRequest?.number || 0) === Number(args.number || 0)
+    && isVexaTaskId(pullRequest?.branch)
+  ) {
+    await clearAiCodingTaskState(env, userId, pullRequest.branch);
+  }
+}
+
+function isVexaTaskId(value) {
+  const id = String(value || "").trim();
+  return id.startsWith("vexa/ai-") && id.length <= 255 && !id.includes("..") && !/[~^:?*[\\\s]/.test(id);
 }
 
 function isRootAgentItem(item) {
