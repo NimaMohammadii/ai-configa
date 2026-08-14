@@ -1,6 +1,13 @@
 import { normalizeAiChatModel, normalizeAiChatReasoningEffort } from "./ai-chat-model.js";
 import { applyAiMemoryToolCall, buildAiMemoryInstructions, getAiMemoryTools, getUserAiMemory, isAiMemoryToolCall } from "./ai-memory.js";
 import { buildGitHubAiInstructions, executeGitHubAiTool, getGitHubAiContext, getGitHubAiTools, isGitHubAiToolCall } from "./github-ai.js";
+import {
+  buildOpenAiAgentInstructions,
+  executeOpenAiApplyPatchCalls,
+  isOpenAiApplyPatchCall,
+  prepareOpenAiAgentTools,
+  prepareOpenAiToolReplayItems,
+} from "./openai-agent-tools.js";
 import { VOICE_NAMES } from "./voices.js";
 import { EMOTION_TAGS } from "./mini-app/emotion-tags.js";
 
@@ -302,7 +309,7 @@ function normalizeChatAttachment(raw) {
   };
 }
 
-function buildAiChatInstructions(preferredVoice, githubContext, memories, model) {
+function buildAiChatInstructions(preferredVoice, githubContext, memories, model, agentInstructions = "") {
   const selectedVoice = VOICE_NAMES.includes(preferredVoice) ? preferredVoice : "Nora";
   const selectedModel = normalizeAiChatModel(model);
   return [
@@ -321,9 +328,10 @@ function buildAiChatInstructions(preferredVoice, githubContext, memories, model)
     "Always use the user’s currently selected voice for speech: " + selectedVoice + ".",
     "Never choose a different voice inside AI Chat; the voice card is the single source of truth.",
     "For web-search answers, do not add sources, citation links, raw URLs, or footnote markers unless the user asks for them.",
+    agentInstructions,
     buildGitHubAiInstructions(githubContext),
     buildAiMemoryInstructions(memories),
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 }
 
 function makeAiChatAbortError() {
@@ -389,6 +397,11 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
   const reasoningEffort = normalizeAiChatReasoningEffort(options.reasoningEffort);
   const githubContext = await getGitHubAiContext(env, options.userId);
   const githubTools = getGitHubAiTools(githubContext);
+  const openAiAgent = await prepareOpenAiAgentTools(env, options.userId, {
+    attachment: cleanMessages[cleanMessages.length - 1]?.attachment || null,
+    githubContext,
+  });
+  const openAiAgentInstructions = buildOpenAiAgentInstructions(openAiAgent, githubContext);
   const codingActivity = githubContext ? {
     used: false,
     repository: githubContext.fullName,
@@ -470,6 +483,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         },
         strict: true
       },
+      ...openAiAgent.tools,
       ...githubTools,
       ...memoryTools,
     ];
@@ -498,7 +512,13 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         signal: controller.signal,
         body: JSON.stringify({
           model,
-          instructions: buildAiChatInstructions(latestPreferredVoice, githubContext, memoryEntries, model),
+          instructions: buildAiChatInstructions(
+            latestPreferredVoice,
+            githubContext,
+            memoryEntries,
+            model,
+            openAiAgentInstructions,
+          ),
           input: responseInput,
           tools,
           tool_choice: "auto",
@@ -533,7 +553,8 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       );
       const githubCalls = output.filter(isGitHubAiToolCall);
       const memoryCalls = output.filter(isAiMemoryToolCall);
-      if (!githubCalls.length && !memoryCalls.length) {
+      const patchCalls = output.filter(isOpenAiApplyPatchCall);
+      if (!githubCalls.length && !memoryCalls.length && !patchCalls.length) {
         throwIfAiChatAborted(controller.signal);
         if (codingActivity?.used && typeof onStatus === "function") {
           onStatus({
@@ -549,7 +570,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         });
       }
 
-      responseInput.push(...output);
+      responseInput.push(...prepareOpenAiToolReplayItems(output));
       for (const call of memoryCalls) {
         throwIfAiChatAborted(controller.signal);
         const update = applyAiMemoryToolCall(memoryEntries, call);
@@ -570,6 +591,18 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           call_id: call.call_id,
           output: toolOutput,
         });
+      }
+      if (patchCalls.length) {
+        throwIfAiChatAborted(controller.signal);
+        const patchOutputs = await executeOpenAiApplyPatchCalls(
+          env,
+          options.userId,
+          patchCalls,
+          onStatus,
+          codingActivity,
+        );
+        throwIfAiChatAborted(controller.signal);
+        responseInput.push(...patchOutputs);
       }
       if (terminalCall) {
         throwIfAiChatAborted(controller.signal);
