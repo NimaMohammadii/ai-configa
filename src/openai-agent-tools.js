@@ -3,7 +3,6 @@ import { buildAiCodingTaskInstructions, getAiCodingTaskState } from "./ai-coding
 
 export {
   buildOpenAiAgentInstructions,
-  executeOpenAiApplyPatchCalls,
   isOpenAiApplyPatchCall,
   prepareOpenAiToolReplayItems,
   refreshOpenAiCodingWorkspace,
@@ -34,6 +33,30 @@ export async function prepareOpenAiAgentTools(env, userId, options = {}) {
     buildAiCodingTaskInstructions(exactTask),
   ].filter(Boolean).join(" ");
   return state;
+}
+
+export async function executeOpenAiApplyPatchCalls(env, userId, calls, onStatus, activity = null) {
+  const items = (Array.isArray(calls) ? calls : []).filter(core.isOpenAiApplyPatchCall);
+  if (!items.length) return [];
+  const paths = items
+    .map((call) => cleanRepoPath(call?.operation?.path))
+    .filter(Boolean);
+  const missing = unresolvedInstructionTargets(activity, paths);
+  if (missing.length) {
+    const message = "Project instructions were not resolved on the current working branch for every patch target. Call github_project_instructions for these exact paths before writing: "
+      + missing.slice(0, 12).join(", ");
+    return items.map((call) => ({
+      type: "apply_patch_call_output",
+      call_id: call.call_id,
+      status: "failed",
+      output: message,
+    }));
+  }
+  const outputs = await core.executeOpenAiApplyPatchCalls(env, userId, items, onStatus, activity);
+  if ((Array.isArray(outputs) ? outputs : []).some((item) => String(item?.status || "") === "completed")) {
+    clearResolvedInstructionTargets(activity);
+  }
+  return outputs;
 }
 
 export function inspectOpenAiShellUsage(output) {
@@ -128,6 +151,25 @@ function isDeterministicValidationCommand(value) {
     /(?:^|[;&|]\s*)(?:npx\s+)?wrangler\s+(?:deploy\s+--dry-run|types)(?:\s|$)/,
   ];
   return patterns.some((pattern) => pattern.test(command));
+}
+
+function unresolvedInstructionTargets(activity, paths) {
+  const resolved = activity?.resolvedProjectInstructionTargets instanceof Set
+    ? activity.resolvedProjectInstructionTargets
+    : new Set();
+  return Array.from(new Set((Array.isArray(paths) ? paths : []).filter(Boolean)))
+    .filter((path) => !resolved.has(path));
+}
+
+function clearResolvedInstructionTargets(activity) {
+  if (!activity) return;
+  activity.resolvedProjectInstructionTargets = new Set();
+}
+
+function cleanRepoPath(value) {
+  const path = String(value || "").trim().replace(/^\/+|\/+$/g, "");
+  if (!path || path.length > 500 || path.split("/").some((part) => !part || part === "." || part === "..")) return "";
+  return path;
 }
 
 function cleanVexaTaskId(value) {
