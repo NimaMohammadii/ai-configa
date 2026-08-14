@@ -209,6 +209,7 @@ export async function executeOpenAiApplyPatchCalls(env, userId, calls, onStatus,
     return items.map((call) => ({
       type: "apply_patch_call_output",
       call_id: call.call_id,
+      status: "completed",
       output: JSON.stringify({
         ok: true,
         repository: commit.repository,
@@ -226,6 +227,7 @@ export async function executeOpenAiApplyPatchCalls(env, userId, calls, onStatus,
     return items.map((call) => ({
       type: "apply_patch_call_output",
       call_id: call.call_id,
+      status: "failed",
       output: message,
     }));
   }
