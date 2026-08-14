@@ -83,9 +83,19 @@ export function createAiComputerSession(env) {
   };
 
   const executeComputerCall = async (call) => {
+    const pendingSafetyChecks = normalizePendingSafetyChecks(call?.pending_safety_checks);
+    if (pendingSafetyChecks.length) {
+      const codes = pendingSafetyChecks.map((item) => item.code || item.id).filter(Boolean).join(", ");
+      throw new Error(`OpenAI requires explicit safety confirmation before this Computer Use action${codes ? ` (${codes})` : ""}. The action was not executed.`);
+    }
+
     const activePage = await ensurePage();
     assertSafeCurrentPage(activePage);
-    const actions = Array.isArray(call?.actions) ? call.actions.slice(0, MAX_BROWSER_ACTIONS) : [];
+    const actions = Array.isArray(call?.actions)
+      ? call.actions.slice(0, MAX_BROWSER_ACTIONS)
+      : call?.action
+        ? [call.action]
+        : [];
     if (!actions.length) throw new Error("Computer Use returned no actions.");
     for (const action of actions) {
       await executeAction(activePage, action);
@@ -98,7 +108,6 @@ export function createAiComputerSession(env) {
       output: {
         type: "computer_screenshot",
         image_url: "data:image/png;base64," + bytesToBase64(screenshot),
-        detail: "original",
       },
     };
   };
@@ -142,7 +151,7 @@ async function executeAction(page, action) {
     return;
   }
   if (type === "double_click") {
-    await withModifiers(page, action.keys, () => page.mouse.click(number(action.x), number(action.y), { button: mouseButton(action.button), clickCount: 2, delay: 80 }));
+    await withModifiers(page, action.keys, () => page.mouse.click(number(action.x), number(action.y), { button: "left", clickCount: 2, delay: 80 }));
     return;
   }
   if (type === "move") {
@@ -213,6 +222,15 @@ function normalizeDragPath(value) {
     if (point && typeof point === "object") return [number(point.x), number(point.y)];
     throw new Error("Computer Use drag path contains an invalid point.");
   });
+}
+
+function normalizePendingSafetyChecks(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 20).map((item) => ({
+    id: String(item?.id || "").slice(0, 200),
+    code: String(item?.code || "").slice(0, 200),
+    message: String(item?.message || "").slice(0, 500),
+  })).filter((item) => item.id || item.code || item.message);
 }
 
 function assertSafeCurrentPage(page) {
@@ -292,7 +310,9 @@ function normalizeKey(value) {
 
 function mouseButton(value) {
   const button = String(value || "left").toLowerCase();
-  return button === "right" || button === "middle" ? button : "left";
+  if (button === "right" || button === "back" || button === "forward") return button;
+  if (button === "wheel" || button === "middle") return "middle";
+  return "left";
 }
 
 function number(value) {
