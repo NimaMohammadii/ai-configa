@@ -105,6 +105,131 @@ export const AI_CHAT_HTML = `<!doctype html>
   <div id="toast" class="toast" role="status"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/mini-app/chat/creature.js?v=20260801-ai-chat-creature-rounded-jelly-2"></script>
+  <script>
+  (function(){
+    var list=document.getElementById('aiChatMessages');
+    if(!list)return;
+
+    var tg=window.Telegram&&window.Telegram.WebApp;
+    var tgUser=tg&&tg.initDataUnsafe&&tg.initDataUnsafe.user;
+    var userId=tgUser&&tgUser.id!=null?String(tgUser.id):'local';
+    var storageKey='vexa:ai-chat:conversation:v1:'+userId;
+    var restoredContext=[];
+    var saveTimer=0;
+
+    function normalizeEntry(value){
+      if(!value||typeof value!=='object')return null;
+      var role=value.role==='assistant'?'assistant':value.role==='user'?'user':'';
+      var content=String(value.content||'').slice(0,24000);
+      if(!role||!content)return null;
+      return {role:role,content:content,rtl:!!value.rtl};
+    }
+
+    function readHistory(){
+      try{
+        var raw=localStorage.getItem(storageKey);
+        if(!raw)return [];
+        var parsed=JSON.parse(raw);
+        var source=Array.isArray(parsed)?parsed:Array.isArray(parsed&&parsed.messages)?parsed.messages:[];
+        return source.map(normalizeEntry).filter(Boolean).slice(-200);
+      }catch(error){
+        return [];
+      }
+    }
+
+    function writeHistory(entries){
+      var keep=entries.slice(-200);
+      while(keep.length){
+        try{
+          localStorage.setItem(storageKey,JSON.stringify({version:1,messages:keep}));
+          return;
+        }catch(error){
+          if(keep.length<=20)return;
+          keep=keep.slice(Math.min(10,keep.length-20));
+        }
+      }
+    }
+
+    function messageText(content){
+      var value='';
+      try{value=String(content.innerText||content.textContent||'')}catch(error){value=String(content.textContent||'')}
+      return value.slice(0,24000);
+    }
+
+    function collectHistory(){
+      return Array.prototype.map.call(list.querySelectorAll('.ai-chat-message'),function(item){
+        var content=item.querySelector('.ai-chat-message-content');
+        if(!content)return null;
+        var role=item.classList.contains('assistant')?'assistant':item.classList.contains('user')?'user':'';
+        var text=messageText(content);
+        if(!role||!text)return null;
+        return {role:role,content:text,rtl:item.classList.contains('rtl')};
+      }).filter(Boolean).slice(-200);
+    }
+
+    function saveNow(){
+      if(saveTimer){clearTimeout(saveTimer);saveTimer=0}
+      writeHistory(collectHistory());
+    }
+
+    function scheduleSave(){
+      if(saveTimer)clearTimeout(saveTimer);
+      saveTimer=setTimeout(saveNow,180);
+    }
+
+    function restoreMessage(entry){
+      var item=document.createElement('article');
+      item.className='ai-chat-message '+entry.role+(entry.rtl?' rtl':'');
+      item.setAttribute('data-restored-chat','true');
+      item.style.animation='none';
+      item.style.opacity='1';
+      var content=document.createElement('div');
+      content.className='ai-chat-message-content';
+      content.setAttribute('dir',entry.rtl?'rtl':'ltr');
+      content.style.whiteSpace='pre-wrap';
+      content.textContent=entry.content;
+      item.appendChild(content);
+      list.appendChild(item);
+    }
+
+    var restored=readHistory();
+    restoredContext=restored.map(function(entry){return {role:entry.role,content:entry.content}});
+    restored.forEach(restoreMessage);
+
+    if(restored.length){
+      var empty=document.getElementById('aiChatEmpty');
+      if(empty)empty.classList.add('hidden');
+      requestAnimationFrame(function(){
+        var messages=list.querySelectorAll('.ai-chat-message');
+        var last=messages[messages.length-1];
+        if(last)list.scrollTop=Math.max(0,last.offsetTop-24);
+      });
+    }
+
+    if(typeof MutationObserver==='function'){
+      var observer=new MutationObserver(scheduleSave);
+      observer.observe(list,{childList:true,subtree:true,characterData:true});
+    }
+
+    window.addEventListener('pagehide',saveNow);
+
+    var nativeFetch=window.fetch.bind(window);
+    window.fetch=function(input,init){
+      try{
+        var url=typeof input==='string'?input:String(input&&input.url||'');
+        var method=String(init&&init.method||input&&input.method||'GET').toUpperCase();
+        if(restoredContext.length&&method==='POST'&&url.indexOf('/mini-app/api/chat')>=0&&init&&typeof init.body==='string'){
+          var body=JSON.parse(init.body);
+          if(Array.isArray(body.messages)){
+            body.messages=restoredContext.concat(body.messages).slice(-20);
+            init=Object.assign({},init,{body:JSON.stringify(body)});
+          }
+        }
+      }catch(error){}
+      return nativeFetch(input,init);
+    };
+  })();
+  </script>
   <script type="module" src="/mini-app/chat/app.js?v=20260814-loader-text-original-1"></script>
   <script src="/mini-app/chat/github.js?v=20260814-loader-text-root-1"></script>
 </body>
