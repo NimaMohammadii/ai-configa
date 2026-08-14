@@ -160,6 +160,10 @@ export async function commitGitHubRepositoryFiles(env, userId, options = {}) {
   );
 
   const blobs = await Promise.all(files.map(async (file) => {
+    if (file.delete) {
+      if (!existingModes.has(file.path)) throw httpError(`The file ${file.path} does not exist.`, 404);
+      return { path: file.path, mode: existingModes.get(file.path) || "100644", type: "blob", sha: null };
+    }
     const blob = await githubRequest(`/repos/${repoPath(repository.fullName)}/git/blobs`, {
       method: "POST",
       token,
@@ -562,10 +566,11 @@ function normalizeCommitFiles(value) {
     }
     if (seen.has(path)) throw httpError(`The file ${path} was included more than once.`, 400);
     seen.add(path);
-    const content = String(item?.content ?? "");
+    const deleteFile = item?.delete === true;
+    const content = deleteFile ? "" : String(item?.content ?? "");
     if (content.includes("\u0000")) throw httpError("Binary files cannot be committed from AI Chat.", 400);
-    totalBytes += new TextEncoder().encode(content).byteLength;
-    return { path, content };
+    if (!deleteFile) totalBytes += new TextEncoder().encode(content).byteLength;
+    return { path, content, delete: deleteFile };
   });
   if (totalBytes > MAX_COMMIT_BYTES) throw httpError("The proposed commit is too large.", 413);
   return files;
