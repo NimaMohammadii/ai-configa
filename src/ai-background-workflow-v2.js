@@ -38,7 +38,14 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
           { retries: { limit: 0, delay: "1 second" }, timeout: PHASE_TIMEOUT },
           async () => {
             try {
-              const result = await runOneAiPhase(this.env, payload.user || { id: userId }, phaseMessages, taskId, phase);
+              const result = await runOneAiPhase(
+                this.env,
+                payload.user || { id: userId },
+                phaseMessages,
+                taskId,
+                phase,
+                currentCodingTaskId,
+              );
               return { ok: true, result };
             } catch (error) {
               return {
@@ -110,15 +117,18 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
   }
 }
 
-async function runOneAiPhase(env, user, messages, workflowTaskId, phase) {
+async function runOneAiPhase(env, user, messages, workflowTaskId, phase, codingTaskId = "") {
   const initData = await createInternalInitData(user, env.BOT_TOKEN);
   const request = new Request("https://vexa.internal/mini-app/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData, messages }),
   });
+  const exactTaskId = cleanCodingTaskId(codingTaskId);
+  const phaseEnv = exactTaskId ? Object.create(env) : env;
+  if (exactTaskId) phaseEnv.AI_CODING_TASK_ID = exactTaskId;
   return runWithCreditIdempotency(`ai-workflow:${workflowTaskId}:phase:${phase}`, async () => {
-    const response = await handleMiniAppRequest(request, env);
+    const response = await handleMiniAppRequest(request, phaseEnv);
     return parseAiChatResponse(response);
   });
 }
