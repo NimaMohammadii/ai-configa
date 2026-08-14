@@ -107,5 +107,76 @@ export const AI_CHAT_HTML = `<!doctype html>
   <script src="/mini-app/chat/creature.js?v=20260801-ai-chat-creature-rounded-jelly-2"></script>
   <script type="module" src="/mini-app/chat/app.js?v=20260814-loader-text-original-1"></script>
   <script src="/mini-app/chat/github.js?v=20260814-loader-text-root-1"></script>
+  <script>
+  (function(){
+    var list=document.getElementById('aiChatMessages');
+    if(!list||typeof MutationObserver!=='function')return;
+    var turn=null;
+    var frame=0;
+    var manual=false;
+
+    function latestUser(){
+      var users=list.querySelectorAll('.ai-chat-message.user');
+      return users.length?users[users.length-1]:null;
+    }
+
+    function schedule(){
+      if(frame||!turn||manual)return;
+      frame=requestAnimationFrame(sync);
+    }
+
+    function capture(user){
+      requestAnimationFrame(function(){
+        if(!user||!user.isConnected||latestUser()!==user)return;
+        turn={user:user,scrollTop:list.scrollTop};
+        manual=false;
+        schedule();
+      });
+    }
+
+    function sync(){
+      frame=0;
+      if(!turn||manual||!turn.user.isConnected)return;
+      var children=Array.prototype.slice.call(list.children);
+      var userIndex=children.indexOf(turn.user);
+      if(userIndex<0)return;
+      var tail=children[children.length-1];
+      if(!tail||tail===turn.user)return;
+
+      var listRect=list.getBoundingClientRect();
+      var composer=document.getElementById('aiChatComposer');
+      var composerRect=composer&&composer.getBoundingClientRect();
+      var visibleBottom=listRect.bottom-18;
+      if(composerRect&&composerRect.top>listRect.top&&composerRect.top<listRect.bottom){
+        visibleBottom=Math.min(visibleBottom,composerRect.top-18);
+      }
+
+      var tailRect=tail.getBoundingClientRect();
+      var contentBottom=list.scrollTop+(tailRect.bottom-listRect.top);
+      var anchoredBottom=turn.scrollTop+(visibleBottom-listRect.top);
+      var overflow=Math.max(0,contentBottom-anchoredBottom);
+      var maxScroll=Math.max(0,list.scrollHeight-list.clientHeight);
+      var desired=Math.min(maxScroll,turn.scrollTop+overflow);
+      if(Math.abs(list.scrollTop-desired)>1)list.scrollTop=desired;
+    }
+
+    var observer=new MutationObserver(function(){
+      var user=latestUser();
+      if(user&&(!turn||turn.user!==user))capture(user);
+      else schedule();
+    });
+    observer.observe(list,{childList:true,subtree:true,characterData:true,attributes:true});
+
+    list.addEventListener('scroll',function(){
+      if(!manual)schedule();
+    },{passive:true});
+    list.addEventListener('touchmove',function(){manual=true},{passive:true});
+    list.addEventListener('wheel',function(){manual=true},{passive:true});
+    window.addEventListener('resize',schedule,{passive:true});
+    if(window.visualViewport)window.visualViewport.addEventListener('resize',schedule,{passive:true});
+    var tg=window.Telegram&&window.Telegram.WebApp;
+    if(tg&&tg.onEvent){try{tg.onEvent('viewportChanged',schedule)}catch(error){}}
+  })();
+  </script>
 </body>
 </html>`;
