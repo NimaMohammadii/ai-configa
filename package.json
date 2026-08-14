@@ -9,7 +9,7 @@
     "set:webhook": "node scripts/set-webhook.js"
   },
   "devDependencies": {
-    "@cloudflare/puppeteer": "^1.1.0",
+    "@cloudflare/puppeteer": "1.1.0",
     "wrangler": "^4.0.0"
   }
 }
