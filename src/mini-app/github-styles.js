@@ -23,5 +23,6 @@ export const GITHUB_STYLES = `
 .ai-chat-head::before{top:calc(-41px - env(safe-area-inset-top))!important}
 .ai-chat-messages{padding-top:calc(107px + env(safe-area-inset-top))!important;scroll-padding-top:calc(125px + env(safe-area-inset-top))!important}
 .ai-chat-message.assistant+.ai-chat-message.user{margin-top:36px!important}
+#aiChatMessages>.ai-chat-message.user:not(:has(~ .ai-chat-message.user)){position:sticky;top:calc(125px + env(safe-area-inset-top));z-index:5}
 @media(max-width:360px){.ai-chat-menu-panel{width:min(78vw,278px)!important;left:10px!important}}
 `;
