@@ -17,9 +17,20 @@ export async function prepareOpenAiAgentTools(env, userId, options = {}) {
   if (!pinnedTaskId || !options.githubContext) return state;
   const exactTask = await getAiCodingTaskState(env, userId, options.githubContext, pinnedTaskId).catch(() => null);
   if (!exactTask) return state;
+  if (/^[a-f0-9]{40}$/i.test(String(exactTask.commitSha || ""))) {
+    await core.refreshOpenAiCodingWorkspace(
+      env,
+      userId,
+      state.tools,
+      state,
+      exactTask.commitSha,
+    ).catch((error) => {
+      console.error("Pinned coding workspace refresh failed", error?.message || error);
+    });
+  }
   state.runtimeInstructions = [
     String(state.runtimeInstructions || ""),
-    `INTERNAL DURABLE TASK PIN: this execution phase belongs specifically to coding task ${pinnedTaskId}. This exact task pin overrides any generic active-task hint from another concurrent workflow. Call github_resume_task with exactly ${pinnedTaskId} before repository work and never switch to another task unless the user explicitly asks to do so.`,
+    `INTERNAL DURABLE TASK PIN: this execution phase belongs specifically to coding task ${pinnedTaskId}. This exact task pin overrides any generic active-task hint from another concurrent workflow. The hosted shell has been prepared from this task's saved commit when available. Call github_resume_task with exactly ${pinnedTaskId} before repository work and never switch to another task unless the user explicitly asks to do so.`,
     buildAiCodingTaskInstructions(exactTask),
   ].filter(Boolean).join(" ");
   return state;
