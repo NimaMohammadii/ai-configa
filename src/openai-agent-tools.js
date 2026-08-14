@@ -9,6 +9,10 @@ const OPENAI_API = "https://api.openai.com/v1";
 const CODING_SKILL_KEY = "vexa_coding_skill_v1";
 const MAX_FILE_SEARCH_RESULTS = 8;
 const SHELL_MEMORY_LIMIT = "1g";
+const VECTOR_STORAGE_FREE_BYTES = 1024 * 1024 * 1024;
+const VECTOR_STORAGE_METER_MIN_SECONDS = 60 * 60;
+const SECONDS_PER_DAY = 24 * 60 * 60;
+const BYTES_PER_GIB = 1024 * 1024 * 1024;
 
 const CODING_SKILL_MD = `---
 name: vexa-coding-workflow
@@ -31,7 +35,17 @@ description: Use for repository inspection, implementation, debugging, testing, 
 export async function prepareOpenAiAgentTools(env, userId, options = {}) {
   const tools = [];
   let vectorStoreId = await getUserVectorStoreId(env, userId);
+  let vectorStorageGbDays = 0;
   let uploadedFileId = "";
+
+  if (vectorStoreId) {
+    try {
+      const storage = await meterUserVectorStorage(env, userId, vectorStoreId);
+      vectorStorageGbDays = storage.chargeableGbDays;
+    } catch (error) {
+      console.error("OpenAI vector-storage metering failed", error?.message || error);
+    }
+  }
 
   if (options.attachment?.kind === "file") {
     try {
@@ -87,6 +101,7 @@ export async function prepareOpenAiAgentTools(env, userId, options = {}) {
   return {
     tools,
     vectorStoreId,
+    vectorStorageGbDays,
     uploadedFileId,
     repositorySnapshot,
     skillId: skill?.id || "",
@@ -124,15 +139,45 @@ export function isOpenAiApplyPatchCall(item) {
   return item?.type === "apply_patch_call" && item?.call_id && item?.operation;
 }
 
+export function inspectOpenAiShellUsage(output) {
+  const items = Array.isArray(output) ? output : [];
+  const containerIds = new Set();
+  let used = false;
+  for (const item of items) {
+    if (item?.type !== "shell_call" && item?.type !== "shell_call_output") continue;
+    used = true;
+    const containerId = extractShellContainerId(item);
+    if (containerId) containerIds.add(containerId);
+  }
+  return { used, containerIds: Array.from(containerIds) };
+}
+
+export function reuseOpenAiShellContainer(tools, containerId) {
+  const cleanId = String(containerId || "").trim();
+  if (!cleanId || !Array.isArray(tools)) return false;
+  const shellTool = tools.find((tool) => tool?.type === "shell");
+  if (!shellTool) return false;
+  shellTool.environment = { type: "container_reference", container_id: cleanId };
+  return true;
+}
+
 export function prepareOpenAiToolReplayItems(output) {
-  return (Array.isArray(output) ? output : []).map((item) => {
-    if (item?.type !== "shell_call_output") return item;
-    const replay = { ...item };
-    delete replay.status;
-    delete replay.shell_output;
-    delete replay.provider_data;
-    return replay;
-  });
+  const items = Array.isArray(output) ? output : [];
+  const shellOutputCallIds = new Set(
+    items
+      .filter((item) => item?.type === "shell_call_output" && item?.call_id)
+      .map((item) => String(item.call_id)),
+  );
+  return items
+    .filter((item) => item?.type !== "shell_call" || !item?.call_id || shellOutputCallIds.has(String(item.call_id)))
+    .map((item) => {
+      if (item?.type !== "shell_call_output") return item;
+      const replay = { ...item };
+      delete replay.status;
+      delete replay.shell_output;
+      delete replay.provider_data;
+      return replay;
+    });
 }
 
 export async function executeOpenAiApplyPatchCalls(env, userId, calls, onStatus, activity = null) {
@@ -391,7 +436,74 @@ async function getOrCreateVectorStore(env, userId) {
     "INSERT INTO ai_openai_user_resources (user_id, vector_store_id, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) " +
     "ON CONFLICT(user_id) DO UPDATE SET vector_store_id = excluded.vector_store_id, updated_at = CURRENT_TIMESTAMP"
   ).bind(String(userId), vectorStoreId).run();
+  await env.DB.prepare(
+    "INSERT INTO ai_openai_vector_storage_meter (user_id, vector_store_id, usage_bytes, last_metered_at, updated_at) VALUES (?, ?, 0, ?, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET vector_store_id = excluded.vector_store_id, usage_bytes = 0, last_metered_at = excluded.last_metered_at, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(userId), vectorStoreId, Math.floor(Date.now() / 1000)).run();
   return vectorStoreId;
+}
+
+async function meterUserVectorStorage(env, userId, vectorStoreId) {
+  requireDb(env);
+  await ensureResourceTables(env);
+  const now = Math.floor(Date.now() / 1000);
+  const previous = await env.DB.prepare(
+    "SELECT vector_store_id, usage_bytes, last_metered_at FROM ai_openai_vector_storage_meter WHERE user_id = ?"
+  ).bind(String(userId)).first();
+  const sameStore = String(previous?.vector_store_id || "") === String(vectorStoreId || "");
+  const lastMeteredAt = sameStore ? Math.max(0, Number(previous?.last_metered_at || 0)) : 0;
+  if (lastMeteredAt && now - lastMeteredAt < VECTOR_STORAGE_METER_MIN_SECONDS) {
+    return { chargeableGbDays: 0, usageBytes: Math.max(0, Number(previous?.usage_bytes || 0)) };
+  }
+
+  const usageBytes = await getVectorStoreUsageBytes(env, vectorStoreId);
+  await env.DB.prepare(
+    "INSERT INTO ai_openai_vector_storage_meter (user_id, vector_store_id, usage_bytes, last_metered_at, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET vector_store_id = excluded.vector_store_id, usage_bytes = excluded.usage_bytes, last_metered_at = excluded.last_metered_at, updated_at = CURRENT_TIMESTAMP"
+  ).bind(String(userId), String(vectorStoreId), usageBytes, now).run();
+
+  if (!lastMeteredAt || now <= lastMeteredAt || usageBytes <= 0) {
+    return { chargeableGbDays: 0, usageBytes };
+  }
+
+  const aggregate = await env.DB.prepare(
+    "SELECT COALESCE(SUM(usage_bytes), 0) AS total_bytes FROM ai_openai_vector_storage_meter"
+  ).first();
+  const totalBytes = Math.max(0, Number(aggregate?.total_bytes || 0));
+  if (totalBytes <= VECTOR_STORAGE_FREE_BYTES) {
+    return { chargeableGbDays: 0, usageBytes };
+  }
+
+  const paidRatio = (totalBytes - VECTOR_STORAGE_FREE_BYTES) / totalBytes;
+  const elapsedDays = (now - lastMeteredAt) / SECONDS_PER_DAY;
+  const chargeableGbDays = (usageBytes * paidRatio / BYTES_PER_GIB) * elapsedDays;
+  return {
+    chargeableGbDays: Number.isFinite(chargeableGbDays) && chargeableGbDays > 0 ? chargeableGbDays : 0,
+    usageBytes,
+  };
+}
+
+async function getVectorStoreUsageBytes(env, vectorStoreId) {
+  let total = 0;
+  let after = "";
+  for (let page = 0; page < 20; page += 1) {
+    const query = `?limit=100${after ? `&after=${encodeURIComponent(after)}` : ""}`;
+    const data = await openAiRequest(
+      env,
+      `/vector_stores/${encodeURIComponent(vectorStoreId)}/files${query}`,
+      { beta: true },
+    );
+    const files = Array.isArray(data?.data) ? data.data : [];
+    for (const file of files) {
+      const bytes = Number(file?.usage_bytes || 0);
+      if (Number.isFinite(bytes) && bytes > 0) total += bytes;
+    }
+    if (!data?.has_more || !files.length) break;
+    const next = String(data?.last_id || files[files.length - 1]?.id || "").trim();
+    if (!next || next === after) break;
+    after = next;
+  }
+  return Math.max(0, Math.floor(total));
 }
 
 async function ensureCodingSkill(env) {
@@ -430,6 +542,9 @@ async function ensureResourceTables(env) {
   ).run();
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS ai_openai_project_resources (resource_key TEXT PRIMARY KEY, resource_id TEXT NOT NULL, resource_version TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+  ).run();
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS ai_openai_vector_storage_meter (user_id TEXT PRIMARY KEY, vector_store_id TEXT NOT NULL, usage_bytes INTEGER NOT NULL DEFAULT 0, last_metered_at INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
   ).run();
 }
 
@@ -580,6 +695,19 @@ function safeFilename(value) {
   return (String(value || "attachment").split(/[\\/]/).pop() || "attachment")
     .replace(/[\u0000-\u001f\u007f]/g, "_")
     .slice(0, 120) || "attachment";
+}
+
+function extractShellContainerId(item) {
+  const environment = item?.environment;
+  const providerData = item?.provider_data || item?.providerData;
+  const providerEnvironment = providerData?.environment;
+  const value = environment?.container_id
+    || environment?.containerId
+    || providerData?.container_id
+    || providerData?.containerId
+    || providerEnvironment?.container_id
+    || providerEnvironment?.containerId;
+  return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
 async function sha256Hex(bytes) {
