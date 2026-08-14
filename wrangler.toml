@@ -1,5 +1,5 @@
 name = "ai-configa"
-main = "src/worker-direct.js"
+main = "src/worker-with-media.js"
 compatibility_date = "2026-05-28"
 compatibility_flags = ["enable_request_signal", "request_signal_passthrough", "nodejs_compat"]
 workers_dev = true
@@ -25,6 +25,20 @@ bucket_name = "ai-configa-explore-media"
 
 [browser]
 binding = "BROWSER"
+
+[[containers]]
+class_name = "VexaMediaContainer"
+image = "./containers/vexa-media/Dockerfile"
+max_instances = 20
+instance_type = "basic"
+
+[[durable_objects.bindings]]
+name = "VEXA_MEDIA_CONTAINER"
+class_name = "VexaMediaContainer"
+
+[[migrations]]
+tag = "vexa-media-container-v1"
+new_sqlite_classes = ["VexaMediaContainer"]
 
 [triggers]
 crons = ["* * * * *"]
