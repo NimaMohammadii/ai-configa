@@ -69,20 +69,20 @@ function vexaLiveEditorBootstrap() {
 
       .vexa-editor-top{position:fixed;z-index:145;top:0;left:0;right:0;height:calc(58px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 14px 0;display:flex;align-items:center;gap:10px;pointer-events:none}
       .vexa-editor-top>*{pointer-events:auto}
-      .vexa-editor-back{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;padding:0;color:#fff;background:rgba(13,13,13,.54);border:1px solid rgba(255,255,255,.105);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.045),0 8px 24px rgba(0,0,0,.28);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);font-size:21px;transition:transform .18s cubic-bezier(.16,.86,.22,1)}
-      .vexa-editor-back:active{transform:scale(.9)}
+      .vexa-editor-back{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;padding:0;color:#fff;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.13);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.34);font-size:21px;transition:transform .18s cubic-bezier(.16,.86,.22,1),background .2s ease}
+      .vexa-editor-back:active{transform:scale(.9);background:rgba(255,255,255,.08)}
       .vexa-editor-title{min-width:0;flex:1;text-align:center}
       .vexa-editor-title b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-size:12px;font-weight:680;letter-spacing:-.025em}
       .vexa-editor-title small{display:block;margin-top:1px;color:rgba(255,255,255,.52);font-size:8px;font-weight:520}
-      .vexa-editor-done{height:34px;padding:0 12px;border-radius:11px;color:#050505;background:#fff;border:1px solid rgba(255,255,255,.16);box-shadow:0 8px 22px rgba(0,0,0,.25);font-size:10px;font-weight:720;transition:transform .18s cubic-bezier(.16,.86,.22,1)}
+      .vexa-editor-done{height:34px;padding:0 12px;border-radius:11px;color:#050505;background:#fff;border:1px solid rgba(255,255,255,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.34);font-size:10px;font-weight:720;transition:transform .18s cubic-bezier(.16,.86,.22,1)}
       .vexa-editor-done:active{transform:scale(.95)}
 
-      body.vexa-live-editing #videoReadyState .video-stage{position:relative!important;flex:0 0 auto!important;min-width:0!important;min-height:0!important;margin:0 auto!important;overflow:hidden!important;border-radius:22px!important;background:rgba(13,13,13,.54)!important;border:1px solid rgba(255,255,255,.105)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 22px rgba(255,255,255,.04),0 18px 46px rgba(0,0,0,.28)!important;backdrop-filter:blur(10px) saturate(1.12)!important;-webkit-backdrop-filter:blur(10px) saturate(1.12)!important;transition:width .3s cubic-bezier(.16,.86,.22,1),height .3s cubic-bezier(.16,.86,.22,1)}
-      body.vexa-live-editing #videoReadyState .video-stage video{display:block!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:contain!important;object-position:center!important;background:#050505!important;pointer-events:none!important;user-select:none!important;-webkit-user-select:none!important;-webkit-touch-callout:none!important}
+      body.vexa-live-editing #videoReadyState .video-stage{position:relative!important;box-sizing:content-box!important;flex:0 0 auto!important;min-width:0!important;min-height:0!important;margin:0 auto!important;padding:6px!important;overflow:hidden!important;border-radius:22px!important;background:rgba(13,13,13,.54)!important;border:0!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 22px rgba(255,255,255,.055),0 16px 36px rgba(0,0,0,.22)!important;backdrop-filter:blur(10px) saturate(1.12)!important;-webkit-backdrop-filter:blur(10px) saturate(1.12)!important;transition:width .3s cubic-bezier(.16,.86,.22,1),height .3s cubic-bezier(.16,.86,.22,1)}
+      body.vexa-live-editing #videoReadyState .video-stage video{display:block!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:contain!important;object-position:center!important;background:#050505!important;border-radius:16px!important;pointer-events:none!important;user-select:none!important;-webkit-user-select:none!important;-webkit-touch-callout:none!important}
       #videoPreview::-webkit-media-controls,#videoPreview::-webkit-media-controls-enclosure,#videoPreview::-webkit-media-controls-panel,#videoPreview::-webkit-media-controls-start-playback-button{display:none!important;-webkit-appearance:none!important;opacity:0!important;pointer-events:none!important}
 
-      .vexa-player-surface{position:absolute;z-index:132;inset:0;padding:0;border:0;background:transparent;color:#fff;touch-action:manipulation;-webkit-touch-callout:none}
-      .vexa-player-center{position:absolute;left:50%;top:50%;width:48px;height:48px;border-radius:18px;display:grid;place-items:center;transform:translate(-50%,-50%);color:#050505;background:rgba(255,255,255,.96);box-shadow:0 12px 34px rgba(0,0,0,.34);font-size:16px;font-weight:850;opacity:1;transition:opacity .18s ease,transform .22s cubic-bezier(.16,.86,.22,1)}
+      .vexa-player-surface{position:absolute;z-index:132;inset:6px;padding:0;border:0;border-radius:16px;background:transparent;color:#fff;touch-action:manipulation;-webkit-touch-callout:none}
+      .vexa-player-center{position:absolute;left:50%;top:50%;width:48px;height:48px;border-radius:18px;display:grid;place-items:center;transform:translate(-50%,-50%);color:#050505;background:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 10px 22px rgba(0,0,0,.24);font-size:16px;font-weight:850;opacity:1;transition:opacity .18s ease,transform .22s cubic-bezier(.16,.86,.22,1)}
       .vexa-player-surface.is-playing .vexa-player-center{opacity:0;transform:translate(-50%,-50%) scale(.88)}
       .vexa-player-surface:active .vexa-player-center{transform:translate(-50%,-50%) scale(.92)}
 
@@ -96,22 +96,22 @@ function vexaLiveEditorBootstrap() {
       .vexa-guide.horizontal{top:50%;left:7%;right:7%;height:1px}
       body.vexa-guide-x .vexa-guide.vertical,body.vexa-guide-y .vexa-guide.horizontal{display:block}
 
-      .vexa-editor-panel{position:relative;z-index:138;flex:0 0 auto;width:min(calc(100% - 24px),560px);height:220px;margin:auto auto calc(10px + env(safe-area-inset-bottom));padding:9px;border-radius:22px;background:rgba(13,13,13,.62);border:1px solid rgba(255,255,255,.105);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 22px rgba(255,255,255,.045),0 16px 36px rgba(0,0,0,.24);backdrop-filter:blur(16px) saturate(1.12);-webkit-backdrop-filter:blur(16px) saturate(1.12);transition:height .25s cubic-bezier(.16,.86,.22,1)}
+      .vexa-editor-panel{position:relative;z-index:138;flex:0 0 auto;width:min(calc(100% - 24px),560px);height:220px;margin:auto auto calc(10px + env(safe-area-inset-bottom));padding:9px;border-radius:22px;background:rgba(13,13,13,.54);border:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 22px rgba(255,255,255,.055),0 16px 36px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);transition:height .25s cubic-bezier(.16,.86,.22,1)}
       .vexa-panel-grip{display:none}
       .vexa-editor-controls{height:36px;display:flex;align-items:center;gap:8px}
-      .vexa-editor-play{width:34px;height:34px;border-radius:12px;color:#050505;background:#fff;border:1px solid rgba(255,255,255,.14);box-shadow:0 7px 20px rgba(0,0,0,.25);font-size:13px;font-weight:850;transition:transform .18s cubic-bezier(.16,.86,.22,1)}
+      .vexa-editor-play{width:34px;height:34px;border-radius:12px;color:#050505;background:#fff;border:1px solid rgba(255,255,255,.14);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 7px 20px rgba(0,0,0,.25);font-size:13px;font-weight:850;transition:transform .18s cubic-bezier(.16,.86,.22,1)}
       .vexa-editor-play:active{transform:scale(.9)}
       .vexa-editor-time{min-width:78px;color:rgba(255,255,255,.7);font-size:9px;font-weight:650;font-variant-numeric:tabular-nums}
       .vexa-editor-hint{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,.32);font-size:8px;text-align:right}
       .vexa-fit-button{display:none!important}
 
-      .vexa-caption-timeline{position:relative;height:72px;margin-top:6px;overflow-x:auto;overflow-y:hidden;border-radius:14px;background:rgba(0,0,0,.22);box-shadow:inset 0 1px 0 rgba(255,255,255,.045),inset 0 0 0 1px rgba(255,255,255,.055);scrollbar-width:none;touch-action:pan-x}
+      .vexa-caption-timeline{position:relative;height:72px;margin-top:6px;overflow-x:auto;overflow-y:hidden;border-radius:15px;background:rgba(0,0,0,.22);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),inset 0 -1px 0 rgba(255,255,255,.04);scrollbar-width:none;touch-action:pan-x}
       .vexa-caption-timeline::-webkit-scrollbar{display:none}
       .vexa-timeline-lane{position:relative;height:100%;min-width:100%}
       .vexa-wave{position:absolute;left:0;right:0;top:8px;height:24px;display:flex;align-items:center;gap:2px;padding:0 8px;opacity:.18;overflow:hidden;pointer-events:none}
       .vexa-wave i{flex:1 0 2px;min-width:2px;max-width:2px;border-radius:99px;background:#fff}
       .vexa-cue-track{position:absolute;left:0;right:0;bottom:7px;height:31px}
-      .vexa-cue{position:absolute;top:0;height:31px;min-width:42px;padding:0 8px;border-radius:9px;color:rgba(255,255,255,.58);background:rgba(255,255,255,.065);box-shadow:inset 0 0 0 1px rgba(255,255,255,.055);overflow:hidden;text-align:left;touch-action:none;transition:background .18s ease,color .18s ease,transform .18s ease}
+      .vexa-cue{position:absolute;top:0;height:31px;min-width:42px;padding:0 8px;border-radius:9px;color:rgba(255,255,255,.58);background:rgba(255,255,255,.055);box-shadow:inset 0 1px 0 rgba(255,255,255,.045);overflow:hidden;text-align:left;touch-action:none;transition:background .18s ease,color .18s ease,transform .18s ease}
       .vexa-cue.active{color:#050505;background:#fff;transform:translateY(-1px)}
       .vexa-cue span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:7.5px;font-weight:680;pointer-events:none}
       .vexa-cue-handle{position:absolute;top:0;bottom:0;width:13px;display:none;touch-action:none}
@@ -125,9 +125,9 @@ function vexaLiveEditorBootstrap() {
       .vexa-caption-editor{display:grid;grid-template-columns:1fr auto;grid-template-rows:auto 1fr;column-gap:7px;margin-top:6px}
       .vexa-caption-meta{grid-column:1/3;height:16px;display:flex;justify-content:space-between;padding:0 3px;color:rgba(255,255,255,.28);font-size:7px;font-weight:650}
       .vexa-caption-meta b{color:rgba(255,255,255,.46);font-weight:620}
-      .vexa-caption-input{height:47px;resize:none;border:0;outline:0;border-radius:12px;padding:9px 10px;color:#fff;background:rgba(255,255,255,.052);box-shadow:inset 0 1px 0 rgba(255,255,255,.055),inset 0 0 0 1px rgba(255,255,255,.06);font-family:inherit;font-size:11px;font-weight:620;line-height:1.35;transition:background .2s ease,box-shadow .2s ease}
-      .vexa-caption-input:focus{background:rgba(255,255,255,.075);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 0 0 1px rgba(255,255,255,.12)}
-      .vexa-reset-position{width:68px;height:47px;border-radius:12px;color:rgba(255,255,255,.52);background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.055);font-size:7px;font-weight:680}
+      .vexa-caption-input{height:47px;resize:none;border:0;outline:0;border-radius:12px;padding:9px 10px;color:#fff;background:rgba(0,0,0,.22);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),inset 0 -1px 0 rgba(255,255,255,.04);font-family:inherit;font-size:11px;font-weight:620;line-height:1.35;transition:background .2s ease,box-shadow .2s ease}
+      .vexa-caption-input:focus{background:rgba(255,255,255,.055);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 -1px 0 rgba(255,255,255,.04)}
+      .vexa-reset-position{width:68px;height:47px;border-radius:12px;color:rgba(255,255,255,.58);background:rgba(255,255,255,.055);border:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);font-size:7px;font-weight:680}
       body.vexa-editor-collapsed .vexa-caption-timeline,body.vexa-editor-collapsed .vexa-caption-editor{display:none}
       body.vexa-editor-keyboard .vexa-caption-timeline{display:none}
       @keyframes vexaCaptionIn{from{opacity:0;transform:translate(-50%,-50%) scale(.95)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
