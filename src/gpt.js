@@ -816,6 +816,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     let reviewRequested = false;
     let reviewedCommitSha = "";
     let multiAgentFallbackDisabled = false;
+    let successfulWriteInThisTurn = false;
     const maxAgentToolRounds = githubContext
       ? effortProfile.maxCodingAgentToolRounds
       : effortProfile.maxAgentToolRounds;
@@ -833,6 +834,41 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       memoryEntries,
       codingActivity,
     });
+    const recoverSavedCodingResult = (error, phase) => {
+      const branch = String(codingActivity?.currentBranch || codingActivity?.change?.branch || "").trim();
+      const commitSha = String(codingActivity?.currentCommitSha || codingActivity?.change?.commitSha || "").trim();
+      if (
+        !successfulWriteInThisTurn
+        || !codingActivity?.change
+        || !branch
+        || !/^[a-f0-9]{40}$/i.test(commitSha)
+      ) {
+        return null;
+      }
+      console.warn("AI_CHAT_POST_WRITE_RECOVERY", {
+        phase: String(phase || "finalization"),
+        internalCode: String(error?.internalCode || error?.name || "AI_FINALIZATION_FAILURE").slice(0, 120),
+        repository: String(codingActivity.repository || ""),
+        branch,
+        commitSha,
+      });
+      const summary = String(codingActivity.change?.summary || "").replace(/\s+/g, " ").trim();
+      const reviewPending = Boolean(codingActivity.needsReview && !codingActivity.reviewCompleted);
+      const message = [
+        summary || "The code change was saved successfully.",
+        `Branch: ${branch}`,
+        `Commit: ${commitSha.slice(0, 12)}`,
+        reviewPending
+          ? "The final AI response or review was interrupted, but the saved code change was not lost. Final validation may still be pending."
+          : "The final AI response was interrupted, but the saved code change was not lost.",
+      ].join("\n");
+      return buildChatResult({
+        output: [{
+          type: "message",
+          content: [{ type: "output_text", text: message }],
+        }],
+      }, cleanMessages, resultOptions());
+    };
 
     const refreshWorkspaceIfNeeded = async () => {
       if (!codingActivity?.currentCommitSha || codingActivity.currentCommitSha === codingActivity.workspaceCommitSha) return;
@@ -1054,6 +1090,8 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           });
           continue;
         }
+        const recovered = recoverSavedCodingResult(error, "responses_http");
+        if (recovered) return recovered;
         throw error;
       }
 
@@ -1069,6 +1107,8 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           });
           continue;
         }
+        const recovered = recoverSavedCodingResult(error, "responses_stream");
+        if (recovered) return recovered;
         throw error;
       }
       throwIfAiChatAborted(controller.signal);
@@ -1243,6 +1283,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         recordMediumBaseAction(call?.name);
         const afterSha = String(codingActivity?.currentCommitSha || "");
         if (afterSha && afterSha !== beforeSha) {
+          if (String(call?.name || "") === "github_commit_changes") successfulWriteInThisTurn = true;
           await refreshWorkspaceIfNeeded();
         }
       }
@@ -1272,6 +1313,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           recordMediumBaseAction("apply_patch");
           const afterSha = String(codingActivity?.currentCommitSha || "");
           if (afterSha && afterSha !== beforeSha) {
+            successfulWriteInThisTurn = true;
             await refreshWorkspaceIfNeeded();
           }
         }
