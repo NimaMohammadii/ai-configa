@@ -258,7 +258,11 @@ function isRecoverablePhaseError(value) {
   return message.includes("too long")
     || message.includes("too many tool steps")
     || message.includes("request cancelled")
-    || message.includes("temporarily unavailable");
+    || message.includes("temporarily unavailable")
+    || message.includes("temporarily busy")
+    || message.includes("rate limit")
+    || message.includes("rate_limit")
+    || message.includes("too many requests");
 }
 
 async function parseAiChatResponse(response) {
