@@ -7,7 +7,7 @@ import {
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
 
-const TRIBUTE_UI_VERSION = "20260816-2";
+const TRIBUTE_UI_VERSION = "20260816-3";
 const TRIBUTE_SHOP_CACHE_TTL_MS = 5 * 60 * 1000;
 const KNOWN_TRIBUTE_SHOP_EVENTS = new Set([
   "shop_order",
@@ -49,13 +49,9 @@ export default {
       return handleTributeWebhook(request, tributeEnv);
     }
 
+    // Do not block order creation with a separate GET /shop preflight.
+    // Tribute's documented Create Shop Order endpoint is the source of truth.
     if (isTributeMiniAppRequest(request)) {
-      if (request.method === "POST" && url.pathname === "/mini-app/api/tribute-order") {
-        const shop = await getTributeShopState(tributeEnv);
-        if (!shop.ready) {
-          return json({ error: shop.error || "Bank-card payments are not enabled in Tribute." }, shop.httpStatus || 503);
-        }
-      }
       return handleTributeMiniAppRequest(request, tributeEnv);
     }
 
@@ -123,7 +119,7 @@ async function getTributeShopState(env, options = {}) {
       status: null,
       onlyStars: null,
       httpStatus: 503,
-      error: "Tribute Shop is not set up for this API key.",
+      error: "Tribute Shop lookup returned 404.",
     };
   } else if (!response.ok) {
     value = {
