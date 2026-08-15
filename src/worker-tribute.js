@@ -7,7 +7,7 @@ import {
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
 
-const TRIBUTE_UI_VERSION = "20260815-3";
+const TRIBUTE_UI_VERSION = "20260816-1";
 const KNOWN_TRIBUTE_SHOP_EVENTS = new Set([
   "shop_order",
   "shop_order_refunded",
