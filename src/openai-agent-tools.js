@@ -55,7 +55,9 @@ export async function refreshOpenAiCodingWorkspace(env, userId, tools, state, co
 export async function prepareOpenAiAgentTools(env, userId, options = {}) {
   const state = await core.prepareOpenAiAgentTools(env, userId, { ...options, codingSkill: false });
   state.reasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
-  const shellEnabled = options.shellEnabled !== false;
+  const shellEnabled = options.shellEnabled == null
+    ? state.reasoningEffort !== "low"
+    : options.shellEnabled !== false;
   if (!shellEnabled && Array.isArray(state.tools)) {
     state.tools = state.tools.filter((tool) => tool?.type !== "shell");
     state.repositorySnapshot = null;
