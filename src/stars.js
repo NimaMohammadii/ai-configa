@@ -25,8 +25,8 @@ export function getStarPackage(id) {
 export function createCustomStarPackage(credits, discount = null) {
   const cleanCredits = Math.max(1, Math.floor(Number(credits || 0)));
   const baseStars = Math.max(80, Math.ceil(cleanCredits / CUSTOM_STARS_CREDITS_PER_STAR));
-  const discountPercent = Number(discount?.percent || 0);
-  const stars = discountPercent > 0 ? Math.max(1, Math.ceil(baseStars * (100 - discountPercent) / 100)) : baseStars;
+  const discountPercent = normalizeDiscountPercent(discount?.percent);
+  const stars = discountPercent > 0 ? discountedStars(baseStars, discountPercent) : baseStars;
   const usd = (cleanCredits / 1000) * CUSTOM_STARS_USD_PER_1000_CREDITS;
   return {
     id: `custom_${cleanCredits}_${stars}`,
@@ -46,56 +46,53 @@ export function createCustomStarPackage(credits, discount = null) {
 }
 
 export function getStarPackageFromPayload(payload) {
-  if (String(payload || "").startsWith("stars_custom:")) {
-    const [, credits, stars] = String(payload).split(":");
-    const pack = createCustomStarPackage(credits);
+  const value = String(payload || "");
+
+  if (value.startsWith("stars_custom:")) {
+    const [, credits, stars, percentRaw] = value.split(":");
     const paidStars = Number(stars);
-    if (paidStars === pack.stars) return pack;
-    if (Number.isSafeInteger(paidStars) && paidStars > 0 && paidStars < Number(pack.stars)) {
-      return withPayloadStars(pack, paidStars);
-    }
-    return null;
+    const percent = normalizeDiscountPercent(percentRaw);
+    const pack = createCustomStarPackage(credits, percent > 0 ? { percent } : null);
+    if (!Number.isSafeInteger(paidStars) || paidStars <= 0 || paidStars !== Number(pack.stars)) return null;
+    return pack;
   }
 
-  if (String(payload || "").startsWith("stars:")) {
-    return getStarPackage(String(payload).slice("stars:".length));
+  if (value.startsWith("stars:")) {
+    return getStarPackage(value.slice("stars:".length));
   }
 
-  if (String(payload || "").startsWith("stars_discount:")) {
-    const [, id, stars] = String(payload).split(":");
+  if (value.startsWith("stars_discount:")) {
+    const [, id, stars, percentRaw] = value.split(":");
+    const paidStars = Number(stars);
+    const percent = normalizeDiscountPercent(percentRaw);
     const pack = getStarPackage(id);
-    const paidStars = Number(stars);
-    if (!pack || !Number.isSafeInteger(paidStars) || paidStars <= 0 || paidStars >= Number(pack.stars)) return null;
-    return withPayloadStars(pack, paidStars);
+    if (!pack || !percent || !Number.isSafeInteger(paidStars) || paidStars <= 0) return null;
+    const discounted = applyStarPackageDiscount(pack, { percent });
+    return Number(discounted?.stars) === paidStars ? discounted : null;
   }
 
   return null;
 }
 
-function withPayloadStars(pack, stars) {
+export function applyStarPackageDiscount(pack, discount = null) {
+  const percent = normalizeDiscountPercent(discount?.percent);
+  if (!pack || !percent) return pack;
   const originalStars = Number(pack.originalStars || pack.stars || 0);
-  const discountPercent = originalStars > 0
-    ? Math.max(1, Math.min(99, Math.round((1 - Number(stars) / originalStars) * 100)))
-    : 0;
+  const stars = discountedStars(originalStars, percent);
   return {
     ...pack,
-    stars: Number(stars),
+    stars,
     originalStars,
-    discountPercent,
-    label: `${formatNumber(pack.totalCredits)} • ${formatUsd(pack.usd)}$ • ${Number(stars)} ⭐️`,
+    discountPercent: percent,
+    discountExpiresAt: Number(discount?.expiresAt || 0),
+    label: `${formatNumber(pack.totalCredits)} • ${formatUsd(pack.usd)}$ • ${stars} ⭐️`,
   };
 }
 
-export function applyStarPackageDiscount(pack, discount = null) {
-  const percent = Number(discount?.percent || 0);
-  if (!pack || !percent) return pack;
-  const stars = Math.max(1, Math.ceil(Number(pack.stars || 0) * (100 - percent) / 100));
-  return { ...pack, stars, originalStars: pack.stars, discountPercent: percent, discountExpiresAt: Number(discount?.expiresAt || 0), label: `${formatNumber(pack.totalCredits)} • ${formatUsd(pack.usd)}$ • ${stars} ⭐️` };
-}
-
 export function starInvoicePayload(pack) {
-  if (pack?.custom) return `stars_custom:${pack.totalCredits}:${pack.stars}`;
-  if (Number(pack?.discountPercent || 0) > 0) return `stars_discount:${pack.id}:${pack.stars}`;
+  const percent = normalizeDiscountPercent(pack?.discountPercent);
+  if (pack?.custom) return `stars_custom:${pack.totalCredits}:${pack.stars}:${percent}`;
+  if (percent > 0) return `stars_discount:${pack.id}:${pack.stars}:${percent}`;
   return "stars:" + pack.id;
 }
 
@@ -148,6 +145,15 @@ function createStarPackage(id, credits, bonus, usd, starsOverride = null) {
     description: `${formatNumber(totalCredits)} Vexa credits`,
     invoiceLabel: `${formatNumber(totalCredits)} credits`,
   };
+}
+
+function normalizeDiscountPercent(value) {
+  const percent = Math.floor(Number(value) || 0);
+  return percent > 0 && percent < 100 ? percent : 0;
+}
+
+function discountedStars(originalStars, percent) {
+  return Math.max(1, Math.ceil(Number(originalStars || 0) * (100 - percent) / 100));
 }
 
 function formatNumber(value) {
