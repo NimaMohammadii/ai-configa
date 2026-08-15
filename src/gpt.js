@@ -1,5 +1,5 @@
 import { normalizeAiChatModel, normalizeAiChatReasoningEffort } from "./ai-chat-model.js";
-import { applyAiMemoryToolCall, buildAiMemoryInstructions, getAiMemoryTools, getUserAiMemory, isAiMemoryToolCall } from "./ai-memory.js";
+import { applyAiMemoryToolCall, buildAiMemoryInstructions, getAiMemoryTools, getUserAiMemory, isAiMemoryToolCall, selectRelevantAiMemories } from "./ai-memory.js";
 import { buildGitHubAiInstructions, executeGitHubAiTool, getGitHubAiContext, getGitHubAiTools, isGitHubAiToolCall } from "./github-ai.js";
 import { buildAiMcpInstructions, getAiMcpTools } from "./ai-mcp.js";
 import { buildAiComputerInstructions, createAiComputerSession, getAiComputerTools, isAiComputerCall, isAiComputerFunctionCall } from "./ai-computer.js";
@@ -740,6 +740,13 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
   } : null;
   const memoryTools = getAiMemoryTools();
   let memoryEntries = await getUserAiMemory(env, options.userId);
+  const memoryContextText = cleanMessages
+    .filter((message) => message.role === "user")
+    .slice(-3)
+    .map((message) => message.content)
+    .filter(Boolean)
+    .join("\n");
+  let promptMemoryEntries = selectRelevantAiMemories(memoryEntries, memoryContextText);
   let memoryChanged = false;
   const requestSignal = options.signal && typeof options.signal.addEventListener === "function"
     ? options.signal
@@ -1001,7 +1008,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           instructions: buildAiChatInstructions(
             latestPreferredVoice,
             githubContext,
-            memoryEntries,
+            promptMemoryEntries,
             model,
             openAiAgentInstructions,
             mcpInstructions,
@@ -1189,6 +1196,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         throwIfAiChatAborted(controller.signal);
         const update = applyAiMemoryToolCall(memoryEntries, call);
         memoryEntries = update.memories;
+        promptMemoryEntries = selectRelevantAiMemories(memoryEntries, memoryContextText);
         memoryChanged = memoryChanged || update.changed;
         responseInput.push(functionCallOutput(call, JSON.stringify(update.output)));
       }
