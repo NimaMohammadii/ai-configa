@@ -1,5 +1,6 @@
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import { NonRetryableError } from "cloudflare:workflows";
+import { setAiChatRequestPreferences } from "./ai-chat-model.js";
 import { runWithCreditIdempotency } from "./credit-idempotency.js";
 import { getAiCodingTaskState } from "./ai-coding-task.js";
 import { summarizeCodingPlan } from "./ai-coding-plan.js";
@@ -45,6 +46,10 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
                 taskId,
                 phase,
                 currentCodingTaskId,
+                {
+                  model: payload.model,
+                  reasoningEffort: payload.reasoningEffort,
+                },
               );
               return { ok: true, result };
             } catch (error) {
@@ -131,7 +136,7 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
   }
 }
 
-async function runOneAiPhase(env, user, messages, workflowTaskId, phase, codingTaskId = "") {
+async function runOneAiPhase(env, user, messages, workflowTaskId, phase, codingTaskId = "", preferences = {}) {
   const initData = await createInternalInitData(user, env.BOT_TOKEN);
   const request = new Request("https://vexa.internal/mini-app/api/chat", {
     method: "POST",
@@ -139,8 +144,9 @@ async function runOneAiPhase(env, user, messages, workflowTaskId, phase, codingT
     body: JSON.stringify({ initData, messages }),
   });
   const exactTaskId = cleanCodingTaskId(codingTaskId);
-  const phaseEnv = exactTaskId ? Object.create(env) : env;
+  const phaseEnv = Object.create(env);
   if (exactTaskId) phaseEnv.AI_CODING_TASK_ID = exactTaskId;
+  setAiChatRequestPreferences(phaseEnv, user.id, preferences);
   return runWithCreditIdempotency(`ai-workflow:${workflowTaskId}:phase:${phase}`, async () => {
     const response = await handleMiniAppRequest(request, phaseEnv);
     return parseAiChatResponse(response);
@@ -199,10 +205,10 @@ function addBackgroundExecutionInstruction(messages) {
     {
       role: "user",
       content: [
-        "Execute the requested coding work as a durable background task.",
-        "For non-trivial work, create and maintain the structured coding plan before the first write.",
-        "Work in coherent milestones, preserve the exact Vexa task branch, validate each material code change, and update plan statuses after real progress.",
-        "If the whole task is too large for one execution phase, stop only at a safe coherent checkpoint with unfinished plan steps left pending rather than pretending the task is complete.",
+        "Execute the user's requested coding work as a durable background task.",
+        "Use the selected model and reasoning effort naturally; do not add planning, review, subagents, browser checks, shell validation, or other ceremony merely because this is background mode.",
+        "Use a structured coding plan only when it materially helps a task that may need multiple execution phases, and keep it accurate if you use one.",
+        "Preserve the exact Vexa task branch across writes and never claim a check succeeded unless a tool actually showed it.",
         "Do not merge or apply changes to the default branch unless the user's original request explicitly authorized that action.",
       ].join(" "),
     },
@@ -222,7 +228,7 @@ function continuationMessages(taskId, plan, phase, previousError) {
       "Call github_resume_task with that exact taskId before repository work and continue from its saved branch and structured plan.",
       remaining.length ? `Remaining plan steps: ${remaining.join(" | ")}.` : "Read the saved plan and continue unfinished work.",
       previousError ? `The previous execution phase ended with: ${String(previousError).slice(0, 300)}. Recover from saved evidence instead of repeating completed work.` : "Do not repeat completed plan steps.",
-      `This is background phase ${phase + 1}; finish as many coherent remaining milestones as can be safely validated.`,
+      `This is background phase ${phase + 1}; continue the unfinished work without repeating completed steps.`,
     ].join(" "),
   }];
 }
