@@ -32,74 +32,15 @@ const PURCHASE_DISCOUNT_PATCH = String.raw`
   setTimeout(function(){purchaseBindPriceInputs();purchaseRenderPrices()},0);
 `;
 
-function replaceHistoryImplementation(source, pattern, replacement, label) {
-  const updated = source.replace(pattern, replacement);
-  if (updated === source) throw new Error(`Could not update mini-app history ${label}`);
-  return updated;
-}
+const HISTORY_UI_PATCH = String.raw`
+  (function(){
+    if(document.getElementById('historyGlassStyles'))return;
+    var style=document.createElement('style');
+    style.id='historyGlassStyles';
+    style.textContent='.history-item{position:relative;overflow:hidden;border:0!important;border-radius:18px!important;background:rgba(13,13,13,.62)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22)!important;backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);padding:11px 12px!important;transition:transform .22s cubic-bezier(.2,.8,.2,1),background .22s ease,box-shadow .22s ease!important}.history-item+.history-item{margin-top:8px!important}.history-item.history-active{background:rgba(16,16,16,.72)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.065),inset 0 0 20px rgba(255,255,255,.06),0 13px 28px rgba(0,0,0,.24)!important}.history-item-text{font-size:12.5px!important;font-weight:540!important;line-height:1.36!important}.history-item-foot{margin-top:8px!important;gap:7px!important}.history-meta{color:rgba(255,255,255,.5)!important;font-size:9.5px!important;font-weight:660!important}.history-action{width:32px!important;height:32px!important;flex:0 0 32px!important;border:0!important;border-radius:11px!important;background:rgba(255,255,255,.055)!important;color:rgba(255,255,255,.86)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 -1px 0 rgba(255,255,255,.035)!important;backdrop-filter:blur(10px) saturate(1.1);-webkit-backdrop-filter:blur(10px) saturate(1.1);transition:transform .2s cubic-bezier(.2,.9,.2,1),background .2s ease,color .2s ease,box-shadow .2s ease!important}.history-action:active,.history-action.is-playing{transform:scale(.91)!important;background:rgba(255,255,255,.12)!important;color:#fff!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.13)!important}.history-action:disabled{opacity:.24!important}.history-progress{grid-template-columns:minmax(0,1fr) auto!important;gap:10px!important}.history-item.history-active .history-progress{max-height:30px!important;margin-top:9px!important}.history-progress-track{height:20px!important;overflow:visible!important}.history-progress-track:before{left:0!important;right:0!important;top:8px!important;height:4px!important;border-radius:999px!important;background:rgba(255,255,255,.12)!important}.history-progress-fill{left:0!important;top:8px!important;height:4px!important;max-width:100%!important;border-radius:999px!important;background:#fff!important;box-shadow:none!important;transition:width .12s cubic-bezier(.22,.61,.36,1),opacity .2s ease!important;will-change:width}.history-progress-thumb{display:none!important}.history-progress-range::-webkit-slider-thumb{-webkit-appearance:none!important;width:24px!important;height:20px!important;background:transparent!important;border:0!important}.history-progress-time{gap:3px!important;color:rgba(255,255,255,.46)!important;font-size:9px!important;font-weight:720!important;letter-spacing:.01em!important}.history-item:has(.history-play.is-playing) .history-progress-fill{animation:historyBarBreath 1.1s ease-in-out infinite}@keyframes historyBarBreath{0%,100%{opacity:.82}50%{opacity:1}}';
+    document.head.appendChild(style);
+  })();
+`;
 
-function reusePrimaryAudioPlayerInHistory(source) {
-  let updated = source;
-
-  updated = replaceHistoryImplementation(
-    updated,
-    /  function syncHistoryProgress\(\)\{[^\n]*\}\n/,
-    String.raw`  function syncHistoryProgress(){var audio=q('historyAudio');var duration=finiteDuration(audio);var current=duration?Math.min(duration,Math.max(0,Number(audio.currentTime)||0)):0;var ratio=duration?current/duration:0;document.querySelectorAll('[data-history-progress]').forEach(function(row){var active=!!activeHistoryId&&row.getAttribute('data-history-id')===activeHistoryId;var progress=active?ratio:0;var range=row.querySelector('[data-history-seek]');var currentNode=row.querySelector('[data-history-current]');var player=row.closest('[data-history-player]');row.style.setProperty('--wave-progress',(progress*100).toFixed(3)+'%');if(range){range.value=String(Math.round(progress*1000));range.disabled=!active||!duration}if(currentNode)currentNode.textContent=formatTime(active?current:0);if(player)player.classList.toggle('is-playing',active&&!!audio&&!audio.paused&&!audio.ended)})}
-`,
-    'progress'
-  );
-
-  updated = replaceHistoryImplementation(
-    updated,
-    /  function historyPlayIcon\(\)\{[^\n]*\}\n/,
-    String.raw`  function historyPlayIcon(){var button=q('wavePlay');var shape=button&&button.querySelector('.wave-play-shape');return shape?shape.outerHTML:''}
-`,
-    'play icon'
-  );
-
-  updated = replaceHistoryImplementation(
-    updated,
-    /  function historyShareIcon\(\)\{[^\n]*\}\n/,
-    String.raw`  function historyShareIcon(){var button=q('waveShare');var icon=button&&button.querySelector('svg');return icon?icon.outerHTML:''}
-  function historyWaveMarkup(id){var source=q('waveSeekWrap');var base=source&&source.querySelector('.wave-svg-base');var baseMarkup=base?base.outerHTML:'';var progressMarkup=baseMarkup?baseMarkup.replace('wave-svg-base','wave-svg-progress'):'';return baseMarkup+progressMarkup+'<input class="wave-range" data-history-seek data-history-id="'+id+'" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek audio" disabled/><div class="wave-meta" aria-hidden="true"><span class="wave-time" data-history-current>0:00</span></div>'}
-`,
-    'share icon'
-  );
-
-  updated = replaceHistoryImplementation(
-    updated,
-    /  function drawHistory\(items,emptyLabel\)\{[^\n]*\}\n/,
-    String.raw`  function drawHistory(items,emptyLabel){var list=q('historyList');if(!list)return;var visible=Array.isArray(items)?items:[];if(!visible.length){list.innerHTML='<div class="history-empty"><div><svg width="27" height="27" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.6 8.2A8.2 8.2 0 1 1 4 13M4.6 8.2V4.6M4.6 8.2H8.2M12 7.8v4.6l3.1 1.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'+escapeHtml(emptyLabel||'No creations yet')+'</div></div>';return}list.innerHTML=visible.map(function(item){var id=escapeHtml(item.id);var disabled=item.has_audio?'':' disabled';var meta=[item.voice||'Voice',formatHistoryDate(item.created_at)].filter(Boolean).join(' · ');return '<article data-history-item="'+id+'"><p class="history-item-text">'+escapeHtml(item.text||'')+'</p><div class="history-item-foot"><span class="history-meta">'+escapeHtml(meta)+'</span></div><div class="player-history-row" style="margin-bottom:6px"><div class="wave-player show" data-history-player data-history-id="'+id+'"><button class="wave-play history-play" data-action="play-history" data-history-id="'+id+'" type="button" aria-label="Play audio"'+disabled+'>'+historyPlayIcon()+'</button><div class="wave-player-body"><div class="wave-seek" data-history-progress data-history-id="'+id+'" style="--wave-progress:0%">'+historyWaveMarkup(id)+'</div></div><div class="wave-actions"><button class="wave-share history-share" data-action="share-history" data-history-id="'+id+'" type="button" aria-label="Share audio"'+disabled+'>'+historyShareIcon()+'</button></div></div></div></article>'}).join('');syncHistoryProgress()}
-`,
-    'card renderer'
-  );
-
-  updated = replaceHistoryImplementation(
-    updated,
-    /  function setHistoryPlaying\(id,playing\)\{[^\n]*\}\n/,
-    String.raw`  function setHistoryPlaying(id,playing){document.querySelectorAll('.history-play').forEach(function(button){var active=playing&&button.getAttribute('data-history-id')===id;button.classList.toggle('is-playing',active);button.setAttribute('aria-label',active?'Pause audio':'Play audio');var player=button.closest('[data-history-player]');if(player)player.classList.toggle('is-playing',active)});syncHistoryProgress()}
-`,
-    'play state'
-  );
-
-  updated = replaceHistoryImplementation(
-    updated,
-    /  async function shareHistory\(button\)\{[^\n]*\}\n/,
-    String.raw`  async function shareHistory(button){var id=button.getAttribute('data-history-id')||'';if(!id||button.classList.contains('sharing'))return;button.classList.add('sharing');try{var item=await getHistoryAudio(id);await shareAudioSource(item.src,item.filename)}catch(error){if(error&&error.name!=='AbortError')toast(error.message||'Could not share audio')}finally{button.classList.remove('sharing')}}
-`,
-    'share state'
-  );
-
-  const oldPointerRow = "var row=event.target.closest('.history-progress')";
-  if (!updated.includes(oldPointerRow)) throw new Error('Could not update mini-app history scrub row');
-  updated = updated.replace(oldPointerRow, "var row=event.target.closest('[data-history-progress]')");
-
-  const oldScrubbingRows = "document.querySelectorAll('.history-progress.is-scrubbing')";
-  if (!updated.includes(oldScrubbingRows)) throw new Error('Could not update mini-app history scrub state');
-  updated = updated.replace(oldScrubbingRows, "document.querySelectorAll('[data-history-progress].is-scrubbing')");
-
-  return updated;
-}
-
-const MINI_APP_JS_WITH_PURCHASE = BASE_MINI_APP_JS.replace("(function(){", "(function(){\n" + PURCHASE_DISCOUNT_PATCH);
-export const MINI_APP_JS = reusePrimaryAudioPlayerInHistory(MINI_APP_JS_WITH_PURCHASE);
+const MINI_APP_JS_WITH_HISTORY_PROGRESS = BASE_MINI_APP_JS.replace("if(fill)fill.style.width='calc('+progressPercent+' - '+(ratio?5:0)+'px)'","if(fill)fill.style.width=progressPercent");
+export const MINI_APP_JS = MINI_APP_JS_WITH_HISTORY_PROGRESS.replace("(function(){", "(function(){\n" + HISTORY_UI_PATCH + PURCHASE_DISCOUNT_PATCH);
