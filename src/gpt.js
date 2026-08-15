@@ -22,7 +22,9 @@ const GPT_CODING_TIMEOUT_MS = 45 * 60 * 1000;
 const GPT_IMAGE_TIMEOUT_MS = 150000;
 const GPT_MODEL = "gpt-5.6-terra";
 const AI_CHAT_CONTEXT_WINDOW = 1050000;
-const AI_CHAT_COMPACTION_THRESHOLD = 700000;
+const AI_CHAT_COMPACTION_THRESHOLD = 200000;
+const AI_CHAT_RATE_LIMIT_MAX_RETRIES = 1;
+const AI_CHAT_RATE_LIMIT_MAX_WAIT_MS = 60 * 1000;
 const MAX_ENHANCE_CHARS = 5000;
 const MAX_AGENT_TOOL_ROUNDS = 14;
 const MAX_CODING_AGENT_TOOL_ROUNDS = 120;
@@ -82,7 +84,7 @@ const GPT_CHAT_ATTACHMENT_MIME = Object.freeze({
   htm: "text/html",
   xml: "text/xml",
   csv: "text/csv",
-  tsv: "text/tsv",
+  tsv: "text/tab-separated-values",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   rtf: "application/rtf",
@@ -372,6 +374,112 @@ function throwIfAiChatAborted(signal) {
   if (signal?.aborted) throw makeAiChatAbortError();
 }
 
+function pruneAiChatInputAfterCompaction(items) {
+  if (!Array.isArray(items) || items.length < 2) return 0;
+  let compactionIndex = -1;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (items[index]?.type === "compaction") {
+      compactionIndex = index;
+      break;
+    }
+  }
+  if (compactionIndex <= 0) return 0;
+  items.splice(0, compactionIndex);
+  return compactionIndex;
+}
+
+function parseOpenAiDurationMs(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return 0;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1000);
+  let total = 0;
+  let matched = false;
+  for (const match of raw.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h)/g)) {
+    const amount = Number(match[1]);
+    if (!Number.isFinite(amount)) continue;
+    matched = true;
+    total += amount * (match[2] === "h" ? 3600000 : match[2] === "m" ? 60000 : match[2] === "s" ? 1000 : 1);
+  }
+  return matched ? Math.ceil(total) : 0;
+}
+
+function readOpenAiRateLimitHeaders(headers) {
+  const retryAfter = String(headers?.get?.("retry-after") || "").trim();
+  let retryAfterMs = parseOpenAiDurationMs(retryAfter);
+  if (!retryAfterMs && retryAfter) {
+    const retryAt = Date.parse(retryAfter);
+    if (Number.isFinite(retryAt)) retryAfterMs = Math.max(0, retryAt - Date.now());
+  }
+  return {
+    limitTokens: Math.max(0, Number(headers?.get?.("x-ratelimit-limit-tokens") || 0)),
+    remainingTokens: Math.max(0, Number(headers?.get?.("x-ratelimit-remaining-tokens") || 0)),
+    resetTokens: String(headers?.get?.("x-ratelimit-reset-tokens") || "").trim(),
+    resetTokensMs: parseOpenAiDurationMs(headers?.get?.("x-ratelimit-reset-tokens")),
+    retryAfter,
+    retryAfterMs,
+  };
+}
+
+function resolveOpenAiRateLimitWaitMs(headers, attempt) {
+  const rateLimit = readOpenAiRateLimitHeaders(headers);
+  const serverDelay = Math.max(rateLimit.retryAfterMs, rateLimit.resetTokensMs);
+  const fallbackDelay = 5000 * (2 ** Math.max(0, Number(attempt || 0)));
+  const waitMs = serverDelay > 0 ? serverDelay : fallbackDelay;
+  if (waitMs <= 0 || waitMs > AI_CHAT_RATE_LIMIT_MAX_WAIT_MS) return 0;
+  return Math.max(1000, Math.ceil(waitMs + 250));
+}
+
+function waitWithAbort(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(makeAiChatAbortError());
+      return;
+    }
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (signal) signal.removeEventListener("abort", abort);
+      resolve();
+    };
+    const abort = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", abort);
+      reject(makeAiChatAbortError());
+    };
+    const timer = setTimeout(finish, Math.max(0, Number(ms || 0)));
+    if (signal) signal.addEventListener("abort", abort, { once: true });
+  });
+}
+
+async function fetchAiChatResponseWithRateLimitRetry(url, init, context = {}) {
+  for (let attempt = 0; attempt <= AI_CHAT_RATE_LIMIT_MAX_RETRIES; attempt += 1) {
+    const response = await fetch(url, init);
+    if (response.ok) return response;
+    const errorBody = await response.text();
+    const rateLimit = readOpenAiRateLimitHeaders(response.headers);
+    const upstreamError = createAiChatUpstreamError(response.status, errorBody, {
+      ...context,
+      requestId: response.headers.get("x-request-id") || "",
+      rateLimit,
+    });
+    if (response.status !== 429 || attempt >= AI_CHAT_RATE_LIMIT_MAX_RETRIES) throw upstreamError;
+    const waitMs = resolveOpenAiRateLimitWaitMs(response.headers, attempt);
+    if (!waitMs) throw upstreamError;
+    console.warn("AI_CHAT_RATE_LIMIT_BACKOFF", {
+      internalCode: upstreamError.internalCode,
+      attempt: attempt + 1,
+      waitMs,
+      rateLimit,
+    });
+    await waitWithAbort(waitMs, init.signal);
+  }
+  throw new Error(AI_CHAT_PUBLIC_BUSY_ERROR);
+}
+
 export async function chatWithAi(env, messages, onStatus, options = {}) {
   if (!env.GPT_API) throw new Error("GPT service is not configured.");
 
@@ -598,6 +706,14 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
 
     for (let toolRound = 0; toolRound < maxAgentToolRounds; toolRound += 1) {
       throwIfAiChatAborted(controller.signal);
+      const prunedItems = pruneAiChatInputAfterCompaction(responseInput);
+      if (prunedItems > 0) {
+        console.info("AI_CHAT_CONTEXT_COMPACTED", {
+          round: toolRound + 1,
+          prunedItems,
+          remainingItems: responseInput.length,
+        });
+      }
       if (toolRound > 0 && codingActivity?.used && typeof onStatus === "function") {
         onStatus({
           state: reviewRequested ? "finalizing" : "analyzing_code",
@@ -615,10 +731,11 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         && codingActivity?.plan
         && !multiAgentFallbackDisabled
       );
+      const reviewUsesPro = Boolean(reviewRequested && codingActivity?.plan);
       const responseUrl = multiAgentEnabled
         ? "https://api.openai.com/v1/responses?beta=true"
         : "https://api.openai.com/v1/responses";
-      const response = await fetch(responseUrl, {
+      const requestInit = {
         method: "POST",
         headers: {
           "Authorization": "Bearer " + env.GPT_API,
@@ -643,7 +760,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           reasoning: {
             effort: reasoningEffort,
             context: "all_turns",
-            ...(reviewRequested ? { mode: "pro" } : {}),
+            ...(reviewUsesPro ? { mode: "pro" } : {}),
           },
           ...(multiAgentEnabled ? { multi_agent: { enabled: true } } : {}),
           ...(safetyIdentifier ? {
@@ -655,29 +772,29 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
             type: "compaction",
             compact_threshold: AI_CHAT_COMPACTION_THRESHOLD,
           }],
-          max_output_tokens: githubContext ? 16000 : 8000,
+          max_output_tokens: githubContext && codingActivity?.plan ? 16000 : 8000,
           store: false,
           stream: true,
         }),
-      });
+      };
 
-      if (!response.ok) {
-        const errorBody = await response.text();
-        const upstreamError = createAiChatUpstreamError(response.status, errorBody, {
+      let response;
+      try {
+        response = await fetchAiChatResponseWithRateLimitRetry(responseUrl, requestInit, {
           phase: "responses_http",
-          requestId: response.headers.get("x-request-id") || "",
           model,
           multiAgent: multiAgentEnabled,
         });
-        if (multiAgentEnabled && upstreamError.retryWithoutMultiAgent) {
+      } catch (error) {
+        if (multiAgentEnabled && error?.name === "AiChatUpstreamError" && error?.retryWithoutMultiAgent) {
           multiAgentFallbackDisabled = true;
           console.warn("AI_CHAT_INTERNAL_FALLBACK", {
             internalCode: "MULTI_AGENT_TO_DIRECT",
-            cause: upstreamError.internalCode,
+            cause: error.internalCode || "OPENAI_RESPONSES_HTTP_FAILURE",
           });
           continue;
         }
-        throw upstreamError;
+        throw error;
       }
 
       let data;
@@ -724,6 +841,18 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           codingActivity.contextTokens,
           Math.max(0, Number(data?.usage?.input_tokens || 0)),
         );
+      }
+      if (githubContext && data?.usage && typeof data.usage === "object") {
+        console.info("AI_CHAT_TOKEN_USAGE", {
+          round: toolRound + 1,
+          model,
+          inputTokens: Math.max(0, Number(data.usage.input_tokens || 0)),
+          outputTokens: Math.max(0, Number(data.usage.output_tokens || 0)),
+          cachedTokens: Math.max(0, Number(data.usage.input_tokens_details?.cached_tokens || 0)),
+          cacheWriteTokens: Math.max(0, Number(data.usage.input_tokens_details?.cache_write_tokens || 0)),
+          multiAgent: multiAgentEnabled,
+          proMode: reviewUsesPro,
+        });
       }
 
       const terminalCall = output.find(
@@ -1265,6 +1394,7 @@ function logAiUpstreamError(phase, status, errorBody, context = {}) {
     requestId: String(context.requestId || details.requestId || "").slice(0, 160),
     model: String(context.model || "").slice(0, 80),
     multiAgent: Boolean(context.multiAgent),
+    rateLimit: context.rateLimit || null,
     message: redactAiInternalText(details.message),
   });
   return { ...details, internalCode };
