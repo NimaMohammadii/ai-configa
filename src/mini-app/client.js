@@ -70,4 +70,4 @@ MINI_APP_JS_WITH_HISTORY = replaceHistorySource(
   "details button"
 );
 
-const EXPLORE_CARD_LABEL_PATCH = String.raw`\n  (function(){\n    function removeExploreCardLabels(){\n      document.querySelectorAll('#explorePage, #exploreReelsPage').forEach(function(root){\n        root.querySelectorAll('*').forEach(function(node){\n          if(node.children.length===0 && /^Card\\s+\\d+$/i.test(String(node.textContent||'').trim())){\n            node.remove();\n          }\n        });\n      });\n    }\n    removeExploreCardLabels();\n    new MutationObserver(removeExploreCardLabels).observe(document.body,{subtree:true,childList:true});\n  })();\n`;\n\nexport const MINI_APP_JS = MINI_APP_JS_WITH_HISTORY.replace("(function(){", "(function(){\\n" + HISTORY_UI_PATCH + PURCHASE_DISCOUNT_PATCH + EXPLORE_CARD_LABEL_PATCH);
+export const MINI_APP_JS = MINI_APP_JS_WITH_HISTORY.replace("(function(){", "(function(){\n" + HISTORY_UI_PATCH + PURCHASE_DISCOUNT_PATCH);
