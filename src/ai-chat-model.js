@@ -27,6 +27,7 @@ export const AI_CHAT_USD_PER_CREDIT = Math.min(
 );
 const AI_CHAT_MODEL_SETTING_KEY = "ai_chat_model";
 const LONG_CONTEXT_TOKEN_THRESHOLD = 272000;
+const AI_CHAT_REQUEST_PREFERENCES_KEY = "__VEXA_AI_CHAT_REQUEST_PREFERENCES";
 
 export function normalizeAiChatModel(modelId) {
   const value = String(modelId || "").trim().toLowerCase();
@@ -40,6 +41,20 @@ export function normalizeAiChatReasoningEffort(effort) {
   return AI_CHAT_REASONING_EFFORTS.some((item) => item.id === value)
     ? value
     : DEFAULT_AI_CHAT_REASONING_EFFORT;
+}
+
+export function setAiChatRequestPreferences(env, userId, preferences = {}) {
+  if (!env || typeof env !== "object") return false;
+  const model = String(preferences.model || "").trim().toLowerCase();
+  const reasoningEffort = String(preferences.reasoningEffort || "").trim().toLowerCase();
+  if (!AI_CHAT_MODELS.some((item) => item.id === model)) return false;
+  if (!AI_CHAT_REASONING_EFFORTS.some((item) => item.id === reasoningEffort)) return false;
+  env[AI_CHAT_REQUEST_PREFERENCES_KEY] = {
+    userId: String(userId),
+    model,
+    reasoningEffort,
+  };
+  return true;
 }
 
 export async function getAiChatModel(env) {
@@ -71,6 +86,9 @@ export async function getUserAiChatModel(env, userId) {
 }
 
 export async function getUserAiChatPreferences(env, userId) {
+  const requestPreferences = getAiChatRequestPreferences(env, userId);
+  if (requestPreferences) return requestPreferences;
+
   requireDb(env);
   await ensureAiChatPreferencesTable(env);
   await ensureAiChatReasoningPreferencesTable(env);
@@ -183,6 +201,17 @@ export function calculateAiChatBilling(modelId, billing = {}) {
     browserUsd,
     ...totals,
   };
+}
+
+function getAiChatRequestPreferences(env, userId) {
+  const preferences = env?.[AI_CHAT_REQUEST_PREFERENCES_KEY];
+  if (!preferences || typeof preferences !== "object") return null;
+  if (String(preferences.userId || "") !== String(userId)) return null;
+  const model = String(preferences.model || "").trim().toLowerCase();
+  const reasoningEffort = String(preferences.reasoningEffort || "").trim().toLowerCase();
+  if (!AI_CHAT_MODELS.some((item) => item.id === model)) return null;
+  if (!AI_CHAT_REASONING_EFFORTS.some((item) => item.id === reasoningEffort)) return null;
+  return { model, reasoningEffort };
 }
 
 function wholeTokenCount(value) {
