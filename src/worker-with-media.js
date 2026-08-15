@@ -217,6 +217,9 @@ function aiChatResultResponse(message, sourceHeaders) {
 
 function aiChatStreamHeaders(sourceHeaders) {
   const headers = new Headers(sourceHeaders || undefined);
+  headers.delete("Content-Length");
+  headers.delete("Content-Encoding");
+  headers.delete("Transfer-Encoding");
   headers.set("Content-Type", "application/x-ndjson;charset=utf-8");
   headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
   headers.set("X-Content-Type-Options", "nosniff");
