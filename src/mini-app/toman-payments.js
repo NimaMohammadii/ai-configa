@@ -1,7 +1,7 @@
 import { trackUser } from "../admin.js";
 import { CARD_NUMBER } from "../payment-card.js";
 import { getAllAdminIds } from "../receipt-admins.js";
-import { getActiveWheelPurchaseDiscount } from "../reward-wheel.js";
+import { applyWheelPurchaseDiscountToAmount, getActiveWheelPurchaseDiscount } from "../reward-wheel.js";
 import { setPendingPayment } from "../payments.js";
 import { getState, requireDb } from "../state.js";
 import { tgForm } from "../telegram-api.js";
@@ -13,6 +13,13 @@ import {
 
 const MAX_RECEIPT_BYTES = 8 * 1024 * 1024;
 
+const MINI_APP_TOMAN_PACKAGES = Object.freeze({
+  toman_1000: Object.freeze({ id: "toman_1000", credits: 1000, bonus: 0, amountValue: 150000 }),
+  toman_6100: Object.freeze({ id: "toman_6100", credits: 6100, bonus: 600, amountValue: 260000 }),
+  toman_14000: Object.freeze({ id: "toman_14000", credits: 14000, bonus: 2000, amountValue: 620000 }),
+  toman_30000: Object.freeze({ id: "toman_30000", credits: 30000, bonus: 10000, amountValue: 1550000 }),
+});
+
 export async function getMiniAppTomanConfig(env, user) {
   await requirePersianUser(env, user);
   const discount = await getActiveWheelPurchaseDiscount(env, user.id);
@@ -23,6 +30,7 @@ export async function getMiniAppTomanConfig(env, user) {
     minimumAmount: TOMAN_MIN_PURCHASE_AMOUNT,
     discountPercent: Number(discount?.percent || 0),
     discountExpiresAt: Number(discount?.expiresAt || 0),
+    packages: Object.values(MINI_APP_TOMAN_PACKAGES).map((pack) => buildFixedTomanPackage(pack, discount)),
   };
 }
 
@@ -30,13 +38,22 @@ export async function submitMiniAppTomanReceipt(env, user, payload = {}) {
   await requirePersianUser(env, user);
   await trackUser(env, user);
 
-  const credits = Number(payload.credits);
-  if (!Number.isSafeInteger(credits) || credits < 1 || credits > 1_000_000) {
-    throw httpError("مقدار کردیت معتبر نیست.", 400);
+  const discount = await getActiveWheelPurchaseDiscount(env, user.id);
+  const packageId = String(payload.packageId || "").trim();
+  let pack;
+
+  if (packageId) {
+    const fixed = MINI_APP_TOMAN_PACKAGES[packageId];
+    if (!fixed) throw httpError("پکیج انتخاب‌شده معتبر نیست.", 400);
+    pack = buildFixedTomanPackage(fixed, discount);
+  } else {
+    const credits = Number(payload.credits);
+    if (!Number.isSafeInteger(credits) || credits < 1 || credits > 1_000_000) {
+      throw httpError("مقدار کردیت معتبر نیست.", 400);
+    }
+    pack = createCustomTomanPackage(credits, discount);
   }
 
-  const discount = await getActiveWheelPurchaseDiscount(env, user.id);
-  const pack = createCustomTomanPackage(credits, discount);
   if (Number(payload.amount) !== Number(pack.amountValue)) {
     throw httpError("مبلغ پرداخت تغییر کرده؛ دوباره مبلغ را بررسی کن.", 409);
   }
@@ -45,10 +62,12 @@ export async function submitMiniAppTomanReceipt(env, user, payload = {}) {
   const admins = await getAllAdminIds(env);
   if (!admins.length) throw httpError("ادمین دریافت رسید هنوز تنظیم نشده است.", 503);
 
-  const packageId = `custom:${pack.credits}:${pack.amountValue}`;
+  const storedPackageId = packageId
+    ? `mini:${pack.id}:${pack.amountValue}`
+    : `custom:${pack.credits}:${pack.amountValue}`;
   const totalCredits = Number(pack.credits || 0) + Number(pack.bonus || 0);
-  const receiptId = await createReceipt(env, user, packageId, pack.amount, totalCredits);
-  await setPendingPayment(env, user.id, packageId);
+  const receiptId = await createReceipt(env, user, storedPackageId, pack.amount, totalCredits);
+  await setPendingPayment(env, user.id, storedPackageId);
 
   const caption = receiptCaption({ user, amount: pack.amount, credits: totalCredits });
   let sentToAdmin = 0;
@@ -71,7 +90,27 @@ export async function submitMiniAppTomanReceipt(env, user, payload = {}) {
     ok: true,
     receiptId,
     status: "pending",
+    credits: totalCredits,
+    amount: pack.amountValue,
     message: "رسید برای بررسی ادمین ارسال شد",
+  };
+}
+
+function buildFixedTomanPackage(base, discount) {
+  const pricing = applyWheelPurchaseDiscountToAmount(base.amountValue, discount);
+  const totalCredits = Number(base.credits || 0) + Number(base.bonus || 0);
+  return {
+    id: base.id,
+    credits: Number(base.credits || 0),
+    bonus: Number(base.bonus || 0),
+    totalCredits,
+    voiceMinutes: totalCredits / 1000,
+    amount: formatNumber(pricing.amount),
+    amountValue: pricing.amount,
+    originalAmountValue: pricing.originalAmount,
+    discountPercent: pricing.discountPercent,
+    discountAmountValue: pricing.discountAmount,
+    discountExpiresAt: Number(discount?.expiresAt || 0),
   };
 }
 
@@ -156,6 +195,10 @@ function receiptCaption({ user, amount, credits }) {
     `• مبلغ: <b>${escapeHtml(amount)} تومان</b>`,
     `• کردیت: <b>${Number(credits).toLocaleString("en-US")}</b>`,
   ].join("\n");
+}
+
+function formatNumber(value) {
+  return Math.max(0, Math.ceil(Number(value) || 0)).toLocaleString("en-US");
 }
 
 function escapeHtml(value) {
