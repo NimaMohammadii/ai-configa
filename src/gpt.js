@@ -116,7 +116,7 @@ const GPT_CHAT_ATTACHMENT_MIME = Object.freeze({
   htm: "text/html",
   xml: "text/xml",
   csv: "text/csv",
-  tsv: "text/tab-separated-values",
+  tsv: "text/tsv",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   rtf: "application/rtf",
@@ -578,6 +578,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
   const openAiAgent = await prepareOpenAiAgentTools(env, options.userId, {
     attachment: cleanMessages[cleanMessages.length - 1]?.attachment || null,
     githubContext,
+    reasoningEffort,
   });
   const openAiAgentInstructions = buildOpenAiAgentInstructions(openAiAgent, githubContext);
   const mcpInstructions = buildAiMcpInstructions(mcpTools);
