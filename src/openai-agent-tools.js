@@ -2,31 +2,57 @@ import * as core from "./openai-agent-tools-core.js";
 import { buildAiCodingTaskInstructions, getAiCodingTaskState } from "./ai-coding-task.js";
 
 export {
-  buildOpenAiAgentInstructions,
   executeOpenAiApplyPatchCalls,
   isOpenAiApplyPatchCall,
   prepareOpenAiToolReplayItems,
-  refreshOpenAiCodingWorkspace,
 } from "./openai-agent-tools-core.js";
 
 const BILLING_ONLY_CONTAINER_PREFIX = "billing-shell:";
+const SHELL_MEMORY_LIMIT = "1g";
+const DIRECT_TOOL_CALLING_OVERRIDE = "Programmatic Tool Calling is not enabled in this runtime. Ignore any coding-skill text that suggests programmatic callers and issue all repository, shell, MCP, browser, review, and write tool calls directly.";
+
+export function buildOpenAiAgentInstructions(state = {}, githubContext = null) {
+  const base = core.buildOpenAiAgentInstructions(state, githubContext);
+  return githubContext
+    ? [base, DIRECT_TOOL_CALLING_OVERRIDE].filter(Boolean).join(" ")
+    : base;
+}
+
+export async function refreshOpenAiCodingWorkspace(env, userId, tools, state, commitSha) {
+  try {
+    return await core.refreshOpenAiCodingWorkspace(env, userId, tools, state, commitSha);
+  } catch (error) {
+    const cleanCommitSha = String(commitSha || "").trim();
+    console.error("OpenAI coding workspace refresh failed", {
+      commitSha: /^[a-f0-9]{40}$/i.test(cleanCommitSha) ? cleanCommitSha.slice(0, 12) : "unknown",
+      message: String(error?.message || error || "workspace refresh failed").slice(0, 500),
+    });
+    resetShellAfterRefreshFailure(tools, state);
+    if (state) state.repositorySnapshot = null;
+    return null;
+  }
+}
 
 export async function prepareOpenAiAgentTools(env, userId, options = {}) {
   const state = await core.prepareOpenAiAgentTools(env, userId, options);
+  forceDirectToolCalling(state?.tools);
+  state.runtimeInstructions = [
+    String(state.runtimeInstructions || ""),
+    options.githubContext ? DIRECT_TOOL_CALLING_OVERRIDE : "",
+  ].filter(Boolean).join(" ");
+
   const pinnedTaskId = cleanVexaTaskId(env?.AI_CODING_TASK_ID);
   if (!pinnedTaskId || !options.githubContext) return state;
   const exactTask = await getAiCodingTaskState(env, userId, options.githubContext, pinnedTaskId).catch(() => null);
   if (!exactTask) return state;
   if (/^[a-f0-9]{40}$/i.test(String(exactTask.commitSha || ""))) {
-    await core.refreshOpenAiCodingWorkspace(
+    await refreshOpenAiCodingWorkspace(
       env,
       userId,
       state.tools,
       state,
       exactTask.commitSha,
-    ).catch((error) => {
-      console.error("Pinned coding workspace refresh failed", error?.message || error);
-    });
+    );
   }
   state.runtimeInstructions = [
     String(state.runtimeInstructions || ""),
@@ -96,6 +122,36 @@ export function reuseOpenAiShellContainer(tools, containerId) {
   const cleanId = String(containerId || "").trim();
   if (!cleanId || cleanId.startsWith(BILLING_ONLY_CONTAINER_PREFIX)) return false;
   return core.reuseOpenAiShellContainer(tools, cleanId);
+}
+
+function forceDirectToolCalling(tools) {
+  if (!Array.isArray(tools)) return;
+  for (const tool of tools) {
+    if (!tool || typeof tool !== "object" || !Array.isArray(tool.allowed_callers)) continue;
+    tool.allowed_callers = ["direct"];
+  }
+}
+
+function resetShellAfterRefreshFailure(tools, state) {
+  if (!Array.isArray(tools)) return;
+  const shellTool = tools.find((tool) => tool?.type === "shell");
+  if (!shellTool) return;
+  const environment = {
+    type: "container_auto",
+    memory_limit: SHELL_MEMORY_LIMIT,
+    network_policy: { type: "disabled" },
+  };
+  const uploadedFileId = String(state?.uploadedFileId || "").trim();
+  if (uploadedFileId) environment.file_ids = [uploadedFileId];
+  if (state?.skillId && state?.skillVersion) {
+    environment.skills = [{
+      type: "skill_reference",
+      skill_id: String(state.skillId),
+      version: String(state.skillVersion),
+    }];
+  }
+  shellTool.environment = environment;
+  if (Array.isArray(shellTool.allowed_callers)) shellTool.allowed_callers = ["direct"];
 }
 
 function shellOutputCompletedSuccessfully(item) {
