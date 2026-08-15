@@ -10,19 +10,38 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   var cardBusy=false;
   var pendingCheckBusy=false;
   var lastPendingCheckAt=0;
-  var PENDING_KEY='vexa_tribute_pending_v1';
+  var selectedCurrency='usd';
+  var PENDING_KEY='vexa_tribute_pending_v2';
   var SUCCESS_KEY='vexa_tribute_success_v1';
+  var CURRENCY_KEY='vexa_tribute_currency_v1';
 
   function q(id){return document.getElementById(id)}
-  function money(cents){return '$'+(Math.max(0,Number(cents)||0)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
   function number(value){return Math.max(0,Math.floor(Number(value)||0)).toLocaleString('en-US')}
   function minutes(credits){return (Math.max(0,Number(credits)||0)/1000).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:1})}
   function toast(message){var node=q('toast');if(!node)return;node.textContent=String(message||'').replace(/[.!]+$/,'');node.classList.remove('show');void node.offsetWidth;node.classList.add('show');setTimeout(function(){node.classList.remove('show')},3200)}
   function haptic(kind){if(!tg||!tg.HapticFeedback)return;try{if(kind==='success'&&tg.HapticFeedback.notificationOccurred)tg.HapticFeedback.notificationOccurred('success');else if(kind==='error'&&tg.HapticFeedback.notificationOccurred)tg.HapticFeedback.notificationOccurred('error');else if(tg.HapticFeedback.impactOccurred)tg.HapticFeedback.impactOccurred(kind||'light')}catch(error){}}
   function api(path,payload){return fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({initData:initData},payload||{}))}).then(async function(response){var data=await response.json().catch(function(){return{}});if(!response.ok)throw new Error(data.error||'Card payment error');return data})}
-  function storageGet(key){try{var value=sessionStorage.getItem(key);return value?JSON.parse(value):null}catch(error){return null}}
-  function storageSet(key,value){try{sessionStorage.setItem(key,JSON.stringify(value))}catch(error){}}
+  function storageGet(key){try{var value=sessionStorage.getItem(key)||localStorage.getItem(key);return value?JSON.parse(value):null}catch(error){return null}}
+  function storageSet(key,value){try{sessionStorage.setItem(key,JSON.stringify(value))}catch(error){}try{if(key===CURRENCY_KEY)localStorage.setItem(key,JSON.stringify(value))}catch(error){}}
   function storageRemove(key){try{sessionStorage.removeItem(key)}catch(error){}}
+
+  function currencyInfo(code){
+    var list=config&&Array.isArray(config.currencies)?config.currencies:[];
+    var clean=String(code||selectedCurrency||'usd').toLowerCase();
+    return list.find(function(item){return item&&String(item.code||'').toLowerCase()===clean})||list[0]||{code:'usd',label:'USD',symbol:'$',rateFromUsd:1,minimumMinor:100,maximumMinor:300000,minimumCredits:6000};
+  }
+  function currentCurrency(){return currencyInfo(selectedCurrency)}
+  function money(minor,code){
+    var info=currencyInfo(code);
+    var amount=Math.max(0,Number(minor)||0)/100;
+    return String(info.symbol||'')+amount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+  function minimumLabel(info){
+    var item=info||currentCurrency();
+    return money(Number(item.minimumMinor)||100,item.code);
+  }
+  function usdToMinor(usd,info){return Math.max(1,Math.ceil(Math.max(0,Number(usd)||0)*Math.max(.000001,Number((info||currentCurrency()).rateFromUsd)||1)*100))}
+  function discountedMinor(minor){var percent=Math.max(0,Math.min(95,Number(config&&config.discountPercent)||0));return percent?Math.max(1,Math.ceil(minor*(100-percent)/100)):minor}
 
   function installStyles(){
     if(q('tributePaymentsStyles'))return;
@@ -40,9 +59,16 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 .tribute-checkout{position:relative;overflow:hidden}\
 .tribute-checkout:before{content:"";position:absolute;width:170px;height:170px;right:-84px;top:-92px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.11),rgba(255,255,255,0) 68%);pointer-events:none;animation:tributeGlow 5.5s ease-in-out infinite}\
 .tribute-section-copy{position:relative;z-index:1}\
-.tribute-card-mark{width:34px;height:24px;margin-top:1px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.055);display:grid;place-items:center;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}\
+.tribute-card-mark{position:relative;width:34px;height:24px;margin-top:1px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.055);display:grid;place-items:center;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}\
 .tribute-card-mark:after{content:"";position:absolute;width:50px;height:60px;background:linear-gradient(100deg,transparent 22%,rgba(255,255,255,.14) 50%,transparent 78%);transform:translateX(-55px) rotate(8deg);animation:tributeCardSweep 3.8s ease-in-out infinite}\
 .tribute-card-mark svg{width:17px;height:17px;color:rgba(255,255,255,.74)}\
+.tribute-currency-wrap{position:relative;z-index:1;margin:15px 0 13px}\
+.tribute-currency-label{display:flex;align-items:center;justify-content:space-between;margin:0 2px 7px;color:rgba(255,255,255,.36);font-size:8px;font-weight:720;letter-spacing:.07em;text-transform:uppercase}\
+.tribute-currency-label strong{color:rgba(255,255,255,.62);font-size:8px;font-weight:760;letter-spacing:0;text-transform:none}\
+.tribute-currency-picker{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:3px;border-radius:14px;background:rgba(255,255,255,.045);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),inset 0 1px 0 rgba(255,255,255,.05);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}\
+.tribute-currency-picker button{position:relative;z-index:1;height:34px;border:0;border-radius:11px;background:transparent;color:rgba(255,255,255,.38);font-size:9px;font-weight:780;letter-spacing:.025em;transition:color .24s ease,transform .18s ease,background .28s ease,box-shadow .28s ease}\
+.tribute-currency-picker button.active{color:#050505;background:#fff;box-shadow:0 5px 18px rgba(0,0,0,.2)}\
+.tribute-currency-picker button:active{transform:scale(.96)}\
 .tribute-summary-secure{display:flex;flex-direction:column;align-items:flex-end}\
 .tribute-summary-secure strong{display:flex!important;align-items:center;justify-content:flex-end;gap:5px}\
 .tribute-summary-secure i{width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 0 4px rgba(255,255,255,.07);animation:tributeBreathe 2s ease-in-out infinite}\
@@ -64,8 +90,9 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 .tribute-state-check{flex:0 0 auto;height:28px;padding:0 9px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);color:#fff;font-size:8px;font-weight:750;transition:transform .18s ease,background .18s ease}\
 .tribute-state-check:active{transform:scale(.94);background:rgba(255,255,255,.1)}\
 .tribute-payment-state.success .tribute-state-check,.tribute-payment-state.failed .tribute-state-check{display:none}\
-.tribute-footnote{max-width:540px;margin:18px auto 0;text-align:center;color:rgba(255,255,255,.34);font-size:9px;font-weight:620}\
+.tribute-footnote{max-width:540px;margin:18px auto 0;text-align:center;color:rgba(255,255,255,.34);font-size:9px;font-weight:620;line-height:1.6}\
 .tribute-footnote span{color:#fff}\
+.tribute-footnote a{color:rgba(255,255,255,.38);text-decoration:none}\
 .tribute-packs{margin-top:27px}\
 .tribute-packs .credits-pack[disabled]{opacity:.32;pointer-events:none}\
 .tribute-price-pair{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}\
@@ -79,7 +106,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 @keyframes tributeBreathe{0%,100%{opacity:.45;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}\
 @keyframes tributeStateIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}\
 @keyframes tributeSuccessPop{from{transform:scale(.72)}to{transform:scale(1)}}\
-@media(max-width:370px){.credits-payment-switch.tribute-switch button{font-size:9px;padding:0 5px}.tribute-checkout{padding:16px!important}}';
+@media(max-width:370px){.credits-payment-switch.tribute-switch button{font-size:9px;padding:0 5px}.tribute-checkout{padding:16px!important}.tribute-currency-picker button{height:32px}}';
     document.head.appendChild(style);
   }
 
@@ -108,16 +135,17 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
       mode.setAttribute('aria-hidden','true');
       mode.innerHTML='<section class="credits-custom tribute-checkout">'+
         '<div class="credits-section-copy tribute-section-copy"><div><span>CARD CHECKOUT</span><h3>Choose your amount</h3></div><span class="tribute-card-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5.5" width="17" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><path d="M3.8 9.5h16.4" stroke="currentColor" stroke-width="1.6"/></svg></span></div>'+
+        '<div class="tribute-currency-wrap"><div class="tribute-currency-label"><span>Payment currency</span><strong id="tributeCurrencyHint">USD</strong></div><div id="tributeCurrencyPicker" class="tribute-currency-picker" role="group" aria-label="Payment currency"><button type="button" data-action="set-tribute-currency" data-currency="usd">USD</button><button type="button" data-action="set-tribute-currency" data-currency="eur">EUR</button><button type="button" data-action="set-tribute-currency" data-currency="rub">RUB</button></div></div>'+
         '<label class="credits-amount-field" for="tributeCreditsInput"><input id="tributeCreditsInput" type="number" inputmode="numeric" min="6000" max="1000000" step="1000" value="6000" autocomplete="off"/><span>credits</span></label>'+
         '<input id="tributeCreditsRange" class="credits-amount-range" type="range" min="6000" max="100000" step="1000" value="6000" aria-label="Card credit amount"/>'+
-        '<div class="credits-custom-summary"><div><strong id="tributeAmountValue">$1.07</strong><small>card payment</small></div><div class="tribute-summary-secure"><strong><i aria-hidden="true"></i>Secure</strong><small>checkout by Tribute</small></div></div>'+
+        '<div class="credits-custom-summary"><div><strong id="tributeAmountValue">$1.07</strong><small id="tributePaymentCurrencyCopy">USD card payment</small></div><div class="tribute-summary-secure"><strong><i aria-hidden="true"></i>Secure</strong><small>checkout by Tribute</small></div></div>'+
         '<div id="tributeDiscountBadge" class="tribute-discount-badge" aria-hidden="true"></div>'+
-        '<p id="tributeMinimumNote" class="tribute-minimum">Minimum card payment is $1.</p>'+
+        '<p id="tributeMinimumNote" class="tribute-minimum">Minimum card payment is $1.00.</p>'+
         '<button id="tributeCustomBuy" class="credits-primary-button" data-action="buy-tribute-custom" type="button"><span>Continue with $1.07</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'+
         '<div id="tributePaymentState" class="tribute-payment-state" aria-hidden="true"><span class="tribute-state-orb" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m7 12.5 3.2 3.2L17.5 8.5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="tribute-state-copy"><strong id="tributeStateTitle">Finish payment in Tribute</strong><small id="tributeStateCopy">Come back here — credits add automatically.</small></span><button class="tribute-state-check" data-action="check-tribute-payment" type="button">Check</button></div>'+
       '</section>'+
       '<section id="tributePacks" class="credits-packs-section tribute-packs"><div class="credits-packs-head"><div><span>READY TO BUY</span><h3>Credit packs</h3></div><small>Bonus included</small></div><div id="tributePackList" class="credits-pack-list"></div></section>'+
-      '<p class="tribute-footnote"><span>●</span> Secure card checkout powered by Tribute</p>';
+      '<p class="tribute-footnote"><span>●</span> Secure card checkout powered by Tribute<br><a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">FX by ExchangeRate-API</a></p>';
       starsMode.insertAdjacentElement('afterend',mode);
     }
 
@@ -135,16 +163,14 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   function applyConfig(data){
     config=data||null;
     if(!config||!config.available){var card=q('creditsCardTab');if(card)card.hidden=true;return}
+    var saved=storageGet(CURRENCY_KEY);var savedCode=saved&&String(saved.code||'').toLowerCase();
+    if(savedCode&&currencyInfo(savedCode).code===savedCode)selectedCurrency=savedCode;else selectedCurrency=String(config.defaultCurrency||'usd').toLowerCase();
     var switcher=q('creditsPaymentSwitch');
     var toman=q('creditsPaymentSwitch')&&q('creditsPaymentSwitch').querySelector('[data-payment-mode="toman"]');
     var persian=String(config.language||'').toLowerCase()==='fa';
     if(toman)toman.hidden=!persian;
     if(switcher){switcher.classList.add('show','tribute-switch');switcher.setAttribute('aria-hidden','false');switcher.style.setProperty('--tribute-count',persian?'3':'2');syncSwitchIndicator()}
-    var input=q('tributeCreditsInput');
-    var range=q('tributeCreditsRange');
-    var minimum=Math.max(1000,Number(config.minimumCredits)||6000);
-    if(input){input.min=String(minimum);if(Number(input.value)<minimum)input.value=String(minimum)}
-    if(range){range.min=String(minimum);if(Number(range.value)<minimum)range.value=String(minimum)}
+    syncCurrencyUi();
     renderCustom('config');
     renderPackages();
     var badge=q('tributeDiscountBadge');
@@ -162,31 +188,50 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     switcher.style.setProperty('--tribute-shift',shift);
   }
 
+  function syncCurrencyUi(){
+    var info=currentCurrency();
+    var picker=q('tributeCurrencyPicker');
+    if(picker)picker.querySelectorAll('[data-currency]').forEach(function(button){var active=button.getAttribute('data-currency')===info.code;button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false')});
+    var hint=q('tributeCurrencyHint');if(hint)hint.textContent=String(info.label||info.code||'USD').toUpperCase();
+    var copy=q('tributePaymentCurrencyCopy');if(copy)copy.textContent=String(info.label||info.code||'USD').toUpperCase()+' card payment';
+  }
+
+  function setCurrency(code){
+    if(!config)return;
+    var candidate=currencyInfo(code);
+    selectedCurrency=String(candidate.code||'usd').toLowerCase();
+    storageSet(CURRENCY_KEY,{code:selectedCurrency});
+    syncCurrencyUi();renderCustom('currency');renderPackages();haptic('light');
+  }
+
   function customCredits(){var input=q('tributeCreditsInput');return Math.min(Number(config&&config.maximumCredits)||1000000,Math.max(1,Math.floor(Number(input&&input.value)||0)))}
-  function baseCustomCents(credits){return Math.max(1,Math.ceil((credits/1000)*(Number(config&&config.ratePer1000Usd)||0.178)*100))}
-  function discountedCents(cents){var percent=Math.max(0,Math.min(95,Number(config&&config.discountPercent)||0));return percent?Math.max(1,Math.ceil(cents*(100-percent)/100)):cents}
+  function baseCustomMinor(credits){var usd=(credits/1000)*(Number(config&&config.ratePer1000Usd)||0.178);return usdToMinor(usd,currentCurrency())}
 
   function renderCustom(source){
     if(!config)return;
+    var info=currentCurrency();
     var input=q('tributeCreditsInput');var range=q('tributeCreditsRange');if(!input||!range)return;
-    var minimum=Math.max(1000,Number(config.minimumCredits)||6000);
+    var minimum=Math.max(1000,Number(info.minimumCredits)||6000);
+    input.min=String(minimum);range.min=String(minimum);
     var credits=customCredits();
     if(source==='range'){credits=Math.floor(Number(range.value)||minimum);input.value=String(credits)}
+    if((source==='currency'||source==='config')&&credits<minimum){credits=minimum;input.value=String(credits);range.value=String(credits)}
     if(credits>=Number(range.min)&&credits<=Number(range.max))range.value=String(Math.round(credits/1000)*1000);
     var denominator=Math.max(1,Number(range.max)-Number(range.min));
     var progress=(Number(range.value)-Number(range.min))/denominator*100;
     range.style.setProperty('--credits-range-progress',Math.max(0,Math.min(100,progress)).toFixed(2)+'%');
-    var amount=discountedCents(baseCustomCents(credits));
-    var valid=credits>=minimum&&amount>=Number(config.minimumCents||100);
-    var amountNode=q('tributeAmountValue');if(amountNode)amountNode.textContent=money(amount);
-    var note=q('tributeMinimumNote');if(note){note.textContent=valid?'Secure checkout opens in Tribute.':'Minimum card payment is $1 · choose at least '+number(minimum)+' credits.';note.classList.toggle('warn',!valid)}
-    var button=q('tributeCustomBuy');if(button){button.disabled=!valid||cardBusy;var label=button.querySelector('span');if(label)label.textContent=valid?'Continue with '+money(amount):'Minimum '+money(Number(config.minimumCents||100))}
+    var amount=discountedMinor(baseCustomMinor(credits));
+    var valid=credits>=minimum&&amount>=Number(info.minimumMinor||100)&&amount<=Number(info.maximumMinor||300000);
+    var amountNode=q('tributeAmountValue');if(amountNode)amountNode.textContent=money(amount,info.code);
+    var note=q('tributeMinimumNote');if(note){note.textContent=valid?'Secure checkout opens inside Tribute.':'Minimum card payment is '+minimumLabel(info)+' · choose at least '+number(minimum)+' credits.';note.classList.toggle('warn',!valid)}
+    var button=q('tributeCustomBuy');if(button){button.disabled=!valid||cardBusy;var label=button.querySelector('span');if(label)label.textContent=valid?'Continue with '+money(amount,info.code):'Minimum '+minimumLabel(info)}
   }
 
   function renderPackages(){
     var list=q('tributePackList');if(!list||!config)return;
-    var packages=Array.isArray(config.packages)?config.packages.filter(function(item){return item&&item.available}):[];
-    list.innerHTML=packages.map(function(pack,index){var bonus=Number(pack.bonus)||0;var credits=Number(pack.credits)||0;var total=Number(pack.totalCredits)||credits+bonus;var original=Number(pack.originalAmountCents)||Number(pack.amountCents)||0;var amount=Number(pack.amountCents)||0;var price=amount<original?'<span class="tribute-price-pair"><span class="tribute-price-old">'+money(original)+'</span><span class="tribute-price-new">'+money(amount)+'</span></span>':money(amount);var title=bonus?number(credits)+' <b>+ '+number(bonus)+'</b>':number(credits);var bonusLabel=bonus?'<em>'+number(bonus)+' bonus</em>':'<small>credits</small>';return '<button class="credits-pack'+(index===0?' featured':'')+'" data-action="buy-tribute-package" data-package-id="'+String(pack.id||'')+'" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>'+title+'</strong>'+bonusLabel+'</span><span class="credits-pack-total">'+number(total)+' total credits · '+minutes(total)+' min voice</span></span><span class="credits-pack-price"><strong>'+price+'</strong><small>Bank card</small></span></button>'}).join('');
+    var info=currentCurrency();
+    var packages=Array.isArray(config.packages)?config.packages.map(function(pack){var original=usdToMinor(Number(pack&&pack.usd)||0,info);var amount=discountedMinor(original);return Object.assign({},pack,{originalAmountMinor:original,amountMinor:amount,available:amount>=Number(info.minimumMinor||100)&&amount<=Number(info.maximumMinor||300000)})}).filter(function(item){return item&&item.available}):[];
+    list.innerHTML=packages.map(function(pack,index){var bonus=Number(pack.bonus)||0;var credits=Number(pack.credits)||0;var total=Number(pack.totalCredits)||credits+bonus;var original=Number(pack.originalAmountMinor)||Number(pack.amountMinor)||0;var amount=Number(pack.amountMinor)||0;var price=amount<original?'<span class="tribute-price-pair"><span class="tribute-price-old">'+money(original,info.code)+'</span><span class="tribute-price-new">'+money(amount,info.code)+'</span></span>':money(amount,info.code);var title=bonus?number(credits)+' <b>+ '+number(bonus)+'</b>':number(credits);var bonusLabel=bonus?'<em>'+number(bonus)+' bonus</em>':'<small>credits</small>';return '<button class="credits-pack'+(index===0?' featured':'')+'" data-action="buy-tribute-package" data-package-id="'+String(pack.id||'')+'" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>'+title+'</strong>'+bonusLabel+'</span><span class="credits-pack-total">'+number(total)+' total credits · '+minutes(total)+' min voice</span></span><span class="credits-pack-price"><strong>'+price+'</strong><small>'+String(info.label||'').toUpperCase()+' · Bank card</small></span></button>'}).join('');
     var section=q('tributePacks');if(section)section.style.display=packages.length?'block':'none';
   }
 
@@ -201,7 +246,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     if(switcher)switcher.setAttribute('data-mode','card');
     document.querySelectorAll('[data-action="set-credit-payment"]').forEach(function(button){var active=button.getAttribute('data-payment-mode')==='card';button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false')});
     var head=page&&page.querySelector('.credits-page-head>div:first-child');if(head){var kicker=head.querySelector('span');var title=head.querySelector('h2');var copy=head.querySelector('p');if(kicker)kicker.textContent='BANK CARD';if(title)title.textContent='Buy credits';if(copy)copy.textContent='Secure checkout. Credits arrive automatically.';head.setAttribute('dir','ltr')}
-    syncSwitchIndicator();renderCustom('open');restorePaymentState();haptic('light');
+    syncSwitchIndicator();syncCurrencyUi();renderCustom('open');restorePaymentState();haptic('light');
   }
 
   function deactivateCardMode(next){
@@ -226,21 +271,32 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     if(pending&&pending.orderUuid)setPaymentState('waiting','Finish payment in Tribute','Come back here — credits add automatically.');
   }
 
-  function openCheckout(url){
-    if(tg&&typeof tg.openLink==='function'){tg.openLink(url,{try_instant_view:false});return}
-    var opened=window.open(url,'_blank','noopener,noreferrer');if(!opened)window.location.href=url;
+  function openCheckout(webappUrl,paymentUrl){
+    if(tg&&webappUrl&&typeof tg.openTelegramLink==='function'){
+      try{tg.openTelegramLink(webappUrl);return true}catch(error){}
+    }
+    if(webappUrl){
+      try{window.location.href=webappUrl;return true}catch(error){}
+    }
+    if(paymentUrl&&tg&&typeof tg.openLink==='function'){
+      try{tg.openLink(paymentUrl,{try_instant_view:false});return true}catch(error){}
+    }
+    if(paymentUrl){window.location.href=paymentUrl;return true}
+    return false;
   }
 
   async function startCardPayment(payload,button){
     if(cardBusy)return;
     cardBusy=true;if(button){button.disabled=true;button.classList.add('loading')}
     try{
-      var data=await api('/mini-app/api/tribute-order',payload);
-      if(!data.paymentUrl||!data.orderUuid)throw new Error('Card checkout is unavailable');
-      storageSet(PENDING_KEY,{orderUuid:data.orderUuid,credits:data.credits,amountCents:data.amountCents,createdAt:Date.now()});
-      setPaymentState('waiting','Finish payment in Tribute','Come back here — credits add automatically.');
-      haptic('medium');openCheckout(data.paymentUrl);
-    }catch(error){toast(error.message||'Could not start card checkout');haptic('error')}
+      var requestPayload=Object.assign({},payload||{},{currency:selectedCurrency});
+      var data=await api('/mini-app/api/tribute-order',requestPayload);
+      if((!data.paymentUrl&&!data.webappPaymentUrl)||!data.orderUuid)throw new Error('Card checkout is unavailable');
+      storageSet(PENDING_KEY,{orderUuid:data.orderUuid,credits:data.credits,amountMinor:data.amountMinor,currency:data.currency||selectedCurrency,createdAt:Date.now()});
+      setPaymentState('waiting','Opening Tribute','Complete the card payment, then return here.');
+      haptic('medium');
+      if(!openCheckout(data.webappPaymentUrl,data.paymentUrl))throw new Error('Could not open Tribute checkout');
+    }catch(error){toast(error.message||'Could not start card checkout');setPaymentState('failed','Could not open checkout','Try again in a moment.');haptic('error')}
     finally{cardBusy=false;if(button){button.disabled=false;button.classList.remove('loading')}renderCustom('done')}
   }
 
@@ -280,6 +336,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     var action=button.getAttribute('data-action');var mode=button.getAttribute('data-payment-mode');
     if(action==='set-credit-payment'&&mode==='card'){event.preventDefault();event.stopImmediatePropagation();activateCardMode();return}
     if(action==='set-credit-payment'&&(mode==='stars'||mode==='toman')){deactivateCardMode(mode);return}
+    if(action==='set-tribute-currency'){event.preventDefault();event.stopImmediatePropagation();setCurrency(button.getAttribute('data-currency')||'usd');return}
     if(action==='buy-tribute-custom'){event.preventDefault();event.stopImmediatePropagation();startCardPayment({credits:customCredits()},button);return}
     if(action==='buy-tribute-package'){event.preventDefault();event.stopImmediatePropagation();startCardPayment({packageId:button.getAttribute('data-package-id')||''},button);return}
     if(action==='check-tribute-payment'){event.preventDefault();event.stopImmediatePropagation();checkPending(true);return}
