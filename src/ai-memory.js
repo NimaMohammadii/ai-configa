@@ -14,8 +14,8 @@ const AI_MEMORY_RELEVANCE_MIN_SCORE = 4;
 const SENSITIVE_MEMORY_PATTERN = /(?:password|passcode|api[ _-]?key|private[ _-]?key|access[ _-]?token|refresh[ _-]?token|client[ _-]?secret|webhook[ _-]?secret|seed phrase|recovery phrase|credit card|card number|\bcvv\b|\botp\b|رمز(?: عبور)?|کد یکبار مصرف|توکن|کلید خصوصی|شماره کارت)/i;
 const MEMORY_INVENTORY_PATTERN = /(?:what\s+(?:do|can)\s+you\s+(?:remember|know)(?:\s+about\s+me)?|show\s+(?:me\s+)?(?:my\s+)?memor(?:y|ies)|list\s+(?:my\s+)?memor(?:y|ies)|چی\s+از\s+من\s+یادت|چه\s+چیز(?:هایی)?\s+از\s+من\s+یادت|مموری(?:‌|\s)*(?:هام|های\s+من).*(?:نشون|لیست|بگو)|حافظه(?:‌|\s)*(?:ت|هات).*(?:من|چی|چه))/i;
 const MEMORY_STOP_WORDS = new Set([
-  "the", "a", "an", "and", "or", "to", "of", "in", "on", "for", "with", "is", "are", "was", "were", "be", "been", "being", "this", "that", "it", "as", "at", "by", "from", "my", "your", "you", "me", "i", "we", "our",
-  "این", "اون", "آن", "و", "یا", "که", "به", "از", "در", "با", "برای", "رو", "را", "یه", "یک", "هست", "است", "بود", "شده", "میشه", "میخوام", "من", "تو", "شما", "ما",
+  "the", "a", "an", "and", "or", "to", "of", "in", "on", "for", "with", "is", "are", "was", "were", "be", "been", "being", "this", "that", "it", "as", "at", "by", "from", "my", "your", "you", "me", "i", "we", "our", "app",
+  "این", "اون", "آن", "و", "یا", "که", "به", "از", "در", "با", "برای", "رو", "را", "یه", "یک", "هست", "است", "بود", "شده", "میشه", "میخوام", "من", "تو", "شما", "ما", "اپ",
 ]);
 
 export function getAiMemoryTools() {
