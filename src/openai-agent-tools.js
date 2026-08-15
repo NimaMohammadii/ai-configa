@@ -50,10 +50,9 @@ export async function refreshOpenAiCodingWorkspace(env, userId, tools, state, co
 }
 
 export async function prepareOpenAiAgentTools(env, userId, options = {}) {
-  const state = await core.prepareOpenAiAgentTools(env, userId, options);
+  const state = await core.prepareOpenAiAgentTools(env, userId, { ...options, codingSkill: false });
   state.reasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
   forceDirectToolCalling(state?.tools);
-  removeFixedCodingSkill(state?.tools, state);
   state.runtimeInstructions = [
     String(state.runtimeInstructions || ""),
     options.githubContext ? DIRECT_TOOL_CALLING_OVERRIDE : "",
@@ -152,19 +151,6 @@ function forceDirectToolCalling(tools) {
   for (const tool of tools) {
     if (!tool || typeof tool !== "object" || !Array.isArray(tool.allowed_callers)) continue;
     tool.allowed_callers = ["direct"];
-  }
-}
-
-function removeFixedCodingSkill(tools, state) {
-  if (Array.isArray(tools)) {
-    const shellTool = tools.find((tool) => tool?.type === "shell");
-    if (shellTool?.environment && typeof shellTool.environment === "object") {
-      delete shellTool.environment.skills;
-    }
-  }
-  if (state) {
-    state.skillId = "";
-    state.skillVersion = "";
   }
 }
 
