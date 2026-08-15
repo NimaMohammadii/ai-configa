@@ -9,13 +9,24 @@ export {
 
 const BILLING_ONLY_CONTAINER_PREFIX = "billing-shell:";
 const SHELL_MEMORY_LIMIT = "1g";
-const DIRECT_TOOL_CALLING_OVERRIDE = "Programmatic Tool Calling is not enabled in this runtime. Ignore any coding-skill text that suggests programmatic callers and issue all repository, shell, MCP, browser, review, and write tool calls directly.";
+const DIRECT_TOOL_CALLING_OVERRIDE = "Programmatic Tool Calling is not enabled in this runtime. Issue repository, shell, MCP, browser, review, and write tool calls directly.";
 
 export function buildOpenAiAgentInstructions(state = {}, githubContext = null) {
-  const base = core.buildOpenAiAgentInstructions(state, githubContext);
-  return githubContext
-    ? [base, DIRECT_TOOL_CALLING_OVERRIDE].filter(Boolean).join(" ")
-    : base;
+  const instructions = [];
+  if (state.runtimeInstructions) instructions.push(String(state.runtimeInstructions));
+  if (state.vectorStoreId) {
+    instructions.push("A private per-user File Search knowledge store is available. Use file_search only when a previously uploaded user document materially helps the current request. The current attachment is also provided directly.");
+  }
+  if (githubContext) {
+    instructions.push(
+      "A hosted shell and native apply_patch are available for the connected repository. Use them only when they materially help the user's repository request. Ground code work in the real repository and keep writes limited to what the user asked for. Shell edits are temporary; only apply_patch or approved GitHub write tools persist source changes."
+    );
+    instructions.push(
+      "Do not impose one fixed coding ceremony on every request. Planning, extra research, shell checks, browser checks, CI inspection, subagents, and review are tools to use when the task, uncertainty, risk, or selected reasoning effort warrants them. Permission boundaries and truthful reporting remain mandatory."
+    );
+    instructions.push(DIRECT_TOOL_CALLING_OVERRIDE);
+  }
+  return instructions.filter(Boolean).join(" ");
 }
 
 export async function refreshOpenAiCodingWorkspace(env, userId, tools, state, commitSha) {
@@ -35,7 +46,9 @@ export async function refreshOpenAiCodingWorkspace(env, userId, tools, state, co
 
 export async function prepareOpenAiAgentTools(env, userId, options = {}) {
   const state = await core.prepareOpenAiAgentTools(env, userId, options);
+  state.reasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
   forceDirectToolCalling(state?.tools);
+  removeFixedCodingSkill(state?.tools, state);
   state.runtimeInstructions = [
     String(state.runtimeInstructions || ""),
     options.githubContext ? DIRECT_TOOL_CALLING_OVERRIDE : "",
@@ -124,11 +137,29 @@ export function reuseOpenAiShellContainer(tools, containerId) {
   return core.reuseOpenAiShellContainer(tools, cleanId);
 }
 
+function normalizeReasoningEffort(value) {
+  const effort = String(value || "medium").trim().toLowerCase();
+  return ["low", "medium", "high", "max"].includes(effort) ? effort : "medium";
+}
+
 function forceDirectToolCalling(tools) {
   if (!Array.isArray(tools)) return;
   for (const tool of tools) {
     if (!tool || typeof tool !== "object" || !Array.isArray(tool.allowed_callers)) continue;
     tool.allowed_callers = ["direct"];
+  }
+}
+
+function removeFixedCodingSkill(tools, state) {
+  if (Array.isArray(tools)) {
+    const shellTool = tools.find((tool) => tool?.type === "shell");
+    if (shellTool?.environment && typeof shellTool.environment === "object") {
+      delete shellTool.environment.skills;
+    }
+  }
+  if (state) {
+    state.skillId = "";
+    state.skillVersion = "";
   }
 }
 
@@ -143,13 +174,6 @@ function resetShellAfterRefreshFailure(tools, state) {
   };
   const uploadedFileId = String(state?.uploadedFileId || "").trim();
   if (uploadedFileId) environment.file_ids = [uploadedFileId];
-  if (state?.skillId && state?.skillVersion) {
-    environment.skills = [{
-      type: "skill_reference",
-      skill_id: String(state.skillId),
-      version: String(state.skillVersion),
-    }];
-  }
   shellTool.environment = environment;
   if (Array.isArray(shellTool.allowed_callers)) shellTool.allowed_callers = ["direct"];
 }
