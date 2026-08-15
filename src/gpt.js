@@ -26,6 +26,10 @@ const AI_CHAT_COMPACTION_THRESHOLD = 700000;
 const MAX_ENHANCE_CHARS = 5000;
 const MAX_AGENT_TOOL_ROUNDS = 14;
 const MAX_CODING_AGENT_TOOL_ROUNDS = 120;
+const AI_CHAT_PUBLIC_ERROR = "AI couldn't complete that request. Please try again.";
+const AI_CHAT_PUBLIC_BUSY_ERROR = "AI is temporarily busy. Please try again later.";
+const AI_CHAT_PUBLIC_UNAVAILABLE_ERROR = "AI service is temporarily unavailable. Please try again later.";
+const AI_IMAGE_PUBLIC_ERROR = "AI image couldn't complete that request. Please try again.";
 
 const AI_CHAT_AUDIO_TAGS = EMOTION_TAGS.map((item) => {
   const category = item[0];
@@ -144,7 +148,7 @@ export async function generateImage(env, prompt, options = {}) {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(toFriendlyGptImageError(response.status, errorBody));
+    throw new Error(toFriendlyGptImageError(response.status, errorBody, response.headers));
   }
 
   const data = await response.json();
@@ -214,7 +218,7 @@ export async function editImages(env, prompt, images, options = {}) {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(toFriendlyGptImageError(response.status, errorBody));
+    throw new Error(toFriendlyGptImageError(response.status, errorBody, response.headers));
   }
 
   const data = await response.json();
@@ -279,7 +283,7 @@ export async function enhanceTextWithEmotion(env, text, language = "en") {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(toFriendlyGptError(response.status, errorBody));
+    throw new Error(toFriendlyGptError(response.status, errorBody, response.headers));
   }
 
   const data = await response.json();
@@ -532,13 +536,9 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       ...memoryTools,
     ];
     const hasDeferredTools = delegatedTools.some((tool) => tool?.defer_loading === true);
-    const hasProgrammaticTools = delegatedTools.some(
-      (tool) => Array.isArray(tool?.allowed_callers) && tool.allowed_callers.includes("programmatic"),
-    );
     const tools = [
       ...coreTools,
       ...(hasDeferredTools ? [{ type: "tool_search" }] : []),
-      ...(hasProgrammaticTools ? [{ type: "programmatic_tool_calling" }] : []),
       ...delegatedTools,
     ];
     const responseInput = inputMessages.slice();
@@ -551,7 +551,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     const usage = [];
     let reviewRequested = false;
     let reviewedCommitSha = "";
-    const multiAgentEnabled = Boolean(githubContext);
+    let multiAgentFallbackDisabled = false;
     const maxAgentToolRounds = githubContext
       ? MAX_CODING_AGENT_TOOL_ROUNDS
       : MAX_AGENT_TOOL_ROUNDS;
@@ -610,6 +610,11 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       const reviewInstruction = reviewRequested
         ? "MANDATORY FINAL CODING REVIEW: This is a review pass after a code write. Use github_review_branch on the current Vexa branch if it has not been reviewed for the current commit. Re-read any critical changed files if needed. Run the relevant available build, test, lint, typecheck, syntax, or deterministic checks against the refreshed post-write shell workspace when they materially validate the change. Use github_read_ci when GitHub CI evidence exists or could matter. Check that the diff is limited to the user's request, that no unrelated behavior changed, and that external API/library assumptions match current official documentation when relevant. If you find a defect, fix it with a precise write and then review the new commit again. Do not claim validation succeeded unless a tool actually showed it. Only after the current commit passes this review should you produce the final user-facing answer."
         : "";
+      const multiAgentEnabled = Boolean(
+        githubContext
+        && codingActivity?.plan
+        && !multiAgentFallbackDisabled
+      );
       const responseUrl = multiAgentEnabled
         ? "https://api.openai.com/v1/responses?beta=true"
         : "https://api.openai.com/v1/responses";
@@ -658,10 +663,37 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(toFriendlyGptError(response.status, errorBody));
+        const upstreamError = createAiChatUpstreamError(response.status, errorBody, {
+          phase: "responses_http",
+          requestId: response.headers.get("x-request-id") || "",
+          model,
+          multiAgent: multiAgentEnabled,
+        });
+        if (multiAgentEnabled && upstreamError.retryWithoutMultiAgent) {
+          multiAgentFallbackDisabled = true;
+          console.warn("AI_CHAT_INTERNAL_FALLBACK", {
+            internalCode: "MULTI_AGENT_TO_DIRECT",
+            cause: upstreamError.internalCode,
+          });
+          continue;
+        }
+        throw upstreamError;
       }
 
-      const data = await readChatResponseStream(response, onStatus);
+      let data;
+      try {
+        data = await readChatResponseStream(response, onStatus, { model, multiAgent: multiAgentEnabled });
+      } catch (error) {
+        if (multiAgentEnabled && error?.name === "AiChatUpstreamError" && error?.retryWithoutMultiAgent) {
+          multiAgentFallbackDisabled = true;
+          console.warn("AI_CHAT_INTERNAL_FALLBACK", {
+            internalCode: "MULTI_AGENT_TO_DIRECT",
+            cause: error.internalCode || "OPENAI_STREAM_FAILURE",
+          });
+          continue;
+        }
+        throw error;
+      }
       throwIfAiChatAborted(controller.signal);
       const output = Array.isArray(data?.output) ? data.output : [];
       const roundWebSearchCalls = output.filter((item) => item?.type === "web_search_call").length;
@@ -706,6 +738,11 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       const computerCalls = output.filter(isAiComputerCall);
       const hasClientCalls = githubCalls.length || memoryCalls.length || patchCalls.length || browserOpenCalls.length || computerCalls.length;
       const hasRootMessage = output.some((item) => item?.type === "message" && isRootAgentItem(item));
+
+      if (terminalCall && !hasClientCalls) {
+        throwIfAiChatAborted(controller.signal);
+        return buildChatResult(data, cleanMessages, resultOptions());
+      }
 
       if (!hasClientCalls && hasRootMessage) {
         throwIfAiChatAborted(controller.signal);
@@ -878,7 +915,7 @@ function isGitHubWriteCall(item) {
   ].includes(String(item?.name || ""));
 }
 
-async function readChatResponseStream(response, onStatus) {
+async function readChatResponseStream(response, onStatus, context = {}) {
   if (!response.body) throw new Error("AI did not return a response. Please try again.");
 
   const reader = response.body.getReader();
@@ -927,8 +964,13 @@ async function readChatResponseStream(response, onStatus) {
       return;
     }
     if (type === "error" || type === "response.failed") {
-      const message = event?.error?.message || event?.response?.error?.message || "";
-      throw new Error(toFriendlyGptError(502, JSON.stringify({ error: { message } })));
+      const upstream = event?.error || event?.response?.error || {};
+      throw createAiChatUpstreamError(0, JSON.stringify({ error: upstream }), {
+        phase: type || "responses_stream_failed",
+        requestId: event?.request_id || event?.response?.id || "",
+        model: context.model || "",
+        multiAgent: Boolean(context.multiAgent),
+      });
     }
   };
 
@@ -1179,17 +1221,89 @@ async function fetchWithTimeout(
   }
 }
 
-function toFriendlyGptError(status, errorBody) {
-  let message = "";
-
+function parseOpenAiError(errorBody) {
+  let parsed = null;
   try {
-    const parsed = JSON.parse(errorBody);
-    message = parsed?.error?.message || parsed?.message || "";
+    parsed = JSON.parse(String(errorBody || ""));
   } catch {
-    message = errorBody || "";
+    parsed = null;
   }
+  const source = parsed?.error || parsed?.response?.error || parsed || {};
+  return {
+    message: String(source?.message || parsed?.message || errorBody || "").trim(),
+    code: String(source?.code || parsed?.code || "").trim(),
+    type: String(source?.type || parsed?.type || "").trim(),
+    param: String(source?.param || parsed?.param || "").trim(),
+    requestId: String(source?.request_id || parsed?.request_id || "").trim(),
+  };
+}
 
-  const raw = String(message || "").toLowerCase();
+function redactAiInternalText(value) {
+  return String(value || "")
+    .replace(/\bsk-[A-Za-z0-9_-]+\b/g, "[secret]")
+    .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, "Bearer [secret]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 1200);
+}
+
+function logAiUpstreamError(phase, status, errorBody, context = {}) {
+  const details = parseOpenAiError(errorBody);
+  const phaseCode = String(phase || "unknown").replace(/[^a-z0-9]+/gi, "_").toUpperCase();
+  const upstreamCode = String(details.code || (status ? `HTTP_${status}` : "UNKNOWN"))
+    .replace(/[^a-z0-9]+/gi, "_")
+    .toUpperCase()
+    .slice(0, 80);
+  const internalCode = `OPENAI_${phaseCode}_${upstreamCode}`;
+  console.error("AI_CHAT_INTERNAL_ERROR", {
+    internalCode,
+    phase: String(phase || "unknown"),
+    status: Math.max(0, Number(status || 0)),
+    openAiCode: details.code,
+    openAiType: details.type,
+    param: details.param,
+    requestId: String(context.requestId || details.requestId || "").slice(0, 160),
+    model: String(context.model || "").slice(0, 80),
+    multiAgent: Boolean(context.multiAgent),
+    message: redactAiInternalText(details.message),
+  });
+  return { ...details, internalCode };
+}
+
+function publicAiUpstreamMessage(status, details) {
+  const raw = `${details?.code || ""} ${details?.type || ""} ${details?.message || ""}`.toLowerCase();
+  if (status === 429 || raw.includes("rate limit") || raw.includes("quota") || raw.includes("rate_limit")) {
+    return AI_CHAT_PUBLIC_BUSY_ERROR;
+  }
+  if (
+    status === 401
+    || status === 403
+    || status >= 500
+    || raw.includes("server_error")
+    || raw.includes("internal_error")
+    || raw.includes("service_unavailable")
+  ) {
+    return AI_CHAT_PUBLIC_UNAVAILABLE_ERROR;
+  }
+  return AI_CHAT_PUBLIC_ERROR;
+}
+
+function createAiChatUpstreamError(status, errorBody, context = {}) {
+  const details = logAiUpstreamError(context.phase || "responses", status, errorBody, context);
+  const error = new Error(publicAiUpstreamMessage(status, details));
+  error.name = "AiChatUpstreamError";
+  error.internalCode = details.internalCode;
+  error.upstreamStatus = Math.max(0, Number(status || 0));
+  error.retryWithoutMultiAgent = status === 0 || status === 400 || status === 408 || status >= 500;
+  return error;
+}
+
+function toFriendlyGptError(status, errorBody, headers = null) {
+  const details = logAiUpstreamError("enhance_http", status, errorBody, {
+    requestId: headers?.get?.("x-request-id") || "",
+    model: GPT_MODEL,
+  });
+  const raw = `${details.code} ${details.type} ${details.message}`.toLowerCase();
   if (status === 401 || raw.includes("invalid api key") || raw.includes("unauthorized")) {
     return "AI connection error. Please try again later.";
   }
@@ -1205,22 +1319,12 @@ function toFriendlyGptError(status, errorBody) {
   return "AI could not enhance this text. Please try again.";
 }
 
-function toFriendlyGptImageError(status, errorBody) {
-  let message = "";
-
-  try {
-    const parsed = JSON.parse(errorBody);
-    message = parsed?.error?.message || parsed?.message || "";
-  } catch {
-    message = errorBody || "";
-  }
-
-  const raw = String(message || "").toLowerCase();
-  console.error("OpenAI image API error", {
-    status,
-    message: String(message || "").slice(0, 1000),
+function toFriendlyGptImageError(status, errorBody, headers = null) {
+  const details = logAiUpstreamError("image_http", status, errorBody, {
+    requestId: headers?.get?.("x-request-id") || "",
+    model: GPT_IMAGE_MODEL,
   });
-
+  const raw = `${details.code} ${details.type} ${details.message}`.toLowerCase();
 
   if (status === 401 || raw.includes("invalid api key") || raw.includes("unauthorized")) {
     return "AI image connection error. Please try again later.";
@@ -1242,15 +1346,11 @@ function toFriendlyGptImageError(status, errorBody) {
     return "AI image editing is not enabled for this API account.";
   }
 
-  if (status === 400 && message) {
-    return "AI image request error: " + String(message).replace(/\s+/g, " ").slice(0, 300);
-  }
-
   if (status >= 500) {
     return "AI image service is temporarily unavailable. Please try again later.";
   }
 
-  return "AI could not generate this image. Please try again.";
+  return AI_IMAGE_PUBLIC_ERROR;
 }
 
 function base64ToArrayBuffer(value) {
