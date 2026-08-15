@@ -5,11 +5,18 @@ import { getState, requireDb } from "./state.js";
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
 
 const TRIBUTE_API_BASE = "https://tribute.tg/api/v1/shop";
-const TRIBUTE_CURRENCY = "usd";
-const TRIBUTE_MIN_CENTS = 100;
-const TRIBUTE_MAX_CENTS = 100000;
+const FX_API_URL = "https://open.er-api.com/v6/latest/USD";
+const FX_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_CREDITS = 1_000_000;
 const CARD_STEP_CREDITS = 1_000;
+
+const TRIBUTE_CURRENCIES = Object.freeze({
+  usd: { code: "usd", label: "USD", symbol: "$", minMinor: 100, maxMinor: 300000 },
+  eur: { code: "eur", label: "EUR", symbol: "€", minMinor: 100, maxMinor: 300000 },
+  rub: { code: "rub", label: "RUB", symbol: "₽", minMinor: 10000, maxMinor: 30000000 },
+});
+
+let fxMemory = null;
 
 export function isTributeWebhookRequest(request) {
   const url = new URL(request.url);
@@ -96,20 +103,35 @@ async function buildTributeConfig(env, user) {
   const discount = await getActiveWheelPurchaseDiscount(env, user.id).catch(() => null);
   const percent = normalizeDiscountPercent(discount?.percent);
   const state = await getState(env, user.id).catch(() => null);
-  const minimumCredits = minimumCustomCredits(percent);
+  const fx = await getFxRates();
 
   return {
     available: Boolean(tributeApiKey(env)),
-    currency: TRIBUTE_CURRENCY,
+    defaultCurrency: "usd",
     language: String(state?.language || user.language_code || "en").toLowerCase(),
     ratePer1000Usd: CUSTOM_STARS_USD_PER_1000_CREDITS,
-    minimumCents: TRIBUTE_MIN_CENTS,
-    minimumCredits,
     maximumCredits: MAX_CREDITS,
     stepCredits: CARD_STEP_CREDITS,
     discountPercent: percent,
     discountExpiresAt: Number(discount?.expiresAt || 0),
-    packages: Object.values(MINI_APP_STAR_PACKAGES).map((pack) => cardPackage(pack, percent)),
+    fxUpdatedAt: fx.updatedAt,
+    fxProvider: "ExchangeRate-API",
+    currencies: Object.values(TRIBUTE_CURRENCIES).map((currency) => ({
+      code: currency.code,
+      label: currency.label,
+      symbol: currency.symbol,
+      rateFromUsd: fx.rates[currency.code],
+      minimumMinor: currency.minMinor,
+      maximumMinor: currency.maxMinor,
+      minimumCredits: minimumCustomCredits(percent, currency.code, fx.rates[currency.code]),
+    })),
+    packages: Object.values(MINI_APP_STAR_PACKAGES).map((pack) => ({
+      id: String(pack?.id || ""),
+      credits: Number(pack?.credits || 0),
+      bonus: Number(pack?.bonus || 0),
+      totalCredits: Number(pack?.totalCredits || 0),
+      usd: Number(pack?.usd || 0),
+    })),
   };
 }
 
@@ -117,11 +139,15 @@ async function createTributeOrder(env, user, body) {
   requireDb(env);
   await ensureTributePaymentsTable(env);
 
-  const offer = await resolveCardOffer(env, user.id, body);
-  if (offer.amountCents < TRIBUTE_MIN_CENTS) {
-    throw httpError("Card payments start at $1. Choose a little more credits.", 400);
+  const currencyCode = normalizeCurrency(body?.currency);
+  const currency = TRIBUTE_CURRENCIES[currencyCode];
+  const fx = await getFxRates();
+  const offer = await resolveCardOffer(env, user.id, body, currencyCode, fx.rates[currencyCode]);
+
+  if (offer.amountMinor < currency.minMinor) {
+    throw httpError(`Card payments start at ${currencyMinimumLabel(currencyCode)}. Choose a little more credits.`, 400);
   }
-  if (offer.amountCents > TRIBUTE_MAX_CENTS) {
+  if (offer.amountMinor > currency.maxMinor) {
     throw httpError("This payment amount is above Tribute's limit.", 400);
   }
 
@@ -133,8 +159,8 @@ async function createTributeOrder(env, user, body) {
       "Accept": "application/json",
     },
     body: JSON.stringify({
-      amount: offer.amountCents,
-      currency: TRIBUTE_CURRENCY,
+      amount: offer.amountMinor,
+      currency: currencyCode,
       title: "Vexa Credits",
       description: `${formatNumber(offer.totalCredits)} Vexa credits`,
       customerId: String(user.id),
@@ -146,7 +172,8 @@ async function createTributeOrder(env, user, body) {
   const data = await response.json().catch(() => ({}));
   const orderUuid = normalizeOrderUuid(data?.uuid);
   const paymentUrl = safeTributePaymentUrl(data?.paymentUrl);
-  if (!response.ok || !orderUuid || !paymentUrl) {
+  const webappPaymentUrl = safeTributeWebappUrl(data?.webappPaymentUrl);
+  if (!response.ok || !orderUuid || (!paymentUrl && !webappPaymentUrl)) {
     console.error("Tribute create order failed", response.status, data);
     throw httpError(tributeApiError(data, "Could not start card checkout."), response.status >= 400 && response.status < 500 ? response.status : 502);
   }
@@ -160,20 +187,21 @@ async function createTributeOrder(env, user, body) {
     String(user.id),
     offer.packageId || null,
     offer.totalCredits,
-    offer.amountCents,
-    TRIBUTE_CURRENCY,
-    paymentUrl
+    offer.amountMinor,
+    currencyCode,
+    paymentUrl || webappPaymentUrl
   ).run();
 
   return {
     ok: true,
     orderUuid,
     paymentUrl,
+    webappPaymentUrl,
     credits: offer.totalCredits,
-    amountCents: offer.amountCents,
-    originalAmountCents: offer.originalAmountCents,
+    amountMinor: offer.amountMinor,
+    originalAmountMinor: offer.originalAmountMinor,
     discountPercent: offer.discountPercent,
-    currency: TRIBUTE_CURRENCY,
+    currency: currencyCode,
     balance: await getBalance(env, user.id),
   };
 }
@@ -225,15 +253,15 @@ async function statusPayload(env, row, userId) {
     orderUuid: row.order_uuid,
     status: String(row.status || "pending"),
     credits: Number(row.credits || 0),
-    amountCents: Number(row.amount || 0),
-    currency: String(row.currency || TRIBUTE_CURRENCY),
+    amountMinor: Number(row.amount || 0),
+    currency: String(row.currency || "usd"),
     credited: Boolean(row.credited_at),
     refunded: Boolean(row.refunded_at),
     balance: await getBalance(env, userId),
   };
 }
 
-async function resolveCardOffer(env, userId, body) {
+async function resolveCardOffer(env, userId, body, currencyCode, rateFromUsd) {
   const discount = await getActiveWheelPurchaseDiscount(env, userId).catch(() => null);
   const percent = normalizeDiscountPercent(discount?.percent);
   const packageId = String(body?.packageId || "").trim();
@@ -241,13 +269,14 @@ async function resolveCardOffer(env, userId, body) {
   if (packageId) {
     const pack = MINI_APP_STAR_PACKAGES[packageId];
     if (!pack) throw httpError("Credit pack not found.", 400);
-    const card = cardPackage(pack, percent);
+    const originalAmountMinor = usdToMinor(Number(pack?.usd || 0), rateFromUsd);
     return {
       packageId,
-      totalCredits: card.totalCredits,
-      amountCents: card.amountCents,
-      originalAmountCents: card.originalAmountCents,
+      totalCredits: Number(pack?.totalCredits || 0),
+      amountMinor: discountedMinor(originalAmountMinor, percent),
+      originalAmountMinor,
       discountPercent: percent,
+      currency: currencyCode,
     };
   }
 
@@ -256,45 +285,37 @@ async function resolveCardOffer(env, userId, body) {
     throw httpError("Choose a valid credit amount.", 400);
   }
 
-  const originalAmountCents = customBaseCents(credits);
-  const amountCents = discountedCents(originalAmountCents, percent);
+  const originalAmountMinor = customBaseMinor(credits, rateFromUsd);
   return {
     packageId: null,
     totalCredits: credits,
-    amountCents,
-    originalAmountCents,
+    amountMinor: discountedMinor(originalAmountMinor, percent),
+    originalAmountMinor,
     discountPercent: percent,
+    currency: currencyCode,
   };
 }
 
-function cardPackage(pack, percent) {
-  const originalAmountCents = Math.max(1, Math.round(Number(pack?.usd || 0) * 100));
-  const amountCents = discountedCents(originalAmountCents, percent);
-  return {
-    id: String(pack?.id || ""),
-    credits: Number(pack?.credits || 0),
-    bonus: Number(pack?.bonus || 0),
-    totalCredits: Number(pack?.totalCredits || 0),
-    originalAmountCents,
-    amountCents,
-    available: amountCents >= TRIBUTE_MIN_CENTS && amountCents <= TRIBUTE_MAX_CENTS,
-  };
+function customBaseMinor(credits, rateFromUsd) {
+  const usd = (Number(credits || 0) / 1000) * CUSTOM_STARS_USD_PER_1000_CREDITS;
+  return usdToMinor(usd, rateFromUsd);
 }
 
-function customBaseCents(credits) {
-  return Math.max(1, Math.ceil((Number(credits || 0) / 1000) * CUSTOM_STARS_USD_PER_1000_CREDITS * 100));
+function usdToMinor(usd, rateFromUsd) {
+  return Math.max(1, Math.ceil(Math.max(0, Number(usd) || 0) * Math.max(0.000001, Number(rateFromUsd) || 1) * 100));
 }
 
-function minimumCustomCredits(percent) {
+function minimumCustomCredits(percent, currencyCode, rateFromUsd) {
+  const currency = TRIBUTE_CURRENCIES[currencyCode];
   let credits = CARD_STEP_CREDITS;
-  while (credits < MAX_CREDITS && discountedCents(customBaseCents(credits), percent) < TRIBUTE_MIN_CENTS) {
+  while (credits < MAX_CREDITS && discountedMinor(customBaseMinor(credits, rateFromUsd), percent) < currency.minMinor) {
     credits += CARD_STEP_CREDITS;
   }
   return Math.min(MAX_CREDITS, credits);
 }
 
-function discountedCents(cents, percent) {
-  const clean = Math.max(1, Math.round(Number(cents || 0)));
+function discountedMinor(minor, percent) {
+  const clean = Math.max(1, Math.round(Number(minor || 0)));
   const discount = normalizeDiscountPercent(percent);
   return discount ? Math.max(1, Math.ceil(clean * (100 - discount) / 100)) : clean;
 }
@@ -302,6 +323,49 @@ function discountedCents(cents, percent) {
 function normalizeDiscountPercent(value) {
   const percent = Math.floor(Number(value) || 0);
   return percent > 0 && percent < 100 ? percent : 0;
+}
+
+function normalizeCurrency(value) {
+  const code = String(value || "usd").trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(TRIBUTE_CURRENCIES, code) ? code : "usd";
+}
+
+function currencyMinimumLabel(code) {
+  if (code === "eur") return "€1";
+  if (code === "rub") return "₽100";
+  return "$1";
+}
+
+async function getFxRates() {
+  const now = Date.now();
+  if (fxMemory && fxMemory.expiresAt > now) return fxMemory;
+
+  try {
+    const response = await fetch(FX_API_URL, {
+      headers: { "Accept": "application/json" },
+      cf: { cacheTtl: 21600, cacheEverything: true },
+    });
+    const data = await response.json().catch(() => ({}));
+    const eur = Number(data?.rates?.EUR);
+    const rub = Number(data?.rates?.RUB);
+    if (!response.ok || data?.result !== "success" || !Number.isFinite(eur) || eur <= 0 || !Number.isFinite(rub) || rub <= 0) {
+      throw new Error("FX rate response is unavailable");
+    }
+    fxMemory = {
+      rates: { usd: 1, eur, rub },
+      updatedAt: Number(data?.time_last_update_unix || 0) * 1000 || now,
+      expiresAt: now + FX_CACHE_TTL_MS,
+    };
+    return fxMemory;
+  } catch (error) {
+    console.warn("Tribute FX refresh failed", error?.message || error);
+    if (fxMemory) return fxMemory;
+    return {
+      rates: { usd: 1, eur: 0.92, rub: 80 },
+      updatedAt: 0,
+      expiresAt: now + 10 * 60 * 1000,
+    };
+  }
 }
 
 async function settleTributeOrder(env, orderUuid, webhookPayload = null) {
@@ -458,6 +522,17 @@ function safeTributePaymentUrl(value) {
     const url = new URL(String(value || ""));
     if (url.protocol !== "https:") return "";
     if (url.hostname !== "web.tribute.tg" && url.hostname !== "tribute.tg") return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function safeTributeWebappUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    if (url.protocol !== "https:" || url.hostname !== "t.me") return "";
+    if (!/^\/(tribute|tribute_bot)\//i.test(url.pathname)) return "";
     return url.toString();
   } catch {
     return "";
