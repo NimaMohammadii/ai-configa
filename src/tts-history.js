@@ -140,6 +140,7 @@ export async function getMiniAppTtsHistory(env, userId, limit = 30) {
     created_at: row.created_at,
     revision: Number(row.edit_revision || 0),
     editable: Boolean(row.editable),
+    alignment: row.editable ? { history: true } : null,
     has_audio: Boolean(row.has_audio),
     filename: buildTtsAudioFileName(row.file_sequence),
   }));
