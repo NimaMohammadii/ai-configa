@@ -11,7 +11,7 @@ import {
 } from "./mini-app/ai-background-tasks-client.js";
 import { VEXA_LIVE_EDITOR_JS } from "./mini-app/vexa-live/editor-client.js";
 
-const VEXA_EDITOR_VERSION = "20260815-3";
+const VEXA_EDITOR_VERSION = "20260815-4";
 const AI_CHAT_HEARTBEAT_MS = 10_000;
 const AI_CHAT_PATH = "/mini-app/api/chat";
 
@@ -35,6 +35,31 @@ async function injectVexaEditorClient(response) {
   const disabledContainerUi =
     '<style id="vexaContainerDisabled">' +
     '#liveSourceSwitch,#youtubeInputState,#youtubeReadyState{display:none!important}' +
+    'html body.vexa-live-editing #videoReadyState.show{justify-content:flex-end!important;align-items:stretch!important}' +
+    'html body.vexa-live-editing #videoReadyState.show>.video-stage{' +
+      'position:relative!important;flex:0 0 auto!important;' +
+      'width:min(100vw,calc((var(--tg-viewport-height,100dvh) - 258px - env(safe-area-inset-bottom))/2))!important;' +
+      'height:auto!important;aspect-ratio:1/2!important;max-width:100vw!important;' +
+      'max-height:calc(var(--tg-viewport-height,100dvh) - 258px - env(safe-area-inset-bottom))!important;' +
+      'margin:0 auto!important;border-radius:0!important;overflow:hidden!important;background:#050505!important;' +
+      'box-shadow:0 -1px 0 rgba(255,255,255,.04),0 1px 0 rgba(255,255,255,.04)!important' +
+    '}' +
+    'html body.vexa-live-editing #videoReadyState.show>.video-stage>video{' +
+      'display:block!important;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;' +
+      'object-fit:contain!important;object-position:center center!important;background:#050505!important' +
+    '}' +
+    'html body.vexa-live-editing #videoReadyState.show>.video-stage.vexa-fill>video{object-fit:contain!important}' +
+    'html body.vexa-live-editing .vexa-editor-panel{flex:0 0 258px!important;height:258px!important;margin:0!important}' +
+    'html body.vexa-live-editing .vexa-fit-button{display:none!important}' +
+    '@media (max-height:700px){' +
+      'html body.vexa-live-editing #videoReadyState.show>.video-stage{' +
+        'width:min(100vw,calc((var(--tg-viewport-height,100dvh) - 220px - env(safe-area-inset-bottom))/2))!important;' +
+        'max-height:calc(var(--tg-viewport-height,100dvh) - 220px - env(safe-area-inset-bottom))!important' +
+      '}' +
+      'html body.vexa-live-editing .vexa-editor-panel{flex-basis:220px!important;height:220px!important}' +
+      'html body.vexa-live-editing .vexa-caption-timeline{height:72px!important}' +
+      'html body.vexa-live-editing .vexa-caption-input,html body.vexa-live-editing .vexa-reset-position{height:48px!important}' +
+    '}' +
     '</style>';
   const script =
     '<script type="module" src="/mini-app/live/editor.js?v=' +
