@@ -127,7 +127,7 @@ const GPT_CHAT_ATTACHMENT_MIME = Object.freeze({
   htm: "text/html",
   xml: "text/xml",
   csv: "text/csv",
-  tsv: "text/tab-separated-values",
+  tsv: "text/tsv",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   rtf: "application/rtf",
