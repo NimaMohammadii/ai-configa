@@ -1,4 +1,4 @@
-import { LANGUAGES, t } from "./i18n.js";
+import { t } from "./i18n.js";
 import { CARD_NUMBER } from "./payment-card.js";
 import { getUserVoices } from "./user-voices.js";
 import { VOICE_NAMES } from "./voices.js";
@@ -17,17 +17,17 @@ export const TOMAN_PACKAGES = {
 };
 
 export function languageText() {
-  return ["🌎 <b>Choose your language and Region</b>", "", "Please select your language to continue"].join("\n");
+  return ["🌎 <b>Choose your region</b>", "", "Select your region to continue"].join("\n");
 }
 
 export function languageKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: LANGUAGES.en, callback_data: "lang:en" }, { text: LANGUAGES.ru, callback_data: "lang:ru" }],
-      [{ text: LANGUAGES.de, callback_data: "lang:de" }, { text: LANGUAGES.fa, callback_data: "lang:fa" }],
-      [{ text: LANGUAGES.tr, callback_data: "lang:tr" }, { text: LANGUAGES.ar, callback_data: "lang:ar" }],
-      [{ text: LANGUAGES.zh, callback_data: "lang:zh" }, { text: LANGUAGES.ja, callback_data: "lang:ja" }],
-      [{ text: LANGUAGES.es, callback_data: "lang:es" }, { text: LANGUAGES.hi, callback_data: "lang:hi" }],
+      [{ text: "🇺🇸 United States", callback_data: "lang:en" }, { text: "🇷🇺 Russia", callback_data: "lang:ru" }],
+      [{ text: "🇩🇪 Germany", callback_data: "lang:de" }, { text: "🇮🇷 Iran", callback_data: "lang:fa" }],
+      [{ text: "🇹🇷 Türkiye", callback_data: "lang:tr" }, { text: "🇸🇦 Saudi Arabia", callback_data: "lang:ar" }],
+      [{ text: "🇨🇳 China", callback_data: "lang:zh" }, { text: "🇯🇵 Japan", callback_data: "lang:ja" }],
+      [{ text: "🇪🇸 Spain", callback_data: "lang:es" }, { text: "🇮🇳 India", callback_data: "lang:hi" }],
     ],
   };
 }
