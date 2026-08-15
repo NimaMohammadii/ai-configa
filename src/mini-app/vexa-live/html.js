@@ -176,6 +176,6 @@ export const VEXA_LIVE_HTML = `<!doctype html>
 
   <div id="liveToast" class="live-toast" role="status" aria-live="polite"></div>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" src="/mini-app/live/app.js?v=20260815-8"></script>
+  <script type="module" src="/mini-app/live/app.js?v=20260815-9"></script>
 </body>
 </html>`;
