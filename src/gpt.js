@@ -25,8 +25,6 @@ const AI_CHAT_CONTEXT_WINDOW = 1050000;
 const AI_CHAT_COMPACTION_THRESHOLD = 200000;
 const AI_CHAT_RATE_LIMIT_MAX_RETRIES = 3;
 const AI_CHAT_RATE_LIMIT_MAX_WAIT_MS = 90 * 1000;
-const AI_CHAT_MAX_OUTPUT_TOKENS = 8000;
-const AI_CODING_MAX_OUTPUT_TOKENS = 16000;
 const MAX_ENHANCE_CHARS = 5000;
 const ADVANCED_CODING_TOOLS_TOOL = "enable_advanced_coding_tools";
 const MEDIUM_ADVANCED_MIN_BASE_ACTIONS = 2;
@@ -1162,7 +1160,6 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
             type: "compaction",
             compact_threshold: AI_CHAT_COMPACTION_THRESHOLD,
           }],
-          max_output_tokens: githubContext ? AI_CODING_MAX_OUTPUT_TOKENS : AI_CHAT_MAX_OUTPUT_TOKENS,
           store: false,
           stream: true,
         }),
