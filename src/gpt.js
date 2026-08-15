@@ -25,6 +25,8 @@ const AI_CHAT_CONTEXT_WINDOW = 1050000;
 const AI_CHAT_COMPACTION_THRESHOLD = 200000;
 const AI_CHAT_RATE_LIMIT_MAX_RETRIES = 1;
 const AI_CHAT_RATE_LIMIT_MAX_WAIT_MS = 60 * 1000;
+const AI_CHAT_FINAL_REVIEW_SERVER_RETRIES = 1;
+const AI_CHAT_FINAL_REVIEW_RETRY_MS = 1500;
 const MAX_ENHANCE_CHARS = 5000;
 const MAX_AGENT_TOOL_ROUNDS = 14;
 const MAX_CODING_AGENT_TOOL_ROUNDS = 120;
@@ -660,6 +662,8 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     let reviewRequested = false;
     let reviewedCommitSha = "";
     let multiAgentFallbackDisabled = false;
+    let finalReviewServerRetries = 0;
+    let preReviewData = null;
     const maxAgentToolRounds = githubContext
       ? MAX_CODING_AGENT_TOOL_ROUNDS
       : MAX_AGENT_TOOL_ROUNDS;
@@ -694,6 +698,8 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       activeShellContainerId = "";
       reviewRequested = false;
       reviewedCommitSha = "";
+      finalReviewServerRetries = 0;
+      preReviewData = null;
       if (Array.isArray(codingActivity.events)) {
         codingActivity.events.push({
           state: "analyzing_code",
@@ -701,6 +707,27 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           detail: codingActivity.currentCommitSha.slice(0, 12),
           at: Date.now(),
         });
+      }
+    };
+
+    const runDeterministicFinalReview = async () => {
+      if (!codingActivity?.currentBranch || !codingActivity?.currentCommitSha) return null;
+      const raw = await executeGitHubAiTool(
+        env,
+        options.userId,
+        {
+          type: "function_call",
+          name: "github_review_branch",
+          call_id: "server_final_review_" + codingActivity.currentCommitSha.slice(0, 12),
+          arguments: JSON.stringify({ branch: codingActivity.currentBranch }),
+        },
+        onStatus,
+        codingActivity,
+      );
+      try {
+        return JSON.parse(String(raw || "{}"));
+      } catch {
+        return { error: "Final review returned an invalid result." };
       }
     };
 
@@ -724,14 +751,15 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         });
       }
       const reviewInstruction = reviewRequested
-        ? "MANDATORY FINAL CODING REVIEW: This is a review pass after a code write. Use github_review_branch on the current Vexa branch if it has not been reviewed for the current commit. Re-read any critical changed files if needed. Run the relevant available build, test, lint, typecheck, syntax, or deterministic checks against the refreshed post-write shell workspace when they materially validate the change. Use github_read_ci when GitHub CI evidence exists or could matter. Check that the diff is limited to the user's request, that no unrelated behavior changed, and that external API/library assumptions match current official documentation when relevant. If you find a defect, fix it with a precise write and then review the new commit again. Do not claim validation succeeded unless a tool actually showed it. Only after the current commit passes this review should you produce the final user-facing answer."
+        ? "FINAL CODING FOLLOW-UP: The application already ran the deterministic GitHub final-diff review. Resolve only the outstanding validation, base-sync, plan, or correctness issue described in the latest application review feedback. Use direct tools for this final stage. Do not delegate final review to Multi-Agent. If a write changes the commit, validate and let the application review the new commit again before declaring completion."
         : "";
       const multiAgentEnabled = Boolean(
         githubContext
         && codingActivity?.plan
+        && !reviewRequested
         && !multiAgentFallbackDisabled
       );
-      const reviewUsesPro = Boolean(reviewRequested && codingActivity?.plan);
+      const reviewUsesPro = false;
       const responseUrl = multiAgentEnabled
         ? "https://api.openai.com/v1/responses?beta=true"
         : "https://api.openai.com/v1/responses";
@@ -759,8 +787,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           tool_choice: "auto",
           reasoning: {
             effort: reasoningEffort,
-            context: "all_turns",
-            ...(reviewUsesPro ? { mode: "pro" } : {}),
+            context: reviewRequested ? "current_turn" : "all_turns",
           },
           ...(multiAgentEnabled ? { multi_agent: { enabled: true } } : {}),
           ...(safetyIdentifier ? {
@@ -772,7 +799,11 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
             type: "compaction",
             compact_threshold: AI_CHAT_COMPACTION_THRESHOLD,
           }],
-          max_output_tokens: githubContext && codingActivity?.plan ? 16000 : 8000,
+          max_output_tokens: reviewRequested
+            ? 8000
+            : githubContext && codingActivity?.plan
+              ? 16000
+              : 8000,
           store: false,
           stream: true,
         }),
@@ -794,6 +825,25 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           });
           continue;
         }
+        if (
+          reviewRequested
+          && codingActivity?.change
+          && error?.name === "AiChatUpstreamError"
+          && error?.retryableServerFailure
+        ) {
+          if (finalReviewServerRetries < AI_CHAT_FINAL_REVIEW_SERVER_RETRIES) {
+            finalReviewServerRetries += 1;
+            console.warn("AI_CHAT_FINAL_REVIEW_RETRY", {
+              attempt: finalReviewServerRetries,
+              internalCode: error.internalCode || "OPENAI_FINAL_REVIEW_HTTP_FAILURE",
+            });
+            await waitWithAbort(AI_CHAT_FINAL_REVIEW_RETRY_MS, controller.signal);
+            continue;
+          }
+          if (preReviewData) {
+            return buildReviewPendingFallback(preReviewData, cleanMessages, resultOptions());
+          }
+        }
         throw error;
       }
 
@@ -808,6 +858,25 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
             cause: error.internalCode || "OPENAI_STREAM_FAILURE",
           });
           continue;
+        }
+        if (
+          reviewRequested
+          && codingActivity?.change
+          && error?.name === "AiChatUpstreamError"
+          && error?.retryableServerFailure
+        ) {
+          if (finalReviewServerRetries < AI_CHAT_FINAL_REVIEW_SERVER_RETRIES) {
+            finalReviewServerRetries += 1;
+            console.warn("AI_CHAT_FINAL_REVIEW_RETRY", {
+              attempt: finalReviewServerRetries,
+              internalCode: error.internalCode || "OPENAI_FINAL_REVIEW_STREAM_FAILURE",
+            });
+            await waitWithAbort(AI_CHAT_FINAL_REVIEW_RETRY_MS, controller.signal);
+            continue;
+          }
+          if (preReviewData) {
+            return buildReviewPendingFallback(preReviewData, cleanMessages, resultOptions());
+          }
         }
         throw error;
       }
@@ -877,15 +946,13 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         throwIfAiChatAborted(controller.signal);
         if (codingActivity?.needsReview) {
           const currentSha = String(codingActivity.currentCommitSha || "");
-          const reviewedCurrentCommit = Boolean(
-            codingActivity.lastReview
+          let reviewedCurrentCommit = Boolean(
+            codingActivity.reviewCompleted
+            && codingActivity.lastReview
             && currentSha
             && String(codingActivity.lastReview.commitSha || "") === currentSha,
           );
-          if (!reviewRequested || !reviewedCurrentCommit || reviewedCommitSha !== currentSha) {
-            responseInput.push(...prepareOpenAiToolReplayItems(output));
-            reviewRequested = true;
-            reviewedCommitSha = reviewedCurrentCommit ? currentSha : "";
+          if (!reviewedCurrentCommit) {
             if (typeof onStatus === "function") {
               onStatus({
                 state: "finalizing",
@@ -895,10 +962,36 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
                 context: codingContextSnapshot(codingActivity),
               });
             }
-            continue;
+            const review = await runDeterministicFinalReview();
+            reviewedCurrentCommit = Boolean(
+              codingActivity.reviewCompleted
+              && codingActivity.lastReview
+              && currentSha
+              && String(codingActivity.lastReview.commitSha || "") === currentSha,
+            );
+            if (!reviewedCurrentCommit) {
+              preReviewData = data;
+              responseInput.push(...prepareOpenAiToolReplayItems(output));
+              const feedback = {
+                commitSha: currentSha,
+                behindBy: Math.max(0, Number(review?.behindBy || 0)),
+                validation: review?.validation || null,
+                planGate: review?.planGate || null,
+                error: review?.error ? String(review.error).slice(0, 500) : "",
+              };
+              responseInput.push({
+                role: "user",
+                content: "Application final review is not complete yet. Resolve only this review feedback before the final answer: " + JSON.stringify(feedback),
+              });
+              reviewRequested = true;
+              reviewedCommitSha = currentSha;
+              finalReviewServerRetries = 0;
+              continue;
+            }
           }
           codingActivity.needsReview = false;
           codingActivity.reviewCompleted = true;
+          reviewedCommitSha = currentSha;
         }
         if (codingActivity?.used && typeof onStatus === "function") {
           onStatus({
@@ -1120,7 +1213,42 @@ async function readChatResponseStream(response, onStatus, context = {}) {
 
   if (buffer.trim()) handleBlock(buffer);
   if (!completedResponse) throw new Error("AI did not return a response. Please try again.");
+  const completedText = extractResponseText(completedResponse);
+  if (looksLikeOpenAiServerErrorText(completedText)) {
+    const requestId = extractOpenAiRequestId(completedText);
+    throw createAiChatUpstreamError(0, JSON.stringify({
+      error: {
+        code: "server_error",
+        type: "server_error",
+        message: completedText,
+        request_id: requestId,
+      },
+    }), {
+      phase: "response_text_server_error",
+      requestId,
+      model: context.model || "",
+      multiAgent: Boolean(context.multiAgent),
+    });
+  }
   return completedResponse;
+}
+
+function buildReviewPendingFallback(data, cleanMessages, options = {}) {
+  if (options.codingActivity) {
+    options.codingActivity.reviewCompleted = false;
+    options.codingActivity.needsReview = true;
+  }
+  console.warn("AI_CHAT_FINAL_REVIEW_DEFERRED", {
+    repository: String(options.codingActivity?.repository || ""),
+    branch: String(options.codingActivity?.currentBranch || ""),
+    commitSha: String(options.codingActivity?.currentCommitSha || ""),
+  });
+  const result = buildChatResult(data, cleanMessages, options);
+  if (result.type === "text") {
+    result.message = String(result.message || "").trim()
+      + "\n\nFinal review is temporarily pending, but the code change is saved on the Vexa branch.";
+  }
+  return result;
 }
 
 function buildChatResult(data, cleanMessages, options = {}) {
@@ -1198,6 +1326,18 @@ function buildChatResult(data, cleanMessages, options = {}) {
 
   const answer = extractResponseText(data);
   if (!answer) throw new Error("AI did not return a response. Please try again.");
+  if (looksLikeOpenAiServerErrorText(answer)) {
+    const requestId = extractOpenAiRequestId(answer);
+    logAiUpstreamError("response_text_guard", 0, JSON.stringify({
+      error: {
+        code: "server_error",
+        type: "server_error",
+        message: answer,
+        request_id: requestId,
+      },
+    }), { requestId, model: options.model || "" });
+    throw new Error(AI_CHAT_PUBLIC_UNAVAILABLE_ERROR);
+  }
   return {
     type: "text",
     message: answer,
@@ -1376,6 +1516,17 @@ function redactAiInternalText(value) {
     .slice(0, 1200);
 }
 
+function extractOpenAiRequestId(value) {
+  const match = String(value || "").match(/\breq_[A-Za-z0-9_-]+\b/);
+  return match ? match[0] : "";
+}
+
+function looksLikeOpenAiServerErrorText(value) {
+  const text = String(value || "").trim();
+  if (!/the server had an error processing your request/i.test(text)) return false;
+  return /help\.openai\.com/i.test(text) || /\breq_[A-Za-z0-9_-]+\b/.test(text);
+}
+
 function logAiUpstreamError(phase, status, errorBody, context = {}) {
   const details = parseOpenAiError(errorBody);
   const phaseCode = String(phase || "unknown").replace(/[^a-z0-9]+/gi, "_").toUpperCase();
@@ -1412,6 +1563,7 @@ function publicAiUpstreamMessage(status, details) {
     || raw.includes("server_error")
     || raw.includes("internal_error")
     || raw.includes("service_unavailable")
+    || raw.includes("server had an error processing your request")
   ) {
     return AI_CHAT_PUBLIC_UNAVAILABLE_ERROR;
   }
@@ -1420,11 +1572,20 @@ function publicAiUpstreamMessage(status, details) {
 
 function createAiChatUpstreamError(status, errorBody, context = {}) {
   const details = logAiUpstreamError(context.phase || "responses", status, errorBody, context);
+  const raw = `${details.code} ${details.type} ${details.message}`.toLowerCase();
   const error = new Error(publicAiUpstreamMessage(status, details));
   error.name = "AiChatUpstreamError";
   error.internalCode = details.internalCode;
   error.upstreamStatus = Math.max(0, Number(status || 0));
   error.retryWithoutMultiAgent = status === 0 || status === 400 || status === 408 || status >= 500;
+  error.retryableServerFailure = Boolean(
+    status === 408
+    || status >= 500
+    || raw.includes("server_error")
+    || raw.includes("internal_error")
+    || raw.includes("service_unavailable")
+    || raw.includes("server had an error processing your request")
+  );
   return error;
 }
 
