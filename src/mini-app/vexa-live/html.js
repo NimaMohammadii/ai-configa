@@ -10,10 +10,10 @@ export const VEXA_LIVE_HTML = `<!doctype html>
   <style id="vexaLiveAppTheme">
     :root{
       --glass:rgba(13,13,13,.54);
-      --glass-strong:rgba(13,13,13,.66);
+      --glass-strong:rgba(13,13,13,.64);
       --glass-soft:rgba(255,255,255,.055);
-      --line:rgba(255,255,255,.105);
-      --line-strong:rgba(255,255,255,.14);
+      --line:rgba(255,255,255,.13);
+      --line-strong:rgba(255,255,255,.16);
       --muted:rgba(255,255,255,.58);
       --dim:rgba(255,255,255,.3);
       --ease:cubic-bezier(.16,.86,.22,1);
@@ -31,24 +31,24 @@ export const VEXA_LIVE_HTML = `<!doctype html>
     .live-app::before,.live-app::after{display:none!important}
 
     .live-header{height:38px;display:grid;grid-template-columns:38px 1fr auto;align-items:center;gap:10px;animation:softIn .38s var(--ease) both}
-    .live-back{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;text-decoration:none;background:var(--glass);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.045),0 8px 24px rgba(0,0,0,.28);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);transition:transform .18s var(--ease),background .2s ease}
-    .live-back:active{transform:scale(.9);background:var(--glass-strong)}
+    .live-back{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;text-decoration:none;background:var(--glass-soft);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.34);transition:transform .18s var(--ease),background .2s ease}
+    .live-back:active{transform:scale(.9);background:rgba(255,255,255,.08)}
     .live-back svg{width:18px;height:18px}
     .live-brand{display:flex;align-items:center;justify-content:center;min-width:0}
     .live-brand span{display:none}
     .live-brand strong{font-size:16px;font-weight:690;letter-spacing:-.035em}
-    .live-status-pill{height:30px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:999px;color:var(--muted);background:var(--glass);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.075);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);font-size:9px;font-weight:650}
+    .live-status-pill{height:30px;padding:0 10px;display:flex;align-items:center;gap:6px;border-radius:999px;color:var(--muted);background:var(--glass-soft);border:1px solid var(--line);font-size:9px;font-weight:650}
     .live-status-pill i{width:5px;height:5px;border-radius:50%;background:#fff;animation:readyPulse 2.4s ease-in-out infinite}
 
-    .live-hero{display:flex;flex-direction:column;align-items:flex-start;padding:34px 2px 18px;text-align:left}
+    .live-hero{display:flex;flex-direction:column;align-items:flex-start;padding:30px 2px 16px;text-align:left}
     .editor-demo,.live-kicker{display:none!important}
-    .live-hero h1{max-width:350px;margin:0;font-size:27px;line-height:1.04;font-weight:720;letter-spacing:-.055em;animation:softIn .42s .04s var(--ease) both}
-    .live-copy{max-width:355px;margin:8px 0 0;color:var(--muted);font-size:12px;line-height:1.48;font-weight:450;letter-spacing:-.01em;animation:softIn .42s .08s var(--ease) both}
+    .live-hero h1{max-width:350px;margin:0;font-size:25px;line-height:1.05;font-weight:720;letter-spacing:-.05em;animation:softIn .42s .04s var(--ease) both}
+    .live-copy{max-width:355px;margin:7px 0 0;color:var(--muted);font-size:12px;line-height:1.48;font-weight:450;letter-spacing:-.01em;animation:softIn .42s .08s var(--ease) both}
 
-    .video-picker-state{padding:8px;border-radius:22px;background:var(--glass);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 22px rgba(255,255,255,.055),0 16px 36px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);animation:softIn .46s .1s var(--ease) both}
+    .video-picker-state{padding:7px;border-radius:22px;background:var(--glass);border:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 22px rgba(255,255,255,.055),0 16px 36px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);animation:softIn .46s .1s var(--ease) both}
     .setup-label{display:none!important}
 
-    .caption-mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 0 7px;padding:3px;border-radius:15px;background:rgba(0,0,0,.22);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),inset 0 0 0 1px rgba(255,255,255,.05)}
+    .caption-mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 0 7px;padding:3px;border-radius:15px;background:rgba(0,0,0,.22);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),inset 0 -1px 0 rgba(255,255,255,.04)}
     .caption-mode-switch button{min-height:36px;border-radius:11px;display:grid;place-items:center;padding:0 10px;color:rgba(255,255,255,.42);background:transparent;transition:transform .18s var(--ease),background .2s ease,color .2s ease}
     .caption-mode-switch button.active{color:#fff;background:rgba(255,255,255,.075);box-shadow:inset 0 1px 0 rgba(255,255,255,.075)}
     .caption-mode-switch button:active{transform:scale(.97)}
@@ -58,8 +58,8 @@ export const VEXA_LIVE_HTML = `<!doctype html>
     .live-source-switch,.youtube-input-state,.youtube-ready-state{display:none!important}
 
     .language-setup{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr);gap:5px;margin:0 0 7px;padding:0;background:transparent}
-    .language-field{min-width:0;min-height:59px;padding:9px 10px;display:flex;flex-direction:column;justify-content:center;gap:5px;border-radius:14px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.085);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),inset 0 0 14px rgba(255,255,255,.025);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:background .2s ease,border-color .2s ease,transform .18s var(--ease)}
-    .language-field:focus-within{background:rgba(255,255,255,.07);border-color:var(--line-strong);transform:translateY(-1px)}
+    .language-field{min-width:0;min-height:58px;padding:9px 10px;display:flex;flex-direction:column;justify-content:center;gap:5px;border-radius:15px;background:rgba(0,0,0,.22);border:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),inset 0 -1px 0 rgba(255,255,255,.04);transition:background .2s ease,transform .18s var(--ease)}
+    .language-field:focus-within{background:rgba(255,255,255,.055);transform:translateY(-1px)}
     .language-field>span:first-child{color:var(--dim);font-size:7px;font-weight:650;letter-spacing:.06em}
     .language-route-arrow{display:grid;place-items:center;color:rgba(255,255,255,.22)}
     .language-route-arrow svg{width:13px;height:13px}
@@ -68,7 +68,7 @@ export const VEXA_LIVE_HTML = `<!doctype html>
     .language-select-wrap select option{color:#000;background:#fff}
     .language-select-wrap svg{position:absolute;right:0;top:50%;width:13px;height:13px;color:rgba(255,255,255,.38);transform:translateY(-50%);pointer-events:none}
 
-    .video-picker{width:100%;min-height:44px;padding:0 10px;display:grid;grid-template-columns:30px 1fr 24px;align-items:center;gap:7px;border-radius:13px;color:#050505;background:#fff;border:1px solid rgba(255,255,255,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.42),0 8px 24px rgba(0,0,0,.28);text-align:left;overflow:hidden;transition:transform .18s var(--ease),opacity .2s ease}
+    .video-picker{width:100%;height:42px;min-height:42px;padding:0 10px;display:grid;grid-template-columns:30px 1fr 24px;align-items:center;gap:7px;border-radius:13px;color:#050505;background:#fff;border:1px solid rgba(255,255,255,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.34);text-align:left;overflow:hidden;transition:transform .18s var(--ease),opacity .2s ease}
     .video-picker::after{display:none!important}
     .video-picker:not(:disabled):active{transform:scale(.985)}
     .video-picker:disabled{opacity:.34;box-shadow:none}
@@ -88,12 +88,12 @@ export const VEXA_LIVE_HTML = `<!doctype html>
     .caption-preview{position:absolute;left:50%;top:72%;transform:translate(-50%,-50%);max-width:88%;pointer-events:none}
 
     .live-footer{display:none!important}
-    .live-toast{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));z-index:220;max-width:calc(100vw - 32px);padding:9px 12px;border-radius:13px;color:#fff;background:rgba(13,13,13,.82);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 14px 36px rgba(0,0,0,.4);backdrop-filter:blur(16px) saturate(1.12);-webkit-backdrop-filter:blur(16px) saturate(1.12);font-size:10px;font-weight:600;opacity:0;transform:translate(-50%,8px);pointer-events:none;transition:opacity .18s ease,transform .22s var(--ease)}
+    .live-toast{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));z-index:220;max-width:calc(100vw - 32px);padding:9px 12px;border-radius:13px;color:#fff;background:rgba(13,13,13,.74);border:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),0 14px 36px rgba(0,0,0,.4);backdrop-filter:blur(14px) saturate(1.12);-webkit-backdrop-filter:blur(14px) saturate(1.12);font-size:10px;font-weight:600;opacity:0;transform:translate(-50%,8px);pointer-events:none;transition:opacity .18s ease,transform .22s var(--ease)}
     .live-toast.show{opacity:1;transform:translate(-50%,0)}
 
     @keyframes softIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
     @keyframes readyPulse{0%,100%{opacity:.45}50%{opacity:1}}
-    @media(max-height:700px){.live-hero{padding-top:24px;padding-bottom:14px}.live-hero h1{font-size:24px}.live-copy{font-size:11px}}
+    @media(max-height:700px){.live-hero{padding-top:22px;padding-bottom:13px}.live-hero h1{font-size:23px}.live-copy{font-size:11px}}
     @media(max-width:380px){.live-app{padding-left:13px;padding-right:13px}.language-field{padding-left:8px;padding-right:8px}.language-select-wrap select{font-size:10.5px}}
     @media(prefers-reduced-motion:reduce){.live-header,.live-hero h1,.live-copy,.video-picker-state,.live-status-pill i{animation:none!important}}
   </style>
