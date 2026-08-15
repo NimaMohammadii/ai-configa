@@ -49,11 +49,10 @@ export function getStarPackageFromPayload(payload) {
   if (String(payload || "").startsWith("stars_custom:")) {
     const [, credits, stars] = String(payload).split(":");
     const pack = createCustomStarPackage(credits);
-    if (Number(stars) === pack.stars) return pack;
-    if (Number(stars) > 0 && Number(stars) < Number(pack.stars)) {
-      const percent = Math.round((1 - Number(stars) / Number(pack.stars)) * 100);
-      const discounted = createCustomStarPackage(credits, { percent });
-      return Number(stars) === discounted.stars ? discounted : null;
+    const paidStars = Number(stars);
+    if (paidStars === pack.stars) return pack;
+    if (Number.isSafeInteger(paidStars) && paidStars > 0 && paidStars < Number(pack.stars)) {
+      return withPayloadStars(pack, paidStars);
     }
     return null;
   }
@@ -65,12 +64,26 @@ export function getStarPackageFromPayload(payload) {
   if (String(payload || "").startsWith("stars_discount:")) {
     const [, id, stars] = String(payload).split(":");
     const pack = getStarPackage(id);
-    if (!pack || Number(stars) >= Number(pack.stars)) return null;
-    const percent = Math.round((1 - Number(stars) / Number(pack.stars)) * 100);
-    return applyStarPackageDiscount(pack, { percent });
+    const paidStars = Number(stars);
+    if (!pack || !Number.isSafeInteger(paidStars) || paidStars <= 0 || paidStars >= Number(pack.stars)) return null;
+    return withPayloadStars(pack, paidStars);
   }
 
   return null;
+}
+
+function withPayloadStars(pack, stars) {
+  const originalStars = Number(pack.originalStars || pack.stars || 0);
+  const discountPercent = originalStars > 0
+    ? Math.max(1, Math.min(99, Math.round((1 - Number(stars) / originalStars) * 100)))
+    : 0;
+  return {
+    ...pack,
+    stars: Number(stars),
+    originalStars,
+    discountPercent,
+    label: `${formatNumber(pack.totalCredits)} • ${formatUsd(pack.usd)}$ • ${Number(stars)} ⭐️`,
+  };
 }
 
 export function applyStarPackageDiscount(pack, discount = null) {
