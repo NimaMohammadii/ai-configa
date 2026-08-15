@@ -71,7 +71,7 @@ export function getAiMcpTools(env) {
       allowed_tools: allowedTools,
       require_approval: "never",
       defer_loading: true,
-      allowed_callers: ["direct", "programmatic"],
+      allowed_callers: ["direct"],
     };
     const authorization = resolveAuthorization(env, config);
     if (authorization) tool.authorization = authorization;
