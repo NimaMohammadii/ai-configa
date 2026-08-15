@@ -104,6 +104,7 @@ export const MINI_APP_HTML = `<!doctype html>
     .credits-page .credits-pack:active,.credits-page .toman-card:active,.credits-page .toman-receipt-picker:active,.credits-page .toman-back:active,.credits-page .credits-amount-field:focus-within{background:rgba(255,255,255,.105);box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),0 5px 14px rgba(0,0,0,.2)}
     .credits-page.toman-payment-active .credits-page-head{background:#000 url("/mini-app/assets/toman-checkout-hero.png?v=20260812-3") center/cover no-repeat}
     .credits-page.toman-payment-active .credits-page-head:before{z-index:0;background:linear-gradient(90deg,rgba(0,0,0,.98) 0%,rgba(0,0,0,.72) 36%,rgba(0,0,0,.12) 72%,rgba(0,0,0,.28) 100%)}
+    .voices-page-head{box-shadow:0 -140px 0 140px #000}
   </style>
 </head>
 <body>
