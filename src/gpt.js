@@ -18,12 +18,14 @@ import { EMOTION_TAGS } from "./mini-app/emotion-tags.js";
 
 const GPT_TIMEOUT_MS = 45000;
 const GPT_CHAT_TIMEOUT_MS = 90000;
+const GPT_CODING_TIMEOUT_MS = 45 * 60 * 1000;
 const GPT_IMAGE_TIMEOUT_MS = 150000;
 const GPT_MODEL = "gpt-5.6-terra";
 const AI_CHAT_CONTEXT_WINDOW = 1050000;
 const AI_CHAT_COMPACTION_THRESHOLD = 700000;
 const MAX_ENHANCE_CHARS = 5000;
 const MAX_AGENT_TOOL_ROUNDS = 14;
+const MAX_CODING_AGENT_TOOL_ROUNDS = 120;
 
 const AI_CHAT_AUDIO_TAGS = EMOTION_TAGS.map((item) => {
   const category = item[0];
@@ -194,7 +196,7 @@ export async function editImages(env, prompt, images, options = {}) {
   form.append("quality", GPT_IMAGE_QUALITY);
   form.append("moderation", "low");
   form.append("output_format", "jpeg");
-  form.append("output_compression", "90");
+  form.append("output_compression", 90);
 
   const response = await fetchWithTimeout(
     "https://api.openai.com/v1/images/edits",
@@ -473,7 +475,11 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       timedOut = true;
       if (!controller.signal.aborted) controller.abort();
     },
-    githubContext || reasoningEffort === "high" || reasoningEffort === "max" ? 300000 : GPT_CHAT_TIMEOUT_MS,
+    githubContext
+      ? GPT_CODING_TIMEOUT_MS
+      : reasoningEffort === "high" || reasoningEffort === "max"
+        ? 300000
+        : GPT_CHAT_TIMEOUT_MS,
   );
 
   try {
@@ -546,6 +552,9 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     let reviewRequested = false;
     let reviewedCommitSha = "";
     const multiAgentEnabled = Boolean(githubContext);
+    const maxAgentToolRounds = githubContext
+      ? MAX_CODING_AGENT_TOOL_ROUNDS
+      : MAX_AGENT_TOOL_ROUNDS;
     const resultOptions = () => ({
       webSearchUsed,
       webSearchCalls,
@@ -587,7 +596,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       }
     };
 
-    for (let toolRound = 0; toolRound < MAX_AGENT_TOOL_ROUNDS; toolRound += 1) {
+    for (let toolRound = 0; toolRound < maxAgentToolRounds; toolRound += 1) {
       throwIfAiChatAborted(controller.signal);
       if (toolRound > 0 && codingActivity?.used && typeof onStatus === "function") {
         onStatus({
