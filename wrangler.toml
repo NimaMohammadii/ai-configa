@@ -31,5 +31,18 @@ name = "vexa-ai-coding-tasks"
 binding = "AI_CODING_WORKFLOW"
 class_name = "AiCodingWorkflow"
 
+# Historical Durable Object migration. Keep this entry so Cloudflare can
+# apply the follow-up deletion migration to the previously-created namespace.
+[[migrations]]
+tag = "vexa-media-container-v1"
+new_sqlite_classes = ["VexaMediaContainer"]
+
+# Vexa Media Container is temporarily disabled until Containers are enabled
+# for this account. The binding, container image config, and class export stay
+# removed; this migration retires the old Durable Object namespace cleanly.
+[[migrations]]
+tag = "vexa-media-container-disabled-v2"
+deleted_classes = ["VexaMediaContainer"]
+
 [triggers]
 crons = ["* * * * *"]
