@@ -792,7 +792,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       for (const call of githubCalls) {
         throwIfAiChatAborted(controller.signal);
         if (!isRootAgentItem(call) && isGitHubWriteCall(call)) {
-          responseInput.push(functionCallOutput(call, JSON.stringify({ error: "Only the root coordinator may perform GitHub write actions." }));
+          responseInput.push(functionCallOutput(call, JSON.stringify({ error: "Only the root coordinator may perform GitHub write actions." })));
           continue;
         }
         const beforeSha = String(codingActivity?.currentCommitSha || "");
