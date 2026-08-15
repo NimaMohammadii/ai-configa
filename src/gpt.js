@@ -23,8 +23,10 @@ const GPT_IMAGE_TIMEOUT_MS = 150000;
 const GPT_MODEL = "gpt-5.6-terra";
 const AI_CHAT_CONTEXT_WINDOW = 1050000;
 const AI_CHAT_COMPACTION_THRESHOLD = 200000;
-const AI_CHAT_RATE_LIMIT_MAX_RETRIES = 1;
-const AI_CHAT_RATE_LIMIT_MAX_WAIT_MS = 60 * 1000;
+const AI_CHAT_RATE_LIMIT_MAX_RETRIES = 3;
+const AI_CHAT_RATE_LIMIT_MAX_WAIT_MS = 90 * 1000;
+const AI_CHAT_MAX_OUTPUT_TOKENS = 8000;
+const AI_CODING_MAX_OUTPUT_TOKENS = 16000;
 const MAX_ENHANCE_CHARS = 5000;
 const ADVANCED_CODING_TOOLS_TOOL = "enable_advanced_coding_tools";
 const MEDIUM_ADVANCED_MIN_BASE_ACTIONS = 2;
@@ -551,6 +553,59 @@ function pruneAiChatInputAfterCompaction(items) {
   return compactionIndex;
 }
 
+function codingChangedFilePaths(activity) {
+  const seen = new Set();
+  const paths = [];
+  const add = (value) => {
+    const path = String(value || "").trim();
+    if (!path || seen.has(path)) return;
+    seen.add(path);
+    paths.push(path);
+  };
+  for (const entry of Array.isArray(activity?.change?.changedFiles) ? activity.change.changedFiles : []) {
+    add(typeof entry === "string" ? entry : entry?.path || entry?.filename || entry?.name);
+  }
+  for (const entry of Array.isArray(activity?.change?.diff?.files) ? activity.change.diff.files : []) {
+    add(typeof entry === "string" ? entry : entry?.path || entry?.filename || entry?.name);
+  }
+  return paths.slice(0, 24);
+}
+
+function buildSavedCodingContinuationInput(cleanMessages, activity, options = {}) {
+  const branch = String(activity?.currentBranch || activity?.change?.branch || "").trim();
+  const commitSha = String(activity?.currentCommitSha || activity?.change?.commitSha || "").trim();
+  if (!branch || !/^[a-f0-9]{40}$/i.test(commitSha)) return null;
+
+  const recentUserText = Array.from(
+    (Array.isArray(cleanMessages) ? cleanMessages : [])
+      .filter((message) => message?.role === "user" && String(message?.content || "").trim())
+      .slice(-3)
+      .map((message) => String(message.content).trim())
+      .join("\n\n"),
+  ).slice(-6000).join("");
+  const changedFiles = codingChangedFilePaths(activity);
+  const summary = String(activity?.change?.summary || "").replace(/\s+/g, " ").trim().slice(0, 600);
+  const plan = activity?.plan && typeof activity.plan === "object"
+    ? JSON.stringify(activity.plan).slice(0, 3000)
+    : "";
+  const reviewRequired = options.reviewRequired === true;
+  const content = [
+    "CONTINUE THE SAME SAVED CODING TASK FROM THIS FRESH CONTEXT.",
+    "The repository state below is already saved. Do not repeat completed writes just because earlier tool transcript was intentionally dropped to keep this request small.",
+    `Repository: ${String(activity?.repository || "connected repository")}`,
+    `Task branch: ${branch}`,
+    `Current commit: ${commitSha}`,
+    summary ? `Saved change summary: ${summary}` : "",
+    changedFiles.length ? `Changed files: ${changedFiles.join(", ")}` : "",
+    plan ? `Saved structured plan: ${plan}` : "",
+    recentUserText ? `Recent user request context:\n${recentUserText}` : "",
+    reviewRequired
+      ? "Perform the required final review against the exact current task branch and commit. Use current repository evidence, re-read only the files needed, and never claim a validation succeeded without tool evidence. If review finds a real defect, fix only that defect and review the new commit again."
+      : "Continue only unfinished in-scope work. Re-read exact current-branch files if more evidence or another edit is needed. If the requested coding work is complete, prepare the final answer; do not reconstruct or replay already completed repository reads and writes.",
+  ].filter(Boolean).join("\n");
+  return [{ role: "user", content }];
+}
+
 function parseOpenAiDurationMs(value) {
   const raw = String(value || "").trim().toLowerCase();
   if (!raw) return 0;
@@ -579,18 +634,33 @@ function readOpenAiRateLimitHeaders(headers) {
     remainingTokens: Math.max(0, Number(headers?.get?.("x-ratelimit-remaining-tokens") || 0)),
     resetTokens: String(headers?.get?.("x-ratelimit-reset-tokens") || "").trim(),
     resetTokensMs: parseOpenAiDurationMs(headers?.get?.("x-ratelimit-reset-tokens")),
+    limitRequests: Math.max(0, Number(headers?.get?.("x-ratelimit-limit-requests") || 0)),
+    remainingRequests: Math.max(0, Number(headers?.get?.("x-ratelimit-remaining-requests") || 0)),
+    resetRequests: String(headers?.get?.("x-ratelimit-reset-requests") || "").trim(),
+    resetRequestsMs: parseOpenAiDurationMs(headers?.get?.("x-ratelimit-reset-requests")),
     retryAfter,
     retryAfterMs,
   };
 }
 
+function isRetryableAiRateLimit(status, errorBody) {
+  if (Number(status) !== 429) return false;
+  const details = parseOpenAiError(errorBody);
+  const raw = `${details.code} ${details.type} ${details.message}`.toLowerCase();
+  return !raw.includes("insufficient_quota")
+    && !raw.includes("billing_hard_limit")
+    && !raw.includes("billing hard limit")
+    && !raw.includes("payment_required")
+    && !raw.includes("quota");
+}
+
 function resolveOpenAiRateLimitWaitMs(headers, attempt) {
   const rateLimit = readOpenAiRateLimitHeaders(headers);
-  const serverDelay = Math.max(rateLimit.retryAfterMs, rateLimit.resetTokensMs);
-  const fallbackDelay = 5000 * (2 ** Math.max(0, Number(attempt || 0)));
-  const waitMs = serverDelay > 0 ? serverDelay : fallbackDelay;
+  const serverDelay = Math.max(rateLimit.retryAfterMs, rateLimit.resetTokensMs, rateLimit.resetRequestsMs);
+  const fallbackDelay = 5000 * (2 ** Math.max(0, Number(attempt || 0))) + Math.floor(Math.random() * 750);
+  const waitMs = serverDelay > 0 ? serverDelay + 250 + Math.floor(Math.random() * 500) : fallbackDelay;
   if (waitMs <= 0 || waitMs > AI_CHAT_RATE_LIMIT_MAX_WAIT_MS) return 0;
-  return Math.max(1000, Math.ceil(waitMs + 250));
+  return Math.max(1000, Math.ceil(waitMs));
 }
 
 function waitWithAbort(ms, signal) {
@@ -629,7 +699,9 @@ async function fetchAiChatResponseWithRateLimitRetry(url, init, context = {}) {
       requestId: response.headers.get("x-request-id") || "",
       rateLimit,
     });
-    if (response.status !== 429 || attempt >= AI_CHAT_RATE_LIMIT_MAX_RETRIES) throw upstreamError;
+    if (!isRetryableAiRateLimit(response.status, errorBody) || attempt >= AI_CHAT_RATE_LIMIT_MAX_RETRIES) {
+      throw upstreamError;
+    }
     const waitMs = resolveOpenAiRateLimitWaitMs(response.headers, attempt);
     if (!waitMs) throw upstreamError;
     console.warn("AI_CHAT_RATE_LIMIT_BACKOFF", {
@@ -754,6 +826,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
   const controller = new AbortController();
   let requestAborted = false;
   let timedOut = false;
+  let recoverSavedCodingOnError = () => null;
   const abortFromRequest = () => {
     requestAborted = true;
     if (!controller.signal.aborted) controller.abort();
@@ -834,7 +907,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       memoryEntries,
       codingActivity,
     });
-    const recoverSavedCodingResult = (error, phase) => {
+    recoverSavedCodingOnError = (error, phase) => {
       const branch = String(codingActivity?.currentBranch || codingActivity?.change?.branch || "").trim();
       const commitSha = String(codingActivity?.currentCommitSha || codingActivity?.change?.commitSha || "").trim();
       if (
@@ -853,21 +926,40 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         commitSha,
       });
       const summary = String(codingActivity.change?.summary || "").replace(/\s+/g, " ").trim();
+      const changedFiles = codingChangedFilePaths(codingActivity);
       const reviewPending = Boolean(codingActivity.needsReview && !codingActivity.reviewCompleted);
       const message = [
         summary || "The code change was saved successfully.",
+        changedFiles.length ? `Changed files: ${changedFiles.join(", ")}` : "",
         `Branch: ${branch}`,
         `Commit: ${commitSha.slice(0, 12)}`,
         reviewPending
           ? "The final AI response or review was interrupted, but the saved code change was not lost. Final validation may still be pending."
           : "The final AI response was interrupted, but the saved code change was not lost.",
-      ].join("\n");
+      ].filter(Boolean).join("\n");
       return buildChatResult({
         output: [{
           type: "message",
           content: [{ type: "output_text", text: message }],
         }],
       }, cleanMessages, resultOptions());
+    };
+
+    const resetCodingResponseInput = (reason, reviewRequired = false) => {
+      const freshInput = buildSavedCodingContinuationInput(cleanMessages, codingActivity, { reviewRequired });
+      if (!freshInput) return false;
+      const previousItems = responseInput.length;
+      responseInput.splice(0, responseInput.length, ...freshInput);
+      console.info("AI_CHAT_POST_WRITE_CONTEXT_RESET", {
+        reason: String(reason || "saved_write").slice(0, 80),
+        repository: String(codingActivity?.repository || ""),
+        branch: String(codingActivity?.currentBranch || ""),
+        commitSha: String(codingActivity?.currentCommitSha || "").slice(0, 40),
+        previousItems,
+        nextItems: responseInput.length,
+        changedFiles: codingChangedFilePaths(codingActivity),
+      });
+      return true;
     };
 
     const refreshWorkspaceIfNeeded = async () => {
@@ -998,6 +1090,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
 
     for (let toolRound = 0; toolRound < maxAgentToolRounds; toolRound += 1) {
       throwIfAiChatAborted(controller.signal);
+      let wroteCommitThisRound = false;
       const prunedItems = pruneAiChatInputAfterCompaction(responseInput);
       if (prunedItems > 0) {
         console.info("AI_CHAT_CONTEXT_COMPACTED", {
@@ -1069,6 +1162,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
             type: "compaction",
             compact_threshold: AI_CHAT_COMPACTION_THRESHOLD,
           }],
+          max_output_tokens: githubContext ? AI_CODING_MAX_OUTPUT_TOKENS : AI_CHAT_MAX_OUTPUT_TOKENS,
           store: false,
           stream: true,
         }),
@@ -1090,7 +1184,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           });
           continue;
         }
-        const recovered = recoverSavedCodingResult(error, "responses_http");
+        const recovered = recoverSavedCodingOnError(error, "responses_http");
         if (recovered) return recovered;
         throw error;
       }
@@ -1107,7 +1201,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           });
           continue;
         }
-        const recovered = recoverSavedCodingResult(error, "responses_stream");
+        const recovered = recoverSavedCodingOnError(error, "responses_stream");
         if (recovered) return recovered;
         throw error;
       }
@@ -1186,7 +1280,9 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
             && String(codingActivity.lastReview.commitSha || "") === currentSha,
           );
           if (!reviewRequested || !reviewedCurrentCommit || reviewedCommitSha !== currentSha) {
-            responseInput.push(...prepareOpenAiToolReplayItems(output));
+            if (!resetCodingResponseInput("final_review", true)) {
+              responseInput.push(...prepareOpenAiToolReplayItems(output));
+            }
             reviewRequested = true;
             reviewedCommitSha = reviewedCurrentCommit ? currentSha : "";
             if (typeof onStatus === "function") {
@@ -1283,7 +1379,10 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         recordMediumBaseAction(call?.name);
         const afterSha = String(codingActivity?.currentCommitSha || "");
         if (afterSha && afterSha !== beforeSha) {
-          if (String(call?.name || "") === "github_commit_changes") successfulWriteInThisTurn = true;
+          if (["github_commit_changes", "github_sync_task_branch"].includes(String(call?.name || ""))) {
+            successfulWriteInThisTurn = true;
+            wroteCommitThisRound = true;
+          }
           await refreshWorkspaceIfNeeded();
         }
       }
@@ -1314,20 +1413,29 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           const afterSha = String(codingActivity?.currentCommitSha || "");
           if (afterSha && afterSha !== beforeSha) {
             successfulWriteInThisTurn = true;
+            wroteCommitThisRound = true;
             await refreshWorkspaceIfNeeded();
           }
         }
+      }
+      if (wroteCommitThisRound && !terminalCall) {
+        resetCodingResponseInput("saved_write", false);
       }
       if (terminalCall) {
         throwIfAiChatAborted(controller.signal);
         return buildChatResult(data, cleanMessages, resultOptions());
       }
     }
-    throw new Error("AI used too many tool steps for the selected reasoning level. Choose a higher level or continue with a smaller task.");
+    const stepLimitError = new Error("AI used too many tool steps for the selected reasoning level. Choose a higher level or continue with a smaller task.");
+    const recovered = recoverSavedCodingOnError(stepLimitError, "tool_step_limit");
+    if (recovered) return recovered;
+    throw stepLimitError;
   } catch (error) {
     if (requestAborted || requestSignal?.aborted) {
       throw makeAiChatAbortError();
     }
+    const recovered = recoverSavedCodingOnError(error, timedOut ? "request_timeout" : "agent_finalization");
+    if (recovered) return recovered;
     if (timedOut) {
       throw new Error("AI took too long. Please try again.");
     }
