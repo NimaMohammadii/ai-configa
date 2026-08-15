@@ -10,11 +10,12 @@ const AI_MEMORY_CONTEXT_MAX_CHARS = 2600;
 const AI_MEMORY_INVENTORY_MAX_ITEMS = 24;
 const AI_MEMORY_INVENTORY_MAX_CHARS = 6000;
 const AI_MEMORY_QUERY_MAX_CHARS = 6000;
+const AI_MEMORY_RELEVANCE_MIN_SCORE = 4;
 const SENSITIVE_MEMORY_PATTERN = /(?:password|passcode|api[ _-]?key|private[ _-]?key|access[ _-]?token|refresh[ _-]?token|client[ _-]?secret|webhook[ _-]?secret|seed phrase|recovery phrase|credit card|card number|\bcvv\b|\botp\b|رمز(?: عبور)?|کد یکبار مصرف|توکن|کلید خصوصی|شماره کارت)/i;
-const MEMORY_INVENTORY_PATTERN = /(?:what\s+(?:do|can)\s+you\s+(?:remember|know)\s+about\s+me|show\s+(?:me\s+)?(?:my\s+)?memor(?:y|ies)|list\s+(?:my\s+)?memor(?:y|ies)|چی\s+از\s+من\s+یادت|چه\s+چیز(?:هایی)?\s+از\s+من\s+یادت|مموری(?:‌|\s)*(?:هام|های\s+من).*(?:نشون|لیست|بگو)|حافظه(?:‌|\s)*(?:ت|هات).*(?:من|چی|چه))/i;
+const MEMORY_INVENTORY_PATTERN = /(?:what\s+(?:do|can)\s+you\s+(?:remember|know)(?:\s+about\s+me)?|show\s+(?:me\s+)?(?:my\s+)?memor(?:y|ies)|list\s+(?:my\s+)?memor(?:y|ies)|چی\s+از\s+من\s+یادت|چه\s+چیز(?:هایی)?\s+از\s+من\s+یادت|مموری(?:‌|\s)*(?:هام|های\s+من).*(?:نشون|لیست|بگو)|حافظه(?:‌|\s)*(?:ت|هات).*(?:من|چی|چه))/i;
 const MEMORY_STOP_WORDS = new Set([
   "the", "a", "an", "and", "or", "to", "of", "in", "on", "for", "with", "is", "are", "was", "were", "be", "been", "being", "this", "that", "it", "as", "at", "by", "from", "my", "your", "you", "me", "i", "we", "our",
-  "این", "اون", "آن", "و", "یا", "که", "به", "از", "در", "با", "برای", "رو", "را", "یه", "یک", "هست", "است", "بود", "شده", "میشه", "میخوام", "میخوام", "من", "تو", "شما", "ما",
+  "این", "اون", "آن", "و", "یا", "که", "به", "از", "در", "با", "برای", "رو", "را", "یه", "یک", "هست", "است", "بود", "شده", "میشه", "میخوام", "من", "تو", "شما", "ما",
 ]);
 
 export function getAiMemoryTools() {
@@ -100,7 +101,7 @@ export function selectRelevantAiMemories(memories = [], contextText = "") {
     index,
     score: scoreMemoryRelevance(memory, normalizedQuery, queryTokenSet),
   }))
-    .filter((entry) => entry.score > 0)
+    .filter((entry) => entry.score >= AI_MEMORY_RELEVANCE_MIN_SCORE)
     .sort((a, b) => b.score - a.score || compareMemoryRecency(a.memory, b.memory) || a.index - b.index)
     .map((entry) => entry.memory);
 
@@ -113,16 +114,17 @@ export function buildAiMemoryInstructions(memories = []) {
     AI_MEMORY_INVENTORY_MAX_ITEMS,
     AI_MEMORY_INVENTORY_MAX_CHARS,
   );
-  const context = safeMemories.length
-    ? safeMemories.map((item) => `- ${item.key}: ${item.value}`).join("\n")
-    : "- No relevant saved memories were selected for this request.";
+  if (!safeMemories.length) {
+    return [
+      "You have private long-term memory, but no relevant saved memory was selected for this request; other memories may exist.",
+      "Use update_user_memory only for durable user-specific facts or preferences the user clearly states or asks to remember or forget. Never store temporary request details, repository source, credentials, financial data, health data, exact locations, or other secrets.",
+    ].join(" ");
+  }
+  const context = safeMemories.map((item) => `- ${item.key}: ${item.value}`).join("\n");
   return [
-    "You have private long-term memory scoped only to this authenticated user.",
-    "Only memories relevant to the current request are included below; other saved memories may exist but were intentionally omitted from this prompt.",
-    "Use included memories only when they materially improve the answer, and do not mention the memory system unless the user asks.",
-    "Call update_user_memory when the user states a durable preference, identity detail, recurring goal, ongoing project constraint, or explicitly asks you to remember or forget something.",
-    "Do not save temporary requests, guesses, chat filler, repository source code, credentials, authentication data, financial data, health identifiers, exact locations, or other secrets.",
-    "Prefer updating an existing key over creating duplicates. If the user corrects a fact, replace it. If they ask to forget it, use forgetKeys.",
+    "You have private long-term memory. Only memories relevant to the current request are included below; other saved memories may exist.",
+    "Use these memories only when they materially improve the answer and do not mention the memory system unless the user asks.",
+    "Use update_user_memory only for durable user-specific facts or preferences the user clearly states or asks to remember or forget. Never store temporary request details, repository source, credentials, financial data, health data, exact locations, or other secrets.",
     "Relevant saved memories:\n" + context,
   ].join(" ");
 }
