@@ -14,9 +14,13 @@ import {
   injectVexaYoutubeClient,
   isVexaYoutubeRequest,
 } from "./mini-app/vexa-live/youtube-router.js";
+import {
+  handleVexaLiveProjectRequest,
+  isVexaLiveProjectRequest,
+} from "./mini-app/vexa-live/projects.js";
 import { VEXA_LIVE_EDITOR_JS } from "./mini-app/vexa-live/editor-client.js";
 
-const VEXA_EDITOR_VERSION = "20260815-1";
+const VEXA_EDITOR_VERSION = "20260815-2";
 
 export { AiCodingWorkflow };
 export { VexaMediaContainer } from "./mini-app/vexa-live/media-container.js";
@@ -64,6 +68,10 @@ export default {
 
     if (isAiBackgroundTasksClientRequest(request)) {
       return handleAiBackgroundTasksClientRequest();
+    }
+
+    if (isVexaLiveProjectRequest(request)) {
+      return handleVexaLiveProjectRequest(request, env);
     }
 
     if (isVexaYoutubeRequest(request)) {
