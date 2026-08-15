@@ -11,7 +11,7 @@ import {
 } from "./mini-app/ai-background-tasks-client.js";
 import { VEXA_LIVE_EDITOR_JS } from "./mini-app/vexa-live/editor-client.js";
 
-const VEXA_EDITOR_VERSION = "20260815-8";
+const VEXA_EDITOR_VERSION = "20260815-9";
 const AI_CHAT_HEARTBEAT_MS = 10_000;
 const AI_CHAT_PATH = "/mini-app/api/chat";
 
@@ -65,7 +65,7 @@ async function injectVexaEditorClient(response) {
     'html body.vexa-live-editing #videoReadyState.show>.video-stage>video{' +
       'display:block!important;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;' +
       'object-fit:contain!important;object-position:center center!important;background:#060606!important;' +
-      'pointer-events:none!important;-webkit-user-select:none!important;user-select:none!important' +
+      'pointer-events:auto!important;touch-action:manipulation!important;-webkit-user-select:none!important;user-select:none!important' +
     '}' +
     'html body.vexa-live-editing #videoReadyState.show>.video-stage.vexa-fill>video{object-fit:contain!important}' +
     'html body.vexa-live-editing .vexa-editor-top{' +
