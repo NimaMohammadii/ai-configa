@@ -1,3 +1,4 @@
+import { waitUntil } from "cloudflare:workers";
 import { requireDb } from "./state.js";
 
 export async function ensureAiChatHistoryTable(env) {
@@ -8,8 +9,7 @@ export async function ensureAiChatHistoryTable(env) {
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_ai_chat_history_user_created ON ai_chat_history (user_id, created_at DESC, id DESC)").run();
 }
 
-export async function saveAiChatExchange(env, userId, messages, result) {
-  await ensureAiChatHistoryTable(env);
+export function saveAiChatExchange(env, userId, messages, result) {
   const latest = [...(Array.isArray(messages) ? messages : [])].reverse().find((message) => message?.role !== "assistant");
   const userMessage = Array.from(String(latest?.content || "").trim()).slice(0, 4000).join("");
   const attachmentName = latest?.attachment?.name ? Array.from(String(latest.attachment.name)).slice(0, 255).join("") : null;
@@ -29,9 +29,31 @@ export async function saveAiChatExchange(env, userId, messages, result) {
     assistantMessage = "[Speech request · " + String(result?.voice || "Voice") + "] "
       + String(result?.text || "");
   }
+
+  waitUntil(
+    persistAiChatExchange(env, {
+      userId: String(userId),
+      userMessage,
+      assistantMessage,
+      attachmentName,
+      responseType,
+    }).catch((error) => {
+      console.error("save AI chat history failed", error?.message || error);
+    }),
+  );
+}
+
+async function persistAiChatExchange(env, entry) {
+  await ensureAiChatHistoryTable(env);
   await env.DB.prepare(
     "INSERT INTO ai_chat_history (user_id, user_message, assistant_message, attachment_name, response_type, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
-  ).bind(String(userId), userMessage, assistantMessage, attachmentName, responseType).run();
+  ).bind(
+    entry.userId,
+    entry.userMessage,
+    entry.assistantMessage,
+    entry.attachmentName,
+    entry.responseType,
+  ).run();
 }
 
 export async function getAiChatHistory(env, userId) {

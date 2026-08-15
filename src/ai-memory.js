@@ -1,3 +1,4 @@
+import { waitUntil } from "cloudflare:workers";
 import { requireDb } from "./state.js";
 
 export const AI_MEMORY_MAX_BYTES = 64 * 1024;
@@ -55,8 +56,13 @@ export async function getUserAiMemory(env, userId) {
 }
 
 export async function getUserAiMemoryStatus(env, userId) {
-  const memories = await getUserAiMemory(env, userId);
-  return memoryStatus(memories);
+  try {
+    const memories = await getUserAiMemory(env, userId);
+    return memoryStatus(memories);
+  } catch (error) {
+    console.error("read AI memory status failed", error?.message || error);
+    return memoryStatus([]);
+  }
 }
 
 export function buildAiMemoryInstructions(memories = []) {
@@ -113,18 +119,29 @@ export function applyAiMemoryToolCall(memories, item) {
   };
 }
 
-export async function saveUserAiMemory(env, userId, memories) {
-  requireDb(env);
-  await ensureAiMemoryTable(env);
+export function saveUserAiMemory(env, userId, memories) {
   const safeMemories = normalizeMemoryList(memories)
     .slice(0, AI_MEMORY_MAX_ITEMS);
   while (safeMemories.length && jsonBytes(safeMemories) > AI_MEMORY_MAX_BYTES) safeMemories.pop();
+  const status = memoryStatus(safeMemories);
+
+  waitUntil(
+    persistUserAiMemory(env, userId, safeMemories).catch((error) => {
+      console.error("save AI memory failed", error?.message || error);
+    }),
+  );
+
+  return status;
+}
+
+async function persistUserAiMemory(env, userId, safeMemories) {
+  requireDb(env);
+  await ensureAiMemoryTable(env);
   const encoded = JSON.stringify(safeMemories);
   await env.DB.prepare(
     "INSERT INTO ai_user_memory (user_id, memories_json, memory_bytes, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) " +
     "ON CONFLICT(user_id) DO UPDATE SET memories_json = excluded.memories_json, memory_bytes = excluded.memory_bytes, updated_at = CURRENT_TIMESTAMP"
   ).bind(String(userId), encoded, safeMemories.length ? utf8Bytes(encoded) : 0).run();
-  return memoryStatus(safeMemories);
 }
 
 export async function clearUserAiMemory(env, userId) {
