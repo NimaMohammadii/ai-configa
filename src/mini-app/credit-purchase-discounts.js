@@ -104,6 +104,7 @@ function publicError(error) {
 }
 
 function creditPurchaseDiscountBootstrap() {
+  const MAX_CUSTOM_CREDITS = 1_000_000;
   const tg = window.Telegram && window.Telegram.WebApp;
   const initData = String(tg?.initData || "");
   const packageStars = Object.freeze({
@@ -270,7 +271,7 @@ function creditPurchaseDiscountBootstrap() {
     }
 
     const orderAmount = q("tomanOrderAmount");
-    if (orderAmount && document.getElementById("tomanCheckout")?.getAttribute("data-step") === "receipt") {
+    if (orderAmount && q("tomanCheckout")?.getAttribute("data-step") === "receipt") {
       if (order.percent > 0) {
         orderAmount.classList.add("wheel-discount-price");
         orderAmount.innerHTML = priceMarkup(order.original, order.amount, "تومان");
@@ -342,6 +343,11 @@ function creditPurchaseDiscountBootstrap() {
       setTimeout(renderToman, 0);
     }
   });
+
+  const checkout = q("tomanCheckout");
+  if (checkout) {
+    new MutationObserver(renderToman).observe(checkout, { attributes: true, attributeFilter: ["data-step"] });
+  }
 
   const wheelResult = q("wheelResult");
   if (wheelResult) {
