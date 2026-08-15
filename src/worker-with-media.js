@@ -9,6 +9,11 @@ import {
   injectAiBackgroundTasksClient,
   isAiBackgroundTasksClientRequest,
 } from "./mini-app/ai-background-tasks-client.js";
+import {
+  MINI_APP_CREDIT_PURCHASE_DISCOUNT_JS,
+  handleMiniAppDiscountedStarsInvoice,
+  handleMiniAppPurchaseDiscount,
+} from "./mini-app/credit-purchase-discounts.js";
 import { VEXA_LIVE_EDITOR_JS } from "./mini-app/vexa-live/editor-client.js";
 
 const VEXA_EDITOR_VERSION = "20260815-12";
@@ -16,6 +21,31 @@ const AI_CHAT_HEARTBEAT_MS = 10_000;
 const AI_CHAT_PATH = "/mini-app/api/chat";
 
 export { AiCodingWorkflow };
+
+async function injectCreditPurchaseDiscountClient(response) {
+  if (!response || !response.ok) return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("text/html")) return response;
+
+  const source = await response.text();
+  const runtime =
+    '<script id="creditPurchaseDiscountRuntime">' +
+    MINI_APP_CREDIT_PURCHASE_DISCOUNT_JS.replace(/<\/script/gi, "<\\/script") +
+    '</script>';
+  const html = source.includes("</body>")
+    ? source.replace("</body>", runtime + "\n</body>")
+    : source + runtime;
+
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+
+  return new Response(html, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 async function injectVexaEditorClient(response) {
   if (!response || !response.ok) return response;
@@ -65,9 +95,24 @@ export default {
 
     const url = new URL(request.url);
 
+    if (request.method === "POST" && url.pathname === "/mini-app/api/stars-invoice") {
+      return handleMiniAppDiscountedStarsInvoice(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/mini-app/api/purchase-discount") {
+      return handleMiniAppPurchaseDiscount(request, env);
+    }
+
     if (request.method === "POST" && url.pathname === AI_CHAT_PATH) {
       const response = await worker.fetch(request, env, ctx);
       return hardenAiChatResponse(response);
+    }
+
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/mini-app" || url.pathname === "/mini-app/")
+    ) {
+      return injectCreditPurchaseDiscountClient(await worker.fetch(request, env, ctx));
     }
 
     if (
