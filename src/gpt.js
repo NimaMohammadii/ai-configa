@@ -26,8 +26,40 @@ const AI_CHAT_COMPACTION_THRESHOLD = 200000;
 const AI_CHAT_RATE_LIMIT_MAX_RETRIES = 1;
 const AI_CHAT_RATE_LIMIT_MAX_WAIT_MS = 60 * 1000;
 const MAX_ENHANCE_CHARS = 5000;
-const MAX_AGENT_TOOL_ROUNDS = 14;
-const MAX_CODING_AGENT_TOOL_ROUNDS = 120;
+const AI_CHAT_EFFORT_PROFILES = Object.freeze({
+  low: Object.freeze({
+    verbosity: "low",
+    maxAgentToolRounds: 8,
+    maxCodingAgentToolRounds: 32,
+    maxOutputTokens: 8000,
+    automaticReview: false,
+    multiAgent: false,
+  }),
+  medium: Object.freeze({
+    verbosity: "medium",
+    maxAgentToolRounds: 14,
+    maxCodingAgentToolRounds: 60,
+    maxOutputTokens: 16000,
+    automaticReview: false,
+    multiAgent: false,
+  }),
+  high: Object.freeze({
+    verbosity: "high",
+    maxAgentToolRounds: 20,
+    maxCodingAgentToolRounds: 90,
+    maxOutputTokens: 32000,
+    automaticReview: true,
+    multiAgent: true,
+  }),
+  max: Object.freeze({
+    verbosity: "high",
+    maxAgentToolRounds: 28,
+    maxCodingAgentToolRounds: 120,
+    maxOutputTokens: 64000,
+    automaticReview: true,
+    multiAgent: true,
+  }),
+});
 const AI_CHAT_PUBLIC_ERROR = "AI couldn't complete that request. Please try again.";
 const AI_CHAT_PUBLIC_BUSY_ERROR = "AI is temporarily busy. Please try again later.";
 const AI_CHAT_PUBLIC_UNAVAILABLE_ERROR = "AI service is temporarily unavailable. Please try again later.";
@@ -84,7 +116,7 @@ const GPT_CHAT_ATTACHMENT_MIME = Object.freeze({
   htm: "text/html",
   xml: "text/xml",
   csv: "text/csv",
-  tsv: "text/tsv",
+  tsv: "text/tab-separated-values",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   rtf: "application/rtf",
@@ -324,14 +356,19 @@ function normalizeChatAttachment(raw) {
   };
 }
 
+function getAiChatEffortProfile(effort) {
+  const normalized = normalizeAiChatReasoningEffort(effort);
+  return AI_CHAT_EFFORT_PROFILES[normalized] || AI_CHAT_EFFORT_PROFILES.medium;
+}
+
 function buildAiChatInstructions(preferredVoice, githubContext, memories, model, agentInstructions = "", mcpInstructions = "", runtimeInstructions = "") {
   const selectedVoice = VOICE_NAMES.includes(preferredVoice) ? preferredVoice : "Nora";
   const selectedModel = normalizeAiChatModel(model);
   return [
     "Your exact model identifier for this conversation is " + selectedModel + ". If the user asks which model you are, answer with this exact model identifier.",
     "Reply in the same language as the user's latest message.",
-    "Give accurate, clear, practical answers and keep them focused unless the user asks for detail.",
-    "Format text answers as clean Markdown with short paragraphs and compact lists when useful.",
+    "Answer naturally at the level of detail requested by the user; otherwise let the configured response verbosity control the default amount of detail.",
+    "Use the format that best fits the request. Do not force every answer into the same paragraph, list, or template style.",
     "Use the generate_speech tool only when the user clearly asks to create, read, narrate, dub, or convert text into spoken audio.",
     "Do not generate speech for ordinary questions, explanations, or messages that merely mention audio.",
     "Pass only the text that should be spoken. Do not include setup text, explanations, quotation marks, or Markdown.",
@@ -343,7 +380,7 @@ function buildAiChatInstructions(preferredVoice, githubContext, memories, model,
     "Always use the user’s currently selected voice for speech: " + selectedVoice + ".",
     "Never choose a different voice inside AI Chat; the voice card is the single source of truth.",
     "For web-search answers, do not add sources, citation links, raw URLs, or footnote markers unless the user asks for them.",
-    "When multiple subagents are available, delegate only independent read-only research, inspection, testing hypotheses, or review work that can safely run in parallel. The root coordinator alone should make code writes, create or merge pull requests, apply branches to default, or perform other side-effecting actions.",
+    "If subagents are used, keep them limited to independent read-only work. The root coordinator alone may make code writes, create or merge pull requests, apply branches to default, or perform other side-effecting actions.",
     agentInstructions,
     mcpInstructions,
     runtimeInstructions,
@@ -531,6 +568,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
 
   const model = normalizeAiChatModel(options.model);
   const reasoningEffort = normalizeAiChatReasoningEffort(options.reasoningEffort);
+  const effortProfile = getAiChatEffortProfile(reasoningEffort);
   const safetyIdentifier = await buildAiChatSafetyIdentifier(options.userId);
   const githubContext = await getGitHubAiContext(env, options.userId);
   const githubTools = getGitHubAiTools(githubContext);
@@ -661,8 +699,8 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
     let reviewedCommitSha = "";
     let multiAgentFallbackDisabled = false;
     const maxAgentToolRounds = githubContext
-      ? MAX_CODING_AGENT_TOOL_ROUNDS
-      : MAX_AGENT_TOOL_ROUNDS;
+      ? effortProfile.maxCodingAgentToolRounds
+      : effortProfile.maxAgentToolRounds;
     const resultOptions = () => ({
       webSearchUsed,
       webSearchCalls,
@@ -724,14 +762,14 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         });
       }
       const reviewInstruction = reviewRequested
-        ? "MANDATORY FINAL CODING REVIEW: This is a review pass after a code write. Use github_review_branch on the current Vexa branch if it has not been reviewed for the current commit. Re-read any critical changed files if needed. Run the relevant available build, test, lint, typecheck, syntax, or deterministic checks against the refreshed post-write shell workspace when they materially validate the change. Use github_read_ci when GitHub CI evidence exists or could matter. Check that the diff is limited to the user's request, that no unrelated behavior changed, and that external API/library assumptions match current official documentation when relevant. If you find a defect, fix it with a precise write and then review the new commit again. Do not claim validation succeeded unless a tool actually showed it. Only after the current commit passes this review should you produce the final user-facing answer."
+        ? "FINAL CODING REVIEW: Review the current code-changing task before the final answer. Use github_review_branch when it materially helps inspect the real diff. Re-read critical changed files and run relevant available deterministic validation when useful. If you find a defect, fix only that defect and review the new commit again. Never claim a check succeeded unless a tool actually showed it."
         : "";
       const multiAgentEnabled = Boolean(
-        githubContext
+        effortProfile.multiAgent
+        && githubContext
         && codingActivity?.plan
         && !multiAgentFallbackDisabled
       );
-      const reviewUsesPro = Boolean(reviewRequested && codingActivity?.plan);
       const responseUrl = multiAgentEnabled
         ? "https://api.openai.com/v1/responses?beta=true"
         : "https://api.openai.com/v1/responses";
@@ -760,8 +798,8 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           reasoning: {
             effort: reasoningEffort,
             context: "all_turns",
-            ...(reviewUsesPro ? { mode: "pro" } : {}),
           },
+          text: { verbosity: effortProfile.verbosity },
           ...(multiAgentEnabled ? { multi_agent: { enabled: true } } : {}),
           ...(safetyIdentifier ? {
             safety_identifier: safetyIdentifier,
@@ -772,7 +810,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
             type: "compaction",
             compact_threshold: AI_CHAT_COMPACTION_THRESHOLD,
           }],
-          max_output_tokens: githubContext && codingActivity?.plan ? 16000 : 8000,
+          max_output_tokens: effortProfile.maxOutputTokens,
           store: false,
           stream: true,
         }),
@@ -846,12 +884,13 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         console.info("AI_CHAT_TOKEN_USAGE", {
           round: toolRound + 1,
           model,
+          reasoningEffort,
+          verbosity: effortProfile.verbosity,
           inputTokens: Math.max(0, Number(data.usage.input_tokens || 0)),
           outputTokens: Math.max(0, Number(data.usage.output_tokens || 0)),
           cachedTokens: Math.max(0, Number(data.usage.input_tokens_details?.cached_tokens || 0)),
           cacheWriteTokens: Math.max(0, Number(data.usage.input_tokens_details?.cache_write_tokens || 0)),
           multiAgent: multiAgentEnabled,
-          proMode: reviewUsesPro,
         });
       }
 
@@ -875,7 +914,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
 
       if (!hasClientCalls && hasRootMessage) {
         throwIfAiChatAborted(controller.signal);
-        if (codingActivity?.needsReview) {
+        if (codingActivity?.needsReview && effortProfile.automaticReview) {
           const currentSha = String(codingActivity.currentCommitSha || "");
           const reviewedCurrentCommit = Boolean(
             codingActivity.lastReview
@@ -904,7 +943,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           onStatus({
             state: "finalizing",
             label: "Finalizing result",
-            detail: codingActivity.change ? "Preparing reviewed change report" : "Preparing answer",
+            detail: codingActivity.change ? "Preparing change report" : "Preparing answer",
             repository: codingActivity.repository,
             context: codingContextSnapshot(codingActivity),
           });
@@ -1004,7 +1043,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         return buildChatResult(data, cleanMessages, resultOptions());
       }
     }
-    throw new Error("AI used too many tool steps. Ask it to continue with a smaller task.");
+    throw new Error("AI used too many tool steps for the selected reasoning level. Choose a higher level or continue with a smaller task.");
   } catch (error) {
     if (requestAborted || requestSignal?.aborted) {
       throw makeAiChatAbortError();
