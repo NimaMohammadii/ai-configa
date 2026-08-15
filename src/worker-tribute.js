@@ -7,12 +7,15 @@ import {
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
 
-const TRIBUTE_UI_VERSION = "20260816-1";
+const TRIBUTE_UI_VERSION = "20260816-2";
+const TRIBUTE_SHOP_CACHE_TTL_MS = 5 * 60 * 1000;
 const KNOWN_TRIBUTE_SHOP_EVENTS = new Set([
   "shop_order",
   "shop_order_refunded",
   "shop_order_payment_failed",
 ]);
+
+let tributeShopCache = null;
 
 export { AiCodingWorkflow } from "./worker-with-media.js";
 
@@ -23,9 +26,19 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/tribute/health") {
+      const shop = await getTributeShopState(tributeEnv, { allowCached: false }).catch((error) => ({
+        ready: false,
+        status: null,
+        onlyStars: null,
+        error: String(error?.message || error || "Tribute shop check failed"),
+      }));
       return json({
         ok: true,
         configured: Boolean(tributeApiKey(tributeEnv)),
+        shopReady: Boolean(shop.ready),
+        shopStatus: shop.status,
+        onlyStars: shop.onlyStars,
+        shopError: shop.error || null,
         uiVersion: TRIBUTE_UI_VERSION,
       });
     }
@@ -37,14 +50,18 @@ export default {
     }
 
     if (isTributeMiniAppRequest(request)) {
+      if (request.method === "POST" && url.pathname === "/mini-app/api/tribute-order") {
+        const shop = await getTributeShopState(tributeEnv);
+        if (!shop.ready) {
+          return json({ error: shop.error || "Bank-card payments are not enabled in Tribute." }, shop.httpStatus || 503);
+        }
+      }
       return handleTributeMiniAppRequest(request, tributeEnv);
     }
 
     const response = await worker.fetch(request, tributeEnv, ctx);
 
     // Load Tribute through the same external JS bundle the Mini App already uses.
-    // This is more reliable in Telegram WebViews than injecting a separate inline
-    // script into the HTML document and keeps one UI execution path.
     if (request.method === "GET" && url.pathname === "/mini-app/app.js") {
       return injectTributeIntoMiniAppBundle(response);
     }
@@ -52,6 +69,106 @@ export default {
     return response;
   },
 };
+
+async function getTributeShopState(env, options = {}) {
+  const key = tributeApiKey(env);
+  if (!key) {
+    return {
+      ready: false,
+      status: null,
+      onlyStars: null,
+      httpStatus: 503,
+      error: "Tribute API key is not configured in this Worker.",
+    };
+  }
+
+  const now = Date.now();
+  if (options.allowCached !== false && tributeShopCache && tributeShopCache.expiresAt > now) {
+    return tributeShopCache.value;
+  }
+
+  let response;
+  let data;
+  try {
+    response = await fetch("https://tribute.tg/api/v1/shop", {
+      method: "GET",
+      headers: {
+        "Api-Key": key,
+        "Accept": "application/json",
+      },
+    });
+    data = await response.json().catch(() => ({}));
+  } catch (error) {
+    return {
+      ready: false,
+      status: null,
+      onlyStars: null,
+      httpStatus: 502,
+      error: "Could not reach Tribute right now.",
+    };
+  }
+
+  let value;
+  if (response.status === 401) {
+    value = {
+      ready: false,
+      status: null,
+      onlyStars: null,
+      httpStatus: 503,
+      error: "Tribute API key is invalid.",
+    };
+  } else if (response.status === 404) {
+    value = {
+      ready: false,
+      status: null,
+      onlyStars: null,
+      httpStatus: 503,
+      error: "Tribute Shop is not set up for this API key.",
+    };
+  } else if (!response.ok) {
+    value = {
+      ready: false,
+      status: null,
+      onlyStars: null,
+      httpStatus: 502,
+      error: String(data?.message || data?.error || "Tribute Shop is unavailable."),
+    };
+  } else {
+    const status = Number(data?.status);
+    const onlyStars = Boolean(data?.onlyStars);
+    if (status !== 1) {
+      value = {
+        ready: false,
+        status,
+        onlyStars,
+        httpStatus: 503,
+        error: "Tribute Shop is not active.",
+      };
+    } else if (onlyStars) {
+      value = {
+        ready: false,
+        status,
+        onlyStars,
+        httpStatus: 409,
+        error: "Bank-card payments are disabled in Tribute. Turn off Stars-only mode for your Shop.",
+      };
+    } else {
+      value = {
+        ready: true,
+        status,
+        onlyStars,
+        httpStatus: 200,
+        error: null,
+      };
+    }
+  }
+
+  tributeShopCache = {
+    value,
+    expiresAt: now + TRIBUTE_SHOP_CACHE_TTL_MS,
+  };
+  return value;
+}
 
 async function handleTributeWebhookCompatibility(request, env) {
   const key = tributeApiKey(env);
@@ -76,23 +193,16 @@ async function handleTributeWebhookCompatibility(request, env) {
   const payload = event?.payload && typeof event.payload === "object" ? event.payload : {};
   const orderUuid = String(payload.uuid || "").trim().toLowerCase();
 
-  // Tribute's dashboard test request is signed but is not guaranteed to point
-  // at a real order created by this app. Acknowledge signed test/unknown events.
   if (!KNOWN_TRIBUTE_SHOP_EVENTS.has(eventName) || !orderUuid) {
     return json({ status: "ok" });
   }
 
-  // A signed sample order from Tribute's Test Request can carry a dummy UUID.
-  // Only real orders created by this app exist in tribute_payments and should
-  // continue into the normal settlement/refund handler.
   try {
     const row = await env.DB.prepare(
       "SELECT order_uuid FROM tribute_payments WHERE order_uuid = ? LIMIT 1"
     ).bind(orderUuid).first();
     if (!row) return json({ status: "ok" });
   } catch (error) {
-    // The table may not exist before the first real checkout; Test Request
-    // should still be acknowledged after its signature has been verified.
     if (isMissingTributeTable(error)) return json({ status: "ok" });
     throw error;
   }
