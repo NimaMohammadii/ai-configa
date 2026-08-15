@@ -13,7 +13,6 @@ import {
   VEXA_LIVE_INTEGRATION_JS,
   VEXA_LIVE_JS,
 } from "./client.js";
-import { VEXA_LIVE_EDITOR_JS } from "./editor-client.js";
 import { VEXA_LIVE_HTML } from "./html.js";
 import {
   VEXA_LIVE_CSS,
@@ -62,10 +61,7 @@ export async function handleVexaLiveRequest(request, env) {
     }
 
     if (request.method === "GET" && path === LIVE_ROOT + "/app.js") {
-      return textResponse(
-        VEXA_LIVE_JS + "\n" + VEXA_LIVE_EDITOR_JS,
-        "application/javascript;charset=utf-8"
-      );
+      return textResponse(VEXA_LIVE_JS, "application/javascript;charset=utf-8");
     }
 
     if (request.method === "GET" && path === LIVE_ROOT + "/integration.css") {
