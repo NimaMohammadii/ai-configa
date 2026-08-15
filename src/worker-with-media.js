@@ -9,11 +9,48 @@ import {
   injectAiBackgroundTasksClient,
   isAiBackgroundTasksClientRequest,
 } from "./mini-app/ai-background-tasks-client.js";
+import { VEXA_LIVE_EDITOR_JS } from "./mini-app/vexa-live/editor-client.js";
 
+const VEXA_EDITOR_VERSION = "20260815-12";
 const AI_CHAT_HEARTBEAT_MS = 10_000;
 const AI_CHAT_PATH = "/mini-app/api/chat";
 
 export { AiCodingWorkflow };
+
+async function injectVexaEditorClient(response) {
+  if (!response || !response.ok) return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("text/html")) return response;
+
+  const source = await response.text();
+  const disabledContainerUi =
+    '<style id="vexaContainerDisabled">' +
+    '#liveSourceSwitch,#youtubeInputState,#youtubeReadyState{display:none!important}' +
+    '</style>';
+
+  const editorRuntime =
+    '<script id="vexaEditorRuntime">' +
+    'document.documentElement.dataset.vexaEditorVersion="' +
+    VEXA_EDITOR_VERSION +
+    '";' +
+    VEXA_LIVE_EDITOR_JS.replace(/<\/script/gi, "<\\/script") +
+    '</script>';
+
+  const injection = disabledContainerUi + editorRuntime;
+  const html = source.includes("</body>")
+    ? source.replace("</body>", injection + "\n</body>")
+    : source + injection;
+
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+
+  return new Response(html, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 export default {
   ...worker,
@@ -38,6 +75,13 @@ export default {
       (url.pathname === "/mini-app/chat" || url.pathname === "/mini-app/chat/")
     ) {
       return injectAiBackgroundTasksClient(await worker.fetch(request, env, ctx));
+    }
+
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/mini-app/live" || url.pathname === "/mini-app/live/")
+    ) {
+      return injectVexaEditorClient(await worker.fetch(request, env, ctx));
     }
 
     return worker.fetch(request, env, ctx);
