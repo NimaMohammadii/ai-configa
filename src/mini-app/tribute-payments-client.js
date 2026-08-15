@@ -223,7 +223,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     var amount=discountedMinor(baseCustomMinor(credits));
     var valid=credits>=minimum&&amount>=Number(info.minimumMinor||100)&&amount<=Number(info.maximumMinor||300000);
     var amountNode=q('tributeAmountValue');if(amountNode)amountNode.textContent=money(amount,info.code);
-    var note=q('tributeMinimumNote');if(note){note.textContent=valid?'Secure checkout opens inside Tribute.':'Minimum card payment is '+minimumLabel(info)+' · choose at least '+number(minimum)+' credits.';note.classList.toggle('warn',!valid)}
+    var note=q('tributeMinimumNote');if(note){note.textContent=valid?'Secure card checkout opens in your browser.':'Minimum card payment is '+minimumLabel(info)+' · choose at least '+number(minimum)+' credits.';note.classList.toggle('warn',!valid)}
     var button=q('tributeCustomBuy');if(button){button.disabled=!valid||cardBusy;var label=button.querySelector('span');if(label)label.textContent=valid?'Continue with '+money(amount,info.code):'Minimum '+minimumLabel(info)}
   }
 
@@ -266,23 +266,50 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     var titleNode=q('tributeStateTitle');var copyNode=q('tributeStateCopy');if(titleNode&&title)titleNode.textContent=title;if(copyNode&&copy)copyNode.textContent=copy;
   }
 
-  function restorePaymentState(){
-    var pending=storageGet(PENDING_KEY);
-    if(pending&&pending.orderUuid)setPaymentState('waiting','Finish payment in Tribute','Come back here — credits add automatically.');
+  function setStateAction(action,label){
+    var button=q('tributePaymentState')&&q('tributePaymentState').querySelector('.tribute-state-check');
+    if(!button)return;
+    if(!action){button.style.display='none';button.removeAttribute('data-action');return}
+    button.style.display='';button.setAttribute('data-action',action);button.textContent=label||'Open';
   }
 
-  function openCheckout(webappUrl,paymentUrl){
+  function restorePaymentState(){
+    var pending=storageGet(PENDING_KEY);
+    if(!pending||!pending.orderUuid)return;
+    if(pending.paymentUrl||pending.webappPaymentUrl){
+      setPaymentState('waiting','Checkout ready','Tap Open to continue with the card payment.');
+      setStateAction('open-tribute-checkout','Open');
+    }else{
+      setPaymentState('waiting','Finish payment in Tribute','Come back here — credits add automatically.');
+      setStateAction('check-tribute-payment','Check');
+    }
+  }
+
+  function openCheckout(paymentUrl,webappUrl){
+    if(paymentUrl&&tg&&typeof tg.openLink==='function'){
+      try{tg.openLink(paymentUrl,{try_instant_view:false});return true}catch(error){}
+    }
+    if(paymentUrl){
+      try{window.location.assign(paymentUrl);return true}catch(error){}
+    }
     if(tg&&webappUrl&&typeof tg.openTelegramLink==='function'){
       try{tg.openTelegramLink(webappUrl);return true}catch(error){}
     }
     if(webappUrl){
-      try{window.location.href=webappUrl;return true}catch(error){}
+      try{window.location.assign(webappUrl);return true}catch(error){}
     }
-    if(paymentUrl&&tg&&typeof tg.openLink==='function'){
-      try{tg.openLink(paymentUrl,{try_instant_view:false});return true}catch(error){}
-    }
-    if(paymentUrl){window.location.href=paymentUrl;return true}
     return false;
+  }
+
+  function openPendingCheckout(){
+    var pending=storageGet(PENDING_KEY);
+    if(!pending||(!pending.paymentUrl&&!pending.webappPaymentUrl))return toast('Checkout link is not ready');
+    haptic('medium');
+    if(!openCheckout(pending.paymentUrl,pending.webappPaymentUrl)){
+      toast('Could not open Tribute checkout');
+      setPaymentState('failed','Checkout unavailable','Telegram could not open the payment link.');
+      setStateAction(null);
+    }
   }
 
   async function startCardPayment(payload,button){
@@ -291,12 +318,16 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     try{
       var requestPayload=Object.assign({},payload||{},{currency:selectedCurrency});
       var data=await api('/mini-app/api/tribute-order',requestPayload);
-      if((!data.paymentUrl&&!data.webappPaymentUrl)||!data.orderUuid)throw new Error('Card checkout is unavailable');
-      storageSet(PENDING_KEY,{orderUuid:data.orderUuid,credits:data.credits,amountMinor:data.amountMinor,currency:data.currency||selectedCurrency,createdAt:Date.now()});
-      setPaymentState('waiting','Opening Tribute','Complete the card payment, then return here.');
+      if((!data.paymentUrl&&!data.webappPaymentUrl)||!data.orderUuid)throw new Error('Tribute did not return a checkout link.');
+      storageSet(PENDING_KEY,{orderUuid:data.orderUuid,credits:data.credits,amountMinor:data.amountMinor,currency:data.currency||selectedCurrency,paymentUrl:data.paymentUrl||'',webappPaymentUrl:data.webappPaymentUrl||'',createdAt:Date.now()});
+      setPaymentState('waiting','Checkout ready','If it does not open automatically, tap Open.');
+      setStateAction('open-tribute-checkout','Open');
       haptic('medium');
-      if(!openCheckout(data.webappPaymentUrl,data.paymentUrl))throw new Error('Could not open Tribute checkout');
-    }catch(error){toast(error.message||'Could not start card checkout');setPaymentState('failed','Could not open checkout','Try again in a moment.');haptic('error')}
+      openCheckout(data.paymentUrl,data.webappPaymentUrl);
+    }catch(error){
+      var message=String(error&&error.message||'Could not start card checkout').trim();
+      toast(message);setPaymentState('failed','Checkout unavailable',message);setStateAction(null);haptic('error');
+    }
     finally{cardBusy=false;if(button){button.disabled=false;button.classList.remove('loading')}renderCustom('done')}
   }
 
@@ -310,13 +341,14 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
         storageRemove(PENDING_KEY);
         var balance=Math.max(0,Number(data.balance)||0);var credits=Math.max(0,Number(data.credits)||Number(pending.credits)||0);
         var mainBalance=q('balance');var pageBalance=q('creditsPageBalance');if(mainBalance)mainBalance.textContent=number(balance);if(pageBalance)pageBalance.textContent=number(balance);
-        setPaymentState('success','Credits added',number(credits)+' credits are in your balance.');haptic('success');
+        setPaymentState('success','Credits added',number(credits)+' credits are in your balance.');setStateAction(null);haptic('success');
         storageSet(SUCCESS_KEY,{balance:balance,credits:credits,at:Date.now()});
         setTimeout(function(){window.location.reload()},950);
       }else if(data.status==='failed'||data.status==='refunded'){
-        storageRemove(PENDING_KEY);setPaymentState('failed',data.status==='refunded'?'Payment refunded':'Payment failed',data.status==='refunded'?'The credited amount was reversed.':'Nothing was charged to your Vexa balance.');haptic('error')
+        storageRemove(PENDING_KEY);setPaymentState('failed',data.status==='refunded'?'Payment refunded':'Payment failed',data.status==='refunded'?'The credited amount was reversed.':'Nothing was charged to your Vexa balance.');setStateAction(null);haptic('error')
       }else{
-        setPaymentState('waiting','Payment not finished yet','Complete checkout in Tribute, then come back here.')
+        setPaymentState('waiting','Payment not finished yet','Complete checkout in Tribute, then come back here.');
+        if(pending.paymentUrl||pending.webappPaymentUrl)setStateAction('open-tribute-checkout','Open');else setStateAction('check-tribute-payment','Check');
       }
     }catch(error){if(force)toast(error.message||'Could not check payment')}
     finally{pendingCheckBusy=false}
@@ -327,7 +359,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     storageRemove(SUCCESS_KEY);
     setTimeout(function(){
       var pill=q('creditPill');if(pill&&typeof pill.click==='function')pill.click();
-      setTimeout(function(){activateCardMode();setPaymentState('success','Credits added',number(success.credits||0)+' credits are in your balance.');var mainBalance=q('balance');var pageBalance=q('creditsPageBalance');if(mainBalance)mainBalance.textContent=number(success.balance||0);if(pageBalance)pageBalance.textContent=number(success.balance||0)},90);
+      setTimeout(function(){activateCardMode();setPaymentState('success','Credits added',number(success.credits||0)+' credits are in your balance.');setStateAction(null);var mainBalance=q('balance');var pageBalance=q('creditsPageBalance');if(mainBalance)mainBalance.textContent=number(success.balance||0);if(pageBalance)pageBalance.textContent=number(success.balance||0)},90);
     },520);
   }
 
@@ -339,6 +371,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     if(action==='set-tribute-currency'){event.preventDefault();event.stopImmediatePropagation();setCurrency(button.getAttribute('data-currency')||'usd');return}
     if(action==='buy-tribute-custom'){event.preventDefault();event.stopImmediatePropagation();startCardPayment({credits:customCredits()},button);return}
     if(action==='buy-tribute-package'){event.preventDefault();event.stopImmediatePropagation();startCardPayment({packageId:button.getAttribute('data-package-id')||''},button);return}
+    if(action==='open-tribute-checkout'){event.preventDefault();event.stopImmediatePropagation();openPendingCheckout();return}
     if(action==='check-tribute-payment'){event.preventDefault();event.stopImmediatePropagation();checkPending(true);return}
   },true);
 
