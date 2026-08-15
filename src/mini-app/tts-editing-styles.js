@@ -40,21 +40,21 @@ export const TTS_EDITING_CSS = `
 .player-history-row,.tts-generate-row{max-height:110px;opacity:1;overflow:visible;transform:translateY(0) scale(1);transform-origin:center bottom;transition:max-height .42s cubic-bezier(.16,1,.3,1),min-height .42s cubic-bezier(.16,1,.3,1),opacity .2s ease,transform .36s cubic-bezier(.16,1,.3,1),margin .36s cubic-bezier(.16,1,.3,1)}
 .tts-audio-editor-active .tts-bottom{gap:0!important}
 .tts-audio-editor-active .player-history-row,.tts-audio-editor-active .tts-generate-row{max-height:0!important;min-height:0!important;margin:0!important;overflow:hidden;opacity:0;visibility:hidden;transform:translateY(10px) scale(.975);pointer-events:none}
-.tts-audio-editor{--audio-accent:#361248;--audio-accent-soft:rgba(105,47,148,.2);width:100%;max-height:0;margin:0;overflow:hidden;opacity:0;transform:translateY(12px) scale(.985);transform-origin:center bottom;border:0;border-radius:0;background:transparent;padding:0;pointer-events:none;box-shadow:none;transition:max-height .5s cubic-bezier(.16,1,.3,1),opacity .22s ease,transform .46s cubic-bezier(.16,1,.3,1)}
-.tts-audio-editor.open{max-height:266px;margin:0;padding:2px 0 0;opacity:1;transform:translateY(0) scale(1);border:0;border-radius:0;background:transparent;box-shadow:none;pointer-events:auto}
+.tts-audio-editor{--audio-accent:#361248;--audio-accent-soft:rgba(105,47,148,.2);width:100%;max-height:0;margin:0;overflow:hidden;opacity:0;transform:translateY(12px) scale(.985);transform-origin:center bottom;border:1px solid transparent;border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.028));padding:0 13px;pointer-events:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.075),inset 0 -1px 0 rgba(255,255,255,.035),0 14px 32px rgba(0,0,0,.18);backdrop-filter:blur(14px) saturate(1.12);-webkit-backdrop-filter:blur(14px) saturate(1.12);transition:max-height .5s cubic-bezier(.16,1,.3,1),opacity .22s ease,transform .46s cubic-bezier(.16,1,.3,1),background .24s ease,box-shadow .24s ease,border-color .24s ease}
+.tts-audio-editor.open{max-height:292px;margin:0;padding:13px 13px 14px;opacity:1;transform:translateY(0) scale(1);border-color:rgba(255,255,255,.09);border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.085),rgba(255,255,255,.035));box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(255,255,255,.045),inset 0 0 22px rgba(255,255,255,.035),0 18px 40px rgba(0,0,0,.22);pointer-events:auto}
 .tts-audio-editor.loading{pointer-events:none;opacity:.48}
-.tts-audio-editor-head{height:34px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 9px}
+.tts-audio-editor-head{height:34px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 9px}
 .tts-audio-editor-head>div{min-width:0;display:flex;align-items:baseline;gap:8px}
 .tts-audio-editor-head strong{color:#fff;font-size:12px;line-height:1;font-weight:800;letter-spacing:-.02em}
 .tts-audio-editor-head span{color:rgba(255,255,255,.42);font-size:9px;line-height:1;font-weight:690;font-variant-numeric:tabular-nums}
-.tts-audio-editor-head>button{width:32px;height:32px;flex:0 0 32px;margin:0;padding:0;border:0;border-radius:12px;display:grid;place-items:center;color:rgba(255,255,255,.74);background:var(--ticket-glass-bg,rgba(13,13,13,.62));box-shadow:var(--ticket-glass-shadow,inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),0 10px 22px rgba(0,0,0,.22));backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);transition:transform .22s cubic-bezier(.2,.9,.2,1),color .2s ease,background .2s ease,box-shadow .2s ease}
-.tts-audio-editor-head>button:active{transform:scale(.84);color:#fff;background:rgba(255,255,255,.105);box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 5px 14px rgba(0,0,0,.2)}
+.tts-audio-editor-head>button{width:32px;height:32px;flex:0 0 32px;margin:0;padding:0;border:0;border-radius:12px;display:grid;place-items:center;color:rgba(255,255,255,.76);background:rgba(255,255,255,.055);box-shadow:inset 0 1px 0 rgba(255,255,255,.085),inset 0 -1px 0 rgba(255,255,255,.035);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);transition:transform .22s cubic-bezier(.2,.9,.2,1),color .2s ease,background .2s ease,box-shadow .2s ease}
+.tts-audio-editor-head>button:active{transform:scale(.84);color:#fff;background:rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.13)}
 
 .tts-audio-timeline-shell{position:relative;width:100%;height:44px}
-.tts-audio-timeline{position:relative;width:100%;height:44px;overflow-x:auto;overflow-y:hidden;border:0;border-radius:0;background:transparent;touch-action:none;user-select:none;-webkit-user-select:none;scrollbar-width:none;box-shadow:none}
+.tts-audio-timeline{position:relative;width:100%;height:44px;overflow-x:auto;overflow-y:hidden;border:0;border-radius:14px;background:rgba(255,255,255,.025);touch-action:none;user-select:none;-webkit-user-select:none;scrollbar-width:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.045),inset 0 -1px 0 rgba(255,255,255,.025)}
 .tts-audio-edge-fade{position:absolute;z-index:30;top:0;bottom:0;width:22px;opacity:0;pointer-events:none;transition:opacity .22s ease}
-.tts-audio-edge-fade.start{left:0;background:linear-gradient(90deg,rgba(0,0,0,.72) 0,rgba(0,0,0,.48) 34%,rgba(0,0,0,0) 100%)}
-.tts-audio-edge-fade.end{right:0;background:linear-gradient(270deg,rgba(0,0,0,.72) 0,rgba(0,0,0,.48) 34%,rgba(0,0,0,0) 100%)}
+.tts-audio-edge-fade.start{left:0;background:linear-gradient(90deg,rgba(24,24,24,.46) 0,rgba(24,24,24,.26) 38%,rgba(24,24,24,0) 100%)}
+.tts-audio-edge-fade.end{right:0;background:linear-gradient(270deg,rgba(24,24,24,.46) 0,rgba(24,24,24,.26) 38%,rgba(24,24,24,0) 100%)}
 .tts-audio-timeline-shell.is-overflowing .tts-audio-edge-fade{opacity:1}
 .tts-audio-timeline::-webkit-scrollbar{display:none}
 .tts-audio-timeline.is-scroll-mode{cursor:grab}
@@ -69,12 +69,12 @@ export const TTS_EDITING_CSS = `
 .tts-audio-clip canvas.tts-audio-progress-wave{z-index:2;clip-path:inset(0 100% 0 0);will-change:clip-path}
 .tts-audio-clip::after{display:none}
 .tts-audio-clip.active{background:transparent;border:0;box-shadow:none}
-.tts-audio-clip-lane.has-multiple-clips .tts-audio-clip{height:36px;border:0;border-radius:10px;background:rgba(255,255,255,.025);box-shadow:inset 0 0 0 1px rgba(255,255,255,.065)}
-.tts-audio-clip-lane.has-multiple-clips .tts-audio-clip.active{background:rgba(54,18,72,.045);box-shadow:inset 0 0 0 1px rgba(54,18,72,.24)}
-.tts-audio-clip-lane.has-multiple-clips .tts-audio-clip.pressed{transform:scale(.965);background:rgba(54,18,72,.08);box-shadow:inset 0 0 0 1px rgba(54,18,72,.42)}
+.tts-audio-clip-lane.has-multiple-clips .tts-audio-clip{height:36px;border:0;border-radius:10px;background:rgba(255,255,255,.035);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+.tts-audio-clip-lane.has-multiple-clips .tts-audio-clip.active{background:rgba(255,255,255,.055);box-shadow:inset 0 0 0 1px rgba(255,255,255,.11)}
+.tts-audio-clip-lane.has-multiple-clips .tts-audio-clip.pressed{transform:scale(.965);background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
 .tts-audio-clip-lane.is-reordering{cursor:grabbing}
 .tts-audio-clip-lane.is-reordering .tts-audio-clip:not(.dragging){transition:transform .22s cubic-bezier(.16,1,.3,1),opacity .2s ease}
-.tts-audio-clip.dragging{opacity:.98;background:#111!important;box-shadow:0 12px 28px rgba(0,0,0,.5),inset 0 0 0 1px rgba(54,18,72,.55)!important;z-index:20;transition:none!important}
+.tts-audio-clip.dragging{opacity:.98;background:rgba(255,255,255,.075)!important;box-shadow:0 12px 28px rgba(0,0,0,.34),inset 0 0 0 1px rgba(255,255,255,.18)!important;z-index:20;transition:none!important}
 .tts-audio-selection{position:absolute;top:7px;bottom:7px;left:0;width:100%;border:0;border-radius:999px;background:var(--audio-accent-soft);pointer-events:none}
 .tts-audio-selection::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(54,18,72,.28);transform:translateY(-50%)}
 .tts-audio-handle{position:absolute;top:0;bottom:0;width:28px;height:100%;padding:0;border:0;background:transparent;touch-action:none;cursor:ew-resize;z-index:5}
@@ -90,8 +90,8 @@ export const TTS_EDITING_CSS = `
 .tts-audio-editor-actions{display:grid;grid-template-columns:1fr;gap:11px;padding-top:12px}
 .tts-audio-editor-tools{width:100%;display:grid;grid-template-columns:42px 60px 42px;align-items:center;justify-content:center;gap:14px}
 .tts-audio-editor-operations{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) minmax(68px,1.16fr);align-items:center;gap:7px}
-.tts-audio-editor-actions button{height:38px;padding:0 10px;border-radius:12px;border:0;background:var(--ticket-glass-bg,rgba(13,13,13,.62));box-shadow:var(--ticket-glass-shadow,inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),0 10px 22px rgba(0,0,0,.22));backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);color:rgba(255,255,255,.78);font-size:9.5px;font-weight:760;transition:transform .22s cubic-bezier(.2,.9,.2,1),background .2s ease,color .2s ease,opacity .2s ease,box-shadow .2s ease}
-.tts-audio-editor-actions button:active:not(:disabled){transform:scale(.88);background:rgba(255,255,255,.105);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 5px 14px rgba(0,0,0,.2)}
+.tts-audio-editor-actions button{height:38px;padding:0 10px;border-radius:12px;border:0;background:rgba(255,255,255,.055);box-shadow:inset 0 1px 0 rgba(255,255,255,.085),inset 0 -1px 0 rgba(255,255,255,.03);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);color:rgba(255,255,255,.8);font-size:9.5px;font-weight:760;transition:transform .22s cubic-bezier(.2,.9,.2,1),background .2s ease,color .2s ease,opacity .2s ease,box-shadow .2s ease}
+.tts-audio-editor-actions button:active:not(:disabled){transform:scale(.88);background:rgba(255,255,255,.12);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.13)}
 .tts-audio-editor-actions button:disabled{opacity:.18;pointer-events:none}
 .tts-audio-editor-tools button{width:42px;height:42px;padding:0;border-radius:15px;display:grid;place-items:center}
 .tts-audio-editor-tools #ttsAudioPreview{width:60px;height:60px;border-radius:21px;background:#fff;color:#050505;box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -1px 0 rgba(0,0,0,.1),0 12px 30px rgba(0,0,0,.28)}
