@@ -196,7 +196,7 @@ export async function editImages(env, prompt, images, options = {}) {
   form.append("quality", GPT_IMAGE_QUALITY);
   form.append("moderation", "low");
   form.append("output_format", "jpeg");
-  form.append("output_compression", 90);
+  form.append("output_compression", "90");
 
   const response = await fetchWithTimeout(
     "https://api.openai.com/v1/images/edits",
@@ -792,7 +792,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       for (const call of githubCalls) {
         throwIfAiChatAborted(controller.signal);
         if (!isRootAgentItem(call) && isGitHubWriteCall(call)) {
-          responseInput.push(functionCallOutput(call, JSON.stringify({ error: "Only the root coordinator may perform GitHub write actions." })));
+          responseInput.push(functionCallOutput(call, JSON.stringify({ error: "Only the root coordinator may perform GitHub write actions." }));
           continue;
         }
         const beforeSha = String(codingActivity?.currentCommitSha || "");
