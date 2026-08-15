@@ -26,18 +26,29 @@ const AI_CHAT_COMPACTION_THRESHOLD = 200000;
 const AI_CHAT_RATE_LIMIT_MAX_RETRIES = 1;
 const AI_CHAT_RATE_LIMIT_MAX_WAIT_MS = 60 * 1000;
 const MAX_ENHANCE_CHARS = 5000;
+const ADVANCED_CODING_TOOLS_TOOL = "enable_advanced_coding_tools";
+const ADVANCED_GITHUB_TOOL_NAMES = new Set([
+  "github_sync_task_branch",
+  "github_read_ci",
+  "github_read_ci_failure_logs",
+  "github_review_branch",
+]);
 const AI_CHAT_EFFORT_PROFILES = Object.freeze({
   low: Object.freeze({
     verbosity: "low",
-    maxAgentToolRounds: 8,
-    maxCodingAgentToolRounds: 32,
+    maxAgentToolRounds: 6,
+    maxCodingAgentToolRounds: 12,
+    codingTimeoutMs: 8 * 60 * 1000,
+    advancedTools: "base",
     automaticReview: false,
     multiAgent: false,
   }),
   medium: Object.freeze({
     verbosity: "medium",
-    maxAgentToolRounds: 14,
-    maxCodingAgentToolRounds: 60,
+    maxAgentToolRounds: 10,
+    maxCodingAgentToolRounds: 32,
+    codingTimeoutMs: 20 * 60 * 1000,
+    advancedTools: "last_resort",
     automaticReview: false,
     multiAgent: false,
   }),
@@ -45,6 +56,8 @@ const AI_CHAT_EFFORT_PROFILES = Object.freeze({
     verbosity: "high",
     maxAgentToolRounds: 20,
     maxCodingAgentToolRounds: 90,
+    codingTimeoutMs: GPT_CODING_TIMEOUT_MS,
+    advancedTools: "full",
     automaticReview: true,
     multiAgent: true,
   }),
@@ -52,6 +65,8 @@ const AI_CHAT_EFFORT_PROFILES = Object.freeze({
     verbosity: "high",
     maxAgentToolRounds: 28,
     maxCodingAgentToolRounds: 120,
+    codingTimeoutMs: GPT_CODING_TIMEOUT_MS,
+    advancedTools: "full",
     automaticReview: true,
     multiAgent: true,
   }),
@@ -112,7 +127,7 @@ const GPT_CHAT_ATTACHMENT_MIME = Object.freeze({
   htm: "text/html",
   xml: "text/xml",
   csv: "text/csv",
-  tsv: "text/tsv",
+  tsv: "text/tab-separated-values",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   rtf: "application/rtf",
@@ -357,6 +372,25 @@ function getAiChatEffortProfile(effort) {
   return AI_CHAT_EFFORT_PROFILES[normalized] || AI_CHAT_EFFORT_PROFILES.medium;
 }
 
+function selectGitHubToolsForEffort(tools, advancedToolsEnabled) {
+  if (advancedToolsEnabled) return Array.isArray(tools) ? tools.slice() : [];
+  return (Array.isArray(tools) ? tools : []).filter((tool) => !ADVANCED_GITHUB_TOOL_NAMES.has(String(tool?.name || "")));
+}
+
+function buildAdvancedCodingToolsGate() {
+  return {
+    type: "function",
+    name: ADVANCED_CODING_TOOLS_TOOL,
+    description: "Medium-mode last resort. Enable hosted shell, CI/review, browser, and MCP tools only when the ordinary GitHub read/search/edit tools cannot safely complete the task and the extra evidence or deterministic validation is truly necessary.",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+    strict: true,
+  };
+}
+
+function isAdvancedCodingToolsCall(item) {
+  return item?.type === "function_call" && item?.name === ADVANCED_CODING_TOOLS_TOOL;
+}
+
 function buildAiChatInstructions(preferredVoice, githubContext, memories, model, agentInstructions = "", mcpInstructions = "", runtimeInstructions = "") {
   const selectedVoice = VOICE_NAMES.includes(preferredVoice) ? preferredVoice : "Nora";
   const selectedModel = normalizeAiChatModel(model);
@@ -567,17 +601,22 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
   const effortProfile = getAiChatEffortProfile(reasoningEffort);
   const safetyIdentifier = await buildAiChatSafetyIdentifier(options.userId);
   const githubContext = await getGitHubAiContext(env, options.userId);
-  const githubTools = getGitHubAiTools(githubContext);
-  const mcpTools = getAiMcpTools(env);
-  const computerTools = getAiComputerTools(env);
+  const fullGithubTools = getGitHubAiTools(githubContext);
+  const fullMcpTools = getAiMcpTools(env);
+  const fullComputerTools = getAiComputerTools(env);
+  let advancedCodingToolsEnabled = effortProfile.advancedTools === "full";
+  let githubTools = selectGitHubToolsForEffort(fullGithubTools, advancedCodingToolsEnabled);
+  let mcpTools = advancedCodingToolsEnabled ? fullMcpTools : [];
+  let computerTools = advancedCodingToolsEnabled ? fullComputerTools : [];
   const computerSession = createAiComputerSession(env);
-  const openAiAgent = await prepareOpenAiAgentTools(env, options.userId, {
+  let openAiAgent = await prepareOpenAiAgentTools(env, options.userId, {
     attachment: cleanMessages[cleanMessages.length - 1]?.attachment || null,
     githubContext,
     reasoningEffort,
+    shellEnabled: advancedCodingToolsEnabled,
   });
-  const openAiAgentInstructions = buildOpenAiAgentInstructions(openAiAgent, githubContext);
-  const mcpInstructions = buildAiMcpInstructions(mcpTools);
+  let openAiAgentInstructions = buildOpenAiAgentInstructions(openAiAgent, githubContext);
+  let mcpInstructions = buildAiMcpInstructions(mcpTools);
   const codingActivity = githubContext ? {
     used: false,
     repository: githubContext.fullName,
@@ -623,7 +662,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       if (!controller.signal.aborted) controller.abort();
     },
     githubContext
-      ? GPT_CODING_TIMEOUT_MS
+      ? effortProfile.codingTimeoutMs
       : reasoningEffort === "high" || reasoningEffort === "max"
         ? 300000
         : GPT_CHAT_TIMEOUT_MS,
@@ -671,19 +710,26 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
         strict: true
       },
     ];
-    const delegatedTools = [
-      ...openAiAgent.tools,
-      ...githubTools,
-      ...mcpTools,
-      ...computerTools,
-      ...memoryTools,
-    ];
-    const hasDeferredTools = delegatedTools.some((tool) => tool?.defer_loading === true);
-    const tools = [
-      ...coreTools,
-      ...(hasDeferredTools ? [{ type: "tool_search" }] : []),
-      ...delegatedTools,
-    ];
+    const buildRuntimeTools = () => {
+      const advancedGateTools = reasoningEffort === "medium" && githubContext && !advancedCodingToolsEnabled
+        ? [buildAdvancedCodingToolsGate()]
+        : [];
+      const delegatedTools = [
+        ...openAiAgent.tools,
+        ...githubTools,
+        ...mcpTools,
+        ...computerTools,
+        ...memoryTools,
+        ...advancedGateTools,
+      ];
+      const hasDeferredTools = delegatedTools.some((tool) => tool?.defer_loading === true);
+      return [
+        ...coreTools,
+        ...(hasDeferredTools ? [{ type: "tool_search" }] : []),
+        ...delegatedTools,
+      ];
+    };
+    let tools = buildRuntimeTools();
     const responseInput = inputMessages.slice();
     let webSearchUsed = false;
     let webSearchCalls = 0;
@@ -737,6 +783,58 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           at: Date.now(),
         });
       }
+    };
+
+    const enableAdvancedCodingTools = async () => {
+      if (advancedCodingToolsEnabled || reasoningEffort !== "medium" || !githubContext) {
+        return { ok: advancedCodingToolsEnabled, alreadyEnabled: advancedCodingToolsEnabled };
+      }
+      const previousUploadedFileId = String(openAiAgent?.uploadedFileId || "").trim();
+      const upgradedAgent = await prepareOpenAiAgentTools(env, options.userId, {
+        attachment: null,
+        githubContext,
+        reasoningEffort,
+        shellEnabled: true,
+      });
+      if (previousUploadedFileId && !upgradedAgent.uploadedFileId) {
+        upgradedAgent.uploadedFileId = previousUploadedFileId;
+      }
+      openAiAgent = upgradedAgent;
+      githubTools = selectGitHubToolsForEffort(fullGithubTools, true);
+      mcpTools = fullMcpTools;
+      computerTools = fullComputerTools;
+      advancedCodingToolsEnabled = true;
+      openAiAgentInstructions = buildOpenAiAgentInstructions(openAiAgent, githubContext);
+      mcpInstructions = buildAiMcpInstructions(mcpTools);
+      tools = buildRuntimeTools();
+
+      const targetCommitSha = String(
+        codingActivity?.currentCommitSha || openAiAgent.repositorySnapshot?.commitSha || "",
+      );
+      if (/^[a-f0-9]{40}$/i.test(targetCommitSha)) {
+        const snapshot = await refreshOpenAiCodingWorkspace(
+          env,
+          options.userId,
+          tools,
+          openAiAgent,
+          targetCommitSha,
+        );
+        if (snapshot && codingActivity) {
+          codingActivity.workspaceCommitSha = targetCommitSha;
+        }
+      }
+      if (codingActivity && Array.isArray(codingActivity.events)) {
+        codingActivity.events.push({
+          state: "analyzing_code",
+          label: "Advanced tools enabled",
+          detail: "Medium last-resort escalation",
+          at: Date.now(),
+        });
+      }
+      return {
+        ok: true,
+        enabled: ["hosted_shell", "ci_review", "browser", "mcp"],
+      };
     };
 
     for (let toolRound = 0; toolRound < maxAgentToolRounds; toolRound += 1) {
@@ -886,6 +984,7 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           outputTokens: Math.max(0, Number(data.usage.output_tokens || 0)),
           cachedTokens: Math.max(0, Number(data.usage.input_tokens_details?.cached_tokens || 0)),
           cacheWriteTokens: Math.max(0, Number(data.usage.input_tokens_details?.cache_write_tokens || 0)),
+          advancedTools: advancedCodingToolsEnabled,
           multiAgent: multiAgentEnabled,
         });
       }
@@ -895,12 +994,13 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
           && item?.type === "function_call"
           && (item?.name === "generate_image" || item?.name === "generate_speech"),
       );
+      const advancedCodingCalls = output.filter((item) => isRootAgentItem(item) && isAdvancedCodingToolsCall(item));
       const githubCalls = output.filter(isGitHubAiToolCall);
       const memoryCalls = output.filter(isAiMemoryToolCall);
       const patchCalls = output.filter(isOpenAiApplyPatchCall);
       const browserOpenCalls = output.filter(isAiComputerFunctionCall);
       const computerCalls = output.filter(isAiComputerCall);
-      const hasClientCalls = githubCalls.length || memoryCalls.length || patchCalls.length || browserOpenCalls.length || computerCalls.length;
+      const hasClientCalls = advancedCodingCalls.length || githubCalls.length || memoryCalls.length || patchCalls.length || browserOpenCalls.length || computerCalls.length;
       const hasRootMessage = output.some((item) => item?.type === "message" && isRootAgentItem(item));
 
       if (terminalCall && !hasClientCalls) {
@@ -953,6 +1053,17 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
       }
 
       responseInput.push(...prepareOpenAiToolReplayItems(output));
+      for (const call of advancedCodingCalls) {
+        throwIfAiChatAborted(controller.signal);
+        try {
+          const result = await enableAdvancedCodingTools();
+          responseInput.push(functionCallOutput(call, JSON.stringify(result)));
+        } catch (error) {
+          responseInput.push(functionCallOutput(call, JSON.stringify({
+            error: String(error?.message || "Advanced coding tools could not be enabled.").slice(0, 500),
+          })));
+        }
+      }
       for (const call of memoryCalls) {
         throwIfAiChatAborted(controller.signal);
         const update = applyAiMemoryToolCall(memoryEntries, call);
