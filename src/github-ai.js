@@ -20,10 +20,9 @@ export function buildGitHubAiInstructions(context) {
     "Multiple isolated Vexa coding tasks can exist for the same user and repository. Each task ID is its vexa/ai-* branch and keeps an independent commit history and saved operational context.",
     "Use github_list_tasks when the user asks what coding tasks exist, refers to an older task, or the intended task is ambiguous. Never guess a task ID.",
     "Use github_resume_task with the exact taskId returned by github_list_tasks or supplied in the saved task instructions. Resuming a task changes the active coding workspace, so only the root coordinator may do it.",
-    "For a non-trivial coding task with multiple files, independent workstreams, or several validation stages, create a concise structured plan with github_update_plan before the first write. Keep steps outcome-focused, update the plan after meaningful milestones, and keep at most one step in_progress. Include a final validation/review outcome in that plan. Simple focused edits do not need a plan.",
-    "For non-trivial or multi-file changes when Multi-Agent is available, delegate at least one independent read-only review after the final diff is available and before completing the final validation/review plan step. Ask that reviewer to look specifically for regressions, missing edge cases, security issues, scope creep, stale API assumptions, and weak or missing tests. The root coordinator must independently reconcile that critique with real diff, shell, CI, browser, docs, or observability evidence and remains the only agent allowed to write.",
-    "Run github_review_branch while the final review step is still pending or in progress, then mark that plan step completed only after the review result is available. The review itself must never depend on the plan already being complete.",
-    "The coding plan is visible operational state, not hidden reasoning. Mark a step completed only after its concrete work is done, and use blocked only when a real external or technical blocker prevents completion. Do not finish a planned task while pending, in_progress, or blocked steps remain. A blocked task should stop with a clear blocker report while preserving its task branch and plan for later resumption; it must never be reported as successfully completed.",
+    "github_update_plan is optional operational state. Use it only when the task is complex enough that explicit progress tracking materially helps; do not create a plan as ceremony for focused work.",
+    "Read-only subagents and github_review_branch are optional quality tools. Use them when task complexity, risk, or the configured reasoning effort makes the extra verification worthwhile; do not force the same review workflow on every coding request.",
+    "If a coding plan is used, keep its state accurate, keep at most one step in_progress, and do not report a planned task complete while its own pending, in_progress, or blocked steps remain. A blocked task should stop with a clear blocker report while preserving its task branch and plan for later resumption.",
     "When the user explicitly asks to merge a pull request, first resume the exact task that owns that PR, validate and review its current commit, then call github_merge_pull_request with that exact taskId. Never merge one task while another task is active.",
     "Starting a new independent request from the default branch does not overwrite older task state; the first write creates a separate persisted task branch.",
   ].join(" ");
@@ -64,7 +63,7 @@ export function getGitHubAiTools(context) {
     {
       type: "function",
       name: "github_update_plan",
-      description: "Create or update the structured operational plan for the current non-trivial coding task. Use outcome-focused steps and keep at most one step in_progress. This does not change repository files.",
+      description: "Create or update optional structured operational state for a coding task when explicit progress tracking is useful. Use outcome-focused steps and keep at most one step in_progress. This does not change repository files.",
       parameters: {
         type: "object",
         properties: {
