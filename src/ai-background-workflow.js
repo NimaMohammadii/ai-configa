@@ -1,5 +1,6 @@
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import { NonRetryableError } from "cloudflare:workflows";
+import { getUserAiChatPreferences } from "./ai-chat-model.js";
 import { runWithCreditIdempotency } from "./credit-idempotency.js";
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
 import { handleMiniAppRequest } from "./mini-app/server.js";
@@ -113,6 +114,7 @@ async function startTask(env, user, payload) {
     throw httpError(`You can run up to ${MAX_ACTIVE_TASKS_PER_USER} background AI tasks at once.`, 429);
   }
 
+  const preferences = await getUserAiChatPreferences(env, user.id);
   const taskId = `ai-${crypto.randomUUID()}`;
   const safeUser = {
     id: user.id,
@@ -127,10 +129,23 @@ async function startTask(env, user, payload) {
   try {
     const instance = await env.AI_CODING_WORKFLOW.create({
       id: taskId,
-      params: { taskId, userId: String(user.id), user: safeUser, messages },
+      params: {
+        taskId,
+        userId: String(user.id),
+        user: safeUser,
+        messages,
+        model: preferences.model,
+        reasoningEffort: preferences.reasoningEffort,
+      },
       retention: { successRetention: "7 days", errorRetention: "7 days" },
     });
-    return { taskId, workflowId: String(instance.id || taskId), status: "queued" };
+    return {
+      taskId,
+      workflowId: String(instance.id || taskId),
+      status: "queued",
+      model: preferences.model,
+      reasoningEffort: preferences.reasoningEffort,
+    };
   } catch (error) {
     await updateTask(env, taskId, String(user.id), {
       status: "failed",
