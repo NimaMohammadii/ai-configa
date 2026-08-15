@@ -17,15 +17,6 @@ const AI_CHAT_PATH = "/mini-app/api/chat";
 
 export { AiCodingWorkflow };
 
-function vexaEditorResponse() {
-  return new Response(VEXA_LIVE_EDITOR_JS, {
-    headers: {
-      "Content-Type": "application/javascript;charset=utf-8",
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-    },
-  });
-}
-
 async function injectVexaEditorClient(response) {
   if (!response || !response.ok) return response;
   const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
@@ -77,10 +68,6 @@ export default {
     if (request.method === "POST" && url.pathname === AI_CHAT_PATH) {
       const response = await worker.fetch(request, env, ctx);
       return hardenAiChatResponse(response);
-    }
-
-    if (request.method === "GET" && url.pathname === "/mini-app/live/editor.js") {
-      return vexaEditorResponse();
     }
 
     if (
