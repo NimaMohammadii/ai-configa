@@ -31,19 +31,5 @@ name = "vexa-ai-coding-tasks"
 binding = "AI_CODING_WORKFLOW"
 class_name = "AiCodingWorkflow"
 
-[[containers]]
-class_name = "VexaMediaContainer"
-image = "./containers/vexa-media/Dockerfile"
-max_instances = 20
-instance_type = "basic"
-
-[[durable_objects.bindings]]
-name = "VEXA_MEDIA_CONTAINER"
-class_name = "VexaMediaContainer"
-
-[[migrations]]
-tag = "vexa-media-container-v1"
-new_sqlite_classes = ["VexaMediaContainer"]
-
 [triggers]
 crons = ["* * * * *"]
