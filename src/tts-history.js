@@ -123,13 +123,24 @@ export async function getMiniAppTtsHistory(env, userId, limit = 30) {
   await ensureTtsHistoryTable(env);
   const safeLimit = Math.min(50, Math.max(1, Number(limit || 30)));
   const rows = await env.DB.prepare(
-    "SELECT id, text, voice, language, credits, file_sequence, source, created_at, " +
-      "CASE WHEN audio_base64 != '' OR file_id IS NOT NULL OR audio_r2_key IS NOT NULL THEN 1 ELSE 0 END AS has_audio " +
+    "SELECT id, text, voice, language, credits, file_sequence, source, created_at, edit_revision, alignment_json, " +
+      "CASE WHEN audio_base64 != '' OR file_id IS NOT NULL OR audio_r2_key IS NOT NULL THEN 1 ELSE 0 END AS has_audio, " +
+      "CASE WHEN source = 'mini_app' AND audio_r2_key IS NOT NULL AND alignment_json != '' THEN 1 ELSE 0 END AS editable " +
     "FROM tts_history WHERE user_id = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ?"
   ).bind(String(userId), safeLimit).all();
 
   return (rows.results || []).map((row) => ({
-    ...row,
+    id: row.id,
+    text: row.text,
+    voice: row.voice,
+    language: row.language,
+    credits: Number(row.credits || 0),
+    file_sequence: row.file_sequence,
+    source: row.source,
+    created_at: row.created_at,
+    revision: Number(row.edit_revision || 0),
+    alignment: row.editable ? parseStoredAlignment(row.alignment_json) : null,
+    editable: Boolean(row.editable),
     has_audio: Boolean(row.has_audio),
     filename: buildTtsAudioFileName(row.file_sequence),
   }));
@@ -203,7 +214,7 @@ export function buildTtsHistoryFile(userId, rows) {
     lines.push(
       "#" + (index + 1),
       "Date: " + (item.created_at || "-"),
-      "Voice: " + (item.voice || "-"),
+      "Voice: " + (item.voice || "-") ,
       "Language: " + (item.language || "-"),
       "Source: " + ttsSourceLabel(item.source),
       "Characters: " + Array.from(text).length,
@@ -289,6 +300,15 @@ function historyLabel(item) {
   const shortText = String(item.text || "").replace(/\s+/g, " ").trim().slice(0, 28);
   const date = String(item.created_at || "").slice(0, 16);
   return `${date} • ${ttsSourceLabel(item.source)} • ${item.voice || "voice"} • ${shortText || "text"}`;
+}
+
+function parseStoredAlignment(value) {
+  try {
+    const parsed = JSON.parse(String(value || ""));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeTtsSource(value) {
