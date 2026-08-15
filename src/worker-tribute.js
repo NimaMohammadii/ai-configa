@@ -7,7 +7,7 @@ import {
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
 
-const TRIBUTE_UI_VERSION = "20260815-2";
+const TRIBUTE_UI_VERSION = "20260815-3";
 const KNOWN_TRIBUTE_SHOP_EVENTS = new Set([
   "shop_order",
   "shop_order_refunded",
@@ -42,11 +42,11 @@ export default {
 
     const response = await worker.fetch(request, tributeEnv, ctx);
 
-    if (
-      request.method === "GET" &&
-      (url.pathname === "/mini-app" || url.pathname === "/mini-app/")
-    ) {
-      return injectTributePayments(response);
+    // Load Tribute through the same external JS bundle the Mini App already uses.
+    // This is more reliable in Telegram WebViews than injecting a separate inline
+    // script into the HTML document and keeps one UI execution path.
+    if (request.method === "GET" && url.pathname === "/mini-app/app.js") {
+      return injectTributeIntoMiniAppBundle(response);
     }
 
     return response;
@@ -174,30 +174,24 @@ function json(value, status = 200) {
   });
 }
 
-async function injectTributePayments(response) {
+async function injectTributeIntoMiniAppBundle(response) {
   if (!response || !response.ok) return response;
 
   const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
-  if (!contentType.includes("text/html")) return response;
+  if (!contentType.includes("javascript")) return response;
 
   const source = await response.text();
-  const fixStyle = '<style id="tributePaymentsFixes">.tribute-card-mark{position:relative}</style>';
-  const script =
-    '<script id="tributePaymentsIntegration" data-version="' +
-    TRIBUTE_UI_VERSION +
-    '">' +
-    TRIBUTE_PAYMENTS_INTEGRATION_JS.replace(/<\/script/gi, "<\\/script") +
-    '</script>';
-  const injection = fixStyle + script;
-  const html = source.includes("</body>")
-    ? source.replace("</body>", injection + "\n</body>")
-    : source + injection;
+  const integration =
+    "\n;/* Vexa Tribute UI " + TRIBUTE_UI_VERSION + " */\n" +
+    TRIBUTE_PAYMENTS_INTEGRATION_JS +
+    "\n";
 
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
-  headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  headers.set("X-Vexa-Tribute-UI", TRIBUTE_UI_VERSION);
 
-  return new Response(html, {
+  return new Response(source + integration, {
     status: response.status,
     statusText: response.statusText,
     headers,
