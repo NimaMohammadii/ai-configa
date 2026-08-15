@@ -11,7 +11,7 @@ import {
 } from "./mini-app/ai-background-tasks-client.js";
 import { VEXA_LIVE_EDITOR_JS } from "./mini-app/vexa-live/editor-client.js";
 
-const VEXA_EDITOR_VERSION = "20260815-9";
+const VEXA_EDITOR_VERSION = "20260815-10";
 const AI_CHAT_HEARTBEAT_MS = 10_000;
 const AI_CHAT_PATH = "/mini-app/api/chat";
 
@@ -167,46 +167,32 @@ async function injectVexaEditorClient(response) {
       'html body.vexa-live-editing .vexa-caption-input,html body.vexa-live-editing .vexa-reset-position{height:44px!important}' +
     '}' +
     '</style>';
-  const activation =
-    '<script id="vexaEditorActivation">' +
+
+  const editorRuntime =
+    '<script id="vexaEditorRuntime">' +
+    'document.documentElement.dataset.vexaEditorVersion="' +
+    VEXA_EDITOR_VERSION +
+    '";' +
+    VEXA_LIVE_EDITOR_JS.replace(/<\/script/gi, "<\\/script") +
+    '</script>';
+
+  const decoration =
+    '<script id="vexaEditorDecorations">' +
     '(function(){' +
-      'document.documentElement.dataset.vexaEditorVersion="' + VEXA_EDITOR_VERSION + '";' +
-      'var ready=document.getElementById("videoReadyState");' +
-      'var video=document.getElementById("videoPreview");' +
-      'if(!ready)return;' +
-      'function lockVideo(){' +
-        'if(!video)return;' +
-        'video.controls=false;' +
-        'video.setAttribute("playsinline","");' +
-        'video.setAttribute("webkit-playsinline","");' +
-        'video.setAttribute("controlsList","nofullscreen noremoteplayback nodownload");' +
-        'try{video.disablePictureInPicture=true}catch(e){}' +
-      '}' +
-      'function decorateTimeline(){' +
+      'function decorate(){' +
         'var lane=document.getElementById("vexaTimelineLane");' +
         'if(!lane||document.getElementById("vexaVideoTrack"))return;' +
         'var track=document.createElement("div");' +
         'track.id="vexaVideoTrack";track.className="vexa-video-track";' +
-        'for(var i=0;i<18;i+=1){track.appendChild(document.createElement("i"));}' +
+        'for(var i=0;i<18;i+=1)track.appendChild(document.createElement("i"));' +
         'lane.insertBefore(track,lane.firstChild);' +
       '}' +
-      'function sync(){' +
-        'var active=ready.classList.contains("show")&&ready.getAttribute("aria-hidden")!=="true";' +
-        'document.body.classList.toggle("vexa-live-editing",active);' +
-        'lockVideo();' +
-        'if(active)setTimeout(decorateTimeline,0);' +
-      '}' +
-      'new MutationObserver(sync).observe(ready,{attributes:true,attributeFilter:["class","aria-hidden"]});' +
-      'new MutationObserver(function(){lockVideo();decorateTimeline();}).observe(document.body,{childList:true,subtree:true});' +
-      'if(video)new MutationObserver(lockVideo).observe(video,{attributes:true,attributeFilter:["controls"]});' +
-      'sync();' +
+      'new MutationObserver(decorate).observe(document.body,{childList:true,subtree:true});' +
+      'if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",decorate,{once:true});else decorate();' +
     '})();' +
     '</script>';
-  const script =
-    '<script src="/mini-app/live/editor.js?v=' +
-    VEXA_EDITOR_VERSION +
-    '"></script>';
-  const injection = editorLayout + activation + script;
+
+  const injection = editorLayout + editorRuntime + decoration;
   const html = source.includes("</body>")
     ? source.replace("</body>", injection + "\n</body>")
     : source + injection;
