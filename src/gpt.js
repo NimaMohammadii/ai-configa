@@ -24,7 +24,7 @@ const GPT_MODEL = "gpt-5.6-terra";
 const AI_CHAT_CONTEXT_WINDOW = 1050000;
 const AI_CHAT_COMPACTION_THRESHOLD = 200000;
 const AI_CHAT_RATE_LIMIT_MAX_RETRIES = 3;
-const AI_CHAT_RATE_LIMIT_MAX_WAIT_MS = 90 * 1000;
+const AI_CHAT_RATE_LIMIT_MAX_TOTAL_WAIT_MS = 90 * 1000;
 const MAX_ENHANCE_CHARS = 5000;
 const ADVANCED_CODING_TOOLS_TOOL = "enable_advanced_coding_tools";
 const MEDIUM_ADVANCED_MIN_BASE_ACTIONS = 2;
@@ -620,6 +620,13 @@ function parseOpenAiDurationMs(value) {
   return matched ? Math.ceil(total) : 0;
 }
 
+function readOpenAiRateLimitNumber(headers, name) {
+  const raw = String(headers?.get?.(name) || "").trim();
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 function readOpenAiRateLimitHeaders(headers) {
   const retryAfter = String(headers?.get?.("retry-after") || "").trim();
   let retryAfterMs = parseOpenAiDurationMs(retryAfter);
@@ -627,15 +634,22 @@ function readOpenAiRateLimitHeaders(headers) {
     const retryAt = Date.parse(retryAfter);
     if (Number.isFinite(retryAt)) retryAfterMs = Math.max(0, retryAt - Date.now());
   }
+  const resetTokens = String(headers?.get?.("x-ratelimit-reset-tokens") || "").trim();
+  const resetRequests = String(headers?.get?.("x-ratelimit-reset-requests") || "").trim();
+  const resetProjectTokens = String(headers?.get?.("x-ratelimit-reset-project-tokens") || "").trim();
   return {
-    limitTokens: Math.max(0, Number(headers?.get?.("x-ratelimit-limit-tokens") || 0)),
-    remainingTokens: Math.max(0, Number(headers?.get?.("x-ratelimit-remaining-tokens") || 0)),
-    resetTokens: String(headers?.get?.("x-ratelimit-reset-tokens") || "").trim(),
-    resetTokensMs: parseOpenAiDurationMs(headers?.get?.("x-ratelimit-reset-tokens")),
-    limitRequests: Math.max(0, Number(headers?.get?.("x-ratelimit-limit-requests") || 0)),
-    remainingRequests: Math.max(0, Number(headers?.get?.("x-ratelimit-remaining-requests") || 0)),
-    resetRequests: String(headers?.get?.("x-ratelimit-reset-requests") || "").trim(),
-    resetRequestsMs: parseOpenAiDurationMs(headers?.get?.("x-ratelimit-reset-requests")),
+    limitTokens: readOpenAiRateLimitNumber(headers, "x-ratelimit-limit-tokens"),
+    remainingTokens: readOpenAiRateLimitNumber(headers, "x-ratelimit-remaining-tokens"),
+    resetTokens,
+    resetTokensMs: parseOpenAiDurationMs(resetTokens),
+    limitRequests: readOpenAiRateLimitNumber(headers, "x-ratelimit-limit-requests"),
+    remainingRequests: readOpenAiRateLimitNumber(headers, "x-ratelimit-remaining-requests"),
+    resetRequests,
+    resetRequestsMs: parseOpenAiDurationMs(resetRequests),
+    limitProjectTokens: readOpenAiRateLimitNumber(headers, "x-ratelimit-limit-project-tokens"),
+    remainingProjectTokens: readOpenAiRateLimitNumber(headers, "x-ratelimit-remaining-project-tokens"),
+    resetProjectTokens,
+    resetProjectTokensMs: parseOpenAiDurationMs(resetProjectTokens),
     retryAfter,
     retryAfterMs,
   };
@@ -652,12 +666,15 @@ function isRetryableAiRateLimit(status, errorBody) {
     && !raw.includes("quota");
 }
 
-function resolveOpenAiRateLimitWaitMs(headers, attempt) {
+function resolveOpenAiRateLimitWaitMs(headers, attempt, remainingBudgetMs = AI_CHAT_RATE_LIMIT_MAX_TOTAL_WAIT_MS) {
   const rateLimit = readOpenAiRateLimitHeaders(headers);
-  const serverDelay = Math.max(rateLimit.retryAfterMs, rateLimit.resetTokensMs, rateLimit.resetRequestsMs);
-  const fallbackDelay = 5000 * (2 ** Math.max(0, Number(attempt || 0))) + Math.floor(Math.random() * 750);
-  const waitMs = serverDelay > 0 ? serverDelay + 250 + Math.floor(Math.random() * 500) : fallbackDelay;
-  if (waitMs <= 0 || waitMs > AI_CHAT_RATE_LIMIT_MAX_WAIT_MS) return 0;
+  const jitterMs = 250 + Math.floor(Math.random() * 500);
+  const fallbackDelay = 5000 * (2 ** Math.max(0, Number(attempt || 0))) + jitterMs;
+  const waitMs = rateLimit.retryAfterMs > 0
+    ? rateLimit.retryAfterMs + jitterMs
+    : fallbackDelay;
+  const budgetMs = Math.max(0, Number(remainingBudgetMs || 0));
+  if (waitMs <= 0 || budgetMs <= 0 || waitMs > budgetMs) return 0;
   return Math.max(1000, Math.ceil(waitMs));
 }
 
@@ -687,6 +704,7 @@ function waitWithAbort(ms, signal) {
 }
 
 async function fetchAiChatResponseWithRateLimitRetry(url, init, context = {}) {
+  const retryStartedAt = Date.now();
   for (let attempt = 0; attempt <= AI_CHAT_RATE_LIMIT_MAX_RETRIES; attempt += 1) {
     const response = await fetch(url, init);
     if (response.ok) return response;
@@ -700,12 +718,15 @@ async function fetchAiChatResponseWithRateLimitRetry(url, init, context = {}) {
     if (!isRetryableAiRateLimit(response.status, errorBody) || attempt >= AI_CHAT_RATE_LIMIT_MAX_RETRIES) {
       throw upstreamError;
     }
-    const waitMs = resolveOpenAiRateLimitWaitMs(response.headers, attempt);
+    const elapsedRetryMs = Math.max(0, Date.now() - retryStartedAt);
+    const remainingRetryBudgetMs = Math.max(0, AI_CHAT_RATE_LIMIT_MAX_TOTAL_WAIT_MS - elapsedRetryMs);
+    const waitMs = resolveOpenAiRateLimitWaitMs(response.headers, attempt, remainingRetryBudgetMs);
     if (!waitMs) throw upstreamError;
     console.warn("AI_CHAT_RATE_LIMIT_BACKOFF", {
       internalCode: upstreamError.internalCode,
       attempt: attempt + 1,
       waitMs,
+      remainingRetryBudgetMs,
       rateLimit,
     });
     await waitWithAbort(waitMs, init.signal);
