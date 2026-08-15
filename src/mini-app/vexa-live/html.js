@@ -11,751 +11,419 @@ export const VEXA_LIVE_HTML = `<!doctype html>
   <title>Vexa Live</title>
   <link rel="stylesheet" href="/mini-app/live/styles.css?v=20260815-7" />
   <style id="vexaLivePremiumUi">
-    :root {
-      --vexa-white:#fff;
-      --vexa-bg:#000;
-      --vexa-surface:rgba(255,255,255,.048);
-      --vexa-surface-2:rgba(255,255,255,.072);
-      --vexa-line:rgba(255,255,255,.085);
-      --vexa-line-soft:rgba(255,255,255,.05);
-      --vexa-muted:rgba(255,255,255,.43);
-      --vexa-dim:rgba(255,255,255,.25);
-      --vexa-ease:cubic-bezier(.16,1,.3,1);
+    :root{
+      --vexa-card:rgba(255,255,255,.055);
+      --vexa-card-strong:rgba(255,255,255,.075);
+      --vexa-line:rgba(255,255,255,.13);
+      --vexa-line-soft:rgba(255,255,255,.075);
+      --vexa-muted:rgba(255,255,255,.58);
+      --vexa-dim:rgba(255,255,255,.32);
+      --vexa-ease:cubic-bezier(.16,.86,.22,1);
     }
 
-    html,body{background:#000;color:#fff}
+    html,body{background:#000!important;color:#fff!important}
     body{min-height:var(--tg-viewport-height,100dvh)}
 
     .live-app{
-      width:min(100%,540px);
-      min-height:var(--tg-viewport-height,100dvh);
-      margin:0 auto;
-      padding:calc(16px + env(safe-area-inset-top)) 16px calc(22px + env(safe-area-inset-bottom));
-      overflow:visible;
+      width:min(100%,560px)!important;
+      min-height:var(--tg-viewport-height,100dvh)!important;
+      margin:0 auto!important;
+      padding:calc(18px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom))!important;
+      background:#000!important;
+      overflow:visible!important;
     }
-
-    .live-app::before{
-      top:-110px;
-      width:480px;
-      height:380px;
-      background:radial-gradient(circle,rgba(255,255,255,.055),transparent 66%);
-      filter:blur(22px);
-      opacity:.9;
-    }
-
-    .live-app::after{
-      opacity:.045;
-      background-size:56px 56px;
-      mask-image:linear-gradient(to bottom,#000 0%,rgba(0,0,0,.52) 44%,transparent 82%);
-      -webkit-mask-image:linear-gradient(to bottom,#000 0%,rgba(0,0,0,.52) 44%,transparent 82%);
-    }
+    .live-app::before,.live-app::after{display:none!important}
 
     .live-header{
-      height:44px;
-      display:grid;
-      grid-template-columns:42px 1fr auto;
-      align-items:center;
-      gap:11px;
-      animation:vexaHeaderIn .58s var(--vexa-ease) both;
+      height:38px!important;
+      display:grid!important;
+      grid-template-columns:38px 1fr auto!important;
+      align-items:center!important;
+      gap:10px!important;
+      animation:vexaSoftIn .42s var(--vexa-ease) both!important;
     }
-
     .live-back{
-      width:40px;
-      height:40px;
-      display:grid;
-      place-items:center;
-      border-radius:14px;
-      color:#fff;
-      text-decoration:none;
-      background:rgba(255,255,255,.048);
-      box-shadow:inset 0 0 0 1px var(--vexa-line-soft),0 8px 28px rgba(0,0,0,.3);
-      backdrop-filter:blur(16px);
-      -webkit-backdrop-filter:blur(16px);
-      transition:transform .22s var(--vexa-ease),background .2s ease;
+      width:36px!important;
+      height:36px!important;
+      border-radius:50%!important;
+      display:grid!important;
+      place-items:center!important;
+      color:#fff!important;
+      background:var(--vexa-card)!important;
+      border:1px solid var(--vexa-line)!important;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 8px 24px rgba(0,0,0,.28)!important;
+      backdrop-filter:blur(10px)!important;
+      -webkit-backdrop-filter:blur(10px)!important;
+      transition:transform .2s var(--vexa-ease),background .2s ease!important;
     }
+    .live-back:active{transform:scale(.9)!important;background:var(--vexa-card-strong)!important}
+    .live-back svg{width:18px!important;height:18px!important}
 
-    .live-back:active{transform:scale(.9);background:rgba(255,255,255,.09)}
-    .live-back svg{width:20px;height:20px}
-
-    .live-brand{align-items:flex-start;gap:0;transform:translateY(1px)}
-    .live-brand span{font-size:7px;font-weight:760;letter-spacing:.16em;color:rgba(255,255,255,.3)}
-    .live-brand strong{margin-top:1px;font-size:16px;font-weight:750;letter-spacing:-.04em}
+    .live-brand{align-items:center!important;justify-content:center!important;gap:0!important;transform:none!important}
+    .live-brand span{display:none!important}
+    .live-brand strong{margin:0!important;font-size:16px!important;font-weight:690!important;letter-spacing:-.035em!important}
 
     .live-status-pill{
-      height:30px;
-      padding:0 10px 0 8px;
-      display:flex;
-      align-items:center;
-      gap:7px;
-      border-radius:999px;
-      color:rgba(255,255,255,.55);
-      background:rgba(255,255,255,.042);
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.055);
-      font-size:8px;
-      font-weight:720;
-      letter-spacing:.04em;
+      height:30px!important;
+      padding:0 10px!important;
+      display:flex!important;
+      align-items:center!important;
+      gap:6px!important;
+      border-radius:999px!important;
+      color:var(--vexa-muted)!important;
+      background:var(--vexa-card)!important;
+      border:1px solid var(--vexa-line-soft)!important;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.045)!important;
+      font-size:9px!important;
+      font-weight:650!important;
+      letter-spacing:0!important;
     }
-
     .live-status-pill i{
-      width:6px;
-      height:6px;
-      border-radius:50%;
-      background:#fff;
-      box-shadow:0 0 0 4px rgba(255,255,255,.055);
-      animation:vexaStatusPulse 2.1s ease-in-out infinite;
+      width:5px!important;
+      height:5px!important;
+      border-radius:50%!important;
+      background:#fff!important;
+      box-shadow:none!important;
+      animation:vexaReadyPulse 2.4s ease-in-out infinite!important;
     }
 
     .live-hero{
-      display:flex;
-      flex-direction:column;
-      align-items:stretch;
-      padding:27px 0 18px;
-      text-align:left;
+      display:flex!important;
+      flex-direction:column!important;
+      align-items:flex-start!important;
+      padding:34px 2px 18px!important;
+      text-align:left!important;
     }
-
-    .editor-demo{
-      position:relative;
-      width:148px;
-      aspect-ratio:1/2;
-      margin:0 auto 27px;
-      overflow:hidden;
-      border-radius:29px;
-      background:
-        radial-gradient(circle at 52% 22%,rgba(255,255,255,.14),transparent 18%),
-        linear-gradient(150deg,#242424 0%,#111 38%,#050505 100%);
-      box-shadow:
-        inset 0 0 0 1px rgba(255,255,255,.13),
-        inset 0 1px 0 rgba(255,255,255,.1),
-        0 30px 86px rgba(0,0,0,.62);
-      animation:vexaPreviewIn .76s .05s var(--vexa-ease) both;
-    }
-
-    .editor-demo::before{
-      content:"";
-      position:absolute;
-      top:18%;
-      left:50%;
-      width:72px;
-      height:105px;
-      transform:translateX(-50%);
-      border-radius:48% 52% 42% 42%;
-      background:
-        radial-gradient(circle at 50% 24%,rgba(255,255,255,.24),rgba(255,255,255,.045) 42%,transparent 43%),
-        linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.015));
-      opacity:.72;
-    }
-
-    .editor-demo::after{
-      content:"";
-      position:absolute;
-      left:18px;
-      right:18px;
-      top:9px;
-      height:1px;
-      background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent);
-    }
-
-    .demo-topbar{
-      position:absolute;
-      z-index:3;
-      top:14px;
-      left:13px;
-      right:13px;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      color:rgba(255,255,255,.58);
-      font-size:6px;
-      font-weight:720;
-      letter-spacing:.02em;
-    }
-
-    .demo-topbar i{width:22px;height:7px;border-radius:999px;background:rgba(255,255,255,.14)}
-
-    .demo-caption{
-      position:absolute;
-      z-index:4;
-      left:9px;
-      right:9px;
-      top:51%;
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      gap:4px;
-      text-align:center;
-      animation:vexaCaptionFloat 3.4s ease-in-out infinite;
-    }
-
-    .demo-caption strong{
-      padding:4px 7px 5px;
-      border-radius:6px;
-      color:#fff;
-      background:rgba(0,0,0,.72);
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),0 5px 16px rgba(0,0,0,.24);
-      font-size:8px;
-      line-height:1.05;
-      font-weight:820;
-      letter-spacing:-.025em;
-    }
-
-    .demo-caption small{font-size:5.5px;font-weight:650;color:rgba(255,255,255,.36)}
-
-    .demo-play{
-      position:absolute;
-      z-index:4;
-      left:12px;
-      bottom:59px;
-      width:21px;
-      height:21px;
-      display:grid;
-      place-items:center;
-      border-radius:7px;
-      color:#000;
-      background:#fff;
-      font-size:7px;
-      box-shadow:0 6px 16px rgba(0,0,0,.32);
-    }
-
-    .demo-time{
-      position:absolute;
-      z-index:4;
-      left:39px;
-      bottom:66px;
-      color:rgba(255,255,255,.43);
-      font-size:5.5px;
-      font-weight:680;
-      font-variant-numeric:tabular-nums;
-    }
-
-    .demo-timeline{
-      position:absolute;
-      z-index:3;
-      left:10px;
-      right:10px;
-      bottom:12px;
-      height:39px;
-      padding:6px;
-      display:flex;
-      align-items:flex-end;
-      gap:3px;
-      border-radius:10px;
-      background:rgba(0,0,0,.64);
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);
-      backdrop-filter:blur(8px);
-      -webkit-backdrop-filter:blur(8px);
-    }
-
-    .demo-timeline i{
-      flex:1;
-      min-width:2px;
-      border-radius:99px;
-      background:rgba(255,255,255,.24);
-      animation:vexaWave 1.8s ease-in-out infinite alternate;
-    }
-
-    .demo-timeline i:nth-child(1){height:34%;animation-delay:-.2s}
-    .demo-timeline i:nth-child(2){height:67%;animation-delay:-.7s}
-    .demo-timeline i:nth-child(3){height:47%;animation-delay:-.4s}
-    .demo-timeline i:nth-child(4){height:84%;animation-delay:-1.1s}
-    .demo-timeline i:nth-child(5){height:56%;animation-delay:-.8s}
-    .demo-timeline i:nth-child(6){height:74%;animation-delay:-.3s}
-    .demo-timeline i:nth-child(7){height:42%;animation-delay:-1.2s}
-    .demo-timeline i:nth-child(8){height:62%;animation-delay:-.5s}
-    .demo-timeline i:nth-child(9){height:31%;animation-delay:-.9s}
-    .demo-timeline i:nth-child(10){height:76%;animation-delay:-.15s}
-
-    .demo-timeline::after{
-      content:"";
-      position:absolute;
-      top:4px;
-      bottom:4px;
-      left:48%;
-      width:1px;
-      background:#fff;
-      box-shadow:0 0 8px rgba(255,255,255,.3);
-    }
-
-    .live-kicker{
-      margin:0 0 8px;
-      color:rgba(255,255,255,.29);
-      font-size:8px;
-      font-weight:760;
-      letter-spacing:.17em;
-      animation:vexaCopyIn .58s .15s var(--vexa-ease) both;
-    }
-
+    .editor-demo,.live-kicker{display:none!important}
     .live-hero h1{
-      max-width:390px;
-      margin:0;
-      font-size:clamp(35px,9.6vw,49px);
-      line-height:.98;
-      font-weight:780;
-      letter-spacing:-.065em;
-      animation:vexaCopyIn .66s .19s var(--vexa-ease) both;
+      max-width:340px!important;
+      margin:0!important;
+      color:#fff!important;
+      font-size:26px!important;
+      line-height:1.04!important;
+      font-weight:720!important;
+      letter-spacing:-.055em!important;
+      animation:vexaSoftIn .45s .04s var(--vexa-ease) both!important;
     }
-
     .live-copy{
-      max-width:390px;
-      margin:12px 0 0;
-      color:rgba(255,255,255,.4);
-      font-size:12px;
-      line-height:1.5;
-      font-weight:500;
-      letter-spacing:-.012em;
-      animation:vexaCopyIn .66s .24s var(--vexa-ease) both;
+      max-width:350px!important;
+      margin:8px 0 0!important;
+      color:var(--vexa-muted)!important;
+      font-size:12px!important;
+      line-height:1.45!important;
+      font-weight:450!important;
+      letter-spacing:-.01em!important;
+      animation:vexaSoftIn .45s .08s var(--vexa-ease) both!important;
     }
 
     .video-picker-state{
-      padding:5px;
-      border-radius:28px;
-      background:rgba(255,255,255,.025);
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 22px 70px rgba(0,0,0,.25);
-      animation:vexaPanelIn .72s .23s var(--vexa-ease) both;
+      padding:8px!important;
+      border-radius:22px!important;
+      background:var(--vexa-card)!important;
+      border:1px solid var(--vexa-line)!important;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 16px 38px rgba(0,0,0,.2)!important;
+      backdrop-filter:blur(10px)!important;
+      -webkit-backdrop-filter:blur(10px)!important;
+      animation:vexaSoftIn .48s .1s var(--vexa-ease) both!important;
     }
-
-    .setup-label{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      padding:13px 13px 8px;
-    }
-
-    .setup-label span:first-child{
-      font-size:8px;
-      font-weight:760;
-      color:rgba(255,255,255,.34);
-      letter-spacing:.12em;
-    }
-
-    .setup-label span:last-child{
-      font-size:7px;
-      font-weight:650;
-      color:rgba(255,255,255,.2);
-    }
+    .setup-label{display:none!important}
 
     .caption-mode-switch{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:4px;
-      margin:0;
-      padding:4px;
-      border-radius:21px;
-      background:rgba(0,0,0,.28);
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.045);
+      display:grid!important;
+      grid-template-columns:1fr 1fr!important;
+      gap:4px!important;
+      margin:0 0 7px!important;
+      padding:3px!important;
+      border-radius:15px!important;
+      background:rgba(0,0,0,.28)!important;
+      border:1px solid rgba(255,255,255,.05)!important;
+      box-shadow:none!important;
     }
-
     .caption-mode-switch button{
-      min-height:47px;
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      justify-content:center;
-      gap:2px;
-      border-radius:17px;
-      color:rgba(255,255,255,.35);
-      background:transparent;
-      transition:transform .2s var(--vexa-ease),color .22s ease,background .28s var(--vexa-ease),box-shadow .28s ease;
+      min-height:36px!important;
+      border-radius:11px!important;
+      display:grid!important;
+      place-items:center!important;
+      padding:0 10px!important;
+      color:rgba(255,255,255,.42)!important;
+      background:transparent!important;
+      box-shadow:none!important;
+      transition:transform .18s var(--vexa-ease),background .2s ease,color .2s ease!important;
     }
-
     .caption-mode-switch button.active{
-      color:#fff;
-      background:rgba(255,255,255,.095);
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 7px 18px rgba(0,0,0,.2);
+      color:#fff!important;
+      background:var(--vexa-card-strong)!important;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.06)!important;
     }
-
-    .caption-mode-switch button:active{transform:scale(.965)}
-    .caption-mode-switch strong{font-size:11.5px;font-weight:760;letter-spacing:-.025em}
-    .caption-mode-switch small{font-size:7px;font-weight:650;opacity:.53}
+    .caption-mode-switch button:active{transform:scale(.97)!important}
+    .caption-mode-switch strong{font-size:11px!important;font-weight:680!important;letter-spacing:-.015em!important}
+    .caption-mode-switch small{display:none!important}
 
     .language-setup{
-      position:relative;
-      display:grid;
-      grid-template-columns:1fr 28px 1fr;
-      gap:0;
-      margin:5px 0;
-      padding:4px;
-      border-radius:22px;
-      background:rgba(0,0,0,.25);
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);
+      position:relative!important;
+      display:grid!important;
+      grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr)!important;
+      gap:5px!important;
+      margin:0 0 7px!important;
+      padding:0!important;
+      background:transparent!important;
+      border:0!important;
+      box-shadow:none!important;
     }
-
     .language-field{
-      min-width:0;
-      min-height:71px;
-      padding:11px 11px 10px;
-      display:flex;
-      flex-direction:column;
-      justify-content:center;
-      gap:7px;
-      border-radius:17px;
-      background:rgba(255,255,255,.035);
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
-      transition:background .22s ease,box-shadow .22s ease,transform .22s var(--vexa-ease);
+      min-width:0!important;
+      min-height:58px!important;
+      padding:9px 10px!important;
+      display:flex!important;
+      flex-direction:column!important;
+      justify-content:center!important;
+      gap:5px!important;
+      border-radius:14px!important;
+      background:rgba(0,0,0,.24)!important;
+      border:1px solid rgba(255,255,255,.065)!important;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.035)!important;
+      transition:background .2s ease,border-color .2s ease,transform .18s var(--vexa-ease)!important;
     }
-
     .language-field:focus-within{
-      background:rgba(255,255,255,.065);
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);
-      transform:translateY(-1px);
+      background:rgba(255,255,255,.035)!important;
+      border-color:rgba(255,255,255,.14)!important;
+      transform:translateY(-1px)!important;
     }
-
     .language-field>span:first-child{
-      color:rgba(255,255,255,.27);
-      font-size:7px;
-      font-weight:760;
-      letter-spacing:.115em;
+      color:var(--vexa-dim)!important;
+      font-size:7px!important;
+      font-weight:650!important;
+      letter-spacing:.06em!important;
     }
-
-    .language-route-arrow{
-      display:grid;
-      place-items:center;
-      color:rgba(255,255,255,.25);
-    }
-
-    .language-route-arrow svg{width:14px;height:14px}
-
+    .language-route-arrow{display:grid!important;place-items:center!important;color:rgba(255,255,255,.22)!important}
+    .language-route-arrow svg{width:13px!important;height:13px!important}
     .language-select-wrap select{
-      width:100%;
-      height:28px;
-      padding:0 20px 0 0;
-      color:#fff;
-      background:transparent;
-      border:0;
-      outline:0;
-      appearance:none;
-      -webkit-appearance:none;
-      font-size:12px;
-      font-weight:690;
-      letter-spacing:-.02em;
+      width:100%!important;
+      height:25px!important;
+      padding:0 18px 0 0!important;
+      color:#fff!important;
+      background:transparent!important;
+      border:0!important;
+      outline:0!important;
+      appearance:none!important;
+      -webkit-appearance:none!important;
+      font-size:11px!important;
+      font-weight:620!important;
+      letter-spacing:-.015em!important;
     }
-
-    .language-select-wrap select option{color:#000;background:#fff}
-    .language-select-wrap svg{width:14px;height:14px;color:rgba(255,255,255,.32)}
+    .language-select-wrap svg{width:13px!important;height:13px!important;color:rgba(255,255,255,.38)!important}
 
     .video-picker{
-      position:relative;
-      width:100%;
-      min-height:72px;
-      padding:10px 11px 10px 12px;
-      display:grid;
-      grid-template-columns:42px 1fr 34px;
-      align-items:center;
-      gap:11px;
-      overflow:hidden;
-      border-radius:21px;
-      color:#050505;
-      text-align:left;
-      background:#fff;
-      box-shadow:0 14px 34px rgba(0,0,0,.32),inset 0 -1px 0 rgba(0,0,0,.08);
-      transition:transform .24s var(--vexa-ease),opacity .22s ease,filter .22s ease;
+      width:100%!important;
+      min-height:44px!important;
+      padding:0 10px!important;
+      display:grid!important;
+      grid-template-columns:30px 1fr 24px!important;
+      align-items:center!important;
+      gap:7px!important;
+      border-radius:13px!important;
+      color:#050505!important;
+      background:#fff!important;
+      border:1px solid rgba(255,255,255,.16)!important;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 8px 24px rgba(0,0,0,.28)!important;
+      text-align:left!important;
+      overflow:hidden!important;
+      transition:transform .18s var(--vexa-ease),opacity .2s ease!important;
     }
-
-    .video-picker::after{
-      content:"";
-      position:absolute;
-      top:0;
-      bottom:0;
-      left:-45%;
-      width:34%;
-      background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);
-      transform:skewX(-18deg);
-      opacity:.45;
-      animation:vexaCtaSweep 5.2s 1.2s ease-in-out infinite;
-      pointer-events:none;
-    }
-
-    .video-picker:not(:disabled):active{transform:scale(.982)}
-    .video-picker:disabled{opacity:.22;filter:saturate(0);box-shadow:none}
-
+    .video-picker::after{display:none!important}
+    .video-picker:not(:disabled):active{transform:scale(.985)!important}
+    .video-picker:disabled{opacity:.36!important;filter:none!important;box-shadow:none!important}
     .video-picker-icon{
-      width:42px;
-      height:42px;
-      display:grid;
-      place-items:center;
-      border-radius:14px;
-      color:#111;
-      background:rgba(0,0,0,.055);
-      box-shadow:inset 0 0 0 1px rgba(0,0,0,.035);
+      width:30px!important;
+      height:30px!important;
+      display:grid!important;
+      place-items:center!important;
+      border-radius:10px!important;
+      color:#111!important;
+      background:rgba(0,0,0,.055)!important;
+      box-shadow:none!important;
     }
+    .video-picker-icon svg{width:17px!important;height:17px!important}
+    .video-picker-copy{display:block!important;min-width:0!important}
+    .video-picker-copy strong{font-size:12px!important;font-weight:720!important;letter-spacing:-.02em!important}
+    .video-picker-copy small{display:none!important}
+    .video-picker-arrow{width:24px!important;height:24px!important;display:grid!important;place-items:center!important;color:#111!important;background:transparent!important}
+    .video-picker-arrow svg{width:14px!important;height:14px!important}
 
-    .video-picker-icon svg{width:21px;height:21px}
-    .video-picker-copy{gap:3px}
-    .video-picker-copy strong{font-size:13px;font-weight:790;letter-spacing:-.03em}
-    .video-picker-copy small{color:rgba(0,0,0,.43);font-size:7.5px;font-weight:710;letter-spacing:.035em}
-
-    .video-picker-arrow{
-      width:31px;
-      height:31px;
-      display:grid;
-      place-items:center;
-      border-radius:50%;
-      color:#fff;
-      background:#0b0b0b;
-    }
-
-    .video-picker-arrow svg{width:15px;height:15px}
-
-    .live-source-switch,.youtube-input-state,.youtube-ready-state{display:none}
-
-    .live-footer{
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      gap:7px;
-      margin:15px 0 0;
-      padding:0;
-      animation:vexaCopyIn .58s .36s var(--vexa-ease) both;
-    }
-
-    .live-footer::before{
-      content:"";
-      width:5px;
-      height:5px;
-      border-radius:50%;
-      background:rgba(255,255,255,.44);
-    }
-
-    .live-footer small{
-      color:rgba(255,255,255,.27);
-      font-size:7.5px;
-      font-weight:650;
-      letter-spacing:.045em;
-    }
-
-    .footer-line{display:none}
+    .live-source-switch,.youtube-input-state,.youtube-ready-state{display:none!important}
+    .live-footer{display:none!important}
 
     .video-ready-state{display:none}
     .video-ready-state.show{display:block}
 
     .live-toast{
-      bottom:calc(18px + env(safe-area-inset-bottom));
-      max-width:calc(100vw - 32px);
-      padding:10px 13px;
-      border-radius:14px;
-      color:rgba(255,255,255,.9);
-      background:rgba(20,20,20,.88);
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 18px 55px rgba(0,0,0,.5);
-      backdrop-filter:blur(18px);
-      -webkit-backdrop-filter:blur(18px);
-      font-size:10px;
-      font-weight:620;
-    }
-
-    body.vexa-live-editing .vexa-editor-top{
-      height:calc(60px + env(safe-area-inset-top))!important;
-      padding:env(safe-area-inset-top) 13px 0!important;
-      background:linear-gradient(180deg,rgba(0,0,0,.84),rgba(0,0,0,.18) 70%,transparent)!important;
-      animation:vexaEditorTopIn .5s var(--vexa-ease) both!important;
-    }
-
-    body.vexa-live-editing .vexa-editor-back{
-      width:39px!important;
-      height:39px!important;
-      border-radius:14px!important;
-      color:#fff!important;
-      background:rgba(20,20,20,.68)!important;
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.09),0 8px 24px rgba(0,0,0,.28)!important;
-      backdrop-filter:blur(14px)!important;
-      -webkit-backdrop-filter:blur(14px)!important;
-      font-size:22px!important;
-      transition:transform .2s var(--vexa-ease)!important;
-    }
-
-    body.vexa-live-editing .vexa-editor-back:active{transform:scale(.9)!important}
-
-    body.vexa-live-editing .vexa-editor-title b{
-      font-size:12px!important;
-      font-weight:760!important;
-      letter-spacing:-.025em!important;
-    }
-
-    body.vexa-live-editing .vexa-editor-title small{
-      margin-top:2px!important;
-      color:rgba(255,255,255,.38)!important;
-      font-size:7.5px!important;
-      font-weight:620!important;
-    }
-
-    body.vexa-live-editing .vexa-editor-done{
-      height:37px!important;
-      padding:0 14px!important;
+      bottom:calc(14px + env(safe-area-inset-bottom))!important;
+      max-width:calc(100vw - 32px)!important;
+      padding:9px 12px!important;
       border-radius:13px!important;
-      color:#060606!important;
-      background:#fff!important;
-      box-shadow:0 8px 24px rgba(0,0,0,.28)!important;
+      color:#fff!important;
+      background:rgba(13,13,13,.9)!important;
+      border:1px solid var(--vexa-line)!important;
+      box-shadow:0 14px 36px rgba(0,0,0,.4)!important;
+      backdrop-filter:blur(12px)!important;
+      -webkit-backdrop-filter:blur(12px)!important;
       font-size:10px!important;
-      font-weight:800!important;
-      transition:transform .2s var(--vexa-ease)!important;
-    }
-
-    body.vexa-live-editing .vexa-editor-done:active{transform:scale(.94)!important}
-
-    body.vexa-live-editing .vexa-editor-caption{
-      max-width:86%!important;
-      padding:8px 10px!important;
-      font-size:clamp(18px,5vw,30px)!important;
-      font-weight:820!important;
-      line-height:1.06!important;
-      letter-spacing:-.04em!important;
-      text-shadow:0 2px 3px #000,0 0 18px #000!important;
-      transition:opacity .18s ease,filter .18s ease!important;
-    }
-
-    body.vexa-live-editing .vexa-editor-caption.show{animation:vexaCaptionIn .25s var(--vexa-ease) both!important}
-
-    body.vexa-live-editing .vexa-caption-grab{
-      right:-7px!important;
-      top:-7px!important;
-      width:16px!important;
-      height:16px!important;
-      border-radius:50%!important;
-      background:#fff!important;
-      box-shadow:0 4px 14px rgba(0,0,0,.5)!important;
-      opacity:.82!important;
-    }
-
-    body.vexa-live-editing .vexa-editor-panel{
-      border-radius:24px 24px 0 0!important;
-      background:rgba(8,8,8,.985)!important;
-      box-shadow:0 -1px 0 rgba(255,255,255,.07),0 -24px 60px rgba(0,0,0,.42)!important;
-      backdrop-filter:blur(24px)!important;
-      -webkit-backdrop-filter:blur(24px)!important;
-      animation:vexaEditorPanelIn .52s var(--vexa-ease) both!important;
-    }
-
-    body.vexa-live-editing .vexa-panel-grip{
-      width:30px!important;
-      height:3px!important;
-      margin:1px auto 7px!important;
-      background:rgba(255,255,255,.18)!important;
-    }
-
-    body.vexa-live-editing .vexa-editor-controls{height:35px!important;gap:8px!important}
-
-    body.vexa-live-editing .vexa-editor-play{
-      width:33px!important;
-      height:33px!important;
-      border-radius:11px!important;
-      color:#000!important;
-      background:#fff!important;
-      box-shadow:0 6px 18px rgba(0,0,0,.28)!important;
-      font-size:13px!important;
-      transition:transform .18s var(--vexa-ease)!important;
-    }
-
-    body.vexa-live-editing .vexa-editor-play:active{transform:scale(.9)!important}
-
-    body.vexa-live-editing .vexa-editor-time{
-      min-width:72px!important;
-      color:rgba(255,255,255,.66)!important;
-      font-size:8.5px!important;
-      font-weight:680!important;
-    }
-
-    body.vexa-live-editing .vexa-editor-hint{
-      color:rgba(255,255,255,.26)!important;
-      font-size:7.5px!important;
       font-weight:600!important;
     }
 
-    body.vexa-live-editing .vexa-caption-timeline{
-      margin-top:5px!important;
-      border-radius:14px!important;
-      background:#030303!important;
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.055)!important;
-      mask-image:linear-gradient(90deg,transparent 0,#000 12px,#000 calc(100% - 12px),transparent 100%)!important;
-      -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 12px,#000 calc(100% - 12px),transparent 100%)!important;
+    body.vexa-live-editing .vexa-editor-top{
+      height:calc(58px + env(safe-area-inset-top))!important;
+      padding:env(safe-area-inset-top) 14px 0!important;
+      background:transparent!important;
+      animation:vexaSoftIn .35s var(--vexa-ease) both!important;
+    }
+    body.vexa-live-editing .vexa-editor-back{
+      width:36px!important;
+      height:36px!important;
+      border-radius:50%!important;
+      color:#fff!important;
+      background:var(--vexa-card)!important;
+      border:1px solid var(--vexa-line)!important;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 8px 24px rgba(0,0,0,.28)!important;
+      backdrop-filter:blur(10px)!important;
+      -webkit-backdrop-filter:blur(10px)!important;
+      font-size:21px!important;
+      transition:transform .18s var(--vexa-ease)!important;
+    }
+    body.vexa-live-editing .vexa-editor-back:active{transform:scale(.9)!important}
+    body.vexa-live-editing .vexa-editor-title b{font-size:12px!important;font-weight:680!important;letter-spacing:-.025em!important}
+    body.vexa-live-editing .vexa-editor-title small{margin-top:1px!important;color:var(--vexa-muted)!important;font-size:8px!important;font-weight:520!important}
+    body.vexa-live-editing .vexa-editor-done{
+      height:34px!important;
+      padding:0 12px!important;
+      border-radius:11px!important;
+      color:#050505!important;
+      background:#fff!important;
+      border:1px solid rgba(255,255,255,.16)!important;
+      box-shadow:0 8px 22px rgba(0,0,0,.25)!important;
+      font-size:10px!important;
+      font-weight:720!important;
+      transition:transform .18s var(--vexa-ease)!important;
+    }
+    body.vexa-live-editing .vexa-editor-done:active{transform:scale(.95)!important}
+
+    body.vexa-live-editing .vexa-editor-caption{
+      max-width:84%!important;
+      padding:7px 10px!important;
+      border-radius:9px!important;
+      font-size:clamp(17px,4.8vw,28px)!important;
+      font-weight:760!important;
+      line-height:1.08!important;
+      letter-spacing:-.035em!important;
+      text-shadow:0 2px 3px #000,0 0 12px #000!important;
+    }
+    body.vexa-live-editing .vexa-editor-caption.show{animation:vexaCaptionIn .2s var(--vexa-ease) both!important}
+    body.vexa-live-editing .vexa-caption-grab{
+      right:-6px!important;
+      top:-6px!important;
+      width:15px!important;
+      height:15px!important;
+      background:#fff!important;
+      box-shadow:0 4px 12px rgba(0,0,0,.42)!important;
+      opacity:.8!important;
     }
 
-    body.vexa-live-editing .vexa-wave{opacity:.19!important;gap:2px!important}
-    body.vexa-live-editing .vexa-wave i{background:#fff!important;min-width:2px!important;max-width:2px!important}
+    body.vexa-live-editing .vexa-panel-grip{display:none!important}
+    body.vexa-live-editing .vexa-editor-controls{height:37px!important;gap:8px!important}
+    body.vexa-live-editing .vexa-editor-play{
+      width:34px!important;
+      height:34px!important;
+      border-radius:12px!important;
+      color:#050505!important;
+      background:#fff!important;
+      border:1px solid rgba(255,255,255,.14)!important;
+      box-shadow:0 7px 20px rgba(0,0,0,.24)!important;
+      font-size:13px!important;
+      transition:transform .18s var(--vexa-ease)!important;
+    }
+    body.vexa-live-editing .vexa-editor-play:active{transform:scale(.9)!important}
+    body.vexa-live-editing .vexa-editor-time{min-width:74px!important;color:rgba(255,255,255,.75)!important;font-size:9px!important;font-weight:620!important}
+    body.vexa-live-editing .vexa-editor-hint{display:none!important}
+    body.vexa-live-editing .vexa-fit-button{
+      margin-left:auto!important;
+      height:30px!important;
+      padding:0 10px!important;
+      border-radius:10px!important;
+      color:rgba(255,255,255,.68)!important;
+      background:var(--vexa-card)!important;
+      border:1px solid var(--vexa-line-soft)!important;
+      font-size:9px!important;
+      font-weight:620!important;
+    }
 
+    body.vexa-live-editing .vexa-caption-timeline{
+      margin-top:6px!important;
+      border-radius:14px!important;
+      background:var(--vexa-card)!important;
+      border:1px solid var(--vexa-line-soft)!important;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.035)!important;
+      mask-image:none!important;
+      -webkit-mask-image:none!important;
+    }
+    body.vexa-live-editing .vexa-wave{opacity:.18!important;gap:2px!important}
+    body.vexa-live-editing .vexa-wave i{background:#fff!important;min-width:2px!important;max-width:2px!important}
     body.vexa-live-editing .vexa-cue{
       height:36px!important;
       padding:0 8px!important;
       border-radius:9px!important;
-      color:rgba(255,255,255,.55)!important;
-      background:rgba(255,255,255,.062)!important;
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)!important;
-      transition:background .18s ease,color .18s ease,transform .18s var(--vexa-ease)!important;
+      color:rgba(255,255,255,.58)!important;
+      background:rgba(255,255,255,.055)!important;
+      border:1px solid rgba(255,255,255,.055)!important;
+      box-shadow:none!important;
+      transition:background .16s ease,color .16s ease,transform .16s var(--vexa-ease)!important;
     }
+    body.vexa-live-editing .vexa-cue.active{color:#050505!important;background:#fff!important;border-color:#fff!important;box-shadow:0 5px 16px rgba(0,0,0,.24)!important;transform:translateY(-1px)!important}
+    body.vexa-live-editing .vexa-cue span{font-size:8px!important;font-weight:650!important}
+    body.vexa-live-editing .vexa-playhead{width:1px!important;background:#fff!important;box-shadow:none!important}
 
-    body.vexa-live-editing .vexa-cue.active{
-      color:#050505!important;
-      background:#fff!important;
-      box-shadow:0 4px 16px rgba(0,0,0,.28)!important;
-      transform:translateY(-1px)!important;
-    }
-
-    body.vexa-live-editing .vexa-cue span{font-size:7.5px!important;font-weight:700!important}
-    body.vexa-live-editing .vexa-playhead{width:1px!important;background:#fff!important;box-shadow:0 0 8px rgba(255,255,255,.26)!important}
-
-    body.vexa-live-editing .vexa-caption-editor{column-gap:7px!important;margin-top:6px!important}
-    body.vexa-live-editing .vexa-caption-meta{height:16px!important;color:rgba(255,255,255,.25)!important;font-size:6.8px!important}
-
+    body.vexa-live-editing .vexa-caption-editor{column-gap:7px!important;margin-top:7px!important}
+    body.vexa-live-editing .vexa-caption-meta{height:16px!important;padding:0 2px!important;color:var(--vexa-dim)!important;font-size:7px!important;font-weight:620!important}
+    body.vexa-live-editing .vexa-caption-meta b{color:var(--vexa-muted)!important;font-weight:560!important}
     body.vexa-live-editing .vexa-caption-input{
-      border-radius:12px!important;
+      border-radius:13px!important;
       padding:9px 10px!important;
       color:#fff!important;
-      background:rgba(255,255,255,.052)!important;
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)!important;
+      background:var(--vexa-card)!important;
+      border:1px solid var(--vexa-line-soft)!important;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.035)!important;
       font-size:11px!important;
-      font-weight:620!important;
-      transition:background .2s ease,box-shadow .2s ease!important;
+      font-weight:560!important;
+      transition:background .18s ease,border-color .18s ease!important;
     }
-
-    body.vexa-live-editing .vexa-caption-input:focus{
-      background:rgba(255,255,255,.075)!important;
-      box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)!important;
-    }
-
+    body.vexa-live-editing .vexa-caption-input:focus{background:var(--vexa-card-strong)!important;border-color:var(--vexa-line)!important}
     body.vexa-live-editing .vexa-reset-position{
-      width:68px!important;
-      border-radius:12px!important;
-      color:rgba(255,255,255,.5)!important;
-      background:rgba(255,255,255,.045)!important;
+      width:66px!important;
+      border-radius:13px!important;
+      color:rgba(255,255,255,.58)!important;
+      background:var(--vexa-card)!important;
+      border:1px solid var(--vexa-line-soft)!important;
       font-size:7px!important;
-      font-weight:680!important;
+      font-weight:620!important;
     }
 
-    .youtube-input-state{margin-top:5px}
-    .youtube-link-card{min-height:66px;padding:10px;border-radius:18px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
-    .youtube-link-card input{color:#fff;background:transparent;border:0;outline:0}
-    .youtube-link-card button{color:#000;background:#fff}
-
-    @keyframes vexaHeaderIn{from{opacity:0;transform:translateY(-9px)}to{opacity:1;transform:none}}
-    @keyframes vexaPreviewIn{from{opacity:0;transform:translateY(18px) scale(.92);filter:blur(10px)}to{opacity:1;transform:none;filter:none}}
-    @keyframes vexaCopyIn{from{opacity:0;transform:translateY(10px);filter:blur(5px)}to{opacity:1;transform:none;filter:none}}
-    @keyframes vexaPanelIn{from{opacity:0;transform:translateY(18px) scale(.975);filter:blur(5px)}to{opacity:1;transform:none;filter:none}}
-    @keyframes vexaStatusPulse{0%,100%{opacity:.45;transform:scale(.82)}50%{opacity:1;transform:scale(1)}}
-    @keyframes vexaCaptionFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-    @keyframes vexaWave{from{opacity:.35;transform:scaleY(.72)}to{opacity:1;transform:scaleY(1)}}
-    @keyframes vexaCtaSweep{0%,72%{left:-45%}88%,100%{left:125%}}
-    @keyframes vexaEditorTopIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
-    @keyframes vexaEditorPanelIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
-    @keyframes vexaCaptionIn{from{opacity:0;transform:translate(-50%,-50%) scale(.94);filter:blur(4px)}to{opacity:1;transform:translate(-50%,-50%) scale(1);filter:none}}
+    @keyframes vexaSoftIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    @keyframes vexaReadyPulse{0%,100%{opacity:.42}50%{opacity:1}}
+    @keyframes vexaCaptionIn{from{opacity:0;transform:translate(-50%,-50%) scale(.97)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
 
     @media(max-height:760px){
-      .live-hero{padding-top:18px}
-      .editor-demo{width:118px;margin-bottom:18px;border-radius:24px}
-      .live-hero h1{font-size:33px}
-      .live-copy{margin-top:9px;font-size:11px}
-      .video-picker-state{border-radius:25px}
-      .language-field{min-height:64px}
-      .video-picker{min-height:66px}
+      .live-hero{padding-top:24px!important;padding-bottom:14px!important}
+      .live-hero h1{font-size:23px!important}
+      .live-copy{font-size:11px!important}
+      .language-field{min-height:54px!important}
     }
-
     @media(max-width:380px){
-      .live-app{padding-left:13px;padding-right:13px}
-      .editor-demo{width:126px}
-      .live-hero h1{font-size:34px}
-      .language-field{padding-left:9px;padding-right:9px}
-      .language-select-wrap select{font-size:11px}
+      .live-app{padding-left:13px!important;padding-right:13px!important}
+      .live-hero h1{font-size:24px!important}
+      .language-field{padding-left:8px!important;padding-right:8px!important}
+      .language-select-wrap select{font-size:10.5px!important}
     }
-
     @media(prefers-reduced-motion:reduce){
-      .editor-demo,.live-header,.live-kicker,.live-hero h1,.live-copy,.video-picker-state,.live-footer{animation:none!important}
-      .demo-caption,.demo-timeline i,.live-status-pill i,.video-picker::after{animation:none!important}
+      .live-header,.live-hero h1,.live-copy,.video-picker-state,.live-status-pill i,body.vexa-live-editing .vexa-editor-top,body.vexa-live-editing .vexa-editor-caption.show{animation:none!important}
     }
   </style>
 </head>
@@ -786,8 +454,8 @@ export const VEXA_LIVE_HTML = `<!doctype html>
       </div>
 
       <p class="live-kicker">CAPTIONS · TIMING · POSITION</p>
-      <h1 id="liveTitle">Your video. Your captions.</h1>
-      <p class="live-copy">Pick a video, generate accurate captions, then edit every line, timing and position right on the video.</p>
+      <h1 id="liveTitle">Add captions to video</h1>
+      <p class="live-copy">Choose the languages, add your video, then edit captions directly on it.</p>
     </section>
 
     <section id="videoPickerState" class="video-picker-state">
