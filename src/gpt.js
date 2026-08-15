@@ -31,7 +31,6 @@ const AI_CHAT_EFFORT_PROFILES = Object.freeze({
     verbosity: "low",
     maxAgentToolRounds: 8,
     maxCodingAgentToolRounds: 32,
-    maxOutputTokens: 8000,
     automaticReview: false,
     multiAgent: false,
   }),
@@ -39,7 +38,6 @@ const AI_CHAT_EFFORT_PROFILES = Object.freeze({
     verbosity: "medium",
     maxAgentToolRounds: 14,
     maxCodingAgentToolRounds: 60,
-    maxOutputTokens: 16000,
     automaticReview: false,
     multiAgent: false,
   }),
@@ -47,7 +45,6 @@ const AI_CHAT_EFFORT_PROFILES = Object.freeze({
     verbosity: "high",
     maxAgentToolRounds: 20,
     maxCodingAgentToolRounds: 90,
-    maxOutputTokens: 32000,
     automaticReview: true,
     multiAgent: true,
   }),
@@ -55,7 +52,6 @@ const AI_CHAT_EFFORT_PROFILES = Object.freeze({
     verbosity: "high",
     maxAgentToolRounds: 28,
     maxCodingAgentToolRounds: 120,
-    maxOutputTokens: 64000,
     automaticReview: true,
     multiAgent: true,
   }),
@@ -811,7 +807,6 @@ export async function chatWithAi(env, messages, onStatus, options = {}) {
             type: "compaction",
             compact_threshold: AI_CHAT_COMPACTION_THRESHOLD,
           }],
-          max_output_tokens: effortProfile.maxOutputTokens,
           store: false,
           stream: true,
         }),
@@ -1092,6 +1087,7 @@ async function readChatResponseStream(response, onStatus, context = {}) {
   const searchingCalls = new Set();
   let buffer = "";
   let completedResponse = null;
+  let incompleteResponse = null;
 
   const emitStatus = (status) => {
     if (typeof onStatus === "function") onStatus(status);
@@ -1128,8 +1124,17 @@ async function readChatResponseStream(response, onStatus, context = {}) {
       if (!searchingCalls.size) emitStatus("thinking");
       return;
     }
+    if (type === "response.incomplete") {
+      incompleteResponse = event?.response || null;
+      return;
+    }
     if (type === "response.completed") {
-      completedResponse = event?.response || null;
+      const finalResponse = event?.response || null;
+      if (String(finalResponse?.status || "").toLowerCase() === "incomplete") {
+        incompleteResponse = finalResponse;
+      } else {
+        completedResponse = finalResponse;
+      }
       return;
     }
     if (type === "error" || type === "response.failed") {
@@ -1159,6 +1164,23 @@ async function readChatResponseStream(response, onStatus, context = {}) {
   }
 
   if (buffer.trim()) handleBlock(buffer);
+  if (incompleteResponse) {
+    const reason = String(incompleteResponse?.incomplete_details?.reason || "unknown").trim().toLowerCase();
+    console.warn("AI_CHAT_RESPONSE_INCOMPLETE", {
+      reason,
+      requestId: String(incompleteResponse?.id || "").slice(0, 160),
+      model: String(context.model || "").slice(0, 80),
+      multiAgent: Boolean(context.multiAgent),
+    });
+    const error = new Error(
+      reason === "max_output_tokens"
+        ? "AI reached the model output limit before finishing. Continue with a smaller request."
+        : AI_CHAT_PUBLIC_ERROR,
+    );
+    error.name = "AiChatIncompleteError";
+    error.incompleteReason = reason;
+    throw error;
+  }
   if (!completedResponse) throw new Error("AI did not return a response. Please try again.");
   return completedResponse;
 }
