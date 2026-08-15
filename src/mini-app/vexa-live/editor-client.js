@@ -531,6 +531,71 @@ function vexaLiveEditorBootstrap() {
     if (video.paused || video.ended) video.play().catch(() => {}); else video.pause();
   }
 
+  function applyEditorLayout() {
+    const ready = q("videoReadyState"), stage = ready?.querySelector(".video-stage"), video = q("videoPreview"), panel = q("vexaEditorPanel"), top = ready?.querySelector(".vexa-editor-top");
+    if (!ready || !stage || !panel) return;
+
+    ready.style.setProperty("padding", "calc(62px + env(safe-area-inset-top)) 14px 0", "important");
+    ready.style.setProperty("justify-content", "flex-start", "important");
+    ready.style.setProperty("align-items", "center", "important");
+    ready.style.setProperty("gap", "10px", "important");
+
+    stage.style.setProperty("position", "relative", "important");
+    stage.style.setProperty("flex", "0 0 auto", "important");
+    stage.style.setProperty("width", "auto", "important");
+    stage.style.setProperty("height", "min(50vh, 500px)", "important");
+    stage.style.setProperty("aspect-ratio", "1 / 2", "important");
+    stage.style.setProperty("max-width", "80vw", "important");
+    stage.style.setProperty("max-height", "50vh", "important");
+    stage.style.setProperty("margin", "0 auto", "important");
+    stage.style.setProperty("border-radius", "22px", "important");
+    stage.style.setProperty("overflow", "hidden", "important");
+    stage.style.setProperty("background", "#050505", "important");
+    stage.style.setProperty("box-shadow", "inset 0 0 0 1px rgba(255,255,255,.08),0 18px 54px rgba(0,0,0,.42)", "important");
+
+    if (video) {
+      video.style.setProperty("display", "block", "important");
+      video.style.setProperty("width", "100%", "important");
+      video.style.setProperty("height", "100%", "important");
+      video.style.setProperty("object-fit", "contain", "important");
+      video.style.setProperty("object-position", "center center", "important");
+      video.style.setProperty("background", "#050505", "important");
+      video.style.setProperty("pointer-events", "auto", "important");
+      video.style.setProperty("touch-action", "manipulation", "important");
+    }
+
+    panel.style.setProperty("position", "relative", "important");
+    panel.style.setProperty("flex", "0 0 230px", "important");
+    panel.style.setProperty("width", "min(100%, 620px)", "important");
+    panel.style.setProperty("height", "230px", "important");
+    panel.style.setProperty("margin", "auto auto 0", "important");
+    panel.style.setProperty("padding", "8px 10px calc(10px + env(safe-area-inset-bottom))", "important");
+    panel.style.setProperty("border-radius", "23px 23px 0 0", "important");
+    panel.style.setProperty("background", "rgba(9,9,9,.99)", "important");
+
+    if (top) {
+      top.style.setProperty("position", "fixed", "important");
+      top.style.setProperty("top", "env(safe-area-inset-top)", "important");
+      top.style.setProperty("left", "0", "important");
+      top.style.setProperty("right", "0", "important");
+    }
+
+    const shortViewport = window.innerHeight <= 700;
+    if (shortViewport) {
+      stage.style.setProperty("height", "min(42vh, 390px)", "important");
+      stage.style.setProperty("max-height", "42vh", "important");
+      panel.style.setProperty("flex-basis", "205px", "important");
+      panel.style.setProperty("height", "205px", "important");
+      q("vexaCaptionTimeline")?.style.setProperty("height", "62px", "important");
+      q("vexaCaptionInput")?.style.setProperty("height", "44px", "important");
+      document.querySelector(".vexa-reset-position")?.style.setProperty("height", "44px", "important");
+    } else {
+      q("vexaCaptionTimeline")?.style.setProperty("height", "78px", "important");
+      q("vexaCaptionInput")?.style.setProperty("height", "48px", "important");
+      document.querySelector(".vexa-reset-position")?.style.setProperty("height", "48px", "important");
+    }
+  }
+
   function syncEditorVisibility() {
     const ready = q("videoReadyState");
     if (!ready) return;
@@ -538,7 +603,7 @@ function vexaLiveEditorBootstrap() {
     state.active = visible;
     document.body.classList.toggle("vexa-live-editing", visible);
     if (visible) {
-      createEditor(); keepVideoInline(q("videoPreview"));
+      createEditor(); keepVideoInline(q("videoPreview")); applyEditorLayout();
       if (q("vexaEditorTitle")) q("vexaEditorTitle").textContent = String(q("videoName")?.textContent || "Vexa Live");
       q("captionPreview")?.classList.add("vexa-native-caption-hidden");
       renderTimeline(); syncPlayback();
@@ -584,7 +649,7 @@ function vexaLiveEditorBootstrap() {
         setTimeout(() => { state.cues = []; state.selectedId = -1; renderTimeline(); syncEditor(); syncEditorVisibility(); }, 0);
       }
     });
-    window.addEventListener("resize", () => { if (state.active) renderTimeline(); });
+    window.addEventListener("resize", () => { if (state.active) { applyEditorLayout(); renderTimeline(); } });
     window.addEventListener("pagehide", () => { window.fetch = originalFetch; });
   }
 
