@@ -9,23 +9,13 @@ import {
   injectAiBackgroundTasksClient,
   isAiBackgroundTasksClientRequest,
 } from "./mini-app/ai-background-tasks-client.js";
-import {
-  handleVexaYoutubeRequest,
-  injectVexaYoutubeClient,
-  isVexaYoutubeRequest,
-} from "./mini-app/vexa-live/youtube-router.js";
-import {
-  handleVexaLiveProjectRequest,
-  isVexaLiveProjectRequest,
-} from "./mini-app/vexa-live/projects.js";
 import { VEXA_LIVE_EDITOR_JS } from "./mini-app/vexa-live/editor-client.js";
 
-const VEXA_EDITOR_VERSION = "20260815-2";
+const VEXA_EDITOR_VERSION = "20260815-3";
 const AI_CHAT_HEARTBEAT_MS = 10_000;
 const AI_CHAT_PATH = "/mini-app/api/chat";
 
 export { AiCodingWorkflow };
-export { VexaMediaContainer } from "./mini-app/vexa-live/media-container.js";
 
 function vexaEditorResponse() {
   return new Response(VEXA_LIVE_EDITOR_JS, {
@@ -42,13 +32,18 @@ async function injectVexaEditorClient(response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
+  const disabledContainerUi =
+    '<style id="vexaContainerDisabled">' +
+    '#liveSourceSwitch,#youtubeInputState,#youtubeReadyState{display:none!important}' +
+    '</style>';
   const script =
     '<script type="module" src="/mini-app/live/editor.js?v=' +
     VEXA_EDITOR_VERSION +
     '"></script>';
+  const injection = disabledContainerUi + script;
   const html = source.includes("</body>")
-    ? source.replace("</body>", script + "\n</body>")
-    : source + script;
+    ? source.replace("</body>", injection + "\n</body>")
+    : source + injection;
 
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
@@ -70,14 +65,6 @@ export default {
 
     if (isAiBackgroundTasksClientRequest(request)) {
       return handleAiBackgroundTasksClientRequest();
-    }
-
-    if (isVexaLiveProjectRequest(request)) {
-      return handleVexaLiveProjectRequest(request, env);
-    }
-
-    if (isVexaYoutubeRequest(request)) {
-      return handleVexaYoutubeRequest(request, env);
     }
 
     const url = new URL(request.url);
@@ -102,8 +89,7 @@ export default {
       request.method === "GET" &&
       (url.pathname === "/mini-app/live" || url.pathname === "/mini-app/live/")
     ) {
-      const withYoutube = await injectVexaYoutubeClient(await worker.fetch(request, env, ctx));
-      return injectVexaEditorClient(withYoutube);
+      return injectVexaEditorClient(await worker.fetch(request, env, ctx));
     }
 
     return worker.fetch(request, env, ctx);
