@@ -100,10 +100,12 @@ export async function prepareOpenAiAgentTools(env, userId, options = {}) {
     } catch (error) {
       console.error("AI coding task restore failed", error?.message || error);
     }
-    try {
-      skill = await ensureCodingSkill(env);
-    } catch (error) {
-      console.error("OpenAI coding skill setup failed", error?.message || error);
+    if (options.codingSkill !== false) {
+      try {
+        skill = await ensureCodingSkill(env);
+      } catch (error) {
+        console.error("OpenAI coding skill setup failed", error?.message || error);
+      }
     }
     try {
       repositorySnapshot = await getOrCreateRepositorySnapshotFile(env, userId);
