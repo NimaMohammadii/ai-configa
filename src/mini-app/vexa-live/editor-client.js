@@ -1,5 +1,4 @@
-export const VEXA_LIVE_EDITOR_JS = String.raw`
-(function () {
+function vexaLiveEditorBootstrap() {
   const tg = window.Telegram && window.Telegram.WebApp;
   const originalFetch = window.fetch.bind(window);
   const state = {
@@ -591,5 +590,6 @@ export const VEXA_LIVE_EDITOR_JS = String.raw`
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize, { once:true });
   else initialize();
-})();
-`;
+}
+
+export const VEXA_LIVE_EDITOR_JS = "(" + vexaLiveEditorBootstrap.toString() + ")();";
