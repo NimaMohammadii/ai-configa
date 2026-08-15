@@ -5,7 +5,17 @@ export const AI_MEMORY_MAX_BYTES = 64 * 1024;
 const AI_MEMORY_MAX_ITEMS = 200;
 const AI_MEMORY_MAX_KEY_CHARS = 80;
 const AI_MEMORY_MAX_VALUE_CHARS = 500;
+const AI_MEMORY_CONTEXT_MAX_ITEMS = 8;
+const AI_MEMORY_CONTEXT_MAX_CHARS = 2600;
+const AI_MEMORY_INVENTORY_MAX_ITEMS = 24;
+const AI_MEMORY_INVENTORY_MAX_CHARS = 6000;
+const AI_MEMORY_QUERY_MAX_CHARS = 6000;
 const SENSITIVE_MEMORY_PATTERN = /(?:password|passcode|api[ _-]?key|private[ _-]?key|access[ _-]?token|refresh[ _-]?token|client[ _-]?secret|webhook[ _-]?secret|seed phrase|recovery phrase|credit card|card number|\bcvv\b|\botp\b|رمز(?: عبور)?|کد یکبار مصرف|توکن|کلید خصوصی|شماره کارت)/i;
+const MEMORY_INVENTORY_PATTERN = /(?:what\s+(?:do|can)\s+you\s+(?:remember|know)\s+about\s+me|show\s+(?:me\s+)?(?:my\s+)?memor(?:y|ies)|list\s+(?:my\s+)?memor(?:y|ies)|چی\s+از\s+من\s+یادت|چه\s+چیز(?:هایی)?\s+از\s+من\s+یادت|مموری(?:‌|\s)*(?:هام|های\s+من).*(?:نشون|لیست|بگو)|حافظه(?:‌|\s)*(?:ت|هات).*(?:من|چی|چه))/i;
+const MEMORY_STOP_WORDS = new Set([
+  "the", "a", "an", "and", "or", "to", "of", "in", "on", "for", "with", "is", "are", "was", "were", "be", "been", "being", "this", "that", "it", "as", "at", "by", "from", "my", "your", "you", "me", "i", "we", "our",
+  "این", "اون", "آن", "و", "یا", "که", "به", "از", "در", "با", "برای", "رو", "را", "یه", "یک", "هست", "است", "بود", "شده", "میشه", "میخوام", "میخوام", "من", "تو", "شما", "ما",
+]);
 
 export function getAiMemoryTools() {
   return [{
@@ -65,18 +75,55 @@ export async function getUserAiMemoryStatus(env, userId) {
   }
 }
 
-export function buildAiMemoryInstructions(memories = []) {
+export function selectRelevantAiMemories(memories = [], contextText = "") {
   const safeMemories = normalizeMemoryList(memories);
+  if (!safeMemories.length) return [];
+
+  const query = cleanText(contextText, AI_MEMORY_QUERY_MAX_CHARS);
+  if (!query) return [];
+
+  if (MEMORY_INVENTORY_PATTERN.test(query)) {
+    return fitMemoryContext(
+      safeMemories.slice().sort(compareMemoryRecency),
+      AI_MEMORY_INVENTORY_MAX_ITEMS,
+      AI_MEMORY_INVENTORY_MAX_CHARS,
+    );
+  }
+
+  const normalizedQuery = normalizeMemorySearchText(query);
+  const queryTokens = tokenizeMemorySearchText(normalizedQuery);
+  if (!queryTokens.length) return [];
+  const queryTokenSet = new Set(queryTokens);
+
+  const scored = safeMemories.map((memory, index) => ({
+    memory,
+    index,
+    score: scoreMemoryRelevance(memory, normalizedQuery, queryTokenSet),
+  }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || compareMemoryRecency(a.memory, b.memory) || a.index - b.index)
+    .map((entry) => entry.memory);
+
+  return fitMemoryContext(scored, AI_MEMORY_CONTEXT_MAX_ITEMS, AI_MEMORY_CONTEXT_MAX_CHARS);
+}
+
+export function buildAiMemoryInstructions(memories = []) {
+  const safeMemories = fitMemoryContext(
+    normalizeMemoryList(memories),
+    AI_MEMORY_INVENTORY_MAX_ITEMS,
+    AI_MEMORY_INVENTORY_MAX_CHARS,
+  );
   const context = safeMemories.length
     ? safeMemories.map((item) => `- ${item.key}: ${item.value}`).join("\n")
-    : "- No durable user memories have been saved yet.";
+    : "- No relevant saved memories were selected for this request.";
   return [
     "You have private long-term memory scoped only to this authenticated user.",
-    "Use saved memories when they materially improve the answer, but do not mention the memory system unless the user asks.",
+    "Only memories relevant to the current request are included below; other saved memories may exist but were intentionally omitted from this prompt.",
+    "Use included memories only when they materially improve the answer, and do not mention the memory system unless the user asks.",
     "Call update_user_memory when the user states a durable preference, identity detail, recurring goal, ongoing project constraint, or explicitly asks you to remember or forget something.",
     "Do not save temporary requests, guesses, chat filler, repository source code, credentials, authentication data, financial data, health identifiers, exact locations, or other secrets.",
     "Prefer updating an existing key over creating duplicates. If the user corrects a fact, replace it. If they ask to forget it, use forgetKeys.",
-    "Current saved memories:\n" + context,
+    "Relevant saved memories:\n" + context,
   ].join(" ");
 }
 
@@ -149,6 +196,96 @@ export async function clearUserAiMemory(env, userId) {
   await ensureAiMemoryTable(env);
   await env.DB.prepare("DELETE FROM ai_user_memory WHERE user_id = ?").bind(String(userId)).run();
   return memoryStatus([]);
+}
+
+function scoreMemoryRelevance(memory, normalizedQuery, queryTokenSet) {
+  const normalizedKey = normalizeMemorySearchText(memory.key);
+  const normalizedValue = normalizeMemorySearchText(memory.value);
+  const keyTokens = tokenizeMemorySearchText(normalizedKey);
+  const valueTokens = tokenizeMemorySearchText(normalizedValue);
+  let score = 0;
+
+  if (normalizedKey.length >= 3 && normalizedQuery.includes(normalizedKey)) score += 14;
+  if (normalizedValue.length >= 6 && normalizedValue.length <= 180 && normalizedQuery.includes(normalizedValue)) score += 10;
+
+  for (const token of keyTokens) {
+    if (queryTokenSet.has(token)) score += 6;
+    else if (hasRelatedToken(token, queryTokenSet)) score += 2;
+  }
+  for (const token of valueTokens) {
+    if (queryTokenSet.has(token)) score += 2;
+    else if (hasRelatedToken(token, queryTokenSet)) score += 0.75;
+  }
+
+  const memoryTokens = new Set([...keyTokens, ...valueTokens]);
+  let matchedQueryTokens = 0;
+  for (const token of queryTokenSet) {
+    if (memoryTokens.has(token) || hasRelatedToken(token, memoryTokens)) matchedQueryTokens += 1;
+  }
+  if (matchedQueryTokens >= 2) score += Math.min(6, matchedQueryTokens * 1.5);
+
+  return score;
+}
+
+function fitMemoryContext(memories, maxItems, maxChars) {
+  const result = [];
+  let usedChars = 0;
+  for (const memory of Array.isArray(memories) ? memories : []) {
+    if (result.length >= maxItems) break;
+    const lineChars = Array.from(`${memory.key}: ${memory.value}\n`).length;
+    if (lineChars > maxChars && !result.length) {
+      const availableValueChars = Math.max(0, maxChars - Array.from(memory.key).length - 4);
+      if (availableValueChars > 0) {
+        result.push({
+          ...memory,
+          value: Array.from(memory.value).slice(0, availableValueChars).join(""),
+        });
+      }
+      break;
+    }
+    if (usedChars + lineChars > maxChars) break;
+    result.push(memory);
+    usedChars += lineChars;
+  }
+  return result;
+}
+
+function normalizeMemorySearchText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[\u064B-\u065F\u0670]/g, "")
+    .replace(/[\u200c_\-/]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeMemorySearchText(value) {
+  const matches = normalizeMemorySearchText(value).match(/[\p{L}\p{N}]{2,}/gu) || [];
+  const result = [];
+  const seen = new Set();
+  for (const token of matches) {
+    if (token.length < 2 || MEMORY_STOP_WORDS.has(token) || seen.has(token)) continue;
+    seen.add(token);
+    result.push(token);
+  }
+  return result;
+}
+
+function hasRelatedToken(token, candidates) {
+  if (!token || token.length < 4) return false;
+  for (const candidate of candidates) {
+    if (!candidate || candidate.length < 4) continue;
+    if (token.startsWith(candidate) || candidate.startsWith(token)) return true;
+  }
+  return false;
+}
+
+function compareMemoryRecency(a, b) {
+  return String(b?.updatedAt || "").localeCompare(String(a?.updatedAt || ""));
 }
 
 function normalizeStoredMemory(value) {
