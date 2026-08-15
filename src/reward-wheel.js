@@ -6,11 +6,11 @@ export const WHEEL_DISCOUNT_SECONDS = 24 * 60 * 60;
 
 export const WHEEL_PRIZES = [
   { type: "discount", discountPercent: 30, weight: 2 },
-  { type: "credits", credits: 2100, weight: 2 },
-  { type: "credits", credits: 150, weight: 24 },
-  { type: "credits", credits: 250, weight: 24 },
+  { type: "credits", credits: 2100, weight: 0 },
+  { type: "credits", credits: 150, weight: 0 },
+  { type: "credits", credits: 250, weight: 0 },
   { type: "discount", discountPercent: 15, weight: 24 },
-  { type: "credits", credits: 80, weight: 24 },
+  { type: "credits", credits: 80, weight: 0 },
 ];
 
 export async function getRewardWheelStatus(env, userId, isAdmin = false) {
@@ -110,14 +110,17 @@ export function applyWheelPurchaseDiscountToAmount(amount, discount) {
 }
 
 function pickPrize() {
-  const random = crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296 * 100;
-  let cursor = 0;
-  for (let index = 0; index < WHEEL_PRIZES.length; index += 1) {
-    cursor += WHEEL_PRIZES[index].weight;
-    if (random < cursor) return { ...WHEEL_PRIZES[index], index };
+  const selectable = WHEEL_PRIZES
+    .map((prize, index) => ({ ...prize, index }))
+    .filter((prize) => prize.type !== "credits" && Number(prize.weight || 0) > 0);
+  if (!selectable.length) throw new Error("Reward wheel has no selectable prizes.");
+  const totalWeight = selectable.reduce((sum, prize) => sum + Number(prize.weight || 0), 0);
+  let random = crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296 * totalWeight;
+  for (const prize of selectable) {
+    random -= Number(prize.weight || 0);
+    if (random < 0) return prize;
   }
-  const index = WHEEL_PRIZES.length - 1;
-  return { ...WHEEL_PRIZES[index], index };
+  return selectable[selectable.length - 1];
 }
 
 export async function ensureWheelTable(env) {
