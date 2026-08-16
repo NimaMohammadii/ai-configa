@@ -5,11 +5,18 @@ import { getBalance } from "../credits.js";
 import { MINI_APP_STAR_PACKAGES, createCustomStarPackage, applyStarPackageDiscount, starInvoicePayload } from "../stars.js";
 import { getActiveWheelPurchaseDiscount } from "../reward-wheel.js";
 import { tgJson } from "../telegram-api.js";
+import { APP_NAVIGATION_CSS, APP_NAVIGATION_JS } from "./app-navigation.js";
 
 export { isMiniAppRequest };
 
 export async function handleMiniAppRequest(request, env) {
   const url = new URL(request.url);
+
+  if (request.method === "GET" && (url.pathname === "/mini-app" || url.pathname === "/mini-app/")) {
+    const response = await baseHandleMiniAppRequest(request, env);
+    return injectAppNavigation(response);
+  }
+
   if (request.method !== "POST" || url.pathname !== "/mini-app/api/stars-invoice") {
     return baseHandleMiniAppRequest(request, env);
   }
@@ -64,6 +71,31 @@ export async function handleMiniAppRequest(request, env) {
   } catch (error) {
     return json({ error: error?.message || "Mini app error" }, error?.status || 500);
   }
+}
+
+async function injectAppNavigation(response) {
+  if (!response.ok) return response;
+
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("text/html")) return response;
+
+  const source = await response.text();
+  const integration =
+    '<style id="ttsAppNavigationStyles">' + APP_NAVIGATION_CSS + '</style>' +
+    '<script id="ttsAppNavigationScript">' + APP_NAVIGATION_JS + '</script>';
+  const html = source.includes("</body>")
+    ? source.replace("</body>", integration + "\n</body>")
+    : source + integration;
+
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+
+  return new Response(html, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function json(value, status = 200) {
