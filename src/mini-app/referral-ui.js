@@ -93,7 +93,9 @@ export const REFERRAL_UI_PATCH = String.raw`
     var required=Math.max(3,Number(status.requiredInvites)||3);
     if(Number.isFinite(Number(status.balance))){
       referralBalance=Math.max(0,Number(status.balance));
+      if(typeof availableCredits!=='undefined')availableCredits=referralBalance;
       ['balance','aiChatBalance'].forEach(function(id){var balance=document.getElementById(id);if(balance)balance.textContent=Math.floor(referralBalance).toLocaleString('en-US')});
+      if(typeof updateTtsCharCount==='function')updateTtsCharCount();
     }
     var counter=document.getElementById('referralCreditProgress');if(counter)counter.textContent=String(progress)+' / '+String(required);
     document.querySelectorAll('#referralCreditSheet .referral-credit-dot').forEach(function(dot,index){dot.classList.toggle('done',index<progress)});
