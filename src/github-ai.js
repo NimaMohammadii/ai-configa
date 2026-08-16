@@ -6,6 +6,7 @@ import {
 } from "./ai-coding-task.js";
 import { normalizeCodingPlan, summarizeCodingPlan } from "./ai-coding-plan.js";
 import { getGitHubCreditAccess, githubCreditAccessMessage } from "./github-access.js";
+import { buildAiAppInstructions, executeAiAppTool, getAiAppTools, isAiAppToolCall, isAiAppWriteToolCall } from "./ai-app-tools.js";
 import * as core from "./github-ai-core.js";
 
 const MULTI_TASK_TOOL_NAMES = new Set(["github_list_tasks", "github_resume_task", "github_update_plan"]);
@@ -14,10 +15,15 @@ export const getGitHubAiContext = core.getGitHubAiContext;
 export const getGitHubRepositorySnapshot = core.getGitHubRepositorySnapshot;
 
 export function buildGitHubAiInstructions(context) {
+  const appInstructions = buildAiAppInstructions();
   if (!context) {
-    return "No GitHub repository is connected. If the user asks to inspect or change a repository, tell them to use the GitHub button in the AI Chat header first.";
+    return [
+      appInstructions,
+      "No GitHub repository is connected. If the user asks to inspect or change a repository, tell them to use the GitHub button in the AI Chat header first.",
+    ].join(" ");
   }
   return [
+    appInstructions,
     `The user connected the GitHub repository ${context.fullName}. Its default branch is ${context.defaultBranch}.`,
     "Use repository tools only when the user's request concerns the connected repository.",
     "Ground repository answers and edits in the actual current files. Do not guess file paths, surrounding code, versions, APIs, or runtime behavior when repository evidence can answer it.",
@@ -38,8 +44,9 @@ export function buildGitHubAiInstructions(context) {
 }
 
 export function getGitHubAiTools(context) {
+  const appTools = getAiAppTools().map(forceDirectToolCalling);
   const tools = core.getGitHubAiTools(context).map(forceDirectToolCalling);
-  if (!context) return tools;
+  if (!context) return appTools;
   const withoutFacadeOverrides = tools.filter((tool) => !["github_resume_task", "github_merge_pull_request"].includes(tool?.name));
   return [
     {
@@ -119,15 +126,23 @@ export function getGitHubAiTools(context) {
       defer_loading: true,
     },
     ...withoutFacadeOverrides,
+    ...appTools,
   ];
 }
 
 export function isGitHubAiToolCall(item) {
   return item?.type === "function_call"
-    && (MULTI_TASK_TOOL_NAMES.has(String(item.name || "")) || core.isGitHubAiToolCall(item));
+    && (isAiAppToolCall(item) || MULTI_TASK_TOOL_NAMES.has(String(item.name || "")) || core.isGitHubAiToolCall(item));
 }
 
 export async function executeGitHubAiTool(env, userId, item, onStatus, activity = null) {
+  if (isAiAppToolCall(item)) {
+    if (!isRootAgentItem(item) && isAiAppWriteToolCall(item)) {
+      return JSON.stringify({ error: "Only the root assistant may change your Vexa account or audio files." });
+    }
+    return executeAiAppTool(env, userId, item);
+  }
+
   const access = await getGitHubCreditAccess(env, userId);
   if (!access.allowed) {
     return JSON.stringify({
