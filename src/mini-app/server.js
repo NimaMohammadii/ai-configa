@@ -7,7 +7,7 @@ import { MINI_APP_STAR_PACKAGES, createCustomStarPackage, applyStarPackageDiscou
 import { getActiveWheelPurchaseDiscount } from "../reward-wheel.js";
 import { tgJson } from "../telegram-api.js";
 import { handlePaymentHeroImageRequest, isPaymentHeroImageRequest } from "../payment-hero.js";
-import { handleUsagePricedImageRequest, isUsagePricedImageRequest } from "../image-usage-pricing.js";
+import { dynamicPricingPayload, handleUsagePricedImageRequest, isUsagePricedImageRequest } from "../image-usage-pricing.js";
 import { PURCHASE_UI_CSS } from "./purchase-ui-styles.js";
 import { REFERRAL_UI_PATCH } from "./referral-ui.js";
 import { HISTORY_FILE_IDENTITY_PATCH } from "./history-file-identity.js";
@@ -45,7 +45,7 @@ export async function handleMiniAppRequest(request, env) {
     await registerReferralBeforeFirstSession(request, env).catch((error) => {
       console.error("mini app referral registration failed", error?.message || error);
     });
-    return baseHandleMiniAppRequest(request, env);
+    return overrideSessionImagePricing(await baseHandleMiniAppRequest(request, env));
   }
 
   if (request.method === "POST" && url.pathname === "/mini-app/api/referral-status") {
@@ -130,6 +130,15 @@ export async function handleMiniAppRequest(request, env) {
   } catch (error) {
     return json({ error: error?.message || "Mini app error" }, error?.status || 500);
   }
+}
+
+async function overrideSessionImagePricing(response) {
+  if (!response?.ok) return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("application/json")) return response;
+  const data = await response.json().catch(() => null);
+  if (!data || typeof data !== "object" || data.locked) return json(data || {}, response.status);
+  return json({ ...data, imagePricing: dynamicPricingPayload(0) }, response.status);
 }
 
 async function registerReferralBeforeFirstSession(request, env) {
