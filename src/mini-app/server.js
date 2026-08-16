@@ -2,7 +2,7 @@ import { handleMiniAppRequest as baseHandleMiniAppRequest, isMiniAppRequest } fr
 import { authenticateMiniAppPayload } from "./auth.js";
 import { getMiniAppAccessSettings, hasTrackedUser, isAdmin } from "../admin.js";
 import { getBalance } from "../credits.js";
-import { buildPreparedReferralShare, getReferralLanguage, getReferralStatus, registerReferralFromStartParam } from "../referrals.js";
+import { buildPreparedReferralShare, getReferralLanguage, getReferralStatus, parseReferralStartParam, registerReferralFromStartParam } from "../referrals.js";
 import { MINI_APP_STAR_PACKAGES, createCustomStarPackage, applyStarPackageDiscount, starInvoicePayload } from "../stars.js";
 import { getActiveWheelPurchaseDiscount } from "../reward-wheel.js";
 import { tgJson } from "../telegram-api.js";
@@ -129,6 +129,10 @@ async function registerReferralBeforeFirstSession(request, env) {
 
   const startParam = signedStartParam(body.initData);
   if (!startParam) return;
+
+  const referral = parseReferralStartParam(startParam);
+  if (!referral || !(await hasTrackedUser(env, referral.referrerUserId))) return;
+
   await registerReferralFromStartParam(env, user.id, startParam);
 }
 
