@@ -46,12 +46,9 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 .credits-balance{bottom:12px!important}
 @media(max-width:370px){.credits-page-head{background-position:center calc(50% + 12px)!important}.credits-balance{bottom:9px!important}}
 
-/* Lower TTS bottom controls without changing keyboard behavior. */
-.tts-bottom{bottom:calc(4px + env(safe-area-inset-bottom,0px))!important}
-.tts-generate{height:38px!important;min-height:38px!important}
-
-/* Share buttons stay flat with no glow or halo. */
-.referral-credit-share,.ai-chat-referral-share{box-shadow:none!important;filter:none!important}
+/* Share buttons stay flat with no glow, focus halo, or browser appearance. */
+.referral-credit-share,.ai-chat-referral-share{box-shadow:none!important;filter:none!important;text-shadow:none!important;outline:0!important;-webkit-appearance:none!important;appearance:none!important;-webkit-tap-highlight-color:transparent!important}
+.referral-credit-share:focus,.referral-credit-share:focus-visible,.referral-credit-share:active,.ai-chat-referral-share:focus,.ai-chat-referral-share:focus-visible,.ai-chat-referral-share:active{box-shadow:none!important;filter:none!important;outline:0!important}
 
 /* History only paints the panel itself; the page above stays visible. */
 .history-sheet{background:transparent!important}
