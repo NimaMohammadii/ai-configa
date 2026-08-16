@@ -1,4 +1,5 @@
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
+import { getGitHubCreditAccess, githubCreditAccessMessage, requireGitHubCreditAccess } from "./github-access.js";
 
 const GITHUB_API = "https://api.github.com";
 const GITHUB_API_VERSION = "2022-11-28";
@@ -211,6 +212,7 @@ export async function commitGitHubRepositoryFiles(env, userId, options = {}) {
 async function createConnectUrl(request, env, userId) {
   assertGitHubConfigured(env);
   await ensureGitHubTables(env);
+  await requireGitHubCreditAccess(env, userId, "connect GitHub");
   const state = randomToken(32);
   const stateHash = await sha256Hex(state);
   const expiresAt = Math.floor(Date.now() / 1000) + OAUTH_STATE_TTL_SECONDS;
@@ -243,6 +245,12 @@ async function handleOAuthCallback(request, env) {
     return callbackPage("This GitHub connection link has expired. Open AI Chat and try again.", false);
   }
 
+  const userId = String(saved.user_id);
+  const access = await getGitHubCreditAccess(env, userId);
+  if (!access.allowed) {
+    return callbackPage(githubCreditAccessMessage(access, "connect GitHub"), false);
+  }
+
   const callbackUrl = new URL("/mini-app/github/callback", request.url).toString();
   const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
@@ -263,7 +271,6 @@ async function handleOAuthCallback(request, env) {
   const installationsData = await githubRequest("/user/installations?per_page=100", { token: userToken });
   const installations = (Array.isArray(installationsData.installations) ? installationsData.installations : [])
     .slice(0, MAX_INSTALLATIONS);
-  const userId = String(saved.user_id);
   await env.DB.prepare(
     "INSERT INTO github_connections (user_id, github_user_id, github_login, connected_at, updated_at) "
       + "VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) "
@@ -347,6 +354,10 @@ async function disconnectGitHub(env, userId) {
   await env.DB.prepare("DELETE FROM github_user_installations WHERE user_id = ?").bind(String(userId)).run();
   await env.DB.prepare("DELETE FROM github_connections WHERE user_id = ?").bind(String(userId)).run();
   return { connected: false };
+}
+
+export async function listAccessibleGitHubRepositories(env, userId) {
+  return listAccessibleRepositories(env, userId);
 }
 
 async function listAccessibleRepositories(env, userId) {
@@ -494,7 +505,7 @@ async function githubRequest(path, options = {}) {
   const response = await fetch(GITHUB_API + path, {
     method: options.method || "GET",
     headers: {
-      "Accept": "application/vnd.github+json",
+      "Accept": options.accept || "application/vnd.github+json",
       "Authorization": `Bearer ${options.token}`,
       "X-GitHub-Api-Version": GITHUB_API_VERSION,
       "User-Agent": "Vexa-AI-GitHub-App",
@@ -545,7 +556,7 @@ async function verifyWebhookSignature(body, signature, secret) {
   return timingSafeEqual(signature.toLowerCase(), expected.toLowerCase());
 }
 
-async function ensureGitHubTables(env) {
+export async function ensureGitHubTables(env) {
   if (!env.DB) throw new Error("Database binding is missing.");
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS github_connections (user_id TEXT PRIMARY KEY, github_user_id TEXT NOT NULL, "
