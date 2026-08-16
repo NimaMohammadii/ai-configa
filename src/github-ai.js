@@ -5,6 +5,7 @@ import {
   saveAiCodingTaskState,
 } from "./ai-coding-task.js";
 import { normalizeCodingPlan, summarizeCodingPlan } from "./ai-coding-plan.js";
+import { getGitHubCreditAccess, githubCreditAccessMessage } from "./github-access.js";
 import * as core from "./github-ai-core.js";
 
 const MULTI_TASK_TOOL_NAMES = new Set(["github_list_tasks", "github_resume_task", "github_update_plan"]);
@@ -127,6 +128,16 @@ export function isGitHubAiToolCall(item) {
 }
 
 export async function executeGitHubAiTool(env, userId, item, onStatus, activity = null) {
+  const access = await getGitHubCreditAccess(env, userId);
+  if (!access.allowed) {
+    return JSON.stringify({
+      error: githubCreditAccessMessage(access, "use AI coding with GitHub"),
+      code: "insufficient_github_credits",
+      requiredCredits: access.requiredCredits,
+      balance: access.balance,
+    });
+  }
+
   if (item?.name === "github_list_tasks") {
     try {
       const repository = await core.getGitHubAiContext(env, userId);
