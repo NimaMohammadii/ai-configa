@@ -1,5 +1,5 @@
 import { getAdminAction, isAdmin } from "./admin.js";
-import { handleCallback, handleMessage } from "./bot-github-admin.js";
+import { handleCallback, handleMessage } from "./bot.js";
 import { handleMiniAppRequest, isMiniAppRequest } from "./mini-app/server.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
