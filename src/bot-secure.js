@@ -1,4 +1,5 @@
-import { handleMessage as handleBaseMessage, sendFreshMainMenu } from "./bot.js";
+import { handleMessage as handleBaseMessage } from "./bot-github-admin.js";
+import { sendFreshMainMenu } from "./bot.js";
 import { handleTelegramOauthStart } from "./chatgpt-app/telegram-login.js";
 import { protectStartMessage } from "./start-message-guard.js";
 
