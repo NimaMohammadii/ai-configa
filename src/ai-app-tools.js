@@ -1,4 +1,5 @@
 import { getUserAiChatPreferences } from "./ai-chat-model.js";
+import { buildAiAudioFileInstructions, executeAiAudioFileTool, getAiAudioFileTools, isAiAudioFileToolCall, isAiAudioFileWriteToolCall } from "./ai-audio-file-tools.js";
 import { getAiChatAccessSettings, getMiniAppAccessSettings, isAdmin } from "./admin.js";
 import { addCredits, getBalance, spendCredits } from "./credits.js";
 import { textToSpeechWithTimestamps } from "./elevenlabs.js";
@@ -36,6 +37,7 @@ const WRITES = new Set([N.audioSend, N.audioEdit]);
 export function buildAiAppInstructions() {
   return [
     "Private Vexa app tools are available for the currently authenticated user.",
+    buildAiAudioFileInstructions(),
     "Use them whenever an answer depends on live app or bot data: credits, profile/settings, voices, TTS/audio files and duration, image history, section activity, locks, reward wheel, referrals, payment state, credit usage, or saved AI Chat history. Never guess those values from memory.",
     "Tool execution is already scoped to the authenticated user. Never ask for or invent a Telegram user ID and never claim access to another user's data.",
     "When a file reference is ambiguous, call vexa_list_audio first, then use the returned history ID with the appropriate audio tool.",
@@ -51,6 +53,7 @@ export function getAiAppTools() {
     tool(N.account, "Read a fresh comprehensive snapshot of the current user's Vexa account: balance, profile, selected/saved voice, language, Mini App and AI Chat lock state, section activity, reward wheel, referrals, AI preferences, content counts and payment summary.", {}, []),
     tool(N.voices, "List Vexa voices with selected, saved, locked and available status for the current user.", {}, []),
     tool(N.audioList, "List the current user's recent TTS/audio history with history ID, filename, current text, voice, language, credits, source, time, revision, editability and duration when stored alignment provides it.", { limit: { type: "integer", minimum: 1, maximum: MAX_AUDIO } }, ["limit"]),
+    ...getAiAudioFileTools(),
     tool(N.audioGet, "Read one owned TTS/audio history item in detail and derive its duration from timestamps or the stored WAV/MP3 when needed.", { historyId: { type: "string", minLength: 1, maxLength: 100 } }, ["historyId"]),
     tool(N.audioSend, "Send one exact owned TTS/audio history item to the current user's private Telegram bot chat. Use only after an explicit send request or a clear acceptance of an earlier offer to send the file. The authenticated user/chat is fixed server-side and is never supplied by the model.", { historyId: { type: "string", minLength: 1, maxLength: 100 } }, ["historyId"]),
     tool(N.audioEdit, "Replace an exact text segment in one owned single-speaker editable Mini App TTS item and regenerate the full updated audio with the same voice. This updates the same history item, increments revision, and spends credits equal to the full updated text length. Use only on explicit user intent.", {
@@ -66,13 +69,14 @@ export function getAiAppTools() {
 }
 
 export function isAiAppToolCall(item) {
-  return item?.type === "function_call" && ALL.has(String(item?.name || ""));
+  return item?.type === "function_call" && (ALL.has(String(item?.name || "")) || isAiAudioFileToolCall(item));
 }
 export function isAiAppWriteToolCall(item) {
-  return isAiAppToolCall(item) && WRITES.has(String(item?.name || ""));
+  return isAiAudioFileWriteToolCall(item) || (isAiAppToolCall(item) && WRITES.has(String(item?.name || "")));
 }
 
 export async function executeAiAppTool(env, userId, item) {
+  if (isAiAudioFileToolCall(item)) return executeAiAudioFileTool(env, userId, item);
   let args = {};
   try { args = JSON.parse(String(item?.arguments || "{}")); }
   catch { return JSON.stringify({ ok: false, error: "Invalid app-tool arguments." }); }
