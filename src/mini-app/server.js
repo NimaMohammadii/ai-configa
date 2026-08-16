@@ -5,11 +5,26 @@ import { getBalance } from "../credits.js";
 import { MINI_APP_STAR_PACKAGES, createCustomStarPackage, applyStarPackageDiscount, starInvoicePayload } from "../stars.js";
 import { getActiveWheelPurchaseDiscount } from "../reward-wheel.js";
 import { tgJson } from "../telegram-api.js";
+import { handlePaymentHeroImageRequest, isPaymentHeroImageRequest } from "../payment-hero.js";
+import { PURCHASE_UI_CSS } from "./purchase-ui-styles.js";
 
 export { isMiniAppRequest };
 
 export async function handleMiniAppRequest(request, env) {
   const url = new URL(request.url);
+
+  if (isPaymentHeroImageRequest(request)) {
+    return handlePaymentHeroImageRequest(request, env);
+  }
+
+  if (request.method === "GET" && url.pathname === "/mini-app/styles.css") {
+    return appendPurchaseStyles(await baseHandleMiniAppRequest(request, env));
+  }
+
+  if (request.method === "GET" && (url.pathname === "/mini-app" || url.pathname === "/mini-app/")) {
+    return stripCreditsHeaderCopy(await baseHandleMiniAppRequest(request, env));
+  }
+
   if (request.method !== "POST" || url.pathname !== "/mini-app/api/stars-invoice") {
     return baseHandleMiniAppRequest(request, env);
   }
@@ -64,6 +79,39 @@ export async function handleMiniAppRequest(request, env) {
   } catch (error) {
     return json({ error: error?.message || "Mini app error" }, error?.status || 500);
   }
+}
+
+async function appendPurchaseStyles(response) {
+  if (!response?.ok) return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("text/css")) return response;
+
+  const source = await response.text();
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  return new Response(source + "\n" + PURCHASE_UI_CSS, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function stripCreditsHeaderCopy(response) {
+  if (!response?.ok) return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("text/html")) return response;
+
+  const source = await response.text();
+  const html = source.replace("<p>Top up instantly and keep creating.</p>", "");
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  return new Response(html, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function json(value, status = 200) {
