@@ -35,8 +35,31 @@ async function addMissingTtsHistoryColumns(env) {
   }
 }
 
+export async function ensureUserTtsFileSequences(env, userId) {
+  await ensureTtsHistoryTable(env);
+  const uid = String(userId);
+  const missing = await env.DB.prepare(
+    "SELECT id FROM tts_history WHERE user_id = ? AND (file_sequence IS NULL OR file_sequence < 1) ORDER BY datetime(created_at) ASC, rowid ASC"
+  ).bind(uid).all();
+  const rows = missing.results || [];
+  if (!rows.length) return;
+
+  const stored = await env.DB.prepare(
+    "SELECT COALESCE(MAX(file_sequence), 0) AS last_sequence FROM tts_history WHERE user_id = ? AND file_sequence >= 1"
+  ).bind(uid).first();
+  let nextSequence = Math.max(1, Number(stored?.last_sequence || 0) + 1);
+
+  for (const row of rows) {
+    await env.DB.prepare(
+      "UPDATE tts_history SET file_sequence = ? WHERE id = ? AND user_id = ? AND (file_sequence IS NULL OR file_sequence < 1)"
+    ).bind(nextSequence, String(row.id), uid).run();
+    nextSequence += 1;
+  }
+}
+
 export async function getNextTtsFileSequence(env, userId) {
   await ensureTtsHistoryTable(env);
+  await ensureUserTtsFileSequences(env, userId);
 
   const stored = await env.DB.prepare(
     "SELECT MAX(file_sequence) AS last_sequence FROM tts_history WHERE user_id = ?"
@@ -121,6 +144,7 @@ export async function saveTtsHistory(env, userId, text, voice, language, credits
 
 export async function getMiniAppTtsHistory(env, userId, limit = 30) {
   await ensureTtsHistoryTable(env);
+  await ensureUserTtsFileSequences(env, userId);
   const safeLimit = Math.min(50, Math.max(1, Number(limit || 30)));
   const rows = await env.DB.prepare(
     "SELECT id, text, voice, language, credits, file_sequence, source, created_at, edit_revision, " +
@@ -155,6 +179,7 @@ export async function getMiniAppTtsHistoryAudio(env, userId, historyId) {
 
 export async function getTtsHistoryPage(env, userId, page = 0, limit = HISTORY_LIMIT) {
   await ensureTtsHistoryTable(env);
+  await ensureUserTtsFileSequences(env, userId);
   const safePage = Math.max(0, Number(page || 0));
   const safeLimit = Math.max(1, Number(limit || HISTORY_LIMIT));
   const offset = safePage * safeLimit;
