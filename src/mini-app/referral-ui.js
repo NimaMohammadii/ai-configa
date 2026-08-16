@@ -9,7 +9,6 @@ export const REFERRAL_UI_PATCH = String.raw`
   var referralStatusBusy=false;
   var referralBaseFetch=window.fetch.bind(window);
   var referralLaunchApplied=false;
-  var referralAiChatOfferPending=false;
 
   var referralCopies={
     en:{title:'Not enough credits',text:'Invite 3 friends and get 300 free credits.',progress:'Friends invited',share:'Invite friends',sharing:'Opening share…',reward:'300 free credits',close:'Close',shareError:'Could not open sharing. Try again.'},
@@ -162,7 +161,7 @@ export const REFERRAL_UI_PATCH = String.raw`
     }
   }
 
-  function referralAppendAiChatOffer(status){
+  function referralAppendAiChatOffer(status,anchor){
     var list=document.getElementById('aiChatMessages');if(!list)return;
     list.querySelectorAll('.ai-chat-referral-offer').forEach(function(node){node.remove()});
     var copy=referralCopy();
@@ -186,34 +185,32 @@ export const REFERRAL_UI_PATCH = String.raw`
       share.disabled=true;share.classList.add('loading');if(shareLabel)shareLabel.textContent=referralCopy().sharing;
       try{await referralShare()}finally{share.disabled=false;share.classList.remove('loading');if(shareLabel)shareLabel.textContent=referralCopy().share}
     });
-    list.appendChild(offer);
+    if(anchor&&anchor.parentNode===list)anchor.insertAdjacentElement('afterend',offer);else list.appendChild(offer);
     if(typeof syncAiChatEmptyState==='function')try{syncAiChatEmptyState()}catch(e){}
     requestAnimationFrame(function(){offer.scrollIntoView({block:'nearest',behavior:window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})});
   }
 
-  function referralQueueAiChatOffer(){
-    if(referralAiChatOfferPending)return;
-    var list=document.getElementById('aiChatMessages');if(!list)return;
-    referralAiChatOfferPending=true;
-    referralActiveSection='ai_chat';
-    var assistantCount=list.querySelectorAll('.ai-chat-message.assistant').length;
-    var observer=null;
-    var timer=0;
-    var finished=false;
-    function finish(){
-      if(finished)return;
-      finished=true;
-      if(observer)observer.disconnect();
-      if(timer)clearTimeout(timer);
-      Promise.resolve(referralLoadStatus()).then(function(status){referralAppendAiChatOffer(status)}).catch(function(){referralAppendAiChatOffer(null)}).finally(function(){referralAiChatOfferPending=false});
-    }
-    if(typeof MutationObserver==='function'){
-      observer=new MutationObserver(function(){
-        if(list.querySelectorAll('.ai-chat-message.assistant').length>assistantCount){requestAnimationFrame(function(){setTimeout(finish,0)})}
-      });
-      observer.observe(list,{childList:true});
-    }
-    timer=setTimeout(finish,900);
+  function referralInstallAiChatMessageHook(){
+    if(window.location.pathname.indexOf('/mini-app/chat')!==0||typeof appendAiChatMessage!=='function')return;
+    if(appendAiChatMessage.__referralCreditHook)return;
+    var originalAppendAiChatMessage=appendAiChatMessage;
+    var hookedAppendAiChatMessage=function(role,text,animate,attachment){
+      var creditError=role==='assistant'&&String(text||'').indexOf('Not enough credits')===0;
+      var result=originalAppendAiChatMessage.apply(this,arguments);
+      if(creditError){
+        var list=document.getElementById('aiChatMessages');
+        var messages=list?list.querySelectorAll('.ai-chat-message.assistant'):[];
+        var anchor=messages&&messages.length?messages[messages.length-1]:null;
+        if(anchor)anchor.setAttribute('data-referral-credit-error','true');
+        Promise.resolve(result).then(function(){
+          referralActiveSection='ai_chat';
+          return referralLoadStatus();
+        }).then(function(status){referralAppendAiChatOffer(status,anchor)}).catch(function(){referralAppendAiChatOffer(null,anchor)});
+      }
+      return result;
+    };
+    hookedAppendAiChatMessage.__referralCreditHook=true;
+    appendAiChatMessage=hookedAppendAiChatMessage;
   }
 
   function referralApplyLaunchSection(){
@@ -237,7 +234,7 @@ export const REFERRAL_UI_PATCH = String.raw`
       }
       if(response.status===402&&path.indexOf('/mini-app/api/')>=0){
         var section=referralSectionForRequest(path,init);
-        if(window.location.pathname.indexOf('/mini-app/chat')===0)setTimeout(referralQueueAiChatOffer,0);else setTimeout(function(){referralSetOpen(true,section)},0)
+        if(window.location.pathname.indexOf('/mini-app/chat')!==0)setTimeout(function(){referralSetOpen(true,section)},0)
       }
     }catch(e){}
     return response;
@@ -257,5 +254,6 @@ export const REFERRAL_UI_PATCH = String.raw`
   },true);
 
   referralInstallUi();
+  referralInstallAiChatMessageHook();
   referralObserveBalanceNodes();
 `;
