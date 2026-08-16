@@ -1,11 +1,32 @@
 import * as core from "./openai-agent-tools-core.js";
 import { buildAiCodingTaskInstructions, getAiCodingTaskState } from "./ai-coding-task.js";
+import { getGitHubCreditAccess, githubCreditAccessMessage } from "./github-access.js";
 
-export {
-  executeOpenAiApplyPatchCalls,
-  isOpenAiApplyPatchCall,
-  prepareOpenAiToolReplayItems,
-} from "./openai-agent-tools-core.js";
+export const isOpenAiApplyPatchCall = core.isOpenAiApplyPatchCall;
+export const prepareOpenAiToolReplayItems = core.prepareOpenAiToolReplayItems;
+
+export async function executeOpenAiApplyPatchCalls(env, userId, calls, onStatus, activity = null) {
+  const items = (Array.isArray(calls) ? calls : []).filter(core.isOpenAiApplyPatchCall);
+  if (!items.length) return [];
+
+  const access = await getGitHubCreditAccess(env, userId);
+  if (!access.allowed) {
+    const message = githubCreditAccessMessage(access, "use AI coding with GitHub");
+    return items.map((call) => ({
+      type: "apply_patch_call_output",
+      call_id: call.call_id,
+      status: "failed",
+      output: JSON.stringify({
+        error: message,
+        code: "insufficient_github_credits",
+        requiredCredits: access.requiredCredits,
+        balance: access.balance,
+      }),
+    }));
+  }
+
+  return core.executeOpenAiApplyPatchCalls(env, userId, items, onStatus, activity);
+}
 
 const BILLING_ONLY_CONTAINER_PREFIX = "billing-shell:";
 const SHELL_MEMORY_LIMIT = "1g";
@@ -54,9 +75,13 @@ export async function refreshOpenAiCodingWorkspace(env, userId, tools, state, co
 
 export async function prepareOpenAiAgentTools(env, userId, options = {}) {
   const reasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
-  const shellEnabled = options.shellEnabled == null
+  const requestedShellEnabled = options.shellEnabled == null
     ? reasoningEffort === "high" || reasoningEffort === "max"
     : options.shellEnabled !== false;
+  const githubAccess = options.githubContext
+    ? await getGitHubCreditAccess(env, userId)
+    : null;
+  const shellEnabled = requestedShellEnabled && (!githubAccess || githubAccess.allowed);
   const lightweightGithub = Boolean(options.githubContext && !shellEnabled);
   const state = await core.prepareOpenAiAgentTools(env, userId, {
     ...options,
