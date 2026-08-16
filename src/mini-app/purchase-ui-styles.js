@@ -1,6 +1,8 @@
 export const PURCHASE_UI_CSS = String.raw`
 /* Buy Credits refinements */
 html body .credits-page .credits-page-head p{display:none!important}
+html body .credits-page .tribute-section-copy>div>span{display:none!important}
+html body .credits-page .tribute-section-copy>div>h3{margin-top:0!important}
 
 /* Payment-specific heroes reuse the exact Stars header framing and fades. */
 html body .credits-page.toman-payment-active .credits-page-head{
