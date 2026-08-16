@@ -161,16 +161,71 @@ html body .credits-page .credits-amount-range:focus-visible::-moz-range-thumb{
   0%{transform:translateY(0) scale(1.07);background-position:center,28% 28%}
   100%{transform:translateY(-.4px) scale(1.12);background-position:center,76% 70%}
 }
+
+/* Compact Bank Card currency selector with the same restrained metallic treatment. */
+html body .credits-page .tribute-currency-wrap{
+  width:min(78%,280px)!important;
+  margin:12px auto 11px!important
+}
+html body .credits-page .tribute-currency-label{
+  margin:0 1px 6px!important
+}
+html body .credits-page .tribute-currency-picker{
+  padding:2px!important;
+  border:1px solid rgba(255,255,255,.075)!important;
+  border-radius:13px!important;
+  background:rgba(15,15,16,.96)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025)!important
+}
+html body .credits-page .tribute-currency-picker:before{
+  left:2px!important;
+  top:2px!important;
+  bottom:2px!important;
+  width:calc((100% - 4px)/3)!important;
+  border-radius:10px!important;
+  background:
+    radial-gradient(circle at 32% 20%,rgba(255,255,255,.98) 0 16%,rgba(255,255,255,0) 40%),
+    linear-gradient(145deg,#fff 0%,#f8fafc 24%,#d8dee7 54%,#f5f8fb 76%,#fff 100%)!important;
+  background-size:100% 100%,180% 180%!important;
+  background-position:center,28% 28%!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.88),inset 0 -1px 0 rgba(105,113,126,.2),0 3px 9px rgba(0,0,0,.24)!important;
+  filter:saturate(.92)!important;
+  transition:transform .48s cubic-bezier(.16,1,.3,1),background-position .42s ease,box-shadow .3s ease,filter .3s ease!important
+}
+html body .credits-page .tribute-currency-picker:active:before{
+  background-position:center,72% 66%!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.94),inset 0 -1px 0 rgba(105,113,126,.22),0 4px 11px rgba(0,0,0,.27)!important;
+  filter:saturate(.96) brightness(1.025)!important
+}
+html body .credits-page .tribute-currency-picker button{
+  height:32px!important;
+  padding:0 6px!important;
+  border-radius:10px!important;
+  font-size:9.5px!important;
+  font-weight:760!important;
+  transition:color .28s ease,transform .22s cubic-bezier(.16,1,.3,1)!important
+}
+html body .credits-page .tribute-currency-picker button.active{
+  color:#111318!important;
+  text-shadow:0 1px 0 rgba(255,255,255,.42)!important
+}
+html body .credits-page .tribute-currency-picker button:active{
+  transform:scale(.965)!important
+}
+
 @media(prefers-reduced-motion:reduce){
   html body .credits-page .credits-amount-range{transition:none!important}
   html body .credits-page .credits-amount-range::-webkit-slider-runnable-track,
   html body .credits-page .credits-amount-range::-webkit-slider-thumb,
   html body .credits-page .credits-amount-range::-moz-range-track,
-  html body .credits-page .credits-amount-range::-moz-range-thumb{animation:none!important;transition:none!important}
+  html body .credits-page .credits-amount-range::-moz-range-thumb,
+  html body .credits-page .tribute-currency-picker:before,
+  html body .credits-page .tribute-currency-picker button{animation:none!important;transition:none!important}
 }
 
 @media(max-width:370px){
   html body .credits-page.toman-payment-active .credits-page-head,
   html body .credits-page.tribute-payment-active .credits-page-head{background-position:center center!important;background-size:100% auto!important}
+  html body .credits-page .tribute-currency-wrap{width:min(82%,260px)!important}
 }
 `;
