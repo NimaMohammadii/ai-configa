@@ -13,6 +13,7 @@ import { downloadTelegramFile } from "./telegram-api.js";
 
 const PAYMENT_HERO_ACTION = "payment_hero_image";
 const PAYMENT_HERO_SETTING_PREFIX = "payment_hero_file_id_";
+const PAYMENT_HERO_R2_PREFIX = "payment-hero/";
 const PAYMENT_HERO_TARGETS = Object.freeze({
   toman: Object.freeze({ key: "toman", label: "Toman checkout" }),
   card: Object.freeze({ key: "card", label: "Bank Card checkout" }),
@@ -104,7 +105,12 @@ export async function handlePaymentHeroAdminCallback(query, env) {
 export async function handlePaymentHeroAdminMessage(message, env) {
   const adminId = message?.from?.id;
   const chatId = message?.chat?.id;
-  if (!adminId || !chatId || !(await isAdmin(env, adminId))) return false;
+  if (!adminId || !chatId) return false;
+
+  const hasPhoto = Array.isArray(message.photo) && message.photo.length > 0;
+  const directAdmin = Boolean(env?.ADMIN_TOKEN) && String(env.ADMIN_TOKEN) === String(adminId);
+  if (!hasPhoto && !directAdmin) return false;
+  if (!(await isAdmin(env, adminId))) return false;
 
   const action = await getAdminAction(env, adminId);
   if (action?.action !== PAYMENT_HERO_ACTION) return false;
@@ -115,7 +121,7 @@ export async function handlePaymentHeroAdminMessage(message, env) {
     return false;
   }
 
-  const photo = Array.isArray(message.photo) ? message.photo.at(-1) : null;
+  const photo = hasPhoto ? message.photo.at(-1) : null;
   const inputMessageId = Number(message.message_id || 0);
   const menuChatId = Number(action.chat_id || chatId);
   const menuMessageId = Number(action.message_id || 0);
@@ -172,21 +178,41 @@ export async function handlePaymentHeroImageRequest(request, env) {
   const target = paymentHeroTarget(new URL(request.url).pathname.split("/").pop());
   if (!target) return new Response("Not Found", { status: 404 });
 
-  const fileId = await getPaymentHeroFileId(env, target.key);
-  if (!fileId) {
+  const record = await getPaymentHeroRecord(env, target.key);
+  if (!record.fileId && !record.storageKey) {
     return new Response("Not Found", {
       status: 404,
       headers: { "Cache-Control": "no-store" },
     });
   }
 
+  if (env.EXPLORE_MEDIA && record.storageKey) {
+    const object = await env.EXPLORE_MEDIA.get(record.storageKey).catch(() => null);
+    if (object) {
+      const headers = new Headers();
+      if (typeof object.writeHttpMetadata === "function") object.writeHttpMetadata(headers);
+      headers.set("Content-Type", headers.get("Content-Type") || "image/jpeg");
+      headers.set("Cache-Control", "no-cache, max-age=0, must-revalidate");
+      headers.set("Content-Disposition", "inline");
+      headers.set("X-Content-Type-Options", "nosniff");
+      if (object.httpEtag) headers.set("ETag", object.httpEtag);
+      if (object.httpEtag && request.headers.get("If-None-Match") === object.httpEtag) {
+        return new Response(null, { status: 304, headers });
+      }
+      return new Response(object.body, { status: 200, headers });
+    }
+  }
+
+  if (!record.fileId) return new Response("Not Found", { status: 404 });
+
   try {
-    const file = await downloadTelegramFile(env, fileId);
+    const file = await downloadTelegramFile(env, record.fileId);
     return new Response(file.buffer, {
       status: 200,
       headers: {
         "Content-Type": file.mimeType,
         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Content-Disposition": "inline",
         "X-Content-Type-Options": "nosniff",
       },
     });
@@ -216,8 +242,8 @@ export function paymentHeroAdminMainKeyboard() {
 
 export async function paymentHeroAdminText(env) {
   const [toman, card] = await Promise.all([
-    getPaymentHeroFileId(env, "toman"),
-    getPaymentHeroFileId(env, "card"),
+    getPaymentHeroRecord(env, "toman"),
+    getPaymentHeroRecord(env, "card"),
   ]);
   return [
     "🖼 <b>Payment Hero Images</b>",
@@ -225,8 +251,8 @@ export async function paymentHeroAdminText(env) {
     "Upload the two images used at the top of Buy Credits.",
     "Both use the same full-width hero layout as Telegram Stars.",
     "",
-    (toman ? "✅" : "○") + " Toman checkout",
-    (card ? "✅" : "○") + " Bank Card checkout",
+    (toman.fileId || toman.storageKey ? "✅" : "○") + " Toman checkout",
+    (card.fileId || card.storageKey ? "✅" : "○") + " Bank Card checkout",
   ].join("\n");
 }
 
@@ -262,24 +288,61 @@ async function setPaymentHeroImage(env, key, fileId) {
   const target = paymentHeroTarget(key);
   if (!target || !fileId) throw new Error("Invalid payment hero image");
   await ensurePaymentHeroStorage(env);
+
+  let storageKey = "";
+  if (env.EXPLORE_MEDIA) {
+    try {
+      const file = await downloadTelegramFile(env, fileId);
+      storageKey = PAYMENT_HERO_R2_PREFIX + target.key;
+      await env.EXPLORE_MEDIA.put(storageKey, file.buffer, {
+        httpMetadata: {
+          contentType: file.mimeType || "image/jpeg",
+          cacheControl: "no-cache, max-age=0, must-revalidate",
+          contentDisposition: "inline",
+        },
+        customMetadata: {
+          telegramFileId: String(fileId),
+          paymentHero: target.key,
+        },
+      });
+    } catch (error) {
+      storageKey = "";
+      console.error("store payment hero in R2 failed", target.key, error?.message || error);
+    }
+  }
+
   await env.DB.prepare(
     "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP"
-  ).bind(paymentHeroSettingKey(target.key), String(fileId)).run();
+  ).bind(paymentHeroSettingKey(target.key), JSON.stringify({ fileId: String(fileId), storageKey })).run();
 }
 
 async function deletePaymentHeroImage(env, key) {
   const target = paymentHeroTarget(key);
   if (!target) throw new Error("Invalid payment hero target");
   await ensurePaymentHeroStorage(env);
+  const record = await getPaymentHeroRecord(env, target.key);
+  if (env.EXPLORE_MEDIA && record.storageKey) {
+    await env.EXPLORE_MEDIA.delete(record.storageKey).catch(() => null);
+  }
   await env.DB.prepare("DELETE FROM app_settings WHERE key = ?").bind(paymentHeroSettingKey(target.key)).run();
 }
 
-async function getPaymentHeroFileId(env, key) {
+async function getPaymentHeroRecord(env, key) {
   const target = paymentHeroTarget(key);
-  if (!target) return "";
+  if (!target) return { fileId: "", storageKey: "" };
   await ensurePaymentHeroStorage(env);
   const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind(paymentHeroSettingKey(target.key)).first();
-  return String(row?.value || "").trim();
+  const raw = String(row?.value || "").trim();
+  if (!raw) return { fileId: "", storageKey: "" };
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      fileId: String(parsed?.fileId || "").trim(),
+      storageKey: String(parsed?.storageKey || "").trim(),
+    };
+  } catch {
+    return { fileId: raw, storageKey: "" };
+  }
 }
 
 function paymentHeroSettingKey(key) {
