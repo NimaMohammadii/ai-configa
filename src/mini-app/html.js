@@ -104,7 +104,7 @@ export const MINI_APP_HTML = `<!doctype html>
     .credits-page .credits-pack:active,.credits-page .toman-card:active,.credits-page .toman-receipt-picker:active,.credits-page .toman-back:active,.credits-page .credits-amount-field:focus-within{background:rgba(255,255,255,.105);box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),0 5px 14px rgba(0,0,0,.2)}
     .credits-page.toman-payment-active .credits-page-head{background:#000 url("/mini-app/assets/toman-checkout-hero.png?v=20260812-3") center/cover no-repeat}
     .credits-page.toman-payment-active .credits-page-head:before{z-index:0;background:linear-gradient(90deg,rgba(0,0,0,.98) 0%,rgba(0,0,0,.72) 36%,rgba(0,0,0,.12) 72%,rgba(0,0,0,.28) 100%)}
-    .voices-page-head{box-shadow:0 -140px 0 140px #000}
+    .explore-page-head,.voices-page-head{box-shadow:0 -140px 0 140px #000}
   </style>
 </head>
 <body>
@@ -123,7 +123,7 @@ export const MINI_APP_HTML = `<!doctype html>
           </div><button id="aiChatOpen" class="mode-toggle ai-chat-open-button" data-action="open-ai-chat" type="button" aria-label="Open AI chat"><canvas id="aiChatButtonOrb" width="48" height="48" aria-hidden="true"></canvas></button><button id="modeToggle" class="mode-toggle" data-action="toggle-creation-mode" type="button" aria-label="Switch to image creation" aria-pressed="false"><svg class="mode-image-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><circle cx="8.3" cy="9" r="1.55" stroke="currentColor" stroke-width="1.55"/><path d="m5.8 17 4.15-4.15a1.4 1.4 0 0 1 1.98 0l1.55 1.55 1.25-1.25a1.4 1.4 0 0 1 1.98 0L19 15.45" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.2 2.7v3M16.7 4.2h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><svg class="mode-voice-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button></div>
         </div>
         <div class="tts-area dialogue-editor" id="dialogueEditor">
-          <section class="dialogue-turn active" data-dialogue-turn data-dialogue-id="1" data-voice="${VOICES.Liam}" data-voice-name="Liam">
+          <section class="dialogue-turn active" data-dialogue-turn data-dialogue-id="1" data-voice="${VOICES.Liam}" data-dialogue-voice-name="Liam">
             <div class="dialogue-speaker-row">
               <button class="dialogue-speaker" data-action="select-dialogue-speaker" type="button" aria-label="Change speaker voice">
                 <span class="dialogue-speaker-avatar" data-dialogue-avatar aria-hidden="true"></span>
