@@ -1,13 +1,13 @@
 import { getImageExploreItems, getMiniAppAccessSettings, isAdmin } from "./admin.js";
 import { AI_CHAT_MARKUP_RATE, AI_CHAT_USD_PER_CREDIT } from "./ai-chat-model.js";
-import { getBalance, spendCredits } from "./credits.js";
+import { ensureBalanceRow, ensureCreditUsageLogTable, getBalance } from "./credits.js";
 import { saveImageHistory } from "./image-history.js";
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
 import { tgForm, tgJson } from "./telegram-api.js";
 
 const GPT_IMAGE_MODEL = "gpt-image-2";
 const GPT_IMAGE_QUALITY = "low";
-const GPT_IMAGE_TIMEOUT_MS = 150000;
+const GPT_IMAGE_TIMEOUT_MS = 180000;
 const GPT_IMAGE_TEXT_INPUT_USD_PER_MILLION = 5;
 const GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION = 8;
 const GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION = 30;
@@ -15,6 +15,16 @@ const MAX_SOURCE_IMAGES = 4;
 const MAX_SOURCE_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_SOURCE_BYTES = 24 * 1024 * 1024;
 const MAX_PROMPT_CHARS = 2000;
+
+// A reservation is temporary, not a charge. It deliberately uses a conservative
+// token ceiling so Vexa never starts a paid upstream image request without enough
+// user credit available to cover a realistic worst case. Exact billing always
+// comes from OpenAI's completed-event usage and the unused reserve is refunded.
+const RESERVE_TEXT_TOKENS_PER_CHARACTER = 4;
+const RESERVE_IMAGE_INPUT_TOKENS_PER_SOURCE = 9000;
+const RESERVE_OUTPUT_TOKENS_LOW = 500;
+const RESERVE_SAFETY_MULTIPLIER = 1.25;
+
 const IMAGE_SIZES = new Set([
   "1024x1024",
   "1024x1280",
@@ -43,6 +53,9 @@ export function isUsagePricedImageRequest(request) {
 }
 
 export async function handleUsagePricedImageRequest(request, env) {
+  let reservation = null;
+  let settled = false;
+
   try {
     const body = await request.json().catch(() => ({}));
     const prompt = String(body.prompt || "").trim();
@@ -52,11 +65,6 @@ export async function handleUsagePricedImageRequest(request, env) {
 
     const user = await authenticateMiniAppPayload(body, env);
     if (await isMiniAppLocked(env, user.id)) return errorResponse("Mini app is updating.", 423);
-
-    // Match AI Chat's post-usage billing model, while refusing a zero-balance request
-    // before paying the upstream API cost.
-    const startingBalance = await getBalance(env, user.id);
-    if (startingBalance < 1) return errorResponse("Not enough credits", 402, { balance: startingBalance });
 
     const requestedSources = Array.isArray(body.images)
       ? body.images
@@ -89,12 +97,37 @@ export async function handleUsagePricedImageRequest(request, env) {
       return errorResponse("The selected images are too large together.", 413);
     }
 
-    if (request.signal?.aborted) throw abortError();
     const size = normalizeImageSize(body.size);
     const kind = sources.length ? "edit" : "generate";
-    const upstream = await requestOpenAiImage(env, effectivePrompt, sources, size, request.signal);
-    if (request.signal?.aborted) throw abortError();
+    const reserveCredits = estimateImageReservationCredits(effectivePrompt, sources.length);
+    if (request.signal?.aborted) return errorResponse("Image request cancelled.", 499);
 
+    reservation = await reserveImageCredits(env, user.id, reserveCredits, {
+      model: GPT_IMAGE_MODEL,
+      kind,
+      size,
+      sourceCount: userSourceCount,
+      totalInputSourceCount: sources.length,
+      exploreId: exploreId || null,
+    });
+    if (!reservation.ok) {
+      return errorResponse(
+        "Not enough credits · Keep at least " + reserveCredits + " credits available for this image · final charge is based on actual API usage",
+        402,
+        { balance: reservation.balance, creditsRequired: reserveCredits, reserveOnly: true },
+      );
+    }
+
+    // If the client disconnected before the paid upstream call began, release the
+    // temporary hold immediately. Once OpenAI starts, finish settlement even if
+    // the client closes so provider cost and user billing cannot diverge.
+    if (request.signal?.aborted) {
+      const released = await releaseImageReservation(env, reservation.id, user.id, "client_aborted_before_upstream");
+      reservation = null;
+      return errorResponse("Image request cancelled.", 499, { balance: released.balance });
+    }
+
+    const upstream = await requestOpenAiImage(env, effectivePrompt, sources, size);
     const billing = calculateImageBilling(upstream.usage);
     const usageMetadata = {
       model: GPT_IMAGE_MODEL,
@@ -111,26 +144,25 @@ export async function handleUsagePricedImageRequest(request, env) {
       imageInputTokens: billing.imageInputTokens,
       unclassifiedInputTokens: billing.unclassifiedInputTokens,
       outputTokens: billing.outputTokens,
+      reservedCredits: reservation.reservedCredits,
     };
 
-    let spend = await spendCredits(env, user.id, billing.credits, "mini_app_image", usageMetadata);
-    if (!spend.ok) {
-      const partialCredits = Math.max(0, Math.floor(Number(spend.balance || 0)));
-      if (partialCredits > 0) {
-        spend = await spendCredits(env, user.id, partialCredits, "mini_app_image_partial", {
-          ...usageMetadata,
-          creditsRequired: billing.credits,
-        });
-      }
-      const balance = Math.max(0, Math.floor(Number(spend.balance || 0)));
+    const settlement = await settleImageReservation(env, reservation.id, user.id, billing.credits, usageMetadata);
+    if (!settlement.ok) {
+      console.error("image credit reservation underestimated", {
+        userId: String(user.id),
+        reservedCredits: reservation.reservedCredits,
+        actualCredits: billing.credits,
+      });
+      reservation = null;
       return errorResponse(
-        "Not enough credits · This image used " + billing.credits + " credits · Balance " + balance + " credits",
+        "Not enough credits · This image needs " + billing.credits + " credits · Your temporary credit hold was released",
         402,
-        { balance, creditsRequired: billing.credits },
+        { balance: settlement.balance, creditsRequired: billing.credits },
       );
     }
+    settled = true;
 
-    if (request.signal?.aborted) throw abortError();
     const filename = sources.length ? "vexa-edited-image.jpg" : "vexa-image.jpg";
     const fileId = await storeImageInTelegram(env, user.id, upstream.buffer, filename).catch((error) => {
       console.error("store mini app image failed", error?.message || error);
@@ -146,6 +178,11 @@ export async function handleUsagePricedImageRequest(request, env) {
       mimeType: "image/jpeg",
       size,
       sourceCount: userSourceCount,
+    }).catch((error) => {
+      // History is auxiliary. A D1/history failure must never turn a successfully
+      // generated and paid image into a charge-without-delivery response.
+      console.error("save mini app image history failed", error?.message || error);
+      return null;
     });
 
     return jsonResponse({
@@ -158,13 +195,17 @@ export async function handleUsagePricedImageRequest(request, env) {
       cost: billing.credits,
       pricing: dynamicPricingPayload(billing.credits),
       billing,
-      balance: spend.balance,
+      balance: settlement.balance,
       historyId: history?.id || null,
     });
   } catch (error) {
+    if (reservation && !settled) {
+      await releaseImageReservation(env, reservation.id, reservation.userId, "request_failed").catch((releaseError) => {
+        console.error("release image credit reservation failed", releaseError?.message || releaseError);
+      });
+    }
     if (error?.name === "AbortError") {
-      const cancelledByClient = Boolean(request.signal?.aborted);
-      return errorResponse(error?.message || "Image request cancelled.", cancelledByClient ? 499 : 504);
+      return errorResponse(error?.message || "AI image generation took too long. Please try again.", 504);
     }
     const status = Number(error?.status) || 500;
     return errorResponse(error?.publicMessage || error?.message || "Mini app error", status);
@@ -192,20 +233,14 @@ export function calculateImageBilling(usage = {}) {
   const inputTokens = wholeTokens(usage?.input_tokens);
   const textInputTokens = wholeTokens(usage?.input_tokens_details?.text_tokens);
   const imageInputTokens = wholeTokens(usage?.input_tokens_details?.image_tokens);
-  const outputTokens = wholeTokens(usage?.output_tokens || usage?.output_tokens_details?.image_tokens);
+  const outputTokens = wholeTokens(usage?.output_tokens);
   const classifiedInputTokens = textInputTokens + imageInputTokens;
   const unclassifiedInputTokens = Math.max(0, inputTokens - classifiedInputTokens);
 
   if (inputTokens <= 0 && outputTokens <= 0) {
-    const error = new Error("OpenAI did not return image usage data, so the request could not be billed safely.");
-    error.publicMessage = "Image billing data was unavailable. Please try again.";
-    error.status = 502;
-    throw error;
+    throw publicError("Image billing data was unavailable. Please try again.", 502);
   }
 
-  // OpenAI's Images response separates text and image input tokens. If an
-  // unexpected future response leaves any input tokens unclassified, bill the
-  // remainder at the higher image-input rate so Vexa never undercharges it.
   const baseUsd = (
     textInputTokens * GPT_IMAGE_TEXT_INPUT_USD_PER_MILLION
     + imageInputTokens * GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION
@@ -213,7 +248,7 @@ export function calculateImageBilling(usage = {}) {
     + outputTokens * GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION
   ) / 1_000_000;
   const billedUsd = baseUsd * (1 + AI_CHAT_MARKUP_RATE);
-  const credits = Math.max(1, Math.ceil((billedUsd / AI_CHAT_USD_PER_CREDIT) - 1e-12));
+  const credits = usdToCredits(billedUsd);
 
   return {
     model: GPT_IMAGE_MODEL,
@@ -230,24 +265,32 @@ export function calculateImageBilling(usage = {}) {
   };
 }
 
-async function requestOpenAiImage(env, prompt, sources, size, requestSignal) {
-  if (!env.GPT_API) {
-    const error = new Error("GPT image service is not configured.");
-    error.status = 503;
-    throw error;
-  }
+export function estimateImageReservationCredits(prompt, sourceCount = 0) {
+  const characters = Math.max(1, Array.from(String(prompt || "")).length);
+  const estimatedTextTokens = Math.max(32, characters * RESERVE_TEXT_TOKENS_PER_CHARACTER);
+  const estimatedImageTokens = Math.max(0, Math.floor(Number(sourceCount || 0))) * RESERVE_IMAGE_INPUT_TOKENS_PER_SOURCE;
+  const baseUsd = (
+    estimatedTextTokens * GPT_IMAGE_TEXT_INPUT_USD_PER_MILLION
+    + estimatedImageTokens * GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION
+    + RESERVE_OUTPUT_TOKENS_LOW * GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION
+  ) / 1_000_000;
+  const reservedUsd = baseUsd * RESERVE_SAFETY_MULTIPLIER * (1 + AI_CHAT_MARKUP_RATE);
+  return usdToCredits(reservedUsd);
+}
+
+async function requestOpenAiImage(env, prompt, sources, size) {
+  if (!env.GPT_API) throw publicError("GPT image service is not configured.", 503);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), GPT_IMAGE_TIMEOUT_MS);
-  const abortUpstream = () => controller.abort();
-  if (requestSignal) requestSignal.addEventListener("abort", abortUpstream, { once: true });
+  const completedType = sources.length ? "image_edit.completed" : "image_generation.completed";
 
   try {
     const response = sources.length
       ? await fetch("https://api.openai.com/v1/images/edits", {
           method: "POST",
           headers: { Authorization: "Bearer " + env.GPT_API },
-          body: imageEditForm(prompt, sources, size),
+          body: imageEditForm(prompt, sources, size, true),
           signal: controller.signal,
         })
       : await fetch("https://api.openai.com/v1/images/generations", {
@@ -264,6 +307,8 @@ async function requestOpenAiImage(env, prompt, sources, size, requestSignal) {
             moderation: "low",
             output_format: "jpeg",
             output_compression: 90,
+            stream: true,
+            partial_images: 0,
           }),
           signal: controller.signal,
         });
@@ -275,28 +320,83 @@ async function requestOpenAiImage(env, prompt, sources, size, requestSignal) {
       throw error;
     }
 
-    const data = await response.json();
-    const base64 = String(data?.data?.[0]?.b64_json || "");
-    if (!base64) {
-      const error = new Error("AI did not return an image. Please try again.");
-      error.status = 502;
-      throw error;
-    }
-    return { buffer: base64ToArrayBuffer(base64), usage: data?.usage || null };
+    return await readCompletedImageResponse(response, completedType);
   } catch (error) {
     if (controller.signal.aborted) {
-      const aborted = abortError();
-      if (!requestSignal?.aborted) aborted.message = "AI image generation took too long. Please try again.";
-      throw aborted;
+      const timedOut = abortError("AI image generation took too long. Please try again.");
+      throw timedOut;
     }
     throw error;
   } finally {
     clearTimeout(timeout);
-    if (requestSignal) requestSignal.removeEventListener("abort", abortUpstream);
   }
 }
 
-function imageEditForm(prompt, sources, size) {
+async function readCompletedImageResponse(response, completedType) {
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+
+  // Defensive fallback: if OpenAI ever returns a regular JSON response despite
+  // stream=true, accept it only when it contains both the final image and usage.
+  if (!contentType.includes("text/event-stream")) {
+    const data = await response.json().catch(() => null);
+    const base64 = String(data?.data?.[0]?.b64_json || data?.b64_json || "");
+    if (!base64 || !hasUsableImageUsage(data?.usage)) {
+      throw publicError("Image billing data was unavailable. Please try again.", 502);
+    }
+    return { buffer: base64ToArrayBuffer(base64), usage: data.usage };
+  }
+
+  if (!response.body) throw publicError("AI image stream was unavailable. Please try again.", 502);
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let completed = null;
+
+  const consumeBlock = (block) => {
+    const dataText = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+    if (!dataText || dataText === "[DONE]") return;
+
+    let event;
+    try {
+      event = JSON.parse(dataText);
+    } catch {
+      return;
+    }
+    if (event?.type === "error" || event?.error) {
+      const message = String(event?.error?.message || event?.message || "AI image stream failed.");
+      throw publicError(message, 502);
+    }
+    if (event?.type === completedType) completed = event;
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (value) pending += decoder.decode(value, { stream: !done });
+    let separator;
+    while ((separator = pending.search(/\r?\n\r?\n/)) >= 0) {
+      const match = pending.match(/\r?\n\r?\n/);
+      const separatorLength = match ? match[0].length : 2;
+      const block = pending.slice(0, separator);
+      pending = pending.slice(separator + separatorLength);
+      consumeBlock(block);
+    }
+    if (done) break;
+  }
+  pending += decoder.decode();
+  if (pending.trim()) consumeBlock(pending);
+
+  const base64 = String(completed?.b64_json || "");
+  if (!base64) throw publicError("AI did not return a final image. Please try again.", 502);
+  if (!hasUsableImageUsage(completed?.usage)) throw publicError("Image billing data was unavailable. Please try again.", 502);
+  return { buffer: base64ToArrayBuffer(base64), usage: completed.usage };
+}
+
+function imageEditForm(prompt, sources, size, streaming = false) {
   const form = new FormData();
   form.append("model", GPT_IMAGE_MODEL);
   form.append("prompt", prompt);
@@ -308,7 +408,129 @@ function imageEditForm(prompt, sources, size) {
   form.append("moderation", "low");
   form.append("output_format", "jpeg");
   form.append("output_compression", "90");
+  if (streaming) {
+    form.append("stream", "true");
+    form.append("partial_images", "0");
+  }
   return form;
+}
+
+async function ensureImageReservationTable(env) {
+  if (!env.DB) throw new Error("Database is not configured.");
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS image_credit_reservations (" +
+      "id TEXT PRIMARY KEY, user_id TEXT NOT NULL, reserved_credits INTEGER NOT NULL, actual_credits INTEGER, " +
+      "status TEXT NOT NULL, metadata TEXT, release_reason TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, " +
+      "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_image_credit_reservations_user_created ON image_credit_reservations (user_id, created_at DESC)"
+  ).run();
+}
+
+async function reserveImageCredits(env, userId, reservedCredits, metadata = null) {
+  await ensureBalanceRow(env, userId);
+  await ensureImageReservationTable(env);
+  const id = crypto.randomUUID();
+  const user = String(userId);
+  const amount = Math.max(1, Math.ceil(Number(reservedCredits || 0)));
+  const serializedMetadata = metadata == null ? null : JSON.stringify(metadata);
+
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO image_credit_reservations (id, user_id, reserved_credits, actual_credits, status, metadata, created_at, updated_at) " +
+      "SELECT ?, ?, ?, NULL, 'reserved', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM user_credits WHERE user_id = ? AND credits >= ?"
+    ).bind(id, user, amount, serializedMetadata, user, amount),
+    env.DB.prepare(
+      "UPDATE user_credits SET credits = credits - ?, updated_at = CURRENT_TIMESTAMP " +
+      "WHERE user_id = ? AND EXISTS (SELECT 1 FROM image_credit_reservations WHERE id = ? AND user_id = ? AND status = 'reserved')"
+    ).bind(amount, user, id, user),
+  ]);
+
+  const row = await env.DB.prepare(
+    "SELECT id, user_id, reserved_credits, status FROM image_credit_reservations WHERE id = ? AND user_id = ?"
+  ).bind(id, user).first();
+  const balance = await getBalance(env, user);
+  if (!row || row.status !== "reserved") return { ok: false, balance, needed: amount };
+  return { ok: true, id, userId: user, reservedCredits: Number(row.reserved_credits || amount), balance };
+}
+
+async function settleImageReservation(env, reservationId, userId, actualCredits, metadata = null) {
+  await ensureImageReservationTable(env);
+  await ensureCreditUsageLogTable(env);
+  const id = String(reservationId || "");
+  const user = String(userId);
+  const actual = Math.max(1, Math.ceil(Number(actualCredits || 0)));
+  const row = await env.DB.prepare(
+    "SELECT reserved_credits, actual_credits, status FROM image_credit_reservations WHERE id = ? AND user_id = ?"
+  ).bind(id, user).first();
+  if (!row) return { ok: false, balance: await getBalance(env, user), needed: actual };
+  if (row.status === "settled") {
+    return { ok: true, balance: await getBalance(env, user), spent: Number(row.actual_credits || actual), replayed: true };
+  }
+  if (row.status !== "reserved") return { ok: false, balance: await getBalance(env, user), needed: actual };
+
+  const reserved = Math.max(1, Number(row.reserved_credits || 0));
+  const refund = Math.max(0, reserved - actual);
+  const extra = Math.max(0, actual - reserved);
+  const serializedMetadata = metadata == null ? null : JSON.stringify(metadata);
+
+  // The first statement only moves the reservation to "settling" if any extra
+  // credits are still available. Every money movement in this batch is gated on
+  // that state, so the operation is atomic and cannot partially settle.
+  await env.DB.batch([
+    env.DB.prepare(
+      "UPDATE image_credit_reservations SET status = 'settling', actual_credits = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP " +
+      "WHERE id = ? AND user_id = ? AND status = 'reserved' AND " +
+      "(? = 0 OR EXISTS (SELECT 1 FROM user_credits WHERE user_id = ? AND credits >= ?))"
+    ).bind(actual, serializedMetadata, id, user, extra, user, extra),
+    env.DB.prepare(
+      "UPDATE user_credits SET credits = credits + ? - ?, updated_at = CURRENT_TIMESTAMP " +
+      "WHERE user_id = ? AND EXISTS (SELECT 1 FROM image_credit_reservations WHERE id = ? AND user_id = ? AND status = 'settling')"
+    ).bind(refund, extra, user, id, user),
+    env.DB.prepare(
+      "UPDATE image_credit_reservations SET status = 'settled', updated_at = CURRENT_TIMESTAMP " +
+      "WHERE id = ? AND user_id = ? AND status = 'settling'"
+    ).bind(id, user),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO credit_usage_log (id, user_id, credits, reason, metadata, created_at) " +
+      "SELECT 'image:' || id, user_id, actual_credits, 'mini_app_image', metadata, CURRENT_TIMESTAMP " +
+      "FROM image_credit_reservations WHERE id = ? AND user_id = ? AND status = 'settled'"
+    ).bind(id, user),
+  ]);
+
+  const saved = await env.DB.prepare(
+    "SELECT status, actual_credits FROM image_credit_reservations WHERE id = ? AND user_id = ?"
+  ).bind(id, user).first();
+  if (saved?.status === "settled") {
+    return { ok: true, balance: await getBalance(env, user), spent: Number(saved.actual_credits || actual) };
+  }
+
+  // The only expected non-settled path is an underestimated reserve where the
+  // user no longer has enough free balance for the difference. Release the
+  // original hold completely rather than partially charging for no delivery.
+  const released = await releaseImageReservation(env, id, user, "insufficient_for_settlement");
+  return { ok: false, balance: released.balance, needed: actual };
+}
+
+async function releaseImageReservation(env, reservationId, userId, reason = "released") {
+  await ensureImageReservationTable(env);
+  const id = String(reservationId || "");
+  const user = String(userId);
+  const releaseReason = String(reason || "released").slice(0, 120);
+
+  await env.DB.batch([
+    env.DB.prepare(
+      "UPDATE user_credits SET credits = credits + COALESCE((SELECT reserved_credits FROM image_credit_reservations " +
+      "WHERE id = ? AND user_id = ? AND status = 'reserved'), 0), updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+    ).bind(id, user, user),
+    env.DB.prepare(
+      "UPDATE image_credit_reservations SET status = 'released', release_reason = ?, updated_at = CURRENT_TIMESTAMP " +
+      "WHERE id = ? AND user_id = ? AND status = 'reserved'"
+    ).bind(releaseReason, id, user),
+  ]);
+
+  return { ok: true, balance: await getBalance(env, user) };
 }
 
 async function isMiniAppLocked(env, userId) {
@@ -387,6 +609,10 @@ function friendlyOpenAiImageError(status, raw) {
   return "AI image couldn't complete that request. Please try again.";
 }
 
+function hasUsableImageUsage(usage) {
+  return wholeTokens(usage?.input_tokens) > 0 || wholeTokens(usage?.output_tokens) > 0;
+}
+
 function base64ToArrayBuffer(value) {
   const binary = atob(String(value || ""));
   const bytes = new Uint8Array(binary.length);
@@ -409,6 +635,11 @@ function wholeTokens(value) {
   return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
 }
 
+function usdToCredits(usd) {
+  const value = Math.max(0, Number(usd || 0));
+  return Math.max(1, Math.ceil((value / AI_CHAT_USD_PER_CREDIT) - 1e-12));
+}
+
 function publicError(message, status) {
   const error = new Error(message);
   error.publicMessage = message;
@@ -416,8 +647,8 @@ function publicError(message, status) {
   return error;
 }
 
-function abortError() {
-  const error = new Error("Image request cancelled.");
+function abortError(message = "Image request cancelled.") {
+  const error = new Error(message);
   error.name = "AbortError";
   return error;
 }
