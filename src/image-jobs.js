@@ -1,3 +1,4 @@
+import { isAdmin } from "./admin.js";
 import { editImage, generateImage } from "./gpt.js";
 import { deleteMessage, sendPhoto, sendPlainMessage } from "./telegram-actions.js";
 import { downloadTelegramFile } from "./telegram-api.js";
@@ -10,6 +11,13 @@ const COMPLETED_JOB_RETENTION_SECONDS = 7 * 24 * 60 * 60;
 
 export async function enqueueImageJob(env, job) {
   await ensureImageJobsTable(env);
+
+  // Legacy Telegram /image jobs predate usage-based billing and are intentionally
+  // kept admin-only. Public image creation must go through the Mini App's exact
+  // OpenAI usage billing path so users cannot bypass credit charging here.
+  if (!(await isAdmin(env, job.userId))) {
+    throw new Error("Image creation is available in the Mini App.");
+  }
 
   const now = unixNow();
   await env.DB.prepare(
@@ -59,6 +67,11 @@ export async function processPendingImageJobs(env) {
 
 async function processImageJob(env, job) {
   try {
+    // Defense in depth for jobs queued before the public route was closed.
+    if (!(await isAdmin(env, job.user_id))) {
+      throw new Error("Image creation is available in the Mini App.");
+    }
+
     let output;
 
     if (job.kind === "edit") {
