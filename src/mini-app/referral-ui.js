@@ -3,6 +3,7 @@ export const REFERRAL_UI_PATCH = String.raw`
   var referralInitData=(referralTg&&referralTg.initData)||'';
   var referralLanguage='en';
   var referralBalance=null;
+  var referralImageCost=188;
   var referralActiveSection='tts';
   var referralShareBusy=false;
   var referralStatusBusy=false;
@@ -90,7 +91,10 @@ export const REFERRAL_UI_PATCH = String.raw`
     if(!status)return;
     var progress=Math.max(0,Math.min(2,Number(status.progress)||0));
     var required=Math.max(3,Number(status.requiredInvites)||3);
-    if(Number.isFinite(Number(status.balance))){referralBalance=Math.max(0,Number(status.balance));var balance=document.getElementById('balance');if(balance)balance.textContent=Math.floor(referralBalance).toLocaleString('en-US')}
+    if(Number.isFinite(Number(status.balance))){
+      referralBalance=Math.max(0,Number(status.balance));
+      ['balance','aiChatBalance'].forEach(function(id){var balance=document.getElementById(id);if(balance)balance.textContent=Math.floor(referralBalance).toLocaleString('en-US')});
+    }
     var counter=document.getElementById('referralCreditProgress');if(counter)counter.textContent=String(progress)+' / '+String(required);
     document.querySelectorAll('#referralCreditSheet .referral-credit-dot').forEach(function(dot,index){dot.classList.toggle('done',index<progress)});
   }
@@ -140,14 +144,26 @@ export const REFERRAL_UI_PATCH = String.raw`
     var path=typeof input==='string'?input:String(input&&input.url||'');
     var response=await referralBaseFetch(input,init);
     try{
-      if(path.indexOf('/mini-app/api/session')>=0){response.clone().json().then(function(data){if(data&&data.language){referralLanguage=referralNormalizeLanguage(data.language);referralRenderCopy()}if(data&&Number.isFinite(Number(data.balance)))referralBalance=Math.max(0,Number(data.balance));setTimeout(referralApplyLaunchSection,120)}).catch(function(){})}
+      if(path.indexOf('/mini-app/api/session')>=0){response.clone().json().then(function(data){
+        if(data&&data.language){referralLanguage=referralNormalizeLanguage(data.language);referralRenderCopy()}
+        if(data&&Number.isFinite(Number(data.balance)))referralBalance=Math.max(0,Number(data.balance));
+        if(data&&data.imagePricing&&Number.isFinite(Number(data.imagePricing.activeCost)))referralImageCost=Math.max(1,Number(data.imagePricing.activeCost));
+        setTimeout(referralApplyLaunchSection,120)
+      }).catch(function(){})}
       if(response.status===402&&path.indexOf('/mini-app/api/')>=0){var section=referralSectionForRequest(path,init);setTimeout(function(){referralSetOpen(true,section)},0)}
     }catch(e){}
     return response;
   };
 
   document.body.addEventListener('click',function(event){
-    var button=event.target&&event.target.closest?event.target.closest('#convertButton,[data-action="generate-tts"]'):null;if(!button||referralBalance===null)return;
+    if(referralBalance===null)return;
+    var imageButton=event.target&&event.target.closest?event.target.closest('[data-action="generate-image"]'):null;
+    if(imageButton&&referralBalance<referralImageCost){
+      event.preventDefault();event.stopImmediatePropagation();
+      var exploreSelected=!!document.querySelector('.image-composer.explore-selected,#exploreReferenceChip.show');
+      referralSetOpen(true,exploreSelected?'explore':'image');return;
+    }
+    var ttsButton=event.target&&event.target.closest?event.target.closest('#convertButton,[data-action="generate-tts"]'):null;if(!ttsButton)return;
     var count=0;document.querySelectorAll('[data-dialogue-text]').forEach(function(input){count+=Array.from(String(input.value||'')).length});
     if(count>referralBalance){event.preventDefault();event.stopImmediatePropagation();referralSetOpen(true,'tts')}
   },true);
