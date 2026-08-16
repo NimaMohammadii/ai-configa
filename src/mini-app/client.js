@@ -50,24 +50,31 @@ const HISTORY_UI_PATCH = String.raw`
   })();
 `;
 
-function replaceHistorySource(source, search, replacement, label) {
+function replaceMiniAppSource(source, search, replacement, label) {
   const updated = source.replace(search, replacement);
-  if (updated === source) throw new Error(`Could not update mini-app history ${label}`);
+  if (updated === source) throw new Error(`Could not update mini-app ${label}`);
   return updated;
 }
 
-let MINI_APP_JS_WITH_HISTORY = replaceHistorySource(
+const MINI_APP_JS_WITH_LAUNCH_ROUTES = replaceMiniAppSource(
   BASE_MINI_APP_JS,
-  "if(fill)fill.style.width='calc('+progressPercent+' - '+(ratio?5:0)+'px)'",
-  "if(fill)fill.style.width=progressPercent",
-  "progress bar"
+  "function launchSection(){var raw='';try{raw=tg&&tg.initDataUnsafe&&tg.initDataUnsafe.start_param||''}catch(e){}if(!raw){try{var params=new URLSearchParams(window.location.search);raw=params.get('tgWebAppStartParam')||params.get('startapp')||params.get('section')||''}catch(e){}}raw=String(raw||'').trim().toLowerCase();return {ai_chat:'ai_chat',voices:'voices',tts:'tts',voice:'tts',home:'home'}[raw]||'home'}\n  function applyLaunchSection(section){section=String(section||'home').toLowerCase();if(section==='ai_chat'){window.location.replace('/mini-app/chat');return}if(section==='voices'){setCreationMode('voice');openVoicesPage();return}if(section==='tts'||section==='voice')setCreationMode('voice')}",
+  "function launchSection(){var raw='';try{raw=tg&&tg.initDataUnsafe&&tg.initDataUnsafe.start_param||''}catch(e){}if(!raw){try{var params=new URLSearchParams(window.location.search);raw=params.get('tgWebAppStartParam')||params.get('startapp')||params.get('section')||''}catch(e){}}raw=String(raw||'').trim().toLowerCase();return {ai_chat:'ai_chat',wheel:'wheel',image:'image',explore:'explore',voices:'voices',tts:'tts',voice:'tts',home:'home'}[raw]||'home'}\n  function applyLaunchSection(section){section=String(section||'home').toLowerCase();if(section==='ai_chat'){window.location.replace('/mini-app/chat');return}if(section==='wheel'){setCreationMode('voice');setWheelSheet(true);return}if(section==='image'){setCreationMode('image');return}if(section==='explore'){setCreationMode('image');openExplorePage();return}if(section==='voices'){setCreationMode('voice');openVoicesPage();return}if(section==='tts'||section==='voice')setCreationMode('voice')}",
+  "launch routes"
 );
 
-MINI_APP_JS_WITH_HISTORY = replaceHistorySource(
+let MINI_APP_JS_WITH_HISTORY = replaceMiniAppSource(
+  MINI_APP_JS_WITH_LAUNCH_ROUTES,
+  "if(fill)fill.style.width='calc('+progressPercent+' - '+(ratio?5:0)+'px)'",
+  "if(fill)fill.style.width=progressPercent",
+  "history progress bar"
+);
+
+MINI_APP_JS_WITH_HISTORY = replaceMiniAppSource(
   MINI_APP_JS_WITH_HISTORY,
   "historyShareIcon()+'</button></div><div class=\"history-progress\"",
   "historyShareIcon()+'</button><button class=\"history-action history-details-button\" data-action=\"open-history-details\" data-history-id=\"'+id+'\" type=\"button\" aria-label=\"Show voice details\" aria-expanded=\"false\"><svg viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\"><path d=\"m9 6 6 6-6 6\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button></div><div class=\"history-progress\"",
-  "details button"
+  "history details button"
 );
 
 export const MINI_APP_JS = MINI_APP_JS_WITH_HISTORY.replace("(function(){", "(function(){\n" + HISTORY_UI_PATCH + PURCHASE_DISCOUNT_PATCH);
