@@ -59,7 +59,8 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 .credits-tribute-mode{max-width:540px;margin:0 auto;padding:0 0 calc(env(safe-area-inset-bottom,0px) + 22px)}\
 .credits-tribute-mode.active{display:block;animation:tributeModeIn .5s cubic-bezier(.16,.86,.22,1) both}\
 .tribute-checkout{position:relative;overflow:hidden}\
-.tribute-currency-wrap{position:relative;z-index:1;margin:0 0 13px}\
+.tribute-section-copy{position:relative;z-index:1}\
+.tribute-currency-wrap{position:relative;z-index:1;margin:15px 0 13px}\
 .tribute-currency-label{display:flex;align-items:center;justify-content:space-between;margin:0 2px 7px;color:rgba(255,255,255,.36);font-size:8px;font-weight:720;letter-spacing:.07em;text-transform:uppercase}\
 .tribute-currency-label strong{color:rgba(255,255,255,.62);font-size:8px;font-weight:760;letter-spacing:0;text-transform:none}\
 .tribute-currency-picker{--tribute-currency-shift:0%;position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;padding:3px;overflow:hidden;border:1px solid rgba(255,255,255,.09);border-radius:15px;background:#0f0f10;box-shadow:none}\
@@ -87,6 +88,8 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 .tribute-state-check{flex:0 0 auto;height:28px;padding:0 9px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);color:#fff;font-size:8px;font-weight:750;transition:transform .18s ease,background .18s ease}\
 .tribute-state-check:active{transform:scale(.94);background:rgba(255,255,255,.1)}\
 .tribute-payment-state.success .tribute-state-check,.tribute-payment-state.failed .tribute-state-check{display:none}\
+.tribute-footnote{max-width:540px;margin:18px auto 0;text-align:center;color:rgba(255,255,255,.34);font-size:9px;font-weight:620;line-height:1.6}\
+.tribute-footnote span{color:#fff}\
 .tribute-packs{margin-top:27px}\
 .tribute-packs .credits-pack[disabled]{opacity:.32;pointer-events:none}\
 .tribute-price-pair{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}\
@@ -125,6 +128,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
       mode.className='credits-payment-mode credits-tribute-mode';
       mode.setAttribute('aria-hidden','true');
       mode.innerHTML='<section class="credits-custom tribute-checkout">'+
+        '<div class="credits-section-copy tribute-section-copy"><div><span>CARD CHECKOUT</span><h3>Choose your amount</h3></div></div>'+
         '<div class="tribute-currency-wrap"><div class="tribute-currency-label"><span>Payment currency</span><strong id="tributeCurrencyHint">USD</strong></div><div id="tributeCurrencyPicker" class="tribute-currency-picker" role="group" aria-label="Payment currency"><button type="button" data-action="set-tribute-currency" data-currency="usd">USD</button><button type="button" data-action="set-tribute-currency" data-currency="eur">EUR</button><button type="button" data-action="set-tribute-currency" data-currency="rub">RUB</button></div></div>'+
         '<label class="credits-amount-field" for="tributeCreditsInput"><input id="tributeCreditsInput" type="number" inputmode="numeric" min="6000" max="1000000" step="1000" value="6000" autocomplete="off"/><span>credits</span></label>'+
         '<input id="tributeCreditsRange" class="credits-amount-range" type="range" min="6000" max="100000" step="1000" value="6000" aria-label="Card credit amount"/>'+
@@ -134,7 +138,8 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
         '<button id="tributeCustomBuy" class="credits-primary-button" data-action="buy-tribute-custom" type="button"><span>Continue with $1.07</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'+
         '<div id="tributePaymentState" class="tribute-payment-state" aria-hidden="true"><span class="tribute-state-orb" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m7 12.5 3.2 3.2L17.5 8.5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="tribute-state-copy"><strong id="tributeStateTitle">Finish payment in Tribute</strong><small id="tributeStateCopy">Come back here — credits add automatically.</small></span><button class="tribute-state-check" data-action="check-tribute-payment" type="button">Check</button></div>'+
       '</section>'+
-      '<section id="tributePacks" class="credits-packs-section tribute-packs"><div class="credits-packs-head"><div><span>READY TO BUY</span><h3>Credit packs</h3></div><small>Bonus included</small></div><div id="tributePackList" class="credits-pack-list"></div></section>';
+      '<section id="tributePacks" class="credits-packs-section tribute-packs"><div class="credits-packs-head"><div><span>READY TO BUY</span><h3>Credit packs</h3></div><small>Bonus included</small></div><div id="tributePackList" class="credits-pack-list"></div></section>'+
+      '<p class="tribute-footnote"><span>●</span> Secure card checkout powered by Tribute</p>';
       starsMode.insertAdjacentElement('afterend',mode);
     }
 
