@@ -162,7 +162,10 @@ export async function handleUsagePricedImageRequest(request, env) {
       historyId: history?.id || null,
     });
   } catch (error) {
-    if (error?.name === "AbortError") return errorResponse("Image request cancelled.", 499);
+    if (error?.name === "AbortError") {
+      const cancelledByClient = Boolean(request.signal?.aborted);
+      return errorResponse(error?.message || "Image request cancelled.", cancelledByClient ? 499 : 504);
+    }
     const status = Number(error?.status) || 500;
     return errorResponse(error?.publicMessage || error?.message || "Mini app error", status);
   }
@@ -268,7 +271,7 @@ async function requestOpenAiImage(env, prompt, sources, size, requestSignal) {
     if (!response.ok) {
       const raw = await response.text();
       const error = new Error(friendlyOpenAiImageError(response.status, raw));
-      error.status = response.status >= 400 && response.status < 500 ? 400 : 502;
+      error.status = response.status === 429 ? 429 : response.status >= 400 && response.status < 500 ? 400 : 502;
       throw error;
     }
 
