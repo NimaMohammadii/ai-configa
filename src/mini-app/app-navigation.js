@@ -7,19 +7,19 @@ export const APP_NAVIGATION_CSS = String.raw`
 #ttsAppMenuButton.tts-app-menu-button[aria-expanded="true"]>span:nth-child(2){width:0;opacity:0}
 #ttsAppMenuButton.tts-app-menu-button[aria-expanded="true"]>span:last-child{transform:translateY(-6.2px) rotate(-45deg)}
 body.tts-app-nav-mounted #wheelOpenButton,body.tts-app-nav-mounted #aiChatOpen,body.tts-app-nav-mounted #modeToggle{display:none!important}
-.tts-app-nav-backdrop{position:fixed;z-index:2100;inset:0;background:rgba(0,0,0,.6);opacity:0;visibility:hidden;pointer-events:none;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);transition:opacity .25s ease,visibility 0s linear .34s}
+.tts-app-nav-backdrop{position:fixed;z-index:2100;inset:0;background:rgba(0,0,0,.48);opacity:0;visibility:hidden;pointer-events:none;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);transition:opacity .28s ease,visibility 0s linear .36s}
 .tts-app-nav-backdrop.open{opacity:1;visibility:visible;pointer-events:auto;transition-delay:0s}
 .tts-app-nav-panel,.tts-app-nav-panel button{font-family:ui-rounded,"SF Pro Rounded","SF Pro Display","Avenir Next",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.tts-app-nav-panel{position:absolute;left:0;top:0;bottom:0;width:min(33.333vw,186px);min-width:0;overflow:hidden;display:flex;flex-direction:column;padding:calc(30px + env(safe-area-inset-top)) 9px calc(14px + env(safe-area-inset-bottom));border:0;border-right:1px solid rgba(255,255,255,.09);border-radius:0;background:rgba(7,7,7,.985);box-shadow:18px 0 42px rgba(0,0,0,.28);backdrop-filter:blur(18px) saturate(1.04);-webkit-backdrop-filter:blur(18px) saturate(1.04);transform:translate3d(-103%,0,0);transition:transform .4s cubic-bezier(.16,1,.3,1)}
-.tts-app-nav-backdrop.open .tts-app-nav-panel{transform:none}
-.tts-app-nav-head{height:52px;flex:0 0 52px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 7px 12px 8px;border-bottom:1px solid rgba(255,255,255,.085)}
-.tts-app-nav-brand{min-width:0;display:flex;align-items:center}
-.tts-app-nav-brand small{display:none}
-.tts-app-nav-brand strong{color:#fff;font-size:18px;font-weight:780;line-height:1;letter-spacing:-.04em;white-space:nowrap}
-.tts-app-nav-close{width:28px;height:28px;flex:0 0 28px;display:grid;place-items:center;padding:0;border:0;border-radius:9px;background:transparent;color:rgba(255,255,255,.48);transition:transform .2s cubic-bezier(.16,1,.3,1),color .18s ease,background .18s ease}
-.tts-app-nav-close:active{transform:scale(.88);background:rgba(255,255,255,.055);color:#fff}
-.tts-app-nav-close svg{width:16px;height:16px}
-.tts-app-nav-list{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px 0 4px;scrollbar-width:none}
+.tts-app-nav-panel{position:absolute;left:8px;top:8px;bottom:8px;width:min(64vw,300px);min-width:0;overflow:hidden;padding:calc(29px + env(safe-area-inset-top)) 8px calc(14px + env(safe-area-inset-bottom));border:0;border-radius:24px;background:rgba(13,13,13,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);transform:translate3d(-112%,0,0) scale(.985);transform-origin:left center;transition:transform .44s cubic-bezier(.16,1,.3,1),opacity .28s ease;display:flex;flex-direction:column;opacity:.94}
+.tts-app-nav-backdrop.open .tts-app-nav-panel{transform:none;opacity:1}
+.tts-app-nav-head{height:42px;display:flex;align-items:center;justify-content:space-between;gap:7px;padding:0 3px 8px 5px;border-bottom:1px solid rgba(255,255,255,.065)}
+.tts-app-nav-brand{min-width:0;display:grid;gap:2px}
+.tts-app-nav-brand small{display:block;color:rgba(255,255,255,.32);font-size:7px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+.tts-app-nav-brand strong{color:#fff;font-size:13px;font-weight:760;line-height:1;letter-spacing:-.028em}
+.tts-app-nav-close{width:28px;height:28px;flex:0 0 28px;display:grid;place-items:center;padding:0;border:0;border-radius:11px;background:rgba(13,13,13,.62);color:rgba(255,255,255,.58);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);transition:transform .22s cubic-bezier(.16,1,.3,1),background .2s ease,color .2s ease}
+.tts-app-nav-close:active{transform:scale(.86);background:rgba(255,255,255,.1);color:#fff}
+.tts-app-nav-close svg{width:14px;height:14px}
+.tts-app-nav-list{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:10px 0 3px;scrollbar-width:none}
 .tts-app-nav-list::-webkit-scrollbar{display:none}
 .tts-app-nav-section{padding:11px 8px 6px;color:rgba(255,255,255,.37);font-size:8px;font-weight:790;line-height:1;letter-spacing:.075em;text-transform:uppercase}
 .tts-app-nav-item{--nav-index:0;position:relative;width:100%;min-height:40px;display:grid;grid-template-columns:21px minmax(0,1fr) auto;align-items:center;gap:8px;margin:0 0 2px;padding:0 9px;border:0;border-radius:12px;background:transparent;color:rgba(255,255,255,.43);box-shadow:none;text-align:left;opacity:0;transform:translateX(-9px);transition:opacity .2s ease,transform .32s cubic-bezier(.16,1,.3,1),background .18s ease,color .18s ease}
@@ -42,7 +42,7 @@ body.tts-app-nav-mounted #wheelOpenButton,body.tts-app-nav-mounted #aiChatOpen,b
 #aiChatButtonOrb.tts-app-nav-ai-orb{display:block!important;width:20px!important;height:20px!important;max-width:none!important;max-height:none!important;margin:0!important;opacity:.62;filter:saturate(.25) brightness(.92)!important;transition:opacity .18s ease,filter .18s ease}
 .tts-app-nav-item.active #aiChatButtonOrb.tts-app-nav-ai-orb{opacity:1;filter:none!important;transform:none}
 body.tts-app-nav-open{touch-action:none}
-@media(max-width:350px){.tts-app-nav-panel{padding-left:7px;padding-right:7px}.tts-app-nav-head{padding-left:7px;padding-right:5px}.tts-app-nav-brand strong{font-size:16px}.tts-app-nav-section{font-size:7px;padding-left:6px}.tts-app-nav-item{grid-template-columns:19px minmax(0,1fr) auto;gap:6px;padding-left:7px;padding-right:6px}.tts-app-nav-label{font-size:10px}.tts-app-nav-icon,.tts-app-nav-icon svg{width:18px;height:18px}.tts-app-nav-soon{font-size:5.5px}}
+@media(max-width:350px){.tts-app-nav-panel{left:6px;padding-left:6px;padding-right:6px}.tts-app-nav-section{font-size:7px;padding-left:6px}.tts-app-nav-item{grid-template-columns:19px minmax(0,1fr) auto;gap:6px;padding-left:7px;padding-right:6px}.tts-app-nav-label{font-size:10px}.tts-app-nav-icon,.tts-app-nav-icon svg{width:18px;height:18px}.tts-app-nav-soon{font-size:5.5px}}
 @media(prefers-reduced-motion:reduce){#ttsAppMenuButton.tts-app-menu-button>span,.tts-app-nav-backdrop,.tts-app-nav-panel,.tts-app-nav-item,.tts-app-nav-icon,.tts-app-nav-close{transition:none!important}.tts-app-nav-item{opacity:1;transform:none}}
 `;
 
@@ -89,7 +89,7 @@ export const APP_NAVIGATION_JS = String.raw`
   backdrop.setAttribute('aria-hidden','true');
   backdrop.innerHTML=''
     +'<aside class="tts-app-nav-panel" aria-label="Vexa navigation">'
-    +'<div class="tts-app-nav-head"><div class="tts-app-nav-brand"><strong>Vexa AI</strong></div><button class="tts-app-nav-close" type="button" aria-label="Close navigation"><svg viewBox="0 0 24 24" fill="none"><path d="m7.5 7.5 9 9M16.5 7.5l-9 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>'
+    +'<div class="tts-app-nav-head"><div class="tts-app-nav-brand"><small>Vexa</small><strong>Menu</strong></div><button class="tts-app-nav-close" type="button" aria-label="Close navigation"><svg viewBox="0 0 24 24" fill="none"><path d="m7.5 7.5 9 9M16.5 7.5l-9 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>'
     +'<nav class="tts-app-nav-list">'
     +section('Create')
     +'<button class="tts-app-nav-item active" style="--nav-index:0" data-app-nav="tts" type="button"><span class="tts-app-nav-icon">'+icons.tts+'</span><span class="tts-app-nav-label">Text to Speech</span></button>'
