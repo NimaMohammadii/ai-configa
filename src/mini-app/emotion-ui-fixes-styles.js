@@ -44,7 +44,7 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 /* Credits hero fine positioning. */
 .credits-page-head{background-position:center calc(50% + 12px)!important}
 .credits-balance{bottom:12px!important}
-@media(max-width:370px){.credits-page-head{background-position:center calc(50% + 12px))!important}.credits-balance{bottom:9px!important}}
+@media(max-width:370px){.credits-page-head{background-position:center calc(50% + 12px)!important}.credits-balance{bottom:9px!important}}
 
 /* Lower TTS bottom controls without changing keyboard behavior. */
 .tts-bottom{bottom:calc(4px + env(safe-area-inset-bottom,0px))!important}
