@@ -54,25 +54,22 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 .credits-payment-switch.tribute-switch button[hidden]{display:none!important}\
 .credits-page.tribute-payment-active .credits-page-head{background:#000!important}\
 .credits-page.tribute-payment-active .credits-page-head:before,.credits-page.tribute-payment-active .credits-page-head:after{display:none!important}\
+.credits-page.tribute-payment-active .credits-page-head p{display:none!important}\
+.credits-page.tribute-payment-active .credits-balance{bottom:8px!important}\
 .credits-tribute-mode{max-width:540px;margin:0 auto;padding:0 0 calc(env(safe-area-inset-bottom,0px) + 22px)}\
 .credits-tribute-mode.active{display:block;animation:tributeModeIn .5s cubic-bezier(.16,.86,.22,1) both}\
 .tribute-checkout{position:relative;overflow:hidden}\
-.tribute-checkout:before{content:"";position:absolute;width:170px;height:170px;right:-84px;top:-92px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.11),rgba(255,255,255,0) 68%);pointer-events:none;animation:tributeGlow 5.5s ease-in-out infinite}\
-.tribute-section-copy{position:relative;z-index:1}\
-.tribute-card-mark{position:relative;width:34px;height:24px;margin-top:1px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.055);display:grid;place-items:center;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}\
-.tribute-card-mark:after{content:"";position:absolute;width:50px;height:60px;background:linear-gradient(100deg,transparent 22%,rgba(255,255,255,.14) 50%,transparent 78%);transform:translateX(-55px) rotate(8deg);animation:tributeCardSweep 3.8s ease-in-out infinite}\
-.tribute-card-mark svg{width:17px;height:17px;color:rgba(255,255,255,.74)}\
-.tribute-currency-wrap{position:relative;z-index:1;margin:15px 0 13px}\
+.tribute-currency-wrap{position:relative;z-index:1;margin:0 0 13px}\
 .tribute-currency-label{display:flex;align-items:center;justify-content:space-between;margin:0 2px 7px;color:rgba(255,255,255,.36);font-size:8px;font-weight:720;letter-spacing:.07em;text-transform:uppercase}\
 .tribute-currency-label strong{color:rgba(255,255,255,.62);font-size:8px;font-weight:760;letter-spacing:0;text-transform:none}\
-.tribute-currency-picker{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:3px;border-radius:14px;background:rgba(255,255,255,.045);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),inset 0 1px 0 rgba(255,255,255,.05);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}\
-.tribute-currency-picker button{position:relative;z-index:1;height:34px;border:0;border-radius:11px;background:transparent;color:rgba(255,255,255,.38);font-size:9px;font-weight:780;letter-spacing:.025em;transition:color .24s ease,transform .18s ease,background .28s ease,box-shadow .28s ease}\
-.tribute-currency-picker button.active{color:#050505;background:#fff;box-shadow:0 5px 18px rgba(0,0,0,.2)}\
-.tribute-currency-picker button:active{transform:scale(.96)}\
-.tribute-summary-secure{display:flex;flex-direction:column;align-items:flex-end}\
-.tribute-summary-secure strong{display:flex!important;align-items:center;justify-content:flex-end;gap:5px}\
-.tribute-summary-secure i{width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 0 4px rgba(255,255,255,.07);animation:tributeBreathe 2s ease-in-out infinite}\
+.tribute-currency-picker{--tribute-currency-shift:0%;position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;padding:3px;overflow:hidden;border:1px solid rgba(255,255,255,.09);border-radius:15px;background:#0f0f10;box-shadow:none}\
+.tribute-currency-picker:before{content:"";position:absolute;z-index:0;left:3px;top:3px;bottom:3px;width:calc((100% - 6px)/3);border-radius:12px;background:#fff;box-shadow:none;transform:translateX(var(--tribute-currency-shift));transition:transform .4s cubic-bezier(.22,1,.36,1)}\
+.tribute-currency-picker button{position:relative;z-index:1;height:40px;padding:0 8px;border:0;border-radius:12px;display:flex;align-items:center;justify-content:center;background:transparent;color:rgba(255,255,255,.44);font-size:10px;font-weight:760;letter-spacing:0;transition:color .25s ease,transform .2s ease}\
+.tribute-currency-picker button.active{color:#090909;background:transparent;box-shadow:none}\
+.tribute-currency-picker button:active{transform:scale(.97)}\
+.tribute-checkout .credits-custom-summary{grid-template-columns:1fr}\
 .tribute-minimum{height:14px;margin:8px 0 0;color:rgba(255,255,255,.34);font-size:8px;line-height:1.4}\
+.tribute-minimum[hidden]{display:none}\
 .tribute-minimum.warn{color:rgba(255,255,255,.72)}\
 .tribute-payment-state{position:relative;display:none;align-items:center;gap:11px;margin-top:11px;padding:11px 12px;border:0;border-radius:16px;background:rgba(13,13,13,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);animation:tributeStateIn .36s cubic-bezier(.16,1,.3,1) both}\
 .tribute-payment-state.show{display:flex}\
@@ -90,9 +87,6 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 .tribute-state-check{flex:0 0 auto;height:28px;padding:0 9px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);color:#fff;font-size:8px;font-weight:750;transition:transform .18s ease,background .18s ease}\
 .tribute-state-check:active{transform:scale(.94);background:rgba(255,255,255,.1)}\
 .tribute-payment-state.success .tribute-state-check,.tribute-payment-state.failed .tribute-state-check{display:none}\
-.tribute-footnote{max-width:540px;margin:18px auto 0;text-align:center;color:rgba(255,255,255,.34);font-size:9px;font-weight:620;line-height:1.6}\
-.tribute-footnote span{color:#fff}\
-.tribute-footnote a{color:rgba(255,255,255,.38);text-decoration:none}\
 .tribute-packs{margin-top:27px}\
 .tribute-packs .credits-pack[disabled]{opacity:.32;pointer-events:none}\
 .tribute-price-pair{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap}\
@@ -101,12 +95,9 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 .tribute-discount-badge{display:none;width:max-content;margin-top:8px;padding:4px 7px;border-radius:999px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.72);font-size:7px;font-weight:820;letter-spacing:.03em}\
 .tribute-discount-badge.show{display:block}\
 @keyframes tributeModeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}\
-@keyframes tributeGlow{0%,100%{transform:scale(.92);opacity:.48}50%{transform:scale(1.08);opacity:.82}}\
-@keyframes tributeCardSweep{0%,55%{transform:translateX(-55px) rotate(8deg);opacity:0}68%{opacity:1}86%,100%{transform:translateX(55px) rotate(8deg);opacity:0}}\
-@keyframes tributeBreathe{0%,100%{opacity:.45;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}\
 @keyframes tributeStateIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}\
 @keyframes tributeSuccessPop{from{transform:scale(.72)}to{transform:scale(1)}}\
-@media(max-width:370px){.credits-payment-switch.tribute-switch button{font-size:9px;padding:0 5px}.tribute-checkout{padding:16px!important}.tribute-currency-picker button{height:32px}}';
+@media(max-width:370px){.credits-payment-switch.tribute-switch button{font-size:9px;padding:0 5px}.tribute-checkout{padding:16px!important}.credits-page.tribute-payment-active .credits-balance{bottom:6px!important}}';
     document.head.appendChild(style);
   }
 
@@ -134,18 +125,16 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
       mode.className='credits-payment-mode credits-tribute-mode';
       mode.setAttribute('aria-hidden','true');
       mode.innerHTML='<section class="credits-custom tribute-checkout">'+
-        '<div class="credits-section-copy tribute-section-copy"><div><span>CARD CHECKOUT</span><h3>Choose your amount</h3></div><span class="tribute-card-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5.5" width="17" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><path d="M3.8 9.5h16.4" stroke="currentColor" stroke-width="1.6"/></svg></span></div>'+
         '<div class="tribute-currency-wrap"><div class="tribute-currency-label"><span>Payment currency</span><strong id="tributeCurrencyHint">USD</strong></div><div id="tributeCurrencyPicker" class="tribute-currency-picker" role="group" aria-label="Payment currency"><button type="button" data-action="set-tribute-currency" data-currency="usd">USD</button><button type="button" data-action="set-tribute-currency" data-currency="eur">EUR</button><button type="button" data-action="set-tribute-currency" data-currency="rub">RUB</button></div></div>'+
         '<label class="credits-amount-field" for="tributeCreditsInput"><input id="tributeCreditsInput" type="number" inputmode="numeric" min="6000" max="1000000" step="1000" value="6000" autocomplete="off"/><span>credits</span></label>'+
         '<input id="tributeCreditsRange" class="credits-amount-range" type="range" min="6000" max="100000" step="1000" value="6000" aria-label="Card credit amount"/>'+
-        '<div class="credits-custom-summary"><div><strong id="tributeAmountValue">$1.07</strong><small id="tributePaymentCurrencyCopy">USD card payment</small></div><div class="tribute-summary-secure"><strong><i aria-hidden="true"></i>Secure</strong><small>checkout by Tribute</small></div></div>'+
+        '<div class="credits-custom-summary"><div><strong id="tributeAmountValue">$1.07</strong></div></div>'+
         '<div id="tributeDiscountBadge" class="tribute-discount-badge" aria-hidden="true"></div>'+
         '<p id="tributeMinimumNote" class="tribute-minimum">Minimum card payment is $1.00.</p>'+
         '<button id="tributeCustomBuy" class="credits-primary-button" data-action="buy-tribute-custom" type="button"><span>Continue with $1.07</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'+
         '<div id="tributePaymentState" class="tribute-payment-state" aria-hidden="true"><span class="tribute-state-orb" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m7 12.5 3.2 3.2L17.5 8.5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="tribute-state-copy"><strong id="tributeStateTitle">Finish payment in Tribute</strong><small id="tributeStateCopy">Come back here — credits add automatically.</small></span><button class="tribute-state-check" data-action="check-tribute-payment" type="button">Check</button></div>'+
       '</section>'+
-      '<section id="tributePacks" class="credits-packs-section tribute-packs"><div class="credits-packs-head"><div><span>READY TO BUY</span><h3>Credit packs</h3></div><small>Bonus included</small></div><div id="tributePackList" class="credits-pack-list"></div></section>'+
-      '<p class="tribute-footnote"><span>●</span> Secure card checkout powered by Tribute<br><a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">FX by ExchangeRate-API</a></p>';
+      '<section id="tributePacks" class="credits-packs-section tribute-packs"><div class="credits-packs-head"><div><span>READY TO BUY</span><h3>Credit packs</h3></div><small>Bonus included</small></div><div id="tributePackList" class="credits-pack-list"></div></section>';
       starsMode.insertAdjacentElement('afterend',mode);
     }
 
@@ -191,9 +180,8 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   function syncCurrencyUi(){
     var info=currentCurrency();
     var picker=q('tributeCurrencyPicker');
-    if(picker)picker.querySelectorAll('[data-currency]').forEach(function(button){var active=button.getAttribute('data-currency')===info.code;button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false')});
+    if(picker){var currencyIndex=0;picker.querySelectorAll('[data-currency]').forEach(function(button,index){var active=button.getAttribute('data-currency')===info.code;if(active)currencyIndex=index;button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false')});picker.style.setProperty('--tribute-currency-shift',String(currencyIndex*100)+'%')}
     var hint=q('tributeCurrencyHint');if(hint)hint.textContent=String(info.label||info.code||'USD').toUpperCase();
-    var copy=q('tributePaymentCurrencyCopy');if(copy)copy.textContent=String(info.label||info.code||'USD').toUpperCase()+' card payment';
   }
 
   function setCurrency(code){
@@ -223,7 +211,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     var amount=discountedMinor(baseCustomMinor(credits));
     var valid=credits>=minimum&&amount>=Number(info.minimumMinor||100)&&amount<=Number(info.maximumMinor||300000);
     var amountNode=q('tributeAmountValue');if(amountNode)amountNode.textContent=money(amount,info.code);
-    var note=q('tributeMinimumNote');if(note){note.textContent=valid?'Secure card checkout opens in your browser.':'Minimum card payment is '+minimumLabel(info)+' · choose at least '+number(minimum)+' credits.';note.classList.toggle('warn',!valid)}
+    var note=q('tributeMinimumNote');if(note){note.hidden=valid;note.textContent=valid?'':'Minimum card payment is '+minimumLabel(info)+' · choose at least '+number(minimum)+' credits.';note.classList.toggle('warn',!valid)}
     var button=q('tributeCustomBuy');if(button){button.disabled=!valid||cardBusy;var label=button.querySelector('span');if(label)label.textContent=valid?'Continue with '+money(amount,info.code):'Minimum '+minimumLabel(info)}
   }
 
@@ -231,7 +219,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     var list=q('tributePackList');if(!list||!config)return;
     var info=currentCurrency();
     var packages=Array.isArray(config.packages)?config.packages.map(function(pack){var original=usdToMinor(Number(pack&&pack.usd)||0,info);var amount=discountedMinor(original);return Object.assign({},pack,{originalAmountMinor:original,amountMinor:amount,available:amount>=Number(info.minimumMinor||100)&&amount<=Number(info.maximumMinor||300000)})}).filter(function(item){return item&&item.available}):[];
-    list.innerHTML=packages.map(function(pack,index){var bonus=Number(pack.bonus)||0;var credits=Number(pack.credits)||0;var total=Number(pack.totalCredits)||credits+bonus;var original=Number(pack.originalAmountMinor)||Number(pack.amountMinor)||0;var amount=Number(pack.amountMinor)||0;var price=amount<original?'<span class="tribute-price-pair"><span class="tribute-price-old">'+money(original,info.code)+'</span><span class="tribute-price-new">'+money(amount,info.code)+'</span></span>':money(amount,info.code);var title=bonus?number(credits)+' <b>+ '+number(bonus)+'</b>':number(credits);var bonusLabel=bonus?'<em>'+number(bonus)+' bonus</em>':'<small>credits</small>';return '<button class="credits-pack'+(index===0?' featured':'')+'" data-action="buy-tribute-package" data-package-id="'+String(pack.id||'')+'" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>'+title+'</strong>'+bonusLabel+'</span><span class="credits-pack-total">'+number(total)+' total credits · '+minutes(total)+' min voice</span></span><span class="credits-pack-price"><strong>'+price+'</strong><small>'+String(info.label||'').toUpperCase()+' · Bank card</small></span></button>'}).join('');
+    list.innerHTML=packages.map(function(pack,index){var bonus=Number(pack.bonus)||0;var credits=Number(pack.credits)||0;var total=Number(pack.totalCredits)||credits+bonus;var original=Number(pack.originalAmountMinor)||Number(pack.amountMinor)||0;var amount=Number(pack.amountMinor)||0;var price=amount<original?'<span class="tribute-price-pair"><span class="tribute-price-old">'+money(original,info.code)+'</span><span class="tribute-price-new">'+money(amount,info.code)+'</span></span>':money(amount,info.code);var title=bonus?number(credits)+' <b>+ '+number(bonus)+'</b>':number(credits);var bonusLabel=bonus?'<em>'+number(bonus)+' bonus</em>':'<small>credits</small>';return '<button class="credits-pack'+(index===0?' featured':'')+'" data-action="buy-tribute-package" data-package-id="'+String(pack.id||'')+'" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>'+title+'</strong>'+bonusLabel+'</span><span class="credits-pack-total">'+minutes(total)+' min voice</span></span><span class="credits-pack-price"><strong>'+price+'</strong><small>'+String(info.label||'').toUpperCase()+' · Bank card</small></span></button>'}).join('');
     var section=q('tributePacks');if(section)section.style.display=packages.length?'block':'none';
   }
 
@@ -245,7 +233,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     if(tribute){tribute.classList.add('active');tribute.setAttribute('aria-hidden','false')}
     if(switcher)switcher.setAttribute('data-mode','card');
     document.querySelectorAll('[data-action="set-credit-payment"]').forEach(function(button){var active=button.getAttribute('data-payment-mode')==='card';button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false')});
-    var head=page&&page.querySelector('.credits-page-head>div:first-child');if(head){var kicker=head.querySelector('span');var title=head.querySelector('h2');var copy=head.querySelector('p');if(kicker)kicker.textContent='BANK CARD';if(title)title.textContent='Buy credits';if(copy)copy.textContent='Secure checkout. Credits arrive automatically.';head.setAttribute('dir','ltr')}
+    var head=page&&page.querySelector('.credits-page-head>div:first-child');if(head){var kicker=head.querySelector('span');var title=head.querySelector('h2');if(kicker)kicker.textContent='BANK CARD';if(title)title.textContent='Buy credits';head.setAttribute('dir','ltr')}
     syncSwitchIndicator();syncCurrencyUi();renderCustom('open');restorePaymentState();haptic('light');
   }
 
