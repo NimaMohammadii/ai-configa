@@ -6,6 +6,7 @@ import { normalizeLang } from "./i18n.js";
 import { getReferralStatus } from "./referrals.js";
 import { getRewardWheelStatus } from "./reward-wheel.js";
 import { getState } from "./state.js";
+import { sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId } from "./telegram-actions.js";
 import { tgJson } from "./telegram-api.js";
 import { buildTtsAudioFileName } from "./tts-history.js";
 import { getUserVoices } from "./user-voices.js";
@@ -23,20 +24,23 @@ const N = Object.freeze({
   voices: "vexa_list_voices",
   audioList: "vexa_list_audio",
   audioGet: "vexa_get_audio",
+  audioSend: "vexa_send_audio_to_bot",
   audioEdit: "vexa_edit_audio_text",
   images: "vexa_list_images",
   usage: "vexa_get_credit_usage",
   chat: "vexa_get_chat_history",
 });
 const ALL = new Set(Object.values(N));
-const WRITES = new Set([N.audioEdit]);
+const WRITES = new Set([N.audioSend, N.audioEdit]);
 
 export function buildAiAppInstructions() {
   return [
     "Private Vexa app tools are available for the currently authenticated user.",
     "Use them whenever an answer depends on live app or bot data: credits, profile/settings, voices, TTS/audio files and duration, image history, section activity, locks, reward wheel, referrals, payment state, credit usage, or saved AI Chat history. Never guess those values from memory.",
     "Tool execution is already scoped to the authenticated user. Never ask for or invent a Telegram user ID and never claim access to another user's data.",
-    "When a file reference is ambiguous, call vexa_list_audio first, then vexa_get_audio or vexa_edit_audio_text with the returned history ID.",
+    "When a file reference is ambiguous, call vexa_list_audio first, then use the returned history ID with the appropriate audio tool.",
+    "If the user says an audio file will not download, will not open, cannot be retrieved, or asks how to get the file, proactively offer to send that exact file to their private bot chat. Do not send it until the user explicitly asks you to send it or clearly accepts that offer.",
+    "When the user explicitly asks to send an owned audio file to the bot chat, call vexa_send_audio_to_bot. Do not ask for a Telegram user ID or chat ID; the tool securely uses the authenticated user's own bot chat.",
     "Call vexa_edit_audio_text only on an explicit request to change an existing audio file. It updates the same owned single-speaker Mini App TTS history item by fully regenerating the updated text with the same voice; credit cost equals the full updated text length. Ownership, balance, storage and revision are checked before commit.",
     "Never expose R2 keys, Telegram file IDs, secrets or raw database internals. Report only user-facing information.",
   ].join(" ");
@@ -48,6 +52,7 @@ export function getAiAppTools() {
     tool(N.voices, "List Vexa voices with selected, saved, locked and available status for the current user.", {}, []),
     tool(N.audioList, "List the current user's recent TTS/audio history with history ID, filename, current text, voice, language, credits, source, time, revision, editability and duration when stored alignment provides it.", { limit: { type: "integer", minimum: 1, maximum: MAX_AUDIO } }, ["limit"]),
     tool(N.audioGet, "Read one owned TTS/audio history item in detail and derive its duration from timestamps or the stored WAV/MP3 when needed.", { historyId: { type: "string", minLength: 1, maxLength: 100 } }, ["historyId"]),
+    tool(N.audioSend, "Send one exact owned TTS/audio history item to the current user's private Telegram bot chat. Use only after an explicit send request or a clear acceptance of an earlier offer to send the file. The authenticated user/chat is fixed server-side and is never supplied by the model.", { historyId: { type: "string", minLength: 1, maxLength: 100 } }, ["historyId"]),
     tool(N.audioEdit, "Replace an exact text segment in one owned single-speaker editable Mini App TTS item and regenerate the full updated audio with the same voice. This updates the same history item, increments revision, and spends credits equal to the full updated text length. Use only on explicit user intent.", {
       historyId: { type: "string", minLength: 1, maxLength: 100 },
       findText: { type: "string", minLength: 1, maxLength: MAX_EDIT_CHARS },
@@ -77,6 +82,7 @@ export async function executeAiAppTool(env, userId, item) {
     if (name === N.voices) return json(await voices(env, userId));
     if (name === N.audioList) return json(await audioList(env, userId, args.limit));
     if (name === N.audioGet) return json(await audioGet(env, userId, args.historyId));
+    if (name === N.audioSend) return json(await audioSend(env, userId, args.historyId));
     if (name === N.audioEdit) return json(await audioEdit(env, userId, args));
     if (name === N.images) return json(await images(env, userId, args.limit));
     if (name === N.usage) return json(await usage(env, userId, args.limit));
@@ -129,7 +135,7 @@ async function voices(env, userId) {
 async function audioList(env, userId, requested) {
   const limit = clamp(requested, 1, MAX_AUDIO, 12);
   const rows = await all(env,
-    "SELECT id,text,voice,language,credits,file_sequence,source,created_at,audio_base64,file_id,audio_r2_key,audio_mime,alignment_json,edit_revision FROM tts_history WHERE user_id=? ORDER BY datetime(created_at) DESC,rowid DESC LIMIT ?",
+    "SELECT id,text,voice,language,credits,file_sequence,source,created_at,audio_base64,file_id,file_type,audio_r2_key,audio_mime,alignment_json,edit_revision FROM tts_history WHERE user_id=? ORDER BY datetime(created_at) DESC,rowid DESC LIMIT ?",
     [String(userId), limit]);
   return { ok: true, items: rows.map(audioView) };
 }
@@ -138,6 +144,45 @@ async function audioGet(env, userId, historyId) {
   const row = await audioRow(env, userId, historyId);
   if (!row) return { ok: false, error: "Audio history item not found." };
   return { ok: true, item: { ...audioView(row), durationSeconds: await durationFor(env, row).catch(() => durationFromAlignment(parse(row.alignment_json))) } };
+}
+
+async function audioSend(env, userId, historyId) {
+  const uid = String(userId), row = await audioRow(env, uid, historyId);
+  if (!row) throw pub("That audio file was not found in your account.");
+  if (!row.audio_base64 && !row.file_id && !row.audio_r2_key) throw pub("That audio file is no longer available to send.");
+
+  const filename = audioDeliveryFilename(row);
+  let sent;
+  try {
+    if (row.file_id) {
+      sent = String(row.file_type || "") === "document"
+        ? await sendDocumentFileId(env, uid, String(row.file_id), "")
+        : await sendAudioFileId(env, uid, String(row.file_id), "");
+    } else {
+      const loaded = await loadStoredAudio(env, row);
+      if (!loaded?.buffer?.byteLength) throw pub("That audio file is no longer available to send.");
+      if (loaded.buffer.byteLength > MAX_AUDIO_BYTES) throw pub("That audio file is too large to send through the bot.");
+      sent = loaded.mime.includes("wav")
+        ? await sendDocument(env, uid, loaded.buffer, filename)
+        : await sendAudio(env, uid, loaded.buffer, filename, "Vexa Voice");
+    }
+  } catch (error) {
+    if (error?.publicMessage) throw error;
+    const message = String(error?.message || error);
+    if (/chat not found|bot was blocked|forbidden|user is deactivated|can't initiate|cannot initiate/i.test(message)) {
+      throw pub("I couldn't send the file to your bot chat. Open the bot, press Start, then ask me to send it again.");
+    }
+    throw pub("I couldn't send that audio to your bot chat right now. Please try again.");
+  }
+
+  return {
+    ok: true,
+    sent: true,
+    destination: "private_bot_chat",
+    id: String(row.id),
+    filename,
+    messageId: Number(sent?.message_id || 0) || null,
+  };
 }
 
 function audioView(row) {
@@ -218,7 +263,26 @@ async function paymentSummary(env, userId) {
 }
 
 async function audioRow(env, userId, historyId) {
-  return env.DB.prepare("SELECT id,user_id,text,voice,language,credits,file_sequence,source,created_at,audio_base64,file_id,audio_r2_key,audio_mime,alignment_json,edit_revision FROM tts_history WHERE id=? AND user_id=?").bind(cleanId(historyId),String(userId)).first();
+  return env.DB.prepare("SELECT id,user_id,text,voice,language,credits,file_sequence,source,created_at,audio_base64,file_id,file_type,audio_r2_key,audio_mime,alignment_json,edit_revision FROM tts_history WHERE id=? AND user_id=?").bind(cleanId(historyId),String(userId)).first();
+}
+async function loadStoredAudio(env, row) {
+  if (row.audio_r2_key && env.EXPLORE_MEDIA) {
+    const object = await env.EXPLORE_MEDIA.get(String(row.audio_r2_key));
+    if (object) {
+      if (Number(object.size || 0) > MAX_AUDIO_BYTES) throw pub("That audio file is too large to send through the bot.");
+      return { buffer: await object.arrayBuffer(), mime: String(object.httpMetadata?.contentType || row.audio_mime || "audio/mpeg").toLowerCase() };
+    }
+  }
+  if (row.audio_base64) {
+    const raw = String(row.audio_base64);
+    if (raw.length * 0.75 > MAX_AUDIO_BYTES) throw pub("That audio file is too large to send through the bot.");
+    return { buffer: decode64(raw), mime: String(row.audio_mime || "audio/mpeg").toLowerCase() };
+  }
+  return null;
+}
+function audioDeliveryFilename(row) {
+  const base = buildTtsAudioFileName(row.file_sequence);
+  return String(row.audio_mime || "").toLowerCase().includes("wav") ? base.replace(/\.mp3$/i, ".wav") : base;
 }
 async function durationFor(env, row) {
   const aligned=durationFromAlignment(parse(row.alignment_json)); if (aligned) return aligned;
