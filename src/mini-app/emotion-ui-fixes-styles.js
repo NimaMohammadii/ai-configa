@@ -44,13 +44,11 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 /* Credits hero fine positioning. */
 .credits-page-head{background-position:center calc(50% + 12px)!important}
 .credits-balance{bottom:12px!important}
-@media(max-width:370px){.credits-page-head{background-position:center calc(50% + 12px)!important}.credits-balance{bottom:9px!important}}
+@media(max-width:370px){.credits-page-head{background-position:center calc(50% + 12px))!important}.credits-balance{bottom:9px!important}}
 
-/* Keep TTS controls in their normal geometry while the keyboard is open. */
+/* Lower TTS bottom controls without changing keyboard behavior. */
 .tts-bottom{bottom:calc(4px + env(safe-area-inset-bottom,0px))!important}
 .tts-generate{height:38px!important;min-height:38px!important}
-body.keyboard-open:not(.image-mode) #flow.active,body.keyboard-closing:not(.image-mode) #flow.active,body.keyboard-open:not(.image-mode) #flow.active .tts-page,body.keyboard-closing:not(.image-mode) #flow.active .tts-page{position:relative!important}
-body.keyboard-open:not(.image-mode) #flow.active .tts-bottom,body.keyboard-closing:not(.image-mode) #flow.active .tts-bottom{position:fixed!important;bottom:calc(4px + env(safe-area-inset-bottom,0px))!important;display:grid!important}
 
 /* Share buttons stay flat with no glow or halo. */
 .referral-credit-share,.ai-chat-referral-share{box-shadow:none!important;filter:none!important}
