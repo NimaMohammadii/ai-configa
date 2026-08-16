@@ -9,7 +9,7 @@ import {
   isAdmin,
   setAdminAction,
 } from "../../admin.js";
-import { handleCallback as handleBaseCallback } from "../../bot.js";
+import { handleCallback as handleBaseCallback } from "../../bot-github-admin.js";
 import { handleMessage as handleSecureMessage } from "../../bot-secure.js";
 import {
   answerCallback,
