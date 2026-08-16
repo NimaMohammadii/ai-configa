@@ -9,6 +9,7 @@ export const REFERRAL_UI_PATCH = String.raw`
   var referralStatusBusy=false;
   var referralBaseFetch=window.fetch.bind(window);
   var referralLaunchApplied=false;
+  var referralAiChatOfferPending=false;
 
   var referralCopies={
     en:{title:'Not enough credits',text:'Invite 3 friends and get 300 free credits.',progress:'Friends invited',share:'Invite friends',sharing:'Opening share…',reward:'300 free credits',close:'Close',shareError:'Could not open sharing. Try again.'},
@@ -53,7 +54,7 @@ export const REFERRAL_UI_PATCH = String.raw`
     if(document.getElementById('referralCreditSheet'))return;
     var style=document.createElement('style');
     style.id='referralCreditStyles';
-    style.textContent='.referral-credit-sheet{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:end center;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .22s ease,visibility 0s linear .36s}.referral-credit-sheet.open{opacity:1;visibility:visible;pointer-events:auto;transition-delay:0s}.referral-credit-backdrop{position:absolute;inset:0;border:0;background:rgba(0,0,0,.58);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);opacity:0;transition:opacity .28s ease}.referral-credit-sheet.open .referral-credit-backdrop{opacity:1}.referral-credit-card{position:relative;width:min(calc(100% - 24px),480px);margin:0 12px calc(12px + env(safe-area-inset-bottom,0px));padding:15px;border:0;border-radius:22px;background:rgba(13,13,13,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);overflow:hidden;transform:translate3d(0,112%,0) scale(.985);opacity:.35;transition:transform .46s cubic-bezier(.16,.86,.22,1),opacity .24s ease}.referral-credit-sheet.open .referral-credit-card{transform:translate3d(0,0,0) scale(1);opacity:1}.referral-credit-card:before{content:"";position:absolute;left:18%;right:18%;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.22),transparent)}.referral-credit-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.referral-credit-copy{min-width:0;flex:1}.referral-credit-kicker{display:inline-flex;align-items:center;min-height:24px;padding:0 9px;border-radius:999px;background:rgba(255,255,255,.055);box-shadow:inset 0 1px 0 rgba(255,255,255,.07);color:rgba(255,255,255,.72);font-size:9px;font-weight:760;letter-spacing:.02em}.referral-credit-title{margin:11px 0 5px;color:#fff;font-size:19px;line-height:1.08;font-weight:780;letter-spacing:-.035em}.referral-credit-text{max-width:350px;margin:0;color:rgba(255,255,255,.58);font-size:12.5px;line-height:1.45;font-weight:450}.referral-credit-x{width:32px;height:32px;flex:0 0 32px;padding:0;border:0;border-radius:11px;display:grid;place-items:center;background:rgba(255,255,255,.055);color:rgba(255,255,255,.68);box-shadow:inset 0 1px 0 rgba(255,255,255,.07);transition:transform .2s ease,background .2s ease,color .2s ease}.referral-credit-x:active{transform:scale(.88);background:rgba(255,255,255,.11);color:#fff}.referral-credit-progress-card{margin-top:14px;padding:11px 12px;border-radius:16px;background:rgba(13,13,13,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);overflow:hidden}.referral-credit-progress-head{display:flex;align-items:center;justify-content:space-between;gap:10px;color:rgba(255,255,255,.5);font-size:10px;font-weight:650}.referral-credit-progress-head strong{color:#fff;font-size:11px;font-weight:780;font-variant-numeric:tabular-nums}.referral-credit-dots{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:9px}.referral-credit-dot{height:5px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden;transform:scaleX(.98);transition:background .28s ease,transform .34s cubic-bezier(.16,.86,.22,1)}.referral-credit-dot.done{background:#fff;transform:scaleX(1)}.referral-credit-actions{display:grid;grid-template-columns:1fr;gap:7px;margin-top:9px}.referral-credit-share{position:relative;width:100%;height:44px;border:0;border-radius:14px;background:#fff;color:#050505;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;font-size:13px;font-weight:780;box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 8px 24px rgba(0,0,0,.22);transition:transform .2s cubic-bezier(.2,.9,.2,1),opacity .2s ease}.referral-credit-share:active{transform:scale(.985)}.referral-credit-share:disabled{opacity:.68}.referral-credit-share svg{width:17px;height:17px}.referral-credit-share.loading svg{animation:referralSharePulse .8s ease-in-out infinite}.referral-credit-card[dir="rtl"]{text-align:right}.referral-credit-card[dir="rtl"] .referral-credit-progress-head{direction:rtl}@keyframes referralSharePulse{0%,100%{transform:translateY(0);opacity:.55}50%{transform:translateY(-2px);opacity:1}}@media(prefers-reduced-motion:reduce){.referral-credit-sheet,.referral-credit-backdrop,.referral-credit-card,.referral-credit-share,.referral-credit-dot{transition:none!important;animation:none!important}}';
+    style.textContent='.referral-credit-sheet{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:end center;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .22s ease,visibility 0s linear .36s}.referral-credit-sheet.open{opacity:1;visibility:visible;pointer-events:auto;transition-delay:0s}.referral-credit-backdrop{position:absolute;inset:0;border:0;background:rgba(0,0,0,.58);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);opacity:0;transition:opacity .28s ease}.referral-credit-sheet.open .referral-credit-backdrop{opacity:1}.referral-credit-card{position:relative;width:min(calc(100% - 24px),480px);margin:0 12px calc(12px + env(safe-area-inset-bottom,0px));padding:15px;border:0;border-radius:22px;background:rgba(13,13,13,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);overflow:hidden;transform:translate3d(0,112%,0) scale(.985);opacity:.35;transition:transform .46s cubic-bezier(.16,.86,.22,1),opacity .24s ease}.referral-credit-sheet.open .referral-credit-card{transform:translate3d(0,0,0) scale(1);opacity:1}.referral-credit-card:before{content:"";position:absolute;left:18%;right:18%;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.22),transparent)}.referral-credit-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.referral-credit-copy{min-width:0;flex:1}.referral-credit-kicker{display:inline-flex;align-items:center;min-height:24px;padding:0 9px;border-radius:999px;background:rgba(255,255,255,.055);box-shadow:inset 0 1px 0 rgba(255,255,255,.07);color:rgba(255,255,255,.72);font-size:9px;font-weight:760;letter-spacing:.02em}.referral-credit-title{margin:11px 0 5px;color:#fff;font-size:19px;line-height:1.08;font-weight:780;letter-spacing:-.035em}.referral-credit-text{max-width:350px;margin:0;color:rgba(255,255,255,.58);font-size:12.5px;line-height:1.45;font-weight:450}.referral-credit-x{width:32px;height:32px;flex:0 0 32px;padding:0;border:0;border-radius:11px;display:grid;place-items:center;background:rgba(255,255,255,.055);color:rgba(255,255,255,.68);box-shadow:inset 0 1px 0 rgba(255,255,255,.07);transition:transform .2s ease,background .2s ease,color .2s ease}.referral-credit-x:active{transform:scale(.88);background:rgba(255,255,255,.11);color:#fff}.referral-credit-progress-card{margin-top:14px;padding:11px 12px;border-radius:16px;background:rgba(13,13,13,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);overflow:hidden}.referral-credit-progress-head{display:flex;align-items:center;justify-content:space-between;gap:10px;color:rgba(255,255,255,.5);font-size:10px;font-weight:650}.referral-credit-progress-head strong{color:#fff;font-size:11px;font-weight:780;font-variant-numeric:tabular-nums}.referral-credit-dots{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:9px}.referral-credit-dot{height:5px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden;transform:scaleX(.98);transition:background .28s ease,transform .34s cubic-bezier(.16,.86,.22,1)}.referral-credit-dot.done{background:#fff;transform:scaleX(1)}.referral-credit-actions{display:grid;grid-template-columns:1fr;gap:7px;margin-top:9px}.referral-credit-share{position:relative;width:100%;height:44px;border:0;border-radius:14px;background:#fff;color:#050505;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;font-size:13px;font-weight:780;box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 8px 24px rgba(0,0,0,.22);transition:transform .2s cubic-bezier(.2,.9,.2,1),opacity .2s ease}.referral-credit-share:active{transform:scale(.985)}.referral-credit-share:disabled{opacity:.68}.referral-credit-share svg{width:17px;height:17px}.referral-credit-share.loading svg{animation:referralSharePulse .8s ease-in-out infinite}.referral-credit-card[dir="rtl"]{text-align:right}.referral-credit-card[dir="rtl"] .referral-credit-progress-head{direction:rtl}.ai-chat-referral-offer{width:min(88%,420px);margin:-7px auto 19px 0;opacity:0;animation:referralAiChatOfferIn .42s cubic-bezier(.16,1,.3,1) forwards}.ai-chat-referral-offer[dir="rtl"]{margin-left:auto;margin-right:0;text-align:right}.ai-chat-referral-card{position:relative;overflow:hidden;padding:13px;border-radius:18px;background:var(--ticket-glass-bg,rgba(13,13,13,.62));box-shadow:var(--ticket-glass-shadow,inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22));backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12)}.ai-chat-referral-card:before{content:"";position:absolute;left:18%;right:18%;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.2),transparent)}.ai-chat-referral-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.ai-chat-referral-reward{display:inline-flex;align-items:center;min-height:23px;padding:0 8px;border-radius:999px;background:rgba(255,255,255,.055);box-shadow:inset 0 1px 0 rgba(255,255,255,.07);color:rgba(255,255,255,.72);font-size:9px;font-weight:760}.ai-chat-referral-count{display:flex;align-items:baseline;gap:5px;color:rgba(255,255,255,.42);font-size:9px;font-weight:620}.ai-chat-referral-count strong{color:#fff;font-size:13px;font-weight:780;font-variant-numeric:tabular-nums}.ai-chat-referral-copy{margin:10px 0 0;color:rgba(255,255,255,.62);font-size:12.5px;font-weight:470;line-height:1.45}.ai-chat-referral-dots{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:11px}.ai-chat-referral-dot{height:4px;border-radius:999px;background:rgba(255,255,255,.1);transition:background .25s ease,transform .3s cubic-bezier(.16,1,.3,1)}.ai-chat-referral-dot.done{background:#fff;transform:scaleX(1)}.ai-chat-referral-share{width:100%;height:40px;margin-top:9px;border:0;border-radius:13px;background:#fff;color:#050505;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 12px;font-size:12.5px;font-weight:780;box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 8px 20px rgba(0,0,0,.18);transition:transform .2s cubic-bezier(.2,.9,.2,1),opacity .2s ease}.ai-chat-referral-share:active{transform:scale(.985)}.ai-chat-referral-share:disabled{opacity:.68}.ai-chat-referral-share svg{width:16px;height:16px}.ai-chat-referral-share.loading svg{animation:referralSharePulse .8s ease-in-out infinite}@keyframes referralAiChatOfferIn{from{opacity:0;transform:translate3d(0,8px,0) scale(.985)}to{opacity:1;transform:none}}@keyframes referralSharePulse{0%,100%{transform:translateY(0);opacity:.55}50%{transform:translateY(-2px);opacity:1}}@media(prefers-reduced-motion:reduce){.referral-credit-sheet,.referral-credit-backdrop,.referral-credit-card,.referral-credit-share,.referral-credit-dot,.ai-chat-referral-offer,.ai-chat-referral-share,.ai-chat-referral-dot{transition:none!important;animation:none!important}}';
     document.head.appendChild(style);
     var sheet=document.createElement('div');
     sheet.id='referralCreditSheet';
@@ -124,13 +125,15 @@ export const REFERRAL_UI_PATCH = String.raw`
   }
 
   async function referralLoadStatus(){
-    if(referralStatusBusy)return;
+    if(referralStatusBusy)return null;
     referralStatusBusy=true;
+    var result=null;
     try{
       var response=await referralBaseFetch('/mini-app/api/referral-status',{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:referralInitData})});
       var data=await response.json().catch(function(){return null});
-      if(response.ok&&data){if(data.language){referralLanguage=referralNormalizeLanguage(data.language);referralRenderCopy()}referralRenderStatus(data)}
+      if(response.ok&&data){if(data.language){referralLanguage=referralNormalizeLanguage(data.language);referralRenderCopy()}referralRenderStatus(data);result=data}
     }catch(e){}finally{referralStatusBusy=false}
+    return result;
   }
 
   function referralShareError(){
@@ -159,6 +162,60 @@ export const REFERRAL_UI_PATCH = String.raw`
     }
   }
 
+  function referralAppendAiChatOffer(status){
+    var list=document.getElementById('aiChatMessages');if(!list)return;
+    list.querySelectorAll('.ai-chat-referral-offer').forEach(function(node){node.remove()});
+    var copy=referralCopy();
+    var rtl=referralLanguage==='fa'||referralLanguage==='ar';
+    var total=Math.max(0,Math.floor(Number(status&&status.totalInvites)||0));
+    var progress=Math.max(0,Math.min(2,Number(status&&status.progress)||0));
+    var offer=document.createElement('article');
+    offer.className='ai-chat-referral-offer';
+    offer.dir=rtl?'rtl':'ltr';
+    offer.innerHTML='<section class="ai-chat-referral-card"><div class="ai-chat-referral-head"><span class="ai-chat-referral-reward"></span><span class="ai-chat-referral-count"><span></span><strong></strong></span></div><p class="ai-chat-referral-copy"></p><div class="ai-chat-referral-dots" aria-hidden="true"><i class="ai-chat-referral-dot"></i><i class="ai-chat-referral-dot"></i><i class="ai-chat-referral-dot"></i></div><button class="ai-chat-referral-share" type="button"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 15.5V4m0 0L7.8 8.2M12 4l4.2 4.2M5.5 13.5v4A2.5 2.5 0 0 0 8 20h8a2.5 2.5 0 0 0 2.5-2.5v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span></span></button></section>';
+    var reward=offer.querySelector('.ai-chat-referral-reward');if(reward)reward.textContent=copy.reward;
+    var countLabel=offer.querySelector('.ai-chat-referral-count span');if(countLabel)countLabel.textContent=copy.progress;
+    var countValue=offer.querySelector('.ai-chat-referral-count strong');if(countValue)countValue.textContent=String(total);
+    var text=offer.querySelector('.ai-chat-referral-copy');if(text)text.textContent=copy.text;
+    offer.querySelectorAll('.ai-chat-referral-dot').forEach(function(dot,index){dot.classList.toggle('done',index<progress)});
+    var share=offer.querySelector('.ai-chat-referral-share');
+    var shareLabel=share&&share.querySelector('span');if(shareLabel)shareLabel.textContent=copy.share;
+    if(share)share.addEventListener('click',async function(){
+      if(referralShareBusy)return;
+      referralActiveSection='ai_chat';
+      share.disabled=true;share.classList.add('loading');if(shareLabel)shareLabel.textContent=referralCopy().sharing;
+      try{await referralShare()}finally{share.disabled=false;share.classList.remove('loading');if(shareLabel)shareLabel.textContent=referralCopy().share}
+    });
+    list.appendChild(offer);
+    if(typeof syncAiChatEmptyState==='function')try{syncAiChatEmptyState()}catch(e){}
+    requestAnimationFrame(function(){offer.scrollIntoView({block:'nearest',behavior:window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})});
+  }
+
+  function referralQueueAiChatOffer(){
+    if(referralAiChatOfferPending)return;
+    var list=document.getElementById('aiChatMessages');if(!list)return;
+    referralAiChatOfferPending=true;
+    referralActiveSection='ai_chat';
+    var assistantCount=list.querySelectorAll('.ai-chat-message.assistant').length;
+    var observer=null;
+    var timer=0;
+    var finished=false;
+    function finish(){
+      if(finished)return;
+      finished=true;
+      if(observer)observer.disconnect();
+      if(timer)clearTimeout(timer);
+      Promise.resolve(referralLoadStatus()).then(function(status){referralAppendAiChatOffer(status)}).catch(function(){referralAppendAiChatOffer(null)}).finally(function(){referralAiChatOfferPending=false});
+    }
+    if(typeof MutationObserver==='function'){
+      observer=new MutationObserver(function(){
+        if(list.querySelectorAll('.ai-chat-message.assistant').length>assistantCount){requestAnimationFrame(function(){setTimeout(finish,0)})}
+      });
+      observer.observe(list,{childList:true});
+    }
+    timer=setTimeout(finish,900);
+  }
+
   function referralApplyLaunchSection(){
     if(referralLaunchApplied)return;
     var section=referralStartSection();if(!section)return;
@@ -178,7 +235,10 @@ export const REFERRAL_UI_PATCH = String.raw`
       if(path.indexOf('/mini-app/api/session')>=0&&response.ok){
         response.clone().json().then(function(data){referralApplyApiData(data);setTimeout(referralApplyLaunchSection,120)}).catch(function(){})
       }
-      if(response.status===402&&path.indexOf('/mini-app/api/')>=0){var section=referralSectionForRequest(path,init);setTimeout(function(){referralSetOpen(true,section)},0)}
+      if(response.status===402&&path.indexOf('/mini-app/api/')>=0){
+        var section=referralSectionForRequest(path,init);
+        if(window.location.pathname.indexOf('/mini-app/chat')===0)setTimeout(referralQueueAiChatOffer,0);else setTimeout(function(){referralSetOpen(true,section)},0)
+      }
     }catch(e){}
     return response;
   };
