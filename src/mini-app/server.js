@@ -9,6 +9,7 @@ import { tgJson } from "../telegram-api.js";
 import { handlePaymentHeroImageRequest, isPaymentHeroImageRequest } from "../payment-hero.js";
 import { PURCHASE_UI_CSS } from "./purchase-ui-styles.js";
 import { REFERRAL_UI_PATCH } from "./referral-ui.js";
+import { HISTORY_FILE_IDENTITY_PATCH } from "./history-file-identity.js";
 
 export { isMiniAppRequest };
 
@@ -19,8 +20,12 @@ export async function handleMiniAppRequest(request, env) {
     return handlePaymentHeroImageRequest(request, env);
   }
 
-  if (request.method === "GET" && (url.pathname === "/mini-app/app.js" || url.pathname === "/mini-app/chat/app.js")) {
-    return injectReferralUi(await baseHandleMiniAppRequest(request, env));
+  if (request.method === "GET" && url.pathname === "/mini-app/app.js") {
+    return injectMiniAppUi(await baseHandleMiniAppRequest(request, env), true);
+  }
+
+  if (request.method === "GET" && url.pathname === "/mini-app/chat/app.js") {
+    return injectMiniAppUi(await baseHandleMiniAppRequest(request, env), false);
   }
 
   if (request.method === "GET" && url.pathname === "/mini-app/styles.css") {
@@ -144,7 +149,7 @@ function signedStartParam(initData) {
   }
 }
 
-async function injectReferralUi(response) {
+async function injectMiniAppUi(response, includeHistoryIdentity) {
   if (!response?.ok) return response;
   const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
   if (!contentType.includes("javascript")) return response;
@@ -152,7 +157,8 @@ async function injectReferralUi(response) {
   const source = await response.text();
   const marker = "(function(){";
   if (!source.includes(marker)) return cloneTextResponse(response, source);
-  const patched = source.replace(marker, marker + "\n" + REFERRAL_UI_PATCH);
+  const injection = REFERRAL_UI_PATCH + (includeHistoryIdentity ? "\n" + HISTORY_FILE_IDENTITY_PATCH : "");
+  const patched = source.replace(marker, marker + "\n" + injection);
   return cloneTextResponse(response, patched);
 }
 
