@@ -92,7 +92,16 @@ export const REFERRAL_UI_PATCH = String.raw`
     if(data.language){referralLanguage=referralNormalizeLanguage(data.language);referralRenderCopy()}
     if(Number.isFinite(Number(data.balance)))referralApplyBalance(data.balance);
     if(data.imagePricing&&Number.isFinite(Number(data.imagePricing.activeCost)))referralImageCost=Math.max(1,Number(data.imagePricing.activeCost));
-    if(Number.isFinite(Number(data.cost))&&String(data.kind||'').length)referralImageCost=Math.max(1,Number(data.cost));
+  }
+
+  function referralObserveBalanceNodes(){
+    if(typeof MutationObserver!=='function')return;
+    ['balance','creditsPageBalance','aiChatBalance'].forEach(function(id){
+      var node=document.getElementById(id);if(!node)return;
+      var sync=function(){var raw=String(node.textContent||'').replace(/,/g,'');var match=raw.match(/\d+(?:\.\d+)?/);if(!match)return;var value=Number(match[0]);if(Number.isFinite(value))referralBalance=Math.max(0,value)};
+      sync();
+      new MutationObserver(sync).observe(node,{childList:true,characterData:true,subtree:true});
+    });
   }
 
   function referralSetOpen(open,section){
@@ -166,8 +175,8 @@ export const REFERRAL_UI_PATCH = String.raw`
     var path=typeof input==='string'?input:String(input&&input.url||'');
     var response=await referralBaseFetch(input,init);
     try{
-      if(path.indexOf('/mini-app/api/')>=0&&response.ok){
-        response.clone().json().then(function(data){referralApplyApiData(data);if(path.indexOf('/mini-app/api/session')>=0)setTimeout(referralApplyLaunchSection,120)}).catch(function(){})
+      if(path.indexOf('/mini-app/api/session')>=0&&response.ok){
+        response.clone().json().then(function(data){referralApplyApiData(data);setTimeout(referralApplyLaunchSection,120)}).catch(function(){})
       }
       if(response.status===402&&path.indexOf('/mini-app/api/')>=0){var section=referralSectionForRequest(path,init);setTimeout(function(){referralSetOpen(true,section)},0)}
     }catch(e){}
@@ -188,4 +197,5 @@ export const REFERRAL_UI_PATCH = String.raw`
   },true);
 
   referralInstallUi();
+  referralObserveBalanceNodes();
 `;
