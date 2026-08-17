@@ -96,6 +96,22 @@ export const VEXA_LIVE_HTML = `<!doctype html>
     @media(max-height:700px){.live-hero{padding-top:22px;padding-bottom:13px}.live-hero h1{font-size:23px}.live-copy{font-size:11px}}
     @media(max-width:380px){.live-app{padding-left:13px;padding-right:13px}.language-field{padding-left:8px;padding-right:8px}.language-select-wrap select{font-size:10.5px}}
     @media(prefers-reduced-motion:reduce){.live-header,.live-hero h1,.live-copy,.video-picker-state,.live-status-pill i{animation:none!important}}
+
+    body.vexa-stt-embedded .vexa-stt-top{display:none!important}
+    body.vexa-stt-embedded .vexa-stt{padding:0 16px calc(82px + env(safe-area-inset-bottom))!important}
+    body.vexa-stt-embedded .vexa-stt-editor{margin-top:-4px!important}
+    body.vexa-stt-embedded .vexa-stt-controls{grid-template-columns:minmax(0,1fr) 42px!important;gap:8px!important;bottom:calc(16px + env(safe-area-inset-bottom))!important}
+    body.vexa-stt-embedded .vexa-stt-record,body.vexa-stt-embedded .vexa-stt-upload{height:42px!important;min-height:42px!important;border-radius:13px!important}
+    body.vexa-stt-embedded .vexa-stt-record{background:linear-gradient(180deg,#fff 0%,#f4f4f4 48%,#d9d9d9 100%)!important;border:1px solid rgba(255,255,255,.16)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.98),inset 0 -1px 0 rgba(0,0,0,.18),0 8px 24px rgba(0,0,0,.34),0 0 24px rgba(255,255,255,.07)!important}
+    body.vexa-stt-embedded .vexa-stt-record::before{left:9%!important;right:9%!important;opacity:.92!important}
+    body.vexa-stt-embedded .vexa-stt-upload{position:relative!important;padding:0!important;border:0!important;background:rgba(13,13,13,.62)!important;color:rgba(255,255,255,.82)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22)!important;backdrop-filter:blur(10px) saturate(1.12)!important;-webkit-backdrop-filter:blur(10px) saturate(1.12)!important}
+    body.vexa-stt-embedded .vexa-stt-upload svg{display:none!important}
+    body.vexa-stt-embedded .vexa-stt-upload::before,body.vexa-stt-embedded .vexa-stt-upload::after{content:"";position:absolute;left:50%;top:50%;width:18px;height:2.5px;border-radius:999px;background:currentColor;transform:translate(-50%,-50%);transition:transform .28s cubic-bezier(.16,1,.3,1),opacity .2s ease}
+    body.vexa-stt-embedded .vexa-stt-upload::after{transform:translate(-50%,-50%) rotate(90deg)}
+    body.vexa-stt-embedded .vexa-stt-upload:active::before{transform:translate(-50%,-50%) rotate(90deg) scale(.82)}
+    body.vexa-stt-embedded .vexa-stt-upload:active::after{transform:translate(-50%,-50%) rotate(180deg) scale(.82)}
+    body.vexa-stt-embedded .vexa-stt-status{bottom:calc(65px + env(safe-area-inset-bottom))!important}
+    body.vexa-stt-embedded .vexa-stt-wave-stage{bottom:100px!important}
   </style>
 </head>
 <body>
