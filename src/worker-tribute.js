@@ -8,7 +8,7 @@ import {
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
 
-const TRIBUTE_UI_VERSION = "20260818-2";
+const TRIBUTE_UI_VERSION = "20260818-3";
 
 export { AiCodingWorkflow } from "./worker-with-media.js";
 
