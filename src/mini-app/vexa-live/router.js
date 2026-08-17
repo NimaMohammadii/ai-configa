@@ -9,10 +9,7 @@ import { AI_CHAT_MODELS } from "../../ai-chat-model.js";
 import { authenticateMiniAppPayload } from "../auth.js";
 import { handleMiniAppRequest } from "../server.js";
 import { getVexaLiveAccessSettings } from "./access.js";
-import {
-  VEXA_LIVE_INTEGRATION_JS,
-  VEXA_LIVE_JS,
-} from "./client.js";
+import { VEXA_LIVE_JS } from "./client.js";
 import { VEXA_LIVE_HTML } from "./html.js";
 import {
   VEXA_LIVE_CSS,
@@ -20,6 +17,7 @@ import {
 } from "./styles.js";
 
 const LIVE_ROOT = "/mini-app/live";
+const INTEGRATION_VERSION = "20260817-1";
 const SCRIBE_MODEL = "scribe_v2";
 const REALTIME_SCRIBE_MODEL = "scribe_v2_realtime";
 const MAX_TRANSLATION_TEXT = 1200;
@@ -281,7 +279,7 @@ export async function handleVexaLiveRequest(request, env) {
     }
 
     if (request.method === "GET" && path === LIVE_ROOT + "/integration.js") {
-      return textResponse(VEXA_LIVE_INTEGRATION_JS, "application/javascript;charset=utf-8");
+      return textResponse(VEXA_LIVE_INLINE_INTEGRATION_JS, "application/javascript;charset=utf-8");
     }
 
     if (request.method === "POST" && path === LIVE_ROOT + "/api/session") {
@@ -320,9 +318,9 @@ export async function handleMiniAppWithVexaLive(request, env) {
 
   const source = await response.text();
   const script =
-    "<script>" +
-    VEXA_LIVE_INLINE_INTEGRATION_JS.replace(/<\/script/gi, "<\\/script") +
-    "</script>";
+    '<script src="/mini-app/live/integration.js?v=' +
+    INTEGRATION_VERSION +
+    '"></script>';
   const html = source.includes("</body>")
     ? source.replace("</body>", script + "\n</body>")
     : source + script;
