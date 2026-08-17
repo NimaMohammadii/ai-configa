@@ -163,6 +163,7 @@ export function adminMainKeyboard() {
   return {
     inline_keyboard: [
       [{ text: "Users", callback_data: "admin_users:0" }, { text: "🔎 Search User", callback_data: "admin_user_search_prompt" }],
+      [{ text: "🔗 Referral", callback_data: "admin_referrals:0" }],
       [{ text: "💳 Buyers", callback_data: "admin_buyers:0" }, { text: "↩️ Return Users", callback_data: "admin_returns" }],
       [{ text: "🟢 Online Users", callback_data: "admin_online:0" }, { text: "🌍 Users by Language", callback_data: "admin_language_stats" }],
       [{ text: "📊 Usage Stats", callback_data: "admin_stats" }, { text: "🌐 Language Settings", callback_data: "admin_lang_settings" }],
@@ -873,6 +874,57 @@ export async function getAdminUsersPage(env, page = 0, limit = 8) {
   };
 }
 
+export async function getAdminReferralUsersPage(env, page = 0, limit = 8) {
+  requireDb(env);
+
+  const offset = Number(page) * Number(limit);
+  const totals = await env.DB.prepare(
+    "SELECT COUNT(DISTINCT referrer_user_id) AS total_users, COUNT(*) AS total_invites FROM referrals"
+  ).first();
+  const rows = await env.DB.prepare(
+    "SELECT r.referrer_user_id AS user_id, b.username, b.first_name, b.last_name, b.last_seen_at, COALESCE(b.return_count, 0) AS return_count, " +
+    "COUNT(*) AS referral_count, MAX(r.created_at) AS last_referral_at " +
+    "FROM referrals r LEFT JOIN bot_users b ON b.user_id = r.referrer_user_id " +
+    "GROUP BY r.referrer_user_id, b.username, b.first_name, b.last_name, b.last_seen_at, b.return_count " +
+    "ORDER BY referral_count DESC, datetime(last_referral_at) DESC LIMIT ? OFFSET ?"
+  ).bind(Number(limit), Number(offset)).all();
+
+  return {
+    total: Number(totals?.total_users || 0),
+    totalInvites: Number(totals?.total_invites || 0),
+    page: Number(page),
+    limit: Number(limit),
+    users: rows.results || [],
+  };
+}
+
+export async function adminReferralUsersText(env, page = 0) {
+  const data = await getAdminReferralUsersPage(env, page);
+  return [
+    "🔗 <b>Referral</b>",
+    "",
+    "Users with referrals: <b>" + formatNumber(data.total) + "</b>",
+    "Total invited users: <b>" + formatNumber(data.totalInvites) + "</b>",
+    "Page: <b>" + (data.page + 1) + "</b>",
+    "",
+    data.users.length ? "Select a user (highest invite count first):" : "No referrals yet."
+  ].join("\n");
+}
+
+export async function adminReferralUsersKeyboard(env, page = 0) {
+  const data = await getAdminReferralUsersPage(env, page);
+  const rows = data.users.map((user) => [{
+    text: userLabel(user) + " • 🔗 " + formatNumber(user.referral_count || 0),
+    callback_data: "admin_user:" + user.user_id + ":" + data.page,
+  }]);
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_referrals:" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_referrals:" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
 export async function getAdminMiniAppUsersPage(env, page = 0, limit = 8) {
   requireDb(env);
 
@@ -1236,7 +1288,11 @@ export async function getAdminUserDetails(env, userId) {
   const purchases = await getUserPurchaseSummary(env, userId);
   const usage = await getUserUsageSummary(env, userId);
   const sectionOpens = await getUserMiniAppSectionOpens(env, userId);
-  return { ...user, balance, purchases, usage, sectionOpens };
+  const referralRow = await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM referrals WHERE referrer_user_id = ?"
+  ).bind(String(userId)).first();
+  const referralCount = Number(referralRow?.count || 0);
+  return { ...user, balance, purchases, usage, sectionOpens, referralCount };
 }
 
 async function getUserUsageSummary(env, userId) {
@@ -1385,6 +1441,7 @@ export async function adminUserText(env, userId) {
     "ID: <code>" + escapeHtml(user.user_id) + "</code>",
     "Language: <b>" + escapeHtml(formatLanguage(user.language)) + "</b>",
     "Balance: <b>" + Number(user.balance || 0).toLocaleString("en-US") + " credits</b>",
+    "Referral invites: <b>" + Number(user.referralCount || 0).toLocaleString("en-US") + "</b>",
     "",
     "💳 <b>Purchases</b>",
     "Approved receipts: <b>" + Number(purchases.approvedReceipts || 0).toLocaleString("en-US") + "</b>",
