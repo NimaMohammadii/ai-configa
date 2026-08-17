@@ -144,13 +144,14 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function activateCardMode(){
     if(!config||!config.configured)return toast('Card payment is temporarily unavailable');
-    if(!config.available)return toast(config.error||'Card checkout is not ready yet');
     cardModeActive=true;
     var page=q('creditsPage'),stars=q('creditsStarsMode'),toman=q('creditsTomanMode'),tribute=q('creditsTributeMode'),switcher=q('creditsPaymentSwitch');
     if(page){page.classList.remove('toman-payment-active');page.classList.add('tribute-payment-active')}if(stars)stars.classList.remove('active');if(toman){toman.classList.remove('active');toman.setAttribute('aria-hidden','true')}if(tribute){tribute.classList.add('active');tribute.setAttribute('aria-hidden','false')}if(switcher)switcher.setAttribute('data-mode','card');
     document.querySelectorAll('[data-action="set-credit-payment"]').forEach(function(button){var active=button.getAttribute('data-payment-mode')==='card';button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false')});
     var head=page&&page.querySelector('.credits-page-head>div:first-child');if(head){var kicker=head.querySelector('span'),title=head.querySelector('h2');if(kicker)kicker.textContent='BANK CARD';if(title)title.textContent='Buy credits';head.setAttribute('dir','ltr')}
-    syncSwitchIndicator();renderCurrencies();renderProducts();restorePaymentState();haptic('light');
+    syncSwitchIndicator();renderCurrencies();renderProducts();
+    if(config.available){restorePaymentState()}else{setPaymentState('failed','Card checkout not ready',config.error||'No active card product is available yet.');setStateAction(null)}
+    haptic('light');
   }
 
   function deactivateCardMode(next){
