@@ -85,20 +85,44 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     return true;
   }
 
-  function applyConfig(data){
-    config=data||null;
-    var card=q('creditsCardTab');
-    if(!config||!config.available){if(card)card.hidden=true;return}
-    selectedCurrency=String(config.defaultCurrency||((config.currencies&&config.currencies[0]&&config.currencies[0].code)||'usd')).toLowerCase();
-    var switcher=q('creditsPaymentSwitch');var toman=switcher&&switcher.querySelector('[data-payment-mode="toman"]');var persian=String(config.language||'').toLowerCase()==='fa';
+  function paymentButtons(){
+    var switcher=q('creditsPaymentSwitch');
+    return switcher?Array.prototype.slice.call(switcher.querySelectorAll('[data-action="set-credit-payment"]')):[];
+  }
+
+  function syncPaymentSwitcher(){
+    var switcher=q('creditsPaymentSwitch');if(!switcher)return;
+    var stars=switcher.querySelector('[data-payment-mode="stars"]');
+    var card=switcher.querySelector('[data-payment-mode="card"]');
+    var toman=switcher.querySelector('[data-payment-mode="toman"]');
+    var persian=!!(config&&String(config.language||'').toLowerCase()==='fa');
+    var cardConfigured=!!(config&&config.configured);
+    if(stars)stars.hidden=false;
+    if(card){card.hidden=!cardConfigured;card.title=cardConfigured&&!config.available?String(config.error||'Card checkout is not ready yet'):''}
     if(toman)toman.hidden=!persian;
-    if(switcher){switcher.classList.add('show','tribute-switch');switcher.setAttribute('aria-hidden','false');switcher.style.setProperty('--tribute-count',persian?'3':'2');syncSwitchIndicator()}
+    var visible=paymentButtons().filter(function(button){return !button.hidden});
+    var show=visible.length>1;
+    switcher.classList.toggle('show',show);
+    switcher.classList.toggle('tribute-switch',show);
+    switcher.setAttribute('aria-hidden',show?'false':'true');
+    switcher.style.setProperty('--tribute-count',String(Math.max(1,visible.length)));
+    syncSwitchIndicator();
+  }
+
+  function applyConfig(data){
+    config=data||{};
+    selectedCurrency=String(config.defaultCurrency||((config.currencies&&config.currencies[0]&&config.currencies[0].code)||'usd')).toLowerCase();
+    syncPaymentSwitcher();
     renderCurrencies();renderProducts();restorePaymentState();
   }
 
   function syncSwitchIndicator(){
-    var switcher=q('creditsPaymentSwitch');if(!switcher)return;var persian=config&&String(config.language||'').toLowerCase()==='fa';var shift='0%';
-    if(cardModeActive)shift='100%';else if(switcher.getAttribute('data-mode')==='toman'&&persian)shift='200%';switcher.style.setProperty('--tribute-shift',shift);
+    var switcher=q('creditsPaymentSwitch');if(!switcher)return;
+    var activeMode=cardModeActive?'card':String(switcher.getAttribute('data-mode')||'stars');
+    var visible=paymentButtons().filter(function(button){return !button.hidden});
+    var index=visible.findIndex(function(button){return String(button.getAttribute('data-payment-mode')||'')===activeMode});
+    if(index<0)index=0;
+    switcher.style.setProperty('--tribute-shift',String(index*100)+'%');
   }
 
   function renderCurrencies(){
@@ -111,13 +135,17 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   function setCurrency(code){selectedCurrency=String(code||'usd').toLowerCase();renderCurrencies();renderProducts();haptic('light')}
 
   function renderProducts(){
-    var list=q('tributeProductList');if(!list||!config)return;var products=Array.isArray(config.products)?config.products.filter(function(item){return item&&String(item.currency||'').toLowerCase()===selectedCurrency}):[];
-    if(!products.length){list.innerHTML='<div class="tribute-empty">No card pack is available in this currency yet.</div>';return}
+    var list=q('tributeProductList');if(!list)return;
+    if(!config){list.innerHTML='';return}
+    var products=Array.isArray(config.products)?config.products.filter(function(item){return item&&String(item.currency||'').toLowerCase()===selectedCurrency}):[];
+    if(!products.length){list.innerHTML='<div class="tribute-empty">'+String(config.error||'No card pack is available in this currency yet.')+'</div>';return}
     list.innerHTML=products.map(function(product){return '<button class="tribute-product" type="button" data-action="buy-tribute-product" data-product-id="'+String(product.productId||'')+'"><span class="tribute-product-main"><strong>'+number(product.credits)+' credits</strong><small>'+minutes(product.credits)+' min voice · added automatically</small></span><span class="tribute-product-price"><strong>'+money(product.amountMinor,product.currency)+'</strong><small>'+String(product.currency||'').toUpperCase()+' · card</small></span></button>'}).join('');
   }
 
   function activateCardMode(){
-    if(!config||!config.available)return toast((config&&config.error)||'Card payment is temporarily unavailable');cardModeActive=true;
+    if(!config||!config.configured)return toast('Card payment is temporarily unavailable');
+    if(!config.available)return toast(config.error||'Card checkout is not ready yet');
+    cardModeActive=true;
     var page=q('creditsPage'),stars=q('creditsStarsMode'),toman=q('creditsTomanMode'),tribute=q('creditsTributeMode'),switcher=q('creditsPaymentSwitch');
     if(page){page.classList.remove('toman-payment-active');page.classList.add('tribute-payment-active')}if(stars)stars.classList.remove('active');if(toman){toman.classList.remove('active');toman.setAttribute('aria-hidden','true')}if(tribute){tribute.classList.add('active');tribute.setAttribute('aria-hidden','false')}if(switcher)switcher.setAttribute('data-mode','card');
     document.querySelectorAll('[data-action="set-credit-payment"]').forEach(function(button){var active=button.getAttribute('data-payment-mode')==='card';button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false')});
@@ -184,7 +212,18 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')checkPending(false)});window.addEventListener('focus',function(){checkPending(false)},{passive:true});
 
-  function boot(attempt){installStyles();if(!installUi()){if(attempt<30)setTimeout(function(){boot(attempt+1)},80);return}api('/mini-app/api/tribute-config',{}).then(function(data){applyConfig(data);setTimeout(function(){var switcher=q('creditsPaymentSwitch');if(switcher&&config&&config.available){switcher.classList.add('show','tribute-switch');switcher.setAttribute('aria-hidden','false');syncSwitchIndicator()}},850);restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(function(){checkPending(false)},1100)}).catch(function(){var card=q('creditsCardTab');if(card)card.hidden=true})}
+  function boot(attempt){
+    installStyles();
+    if(!installUi()){if(attempt<30)setTimeout(function(){boot(attempt+1)},80);return}
+    api('/mini-app/api/tribute-config',{}).then(function(data){
+      applyConfig(data);
+      setTimeout(syncPaymentSwitcher,850);
+      restoreSuccessAfterReload();
+      if(storageGet(PENDING_KEY))setTimeout(function(){checkPending(false)},1100)
+    }).catch(function(){
+      var card=q('creditsCardTab');if(card)card.hidden=true;
+    })
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){boot(0)},{once:true});else boot(0);
 })();
 `;
