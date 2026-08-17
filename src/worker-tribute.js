@@ -17,7 +17,7 @@ const KNOWN_TRIBUTE_SHOP_EVENTS = new Set([
 
 let tributeShopCache = null;
 
-export { AiCodingWorkflow, VexaMediaContainerV2 } from "./worker-with-media.js";
+export { AiCodingWorkflow } from "./worker-with-media.js";
 
 export default {
   ...worker,
