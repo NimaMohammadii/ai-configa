@@ -5,7 +5,7 @@ import {
 } from "./mini-app/vexa-live/voice-agent.js";
 import { VEXA_VOICE_AGENT_JS } from "./mini-app/vexa-live/voice-agent-client.js";
 
-const VEXA_VOICE_AGENT_VERSION = "20260817-4";
+const VEXA_VOICE_AGENT_VERSION = "20260817-5";
 const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
 const VOICE_RUNTIME_PATH = "/mini-app/live/voice-agent-runtime.js";
 
@@ -42,7 +42,7 @@ export default {
 };
 
 function voiceRuntimeResponse() {
-  return new Response(exposeVoiceOpen(VEXA_VOICE_AGENT_JS), {
+  return new Response(VEXA_VOICE_AGENT_JS, {
     status: 200,
     headers: {
       "Content-Type": "application/javascript;charset=utf-8",
@@ -51,15 +51,6 @@ function voiceRuntimeResponse() {
       "X-Vexa-Voice-Agent": VEXA_VOICE_AGENT_VERSION,
     },
   });
-}
-
-function exposeVoiceOpen(source) {
-  const marker = "  function initialize() {";
-  if (!String(source || "").includes(marker)) return String(source || "");
-  return String(source).replace(
-    marker,
-    "  try { window.__vexaVoiceAgentOpen = openVoiceMode; } catch (error) {}\n\n" + marker
-  );
 }
 
 async function bumpLiveIntegrationVersion(response) {
@@ -111,7 +102,6 @@ function voiceBridgeRuntime() {
   var RUNTIME=${JSON.stringify(VOICE_RUNTIME_PATH)};
   var timer=0;
   var attempts=0;
-  var pendingOpen=false;
 
   function stop(){
     if(timer){clearInterval(timer);timer=0;}
@@ -123,56 +113,83 @@ function voiceBridgeRuntime() {
     style.id="vexaVoiceBridgeStyles";
     style.textContent=
       'body.vexa-stt-embedded .vexa-stt-controls{grid-template-columns:minmax(0,1fr) 42px 42px!important}' +
-      '.vexa-voice-open{position:relative;width:42px;height:42px;padding:0;display:grid!important;place-items:center;border:0;border-radius:13px;color:#fff;background:rgba(13,13,13,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);overflow:hidden;opacity:1!important;visibility:visible!important;pointer-events:auto;transition:transform .28s cubic-bezier(.16,1,.3,1),opacity .2s ease}' +
+      '.vexa-voice-open{position:relative;width:42px;height:42px;padding:0;display:grid!important;place-items:center;border:0;border-radius:13px;color:#fff;background:rgba(13,13,13,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);overflow:hidden;opacity:1!important;visibility:visible!important;transition:transform .28s cubic-bezier(.16,1,.3,1),opacity .2s ease}' +
       '.vexa-voice-open:active{transform:scale(.88)}' +
       '.vexa-voice-open-orb{display:block;width:17px;height:17px;border-radius:50%;background:radial-gradient(circle at 50% 50%,#08080a 0 55%,rgba(58,25,120,.55) 68%,#8c5cff 81%,#ffd1f2 98%);box-shadow:0 0 10px rgba(134,82,255,.34),0 0 3px rgba(255,208,240,.38);animation:vexaVoiceBridgeBreath 2.8s ease-in-out infinite}' +
+      '#vexaVoiceAgentPlaceholder{pointer-events:none}' +
       'body.vexa-stt-embedded .vexa-stt.recording .vexa-voice-open,body.vexa-stt-embedded .vexa-stt.processing .vexa-voice-open{opacity:.25!important;pointer-events:none;transform:scale(.92)}' +
       '@keyframes vexaVoiceBridgeBreath{0%,100%{transform:scale(.92);filter:brightness(.88)}50%{transform:scale(1.06);filter:brightness(1.14)}}';
     doc.head.appendChild(style);
   }
 
-  function tryOpen(frame){
-    if(!pendingOpen)return false;
-    try{
-      var fn=frame.contentWindow&&frame.contentWindow.__vexaVoiceAgentOpen;
-      if(typeof fn!=="function")return false;
-      pendingOpen=false;
-      var result=fn();
-      if(result&&typeof result.catch==="function")result.catch(function(error){console.error("Vexa voice open",error);});
-      return true;
-    }catch(error){
-      return false;
+  function removePlaceholder(doc){
+    var placeholder=doc.getElementById("vexaVoiceAgentPlaceholder");
+    if(placeholder){
+      try{placeholder.remove();}catch(error){}
     }
   }
 
-  function ensureButton(frame,doc){
+  function realButton(doc){
+    var button=doc.getElementById("vexaVoiceAgentOpen");
+    if(button&&button.dataset&&button.dataset.vexaVoiceBridgeBound){
+      try{button.remove();}catch(error){}
+      return null;
+    }
+    return button;
+  }
+
+  function ensurePlaceholder(doc){
     var shell=doc.getElementById("vexaStt");
     var controls=shell&&shell.querySelector(".vexa-stt-controls");
     var upload=doc.getElementById("vexaSttUpload");
     if(!shell||!controls||!upload)return null;
 
     ensureStyle(doc);
-    var button=doc.getElementById("vexaVoiceAgentOpen");
-    if(!button){
-      button=doc.createElement("button");
-      button.id="vexaVoiceAgentOpen";
-      button.className="vexa-voice-open";
-      button.type="button";
-      button.setAttribute("aria-label","Talk to Vexa");
-      button.innerHTML='<span class="vexa-voice-open-orb" aria-hidden="true"></span>';
-      controls.insertBefore(button,upload);
+    var button=realButton(doc);
+    if(button){
+      removePlaceholder(doc);
+      return button;
     }
 
-    if(button.dataset.vexaVoiceBridgeBound!==VERSION){
-      button.dataset.vexaVoiceBridgeBound=VERSION;
-      button.addEventListener("click",function(){
-        if(shell.classList.contains("recording")||shell.classList.contains("processing"))return;
-        pendingOpen=true;
-        install();
-        tryOpen(frame);
-      });
+    var placeholder=doc.getElementById("vexaVoiceAgentPlaceholder");
+    if(!placeholder){
+      placeholder=doc.createElement("button");
+      placeholder.id="vexaVoiceAgentPlaceholder";
+      placeholder.className="vexa-voice-open";
+      placeholder.type="button";
+      placeholder.tabIndex=-1;
+      placeholder.setAttribute("aria-hidden","true");
+      placeholder.innerHTML='<span class="vexa-voice-open-orb" aria-hidden="true"></span>';
+      controls.insertBefore(placeholder,upload);
     }
-    return button;
+    return placeholder;
+  }
+
+  function ensureRuntime(doc){
+    var runtime=doc.getElementById("vexaVoiceAgentRuntime");
+    if(runtime&&runtime.dataset.version!==VERSION){
+      try{runtime.remove();}catch(error){}
+      runtime=null;
+    }
+    if(runtime)return runtime;
+
+    runtime=doc.createElement("script");
+    runtime.id="vexaVoiceAgentRuntime";
+    runtime.src=RUNTIME+"?v="+encodeURIComponent(VERSION);
+    runtime.async=false;
+    runtime.dataset.version=VERSION;
+    runtime.addEventListener("load",function(){
+      var button=realButton(doc);
+      if(button){
+        removePlaceholder(doc);
+        stop();
+      }
+    },{once:true});
+    runtime.addEventListener("error",function(){
+      try{runtime.remove();}catch(error){}
+    },{once:true});
+    doc.body.appendChild(runtime);
+    return runtime;
   }
 
   function install(){
@@ -183,33 +200,23 @@ function voiceBridgeRuntime() {
       var doc=frame.contentDocument;
       if(!doc||!doc.body||!doc.getElementById("vexaStt"))return false;
 
-      var button=ensureButton(frame,doc);
-      if(!button)return false;
-
-      var ready=typeof frame.contentWindow.__vexaVoiceAgentOpen==="function";
-      if(ready){
+      var button=realButton(doc);
+      if(button){
+        removePlaceholder(doc);
         frame.dataset.vexaVoiceAgent=VERSION;
-        tryOpen(frame);
         stop();
         return true;
       }
 
-      var runtime=doc.getElementById("vexaVoiceAgentRuntime");
-      if(!runtime){
-        runtime=doc.createElement("script");
-        runtime.id="vexaVoiceAgentRuntime";
-        runtime.src=RUNTIME+"?v="+encodeURIComponent(VERSION);
-        runtime.async=false;
-        runtime.dataset.version=VERSION;
-        runtime.addEventListener("load",function(){
-          frame.dataset.vexaVoiceAgent=VERSION;
-          tryOpen(frame);
-          if(typeof frame.contentWindow.__vexaVoiceAgentOpen==="function")stop();
-        },{once:true});
-        runtime.addEventListener("error",function(){
-          try{runtime.remove();}catch(error){}
-        },{once:true});
-        doc.body.appendChild(runtime);
+      if(!ensurePlaceholder(doc))return false;
+      ensureRuntime(doc);
+
+      button=realButton(doc);
+      if(button){
+        removePlaceholder(doc);
+        frame.dataset.vexaVoiceAgent=VERSION;
+        stop();
+        return true;
       }
     }catch(error){}
 
