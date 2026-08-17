@@ -8,7 +8,7 @@ import {
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
 
-const TRIBUTE_UI_VERSION = "20260818-5";
+const TRIBUTE_UI_VERSION = "20260818-6";
 const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
 const CONFIGURED_VEXA_PRODUCT_LINKS = new Set([
   "https://web.tribute.tg/p/CcQ",
@@ -173,6 +173,19 @@ function json(value, status = 200) {
   });
 }
 
+function tributeMiniAppIntegrationSource() {
+  const externalOpen =
+    "    if(paymentUrl&&tg&&typeof tg.openLink==='function'){try{tg.openLink(paymentUrl,{try_instant_view:false});return true}catch(error){}}\n" +
+    "    if(paymentUrl){try{window.location.assign(paymentUrl);return true}catch(error){}}";
+  const sameWebViewOpen =
+    "    if(paymentUrl){try{window.location.assign(paymentUrl);return true}catch(error){}}";
+  const patched = TRIBUTE_PAYMENTS_INTEGRATION_JS.replace(externalOpen, sameWebViewOpen);
+  if (patched === TRIBUTE_PAYMENTS_INTEGRATION_JS) {
+    console.warn("Tribute checkout same-webview patch target was not found");
+  }
+  return patched;
+}
+
 async function injectTributeIntoMiniAppBundle(response) {
   if (!response || !response.ok) return response;
 
@@ -182,7 +195,7 @@ async function injectTributeIntoMiniAppBundle(response) {
   const source = await response.text();
   const integration =
     "\n;/* Vexa Tribute UI " + TRIBUTE_UI_VERSION + " */\n" +
-    TRIBUTE_PAYMENTS_INTEGRATION_JS +
+    tributeMiniAppIntegrationSource() +
     "\n";
 
   const headers = new Headers(response.headers);
