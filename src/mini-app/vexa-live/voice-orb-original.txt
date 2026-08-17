@@ -1,4 +1,134 @@
+  let vexaVoiceObservedSocket = null;
+  let vexaVoiceSocketProbe = 0;
+  let vexaVoiceResponseTimer = 0;
+
+  function installVoiceStatusUi() {
+    if (q("vexaVoiceStatusRuntimeStyle")) return;
+    const style = document.createElement("style");
+    style.id = "vexaVoiceStatusRuntimeStyle";
+    style.textContent = `
+      .vexa-voice-close,.vexa-voice-transcript,.vexa-voice-hint{display:none!important}
+      .vexa-voice-copy{display:flex!important;min-height:24px!important;margin-top:-8px!important;transform:translateY(-42px)!important;opacity:1!important}
+      .vexa-voice-overlay.open .vexa-voice-copy{display:flex!important;transform:translateY(-42px)!important;opacity:1!important}
+      .vexa-voice-status{height:24px!important;color:rgba(255,255,255,.68)!important;font-size:12px!important;font-weight:650!important;letter-spacing:-.015em!important}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function clearVoiceResponseWatchdog() {
+    if (vexaVoiceResponseTimer) {
+      clearTimeout(vexaVoiceResponseTimer);
+      vexaVoiceResponseTimer = 0;
+    }
+  }
+
+  function armVoiceResponseWatchdog() {
+    clearVoiceResponseWatchdog();
+    vexaVoiceResponseTimer = setTimeout(() => {
+      vexaVoiceResponseTimer = 0;
+      if (!state.active) return;
+      if (state.phase === "thinking") {
+        fail(new Error("Voice response timed out"));
+      }
+    }, 15000);
+  }
+
+  function observeVoiceSocket(socket) {
+    if (!socket || socket === vexaVoiceObservedSocket) return;
+    vexaVoiceObservedSocket = socket;
+    let metadataReady = false;
+    let initTimer = 0;
+
+    socket.addEventListener("open", () => {
+      if (!state.active) return;
+      setPhase("connecting", "Preparing voice", "");
+      setTimeout(() => {
+        if (!state.active || metadataReady) return;
+        state.captureEnabled = false;
+        setPhase("connecting", "Preparing voice", "");
+      }, 0);
+      initTimer = setTimeout(() => {
+        if (!state.active || metadataReady) return;
+        fail(new Error("Voice engine did not initialize"));
+      }, 10000);
+    });
+
+    socket.addEventListener("message", (event) => {
+      if (!state.active) return;
+      let message;
+      try { message = JSON.parse(String(event.data || "{}")); } catch (error) { return; }
+      const type = String(message?.type || "");
+
+      if (type === "conversation_initiation_metadata") {
+        metadataReady = true;
+        if (initTimer) {
+          clearTimeout(initTimer);
+          initTimer = 0;
+        }
+        state.captureEnabled = true;
+        clearVoiceResponseWatchdog();
+        setPhase("listening", "Listening", "");
+        return;
+      }
+
+      if (type === "user_transcript") {
+        clearVoiceResponseWatchdog();
+        setPhase("thinking", "Thinking", "");
+        armVoiceResponseWatchdog();
+        return;
+      }
+
+      if (type === "agent_response") {
+        clearVoiceResponseWatchdog();
+        setPhase("thinking", "Generating response", "");
+        armVoiceResponseWatchdog();
+        return;
+      }
+
+      if (type === "audio") {
+        clearVoiceResponseWatchdog();
+        setPhase("speaking", "Speaking", "");
+        return;
+      }
+
+      if (type === "interruption") {
+        clearVoiceResponseWatchdog();
+        state.captureEnabled = true;
+        setPhase("listening", "Listening", "");
+        return;
+      }
+
+      if (type.includes("error")) {
+        clearVoiceResponseWatchdog();
+        const messageText = String(message?.message || message?.error || "Voice connection failed");
+        fail(new Error(messageText));
+      }
+    });
+
+    socket.addEventListener("close", () => {
+      if (initTimer) clearTimeout(initTimer);
+      clearVoiceResponseWatchdog();
+    });
+  }
+
+  function armVoiceProtocolObserver() {
+    if (vexaVoiceSocketProbe) clearTimeout(vexaVoiceSocketProbe);
+    const probe = () => {
+      vexaVoiceSocketProbe = 0;
+      if (!state.active) return;
+      if (state.socket) {
+        observeVoiceSocket(state.socket);
+        return;
+      }
+      vexaVoiceSocketProbe = setTimeout(probe, 16);
+    };
+    probe();
+  }
+
   function createOrbRenderer(canvas) {
+    installVoiceStatusUi();
+    armVoiceProtocolObserver();
+
     const gl = canvas.getContext("webgl2", { alpha: false, antialias: true, powerPreference: "high-performance" }) ||
       canvas.getContext("webgl", { alpha: false, antialias: true, powerPreference: "high-performance" }) ||
       canvas.getContext("experimental-webgl", { alpha: false, antialias: true });
