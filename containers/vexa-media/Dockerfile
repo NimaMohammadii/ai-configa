@@ -6,7 +6,7 @@ ENV PYTHONUNBUFFERED=1 \
     TOKEN_TTL=6
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 python3-pip ffmpeg ca-certificates git \
+ && apt-get install -y --no-install-recommends python3 python3-pip ffmpeg fonts-noto-core ca-certificates git \
  && rm -rf /var/lib/apt/lists/* \
  && pip3 install --no-cache-dir --break-system-packages \
       "yt-dlp[default]==2026.6.9" \
@@ -19,8 +19,8 @@ RUN apt-get update \
  && npm prune --omit=dev --no-audit --no-fund
 
 WORKDIR /app
-COPY server.py /app/server.py
+COPY server.py exporter.py entrypoint.py /app/
 
 EXPOSE 8080 4416
 
-CMD ["sh", "-c", "node /opt/bgutil-ytdlp-pot-provider/server/build/main.js --port 4416 & sleep 1; exec python3 /app/server.py"]
+CMD ["sh", "-c", "node /opt/bgutil-ytdlp-pot-provider/server/build/main.js --port 4416 & sleep 1; exec python3 /app/entrypoint.py"]
