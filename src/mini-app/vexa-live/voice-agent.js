@@ -499,7 +499,9 @@ function cleanText(value, max) {
 
 async function verifySpeechEngineJwt(token, apiKey) {
   try {
-    const parts = String(token || "").split(".");
+    let value = String(token || "").trim();
+    if (value.toLowerCase().startsWith("bearer ")) value = value.slice(7).trim();
+    const parts = value.split(".");
     if (parts.length !== 3) return false;
     const header = JSON.parse(new TextDecoder().decode(base64UrlBytes(parts[0])));
     const payload = JSON.parse(new TextDecoder().decode(base64UrlBytes(parts[1])));
