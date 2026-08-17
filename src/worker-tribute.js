@@ -8,7 +8,7 @@ import {
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
 
-const TRIBUTE_UI_VERSION = "20260818-4";
+const TRIBUTE_UI_VERSION = "20260818-5";
 const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
 const CONFIGURED_VEXA_PRODUCT_LINKS = new Set([
   "https://web.tribute.tg/p/CcQ",
@@ -104,7 +104,11 @@ function diagnoseProduct(row) {
   const reasons = [];
 
   if (type !== "digital") reasons.push(`type:${type || "missing"}`);
-  if (status !== "approved") reasons.push(`status:${status || "missing"}`);
+  if (isConfiguredLink) {
+    if (status !== "approved" && status !== "new") reasons.push(`status:${status || "missing"}`);
+  } else if (status !== "approved") {
+    reasons.push(`status:${status || "missing"}`);
+  }
   if (!acceptCards) reasons.push("acceptCards:false");
   if (!webLink) reasons.push("webLink:invalid_or_missing");
   if (webLink && !isConfiguredLink && !matchesVexaText) reasons.push("not_vexa_product");
