@@ -6,7 +6,7 @@ import {
 import VEXA_VOICE_AGENT_SOURCE from "./mini-app/vexa-live/voice-agent-runtime.txt";
 import VEXA_VOICE_ORB_SOURCE from "./mini-app/vexa-live/voice-orb-original.txt";
 
-const VEXA_VOICE_AGENT_VERSION = "20260817-12";
+const VEXA_VOICE_AGENT_VERSION = "20260817-13";
 const LIVE_ROOT = "/mini-app/live";
 const LIVE_INTEGRATION_PATH = LIVE_ROOT + "/integration.js";
 const VOICE_RUNTIME_PATH = LIVE_ROOT + "/voice-agent-runtime.js";
@@ -95,8 +95,78 @@ function polishVoiceUi(source) {
   return polished;
 }
 
+function makeVoiceOrbOnly(source) {
+  let result = String(source || "");
+
+  result = result.replace(
+    "      @media(max-height:650px)",
+    "      .vexa-voice-close,.vexa-voice-copy,.vexa-voice-hint{display:none!important}\n      @media(max-height:650px)",
+  );
+
+  const openMarker = "  async function openVoiceMode() {";
+  if (result.includes(openMarker)) {
+    const helpers = `  let vexaVoiceBackHandler = null;
+
+  function setVoiceHostActive(active) {
+    try {
+      const host = hostWindow();
+      const doc = host?.document;
+      if (!doc || doc === document) return;
+      let style = doc.getElementById("vexaVoiceHostModeStyle");
+      if (!style) {
+        style = doc.createElement("style");
+        style.id = "vexaVoiceHostModeStyle";
+        style.textContent =
+          '.vexa-voice-host-active .tts-head{opacity:0!important;visibility:hidden!important;pointer-events:none!important}' +
+          '.vexa-voice-host-active #vexaLiveWorkspace{top:0!important;z-index:2147483000!important}';
+        doc.head?.appendChild(style);
+      }
+      doc.documentElement?.classList.toggle("vexa-voice-host-active", Boolean(active));
+    } catch (error) {}
+  }
+
+  function showTelegramBackButton() {
+    const backButton = telegram()?.BackButton;
+    if (!backButton) return;
+    if (!vexaVoiceBackHandler) {
+      vexaVoiceBackHandler = () => {
+        if (!state.active) return;
+        haptic("light");
+        closeVoiceMode();
+      };
+    }
+    try { backButton.offClick?.(vexaVoiceBackHandler); } catch (error) {}
+    try { backButton.onClick?.(vexaVoiceBackHandler); } catch (error) {}
+    try { backButton.show?.(); } catch (error) {}
+  }
+
+  function hideTelegramBackButton() {
+    const backButton = telegram()?.BackButton;
+    if (!backButton) return;
+    if (vexaVoiceBackHandler) {
+      try { backButton.offClick?.(vexaVoiceBackHandler); } catch (error) {}
+    }
+    try { backButton.hide?.(); } catch (error) {}
+  }
+`;
+    result = result.replace(openMarker, helpers + "\n" + openMarker);
+  }
+
+  result = result.replace(
+    "    state.captureEnabled = false;\n    state.outputSampleRate = DEFAULT_OUTPUT_SAMPLE_RATE;",
+    "    state.captureEnabled = false;\n    state.outputSampleRate = DEFAULT_OUTPUT_SAMPLE_RATE;\n    setVoiceHostActive(true);\n    showTelegramBackButton();",
+  );
+
+  result = result.replace(
+    "    state.active = false;\n    state.captureEnabled = false;\n    closeSpeechEngine();",
+    "    state.active = false;\n    state.captureEnabled = false;\n    hideTelegramBackButton();\n    setVoiceHostActive(false);\n    closeSpeechEngine();",
+  );
+
+  return result;
+}
+
 function browserVoiceRuntimeSource() {
-  const raw = polishVoiceUi(restoreOriginalOrb(VEXA_VOICE_AGENT_SOURCE));
+  const raw = makeVoiceOrbOnly(polishVoiceUi(restoreOriginalOrb(VEXA_VOICE_AGENT_SOURCE)));
   const exportMarker = "\nexport const VEXA_VOICE_AGENT_JS";
   const exportIndex = raw.lastIndexOf(exportMarker);
   const browserBody = exportIndex >= 0 ? raw.slice(0, exportIndex) : raw;
