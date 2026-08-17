@@ -3,9 +3,9 @@ import {
   handleVexaVoiceAgentRequest,
   isVexaVoiceAgentRequest,
 } from "./mini-app/vexa-live/voice-agent.js";
-import { VEXA_VOICE_AGENT_JS } from "./mini-app/vexa-live/voice-agent-client.js";
+import VEXA_VOICE_AGENT_SOURCE from "./mini-app/vexa-live/voice-agent-runtime.txt";
 
-const VEXA_VOICE_AGENT_VERSION = "20260817-8";
+const VEXA_VOICE_AGENT_VERSION = "20260817-9";
 const LIVE_ROOT = "/mini-app/live";
 const LIVE_INTEGRATION_PATH = LIVE_ROOT + "/integration.js";
 const VOICE_RUNTIME_PATH = LIVE_ROOT + "/voice-agent-runtime.js";
@@ -49,14 +49,26 @@ export default {
   },
 };
 
-function voiceRuntimeResponse() {
-  const source =
+function browserVoiceRuntimeSource() {
+  const raw = String(VEXA_VOICE_AGENT_SOURCE || "");
+  const exportMarker = "\nexport const VEXA_VOICE_AGENT_JS";
+  const exportIndex = raw.lastIndexOf(exportMarker);
+  const browserBody = exportIndex >= 0 ? raw.slice(0, exportIndex) : raw;
+
+  return (
     "try{window.__vexaVoiceRuntimeVersion=" +
     JSON.stringify(VEXA_VOICE_AGENT_VERSION) +
-    ";}catch(error){}\n" +
-    VEXA_VOICE_AGENT_JS;
+    ";window.__vexaVoiceRuntimeError=\"\";window.__vexaVoiceRuntimeStarted=false;}catch(error){}\n" +
+    browserBody +
+    "\n;try{vexaVoiceAgentBootstrap();window.__vexaVoiceRuntimeStarted=true;}catch(error){" +
+    "try{window.__vexaVoiceRuntimeError=String(error&&error.message||error||\"Voice runtime failed\");}catch(ignore){}" +
+    "try{console.error(\"Vexa voice runtime\",error);}catch(ignore){}" +
+    "}"
+  );
+}
 
-  return new Response(source, {
+function voiceRuntimeResponse() {
+  return new Response(browserVoiceRuntimeSource(), {
     status: 200,
     headers: {
       "Content-Type": "application/javascript;charset=utf-8",
@@ -160,6 +172,20 @@ function voicePresenceBridge() {
     node.classList.toggle("show",Boolean(message));
   }
 
+  function runtimeWindow(doc){
+    try{return doc&&doc.defaultView||null;}catch(error){return null;}
+  }
+
+  function runtimeError(doc){
+    var win=runtimeWindow(doc);
+    return String(win&&win.__vexaVoiceRuntimeError||"").trim();
+  }
+
+  function runtimeStarted(doc){
+    var win=runtimeWindow(doc);
+    return Boolean(win&&win.__vexaVoiceRuntimeVersion===VERSION&&win.__vexaVoiceRuntimeStarted===true);
+  }
+
   function ensureStyle(doc){
     if(doc.getElementById("vexaVoicePresenceStyle"))return;
     var style=doc.createElement("style");
@@ -214,16 +240,18 @@ function voicePresenceBridge() {
       placeholder.addEventListener("click",function(){
         var current=realButton(doc);
         if(current){current.click();return;}
+        var error=runtimeError(doc);
+        if(error){status(doc,"Voice runtime error · "+error);return;}
         status(doc,"Starting voice…");
         nudge(doc);
         retryRuntime(frame,doc);
-        waitForRealButton(doc,Date.now());
+        waitForRealButton(frame,doc,Date.now());
       });
     }
     return placeholder;
   }
 
-  function waitForRealButton(doc,startedAt){
+  function waitForRealButton(frame,doc,startedAt){
     var button=realButton(doc);
     if(button){
       removePlaceholder(doc);
@@ -231,24 +259,34 @@ function voicePresenceBridge() {
       try{button.click();}catch(error){}
       return;
     }
-    if(Date.now()-startedAt>5000){
-      status(doc,"Voice runtime did not start");
+
+    var error=runtimeError(doc);
+    if(error){
+      status(doc,"Voice runtime error · "+error);
       return;
     }
-    setTimeout(function(){waitForRealButton(doc,startedAt);},90);
+
+    if(runtimeStarted(doc))nudge(doc);
+
+    if(Date.now()-startedAt>5000){
+      status(doc,runtimeStarted(doc)?"Voice UI did not attach":"Voice runtime did not start");
+      return;
+    }
+    setTimeout(function(){waitForRealButton(frame,doc,startedAt);},90);
   }
 
   function retryRuntime(frame,doc){
     try{
-      if(frame.contentWindow&&frame.contentWindow.__vexaVoiceRuntimeVersion===VERSION){
+      if(runtimeStarted(doc)){
         nudge(doc);
         return;
       }
+
       var old=doc.getElementById("vexaVoiceRuntimeRetry");
-      if(old)return;
+      if(old){try{old.remove();}catch(error){}}
       var script=doc.createElement("script");
       script.id="vexaVoiceRuntimeRetry";
-      script.src=RUNTIME+"?v="+encodeURIComponent(VERSION)+"&retry=1";
+      script.src=RUNTIME+"?v="+encodeURIComponent(VERSION)+"&retry="+Date.now();
       script.addEventListener("load",function(){nudge(doc);},{once:true});
       script.addEventListener("error",function(){status(doc,"Voice runtime failed to load");},{once:true});
       doc.body.appendChild(script);
@@ -273,7 +311,7 @@ function voicePresenceBridge() {
       }
 
       ensurePlaceholder(frame,doc);
-      nudge(doc);
+      if(runtimeStarted(doc))nudge(doc);
     }catch(error){}
 
     if(attempts>=240)stop();
