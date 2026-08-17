@@ -1,5 +1,13 @@
 export const EMOTION_UI_FIXES_JS = String.raw`
 ;(function(){
+  var telegramApp=window.Telegram&&window.Telegram.WebApp;
+  if(telegramApp){
+    try{
+      telegramApp.setHeaderColor&&telegramApp.setHeaderColor('#000000');
+      if(telegramApp.requestFullscreen&&(!telegramApp.isVersionAtLeast||telegramApp.isVersionAtLeast('8.0'))&&!telegramApp.isFullscreen)telegramApp.requestFullscreen();
+    }catch(error){}
+  }
+
   var trigger=document.getElementById('emotionButton');
   var player=document.getElementById('wavePlayer');
   if(trigger){
