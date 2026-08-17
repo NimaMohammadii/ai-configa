@@ -4,8 +4,6 @@ function vexaSttExportBootstrap() {
   const state = {
     selection: 0,
     file: null,
-    uploadId: "",
-    uploadPromise: null,
     sourceKey: "",
     cues: [],
     language: "en",
@@ -44,6 +42,12 @@ function vexaSttExportBootstrap() {
     } catch (error) {}
   }
 
+  function isVideoFile(file) {
+    const type = String(file?.type || "").toLowerCase();
+    const name = String(file?.name || "").toLowerCase();
+    return type.startsWith("video/") || /\.(mp4|mov|m4v|webm|mkv)$/.test(name);
+  }
+
   function installStyles() {
     if (q("vexaSttExportStyles")) return;
     const style = document.createElement("style");
@@ -52,9 +56,9 @@ function vexaSttExportBootstrap() {
       .vexa-video-export{position:fixed;z-index:8;left:16px;right:16px;bottom:calc(68px + env(safe-area-inset-bottom));min-height:48px;display:flex;align-items:center;gap:10px;padding:6px;border-radius:15px;background:rgba(13,13,13,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 14px 34px rgba(0,0,0,.3);backdrop-filter:blur(12px) saturate(1.12);-webkit-backdrop-filter:blur(12px) saturate(1.12);opacity:0;transform:translateY(8px) scale(.985);pointer-events:none;transition:opacity .2s ease,transform .34s cubic-bezier(.16,1,.3,1)}
       .vexa-video-export.show{opacity:1;transform:none;pointer-events:auto}
       .vexa-video-export-copy{position:relative;min-width:0;flex:1;height:36px;display:flex;align-items:center;padding:0 10px;overflow:hidden;color:rgba(255,255,255,.68);font-size:10.5px;font-weight:650;letter-spacing:-.01em}
-      .vexa-video-export-copy::after{content:"";position:absolute;left:10px;right:10px;bottom:4px;height:1px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden}
+      .vexa-video-export-copy::after{content:"";position:absolute;left:10px;right:10px;bottom:4px;height:1px;border-radius:99px;background:rgba(255,255,255,.1)}
       .vexa-video-export.busy .vexa-video-export-copy::before{content:"";position:absolute;z-index:2;left:10px;bottom:4px;width:42px;height:1px;border-radius:99px;background:rgba(255,255,255,.76);box-shadow:0 0 8px rgba(255,255,255,.18);animation:vexaExportProgress 1.45s cubic-bezier(.4,0,.2,1) infinite}
-      .vexa-video-export-button{height:36px;min-width:114px;padding:0 13px;border:0;border-radius:11px;display:none;align-items:center;justify-content:center;gap:7px;background:#fff;color:#050505;box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(0,0,0,.1),0 8px 20px rgba(0,0,0,.28);font-size:10.5px;font-weight:760;letter-spacing:-.015em;transition:transform .2s cubic-bezier(.16,1,.3,1),opacity .2s ease}
+      .vexa-video-export-button{height:36px;min-width:114px;padding:0 13px;border:0;border-radius:11px;display:none;align-items:center;justify-content:center;background:#fff;color:#050505;box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(0,0,0,.1),0 8px 20px rgba(0,0,0,.28);font-size:10.5px;font-weight:760;letter-spacing:-.015em;transition:transform .2s cubic-bezier(.16,1,.3,1),opacity .2s ease}
       .vexa-video-export-button:active{transform:scale(.96)}
       .vexa-video-export.ready .vexa-video-export-copy{display:none}
       .vexa-video-export.ready .vexa-video-export-button{display:flex;flex:1}
@@ -86,7 +90,7 @@ function vexaSttExportBootstrap() {
     q("vexaVideoExportButton")?.addEventListener("click", async () => {
       if (state.lastError) {
         state.lastError = "";
-        await maybeExport(state.selection, true);
+        await exportVideo(state.selection, true);
         return;
       }
       if (!state.exportUrl) return;
@@ -102,6 +106,13 @@ function vexaSttExportBootstrap() {
     return card;
   }
 
+  function lockSttControls(locked) {
+    const upload = q("vexaSttUpload");
+    const record = q("vexaSttRecord");
+    if (upload) upload.disabled = Boolean(locked);
+    if (record) record.disabled = Boolean(locked);
+  }
+
   function setCard(mode, text) {
     installStyles();
     const card = ensureCard();
@@ -111,13 +122,14 @@ function vexaSttExportBootstrap() {
     card.classList.remove("busy", "ready", "error");
     if (!mode) {
       card.classList.remove("show");
+      lockSttControls(false);
       return;
     }
     card.classList.add("show", mode);
     if (copy) copy.textContent = String(text || "Preparing captioned video");
     if (button) button.textContent = mode === "error" ? "Try again" : "Download video";
-    const nativeStatus = q("vexaSttStatus");
-    nativeStatus?.classList.remove("show");
+    lockSttControls(mode === "busy");
+    q("vexaSttStatus")?.classList.remove("show");
   }
 
   async function api(path, body) {
@@ -133,24 +145,27 @@ function vexaSttExportBootstrap() {
   }
 
   async function uploadVideo(file, selection) {
-    const start = await api("/upload/start", {
-      name: file.name || "video.mp4",
-      mime: file.type || "video/mp4",
-      size: file.size,
-    });
-    if (selection !== state.selection) throw new Error("Video changed");
-    state.uploadId = String(start.uploadId || "");
-    const partSize = Math.max(1024 * 1024, Number(start.partSize) || 8 * 1024 * 1024);
-    const parts = [];
-
+    let uploadId = "";
     try {
+      const start = await api("/upload/start", {
+        name: file.name || "video.mp4",
+        mime: file.type || "video/mp4",
+        size: file.size,
+      });
+      uploadId = String(start.uploadId || "");
+      if (!uploadId) throw new Error("Could not start video upload");
+      if (selection !== state.selection) throw new Error("Video changed");
+
+      const partSize = Math.max(5 * 1024 * 1024, Number(start.partSize) || 8 * 1024 * 1024);
       const totalParts = Math.max(1, Math.ceil(file.size / partSize));
+      const parts = [];
+
       for (let index = 0; index < totalParts; index += 1) {
         if (selection !== state.selection) throw new Error("Video changed");
         const partNumber = index + 1;
         const chunk = file.slice(index * partSize, Math.min(file.size, (index + 1) * partSize));
         const response = await fetch(
-          API + "/upload/part?uploadId=" + encodeURIComponent(state.uploadId) + "&partNumber=" + partNumber,
+          API + "/upload/part?uploadId=" + encodeURIComponent(uploadId) + "&partNumber=" + partNumber,
           {
             method: "PUT",
             headers: {
@@ -163,20 +178,17 @@ function vexaSttExportBootstrap() {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(String(data?.error || "Could not upload video"));
         parts.push({ partNumber: Number(data.partNumber), etag: String(data.etag || "") });
-        const percent = Math.round((partNumber / totalParts) * 100);
-        if (q("vexaVideoExport")?.classList.contains("show")) {
-          setCard("busy", "Uploading video · " + percent + "%");
-        }
+        setCard("busy", "Uploading video · " + Math.round((partNumber / totalParts) * 100) + "%");
       }
 
-      const completed = await api("/upload/complete", { uploadId: state.uploadId, parts });
       if (selection !== state.selection) throw new Error("Video changed");
-      state.sourceKey = String(completed.sourceKey || start.sourceKey || "");
-      return state.sourceKey;
+      const completed = await api("/upload/complete", { uploadId, parts });
+      if (selection !== state.selection) throw new Error("Video changed");
+      const sourceKey = String(completed.sourceKey || start.sourceKey || "");
+      if (!sourceKey) throw new Error("Uploaded video was not found");
+      return sourceKey;
     } catch (error) {
-      if (state.uploadId) {
-        api("/upload/abort", { uploadId: state.uploadId }).catch(() => {});
-      }
+      if (uploadId) api("/upload/abort", { uploadId }).catch(() => {});
       throw error;
     }
   }
@@ -242,27 +254,27 @@ function vexaSttExportBootstrap() {
     return String(file?.name || "Vexa video").replace(/\.[^.]+$/, "").trim().slice(0, 100) || "Vexa video";
   }
 
-  async function maybeExport(selection, force) {
-    if (selection !== state.selection || !state.file || !state.cues.length || !state.uploadPromise) return;
-    if (state.exporting && !force) return;
+  async function exportVideo(selection, retry) {
+    if (selection !== state.selection || !state.file || !state.cues.length || state.exporting) return;
     state.exporting = true;
     state.lastError = "";
-    setCard("busy", "Preparing captioned video");
+    setCard("busy", state.sourceKey ? "Rendering captions" : "Preparing video upload");
 
     try {
-      const sourceKey = await state.uploadPromise;
+      if (!state.sourceKey) {
+        state.sourceKey = await uploadVideo(state.file, selection);
+      }
       if (selection !== state.selection) return;
-      if (!sourceKey) throw new Error("Uploaded video was not found");
       setCard("busy", "Rendering captions");
 
-      const saved = await api("/save", {
+      const savePayload = {
         title: titleFromFile(state.file),
         sourceKind: "local",
         sourceName: state.file.name || "video.mp4",
         sourceMime: state.file.type || "video/mp4",
         sourceSize: state.file.size,
         sourceDuration: 0,
-        sourceKey,
+        sourceKey: state.sourceKey,
         sourceLanguage: state.language,
         targetLanguage: state.language,
         mode: "standard",
@@ -275,9 +287,12 @@ function vexaSttExportBootstrap() {
           fontWeight: "bold",
           textColor: "#ffffff",
         },
-      });
+      };
+      if (state.projectId) savePayload.projectId = state.projectId;
+
+      const saved = await api("/save", savePayload);
       if (selection !== state.selection) return;
-      state.projectId = String(saved.projectId || "");
+      state.projectId = String(saved.projectId || state.projectId || "");
       if (!state.projectId) throw new Error("Could not create video project");
 
       const exported = await api("/export", { projectId: state.projectId });
@@ -290,6 +305,7 @@ function vexaSttExportBootstrap() {
     } catch (error) {
       if (selection !== state.selection) return;
       state.lastError = String(error?.message || "Could not create captioned video");
+      if (!state.sourceKey && retry) state.projectId = "";
       setCard("error", state.lastError);
       haptic("light");
     } finally {
@@ -298,7 +314,7 @@ function vexaSttExportBootstrap() {
   }
 
   function handleTranscript(data) {
-    if (!state.file || !String(state.file.type || "").toLowerCase().startsWith("video/")) return;
+    if (!state.file || !isVideoFile(state.file)) return;
     const cues = buildCues(data);
     if (!cues.length) {
       state.lastError = "No timed speech was found in this video";
@@ -307,7 +323,7 @@ function vexaSttExportBootstrap() {
     }
     state.language = normalizeLanguage(data?.language_code || data?.language || data?.detected_language || "en");
     state.cues = cues;
-    maybeExport(state.selection).catch(() => {});
+    exportVideo(state.selection, false).catch(() => {});
   }
 
   function installParentFetchObserver() {
@@ -325,8 +341,7 @@ function vexaSttExportBootstrap() {
         const url = typeof input === "string" ? input : String(input?.url || "");
         if (response.ok && url.includes("/v1/speech-to-text") && !url.includes("/realtime")) {
           response.clone().json().then((data) => {
-            const listeners = Array.from(host.__vexaSttExportListeners || []);
-            listeners.forEach((listener) => {
+            Array.from(host.__vexaSttExportListeners || []).forEach((listener) => {
               try { listener(data); } catch (error) {}
             });
           }).catch(() => {});
@@ -339,8 +354,7 @@ function vexaSttExportBootstrap() {
   function resetForFile(file) {
     const previousProject = state.projectId;
     state.selection += 1;
-    state.file = file;
-    state.uploadId = "";
+    state.file = isVideoFile(file) ? file : null;
     state.sourceKey = "";
     state.cues = [];
     state.language = "en";
@@ -351,30 +365,13 @@ function vexaSttExportBootstrap() {
     state.lastError = "";
     setCard(null, "");
 
-    if (previousProject) {
-      api("/delete", { projectId: previousProject }).catch(() => {});
-    }
+    if (previousProject) api("/delete", { projectId: previousProject }).catch(() => {});
+    if (!state.file) return;
 
-    if (!file || !String(file.type || "").toLowerCase().startsWith("video/")) {
-      state.file = null;
-      state.uploadPromise = null;
-      return;
-    }
-    if (file.size > MAX_EXPORT_SOURCE_BYTES) {
+    if (state.file.size > MAX_EXPORT_SOURCE_BYTES) {
       state.lastError = "Video is too large to export";
       setCard("error", state.lastError);
-      state.uploadPromise = null;
-      return;
     }
-
-    const selection = state.selection;
-    state.uploadPromise = uploadVideo(file, selection).catch((error) => {
-      if (selection === state.selection) {
-        state.lastError = String(error?.message || "Could not upload video");
-        setCard("error", state.lastError);
-      }
-      throw error;
-    });
   }
 
   function installFileCapture() {
@@ -382,23 +379,19 @@ function vexaSttExportBootstrap() {
       const input = event.target;
       if (!input || input.id !== "vexaSttFile") return;
       const file = input.files && input.files[0];
-      if (!file) return;
-      resetForFile(file);
+      if (file) resetForFile(file);
     }, true);
   }
 
   function installDomObserver() {
-    const observer = new MutationObserver(() => {
-      if (q("vexaStt")) {
-        installStyles();
-        ensureCard();
-      }
-    });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-    if (q("vexaStt")) {
+    const sync = () => {
+      if (!q("vexaStt")) return;
       installStyles();
       ensureCard();
-    }
+    };
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    sync();
   }
 
   function initialize() {
