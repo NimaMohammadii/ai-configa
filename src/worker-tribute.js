@@ -8,7 +8,11 @@ import {
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
 
-const TRIBUTE_UI_VERSION = "20260818-3";
+const TRIBUTE_UI_VERSION = "20260818-4";
+const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
+const CONFIGURED_VEXA_PRODUCT_LINKS = new Set([
+  "https://web.tribute.tg/p/CcQ",
+]);
 
 export { AiCodingWorkflow } from "./worker-with-media.js";
 
@@ -19,7 +23,10 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/tribute/health") {
-      const state = await getTributeDigitalProductsState(tributeEnv, { force: true });
+      const [state, diagnostics] = await Promise.all([
+        getTributeDigitalProductsState(tributeEnv, { force: true }),
+        getTributeProductDiagnostics(tributeEnv),
+      ]);
       return json({
         ok: true,
         mode: "digital_products",
@@ -28,6 +35,7 @@ export default {
         productCount: Array.isArray(state.products) ? state.products.length : 0,
         products: state.products || [],
         error: state.error || null,
+        diagnostics,
         uiVersion: TRIBUTE_UI_VERSION,
       });
     }
@@ -49,6 +57,83 @@ export default {
     return response;
   },
 };
+
+async function getTributeProductDiagnostics(env) {
+  const key = tributeApiKey(env);
+  if (!key) return { ok: false, error: "api_key_missing", total: 0, rows: [] };
+
+  let response;
+  let data;
+  try {
+    response = await fetch(`${TRIBUTE_PRODUCTS_API}?page=1&size=100&type=digital&desc=true`, {
+      method: "GET",
+      headers: { "Api-Key": key, "Accept": "application/json" },
+    });
+    data = await response.json().catch(() => ({}));
+  } catch {
+    return { ok: false, error: "tribute_unreachable", total: 0, rows: [] };
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: `tribute_http_${response.status}`,
+      total: 0,
+      rows: [],
+    };
+  }
+
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  return {
+    ok: true,
+    total: rows.length,
+    rows: rows.map((row) => diagnoseProduct(row)),
+  };
+}
+
+function diagnoseProduct(row) {
+  const type = String(row?.type || "").toLowerCase();
+  const status = String(row?.status || "").toLowerCase();
+  const acceptCards = row?.acceptCards === true;
+  const webLink = normalizeDiagnosticUrl(row?.webLink);
+  const isConfiguredLink = CONFIGURED_VEXA_PRODUCT_LINKS.has(webLink);
+  const name = String(row?.name || "").slice(0, 120);
+  const description = String(row?.description || "").slice(0, 180);
+  const text = `${name} ${description}`.toLowerCase();
+  const matchesVexaText = text.includes("vexa") && text.includes("credit");
+  const reasons = [];
+
+  if (type !== "digital") reasons.push(`type:${type || "missing"}`);
+  if (status !== "approved") reasons.push(`status:${status || "missing"}`);
+  if (!acceptCards) reasons.push("acceptCards:false");
+  if (!webLink) reasons.push("webLink:invalid_or_missing");
+  if (webLink && !isConfiguredLink && !matchesVexaText) reasons.push("not_vexa_product");
+
+  return {
+    id: Number(row?.id || 0) || null,
+    type: type || null,
+    status: status || null,
+    acceptCards,
+    amount: Number(row?.amount || 0) || null,
+    currency: String(row?.currency || "").toLowerCase() || null,
+    webLink: webLink || null,
+    configuredLink: isConfiguredLink,
+    matchesVexaText,
+    eligible: reasons.length === 0,
+    rejectedBy: reasons,
+  };
+}
+
+function normalizeDiagnosticUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    if (url.protocol !== "https:") return "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
 
 function normalizeTributeEnv(env) {
   if (tributeApiKey(env)) return env;
