@@ -1,5 +1,5 @@
 import { getImageExploreItems, getMiniAppAccessSettings, isAdmin } from "./admin.js";
-import { AI_CHAT_MARKUP_RATE, AI_CHAT_USD_PER_CREDIT } from "./ai-chat-model.js";
+import { AI_CHAT_USD_PER_CREDIT } from "./ai-chat-model.js";
 import { ensureBalanceRow, ensureCreditUsageLogTable, getBalance } from "./credits.js";
 import { saveImageHistory } from "./image-history.js";
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
@@ -11,6 +11,7 @@ const GPT_IMAGE_TIMEOUT_MS = 180000;
 const GPT_IMAGE_TEXT_INPUT_USD_PER_MILLION = 5;
 const GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION = 8;
 const GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION = 30;
+const IMAGE_MARKUP_RATE = 0.30;
 const MAX_SOURCE_IMAGES = 4;
 const MAX_SOURCE_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_SOURCE_BYTES = 24 * 1024 * 1024;
@@ -248,7 +249,7 @@ export function dynamicPricingPayload(lastCost = 0) {
   return {
     mode: "api_usage",
     model: GPT_IMAGE_MODEL,
-    markupRate: AI_CHAT_MARKUP_RATE,
+    markupRate: IMAGE_MARKUP_RATE,
     usdPerCredit: AI_CHAT_USD_PER_CREDIT,
     lastCost: Math.max(0, Math.floor(Number(lastCost || 0))),
     baseCost: 1,
@@ -279,7 +280,7 @@ export function calculateImageBilling(usage = {}) {
     + unclassifiedInputTokens * GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION
     + outputTokens * GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION
   ) / 1_000_000;
-  const billedUsd = baseUsd * (1 + AI_CHAT_MARKUP_RATE);
+  const billedUsd = baseUsd * (1 + IMAGE_MARKUP_RATE);
   const credits = usdToCredits(billedUsd);
 
   return {
@@ -287,7 +288,7 @@ export function calculateImageBilling(usage = {}) {
     credits,
     baseUsd,
     billedUsd,
-    markupRate: AI_CHAT_MARKUP_RATE,
+    markupRate: IMAGE_MARKUP_RATE,
     usdPerCredit: AI_CHAT_USD_PER_CREDIT,
     inputTokens,
     textInputTokens,
@@ -306,7 +307,7 @@ export function estimateImageReservationCredits(prompt, sourceCount = 0) {
     + estimatedImageTokens * GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION
     + RESERVE_OUTPUT_TOKENS_LOW * GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION
   ) / 1_000_000;
-  const reservedUsd = baseUsd * RESERVE_SAFETY_MULTIPLIER * (1 + AI_CHAT_MARKUP_RATE);
+  const reservedUsd = baseUsd * RESERVE_SAFETY_MULTIPLIER * (1 + IMAGE_MARKUP_RATE);
   return usdToCredits(reservedUsd);
 }
 
@@ -347,7 +348,13 @@ async function requestOpenAiImage(env, prompt, sources, size) {
 
     if (!response.ok) {
       const raw = await response.text();
-      const error = new Error(friendlyOpenAiImageError(response.status, raw));
+      const message = friendlyOpenAiImageError(response.status, raw);
+      console.error("openai image request failed", {
+        status: response.status,
+        requestId: response.headers.get("x-request-id") || null,
+        upstream: String(raw || "").slice(0, 1200),
+      });
+      const error = new Error(message);
       error.status = response.status === 429 ? 429 : response.status >= 400 && response.status < 500 ? 400 : 502;
       throw error;
     }
@@ -398,8 +405,14 @@ async function readCompletedImageResponse(response, completedType) {
       return;
     }
     if (event?.type === "error" || event?.error) {
-      const message = String(event?.error?.message || event?.message || "AI image stream failed.");
-      throw publicError(message, 502);
+      const safe = friendlyOpenAiImageStreamError(event);
+      console.error("openai image stream error", {
+        type: event?.type || null,
+        code: event?.error?.code || event?.code || null,
+        requestId: event?.error?.request_id || event?.request_id || null,
+        upstream: String(event?.error?.message || event?.message || "").slice(0, 1200),
+      });
+      throw publicError(safe.message, safe.status);
     }
     if (event?.type === completedType) completed = event;
   };
@@ -642,13 +655,36 @@ function safeFilename(value) {
   return filename.replace(/[^a-zA-Z0-9._-]/g, "_") || "telegram-image.jpg";
 }
 
+function friendlyOpenAiImageStreamError(event) {
+  const code = String(event?.error?.code || event?.code || "").toLowerCase();
+  const message = String(event?.error?.message || event?.message || "");
+  const raw = (code + " " + message).toLowerCase();
+  if (code.includes("rate_limit") || raw.includes("rate limit")) {
+    return { message: "Image generation is busy right now. Please try again shortly.", status: 429 };
+  }
+  if (isImageSafetyError(raw)) {
+    return { message: "This image couldn't be processed. Try another image or change your request.", status: 400 };
+  }
+  return { message: "Image generation couldn't be completed. Please try again.", status: 502 };
+}
+
 function friendlyOpenAiImageError(status, raw) {
   const lower = String(raw || "").toLowerCase();
-  if (status === 429) return "AI image service is busy. Please try again shortly.";
-  if (status === 401 || status === 403) return "AI image service is temporarily unavailable.";
-  if (lower.includes("moderation") || lower.includes("safety") || lower.includes("policy")) return "That image request could not be processed. Try a different prompt or image.";
-  if (status >= 500) return "AI image service is temporarily unavailable. Please try again.";
-  return "AI image couldn't complete that request. Please try again.";
+  if (status === 429) return "Image generation is busy right now. Please try again shortly.";
+  if (status === 401 || status === 403) return "Image generation is temporarily unavailable.";
+  if (isImageSafetyError(lower)) return "This image couldn't be processed. Try another image or change your request.";
+  if (status >= 500) return "Image generation is temporarily unavailable. Please try again.";
+  return "Image generation couldn't complete that request. Please try again.";
+}
+
+function isImageSafetyError(value) {
+  const lower = String(value || "").toLowerCase();
+  return lower.includes("moderation")
+    || lower.includes("safety")
+    || lower.includes("policy")
+    || lower.includes("moderation_blocked")
+    || lower.includes("rejected by the safety system")
+    || lower.includes("content policy");
 }
 
 function hasUsableImageUsage(usage) {
