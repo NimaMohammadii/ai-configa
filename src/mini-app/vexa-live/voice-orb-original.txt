@@ -33,6 +33,13 @@
     }, 15000);
   }
 
+  function setVoicePhaseAfterEvent(phase, label) {
+    queueMicrotask(() => {
+      if (!state.active) return;
+      setPhase(phase, label, "");
+    });
+  }
+
   function observeVoiceSocket(socket) {
     if (!socket || socket === vexaVoiceObservedSocket) return;
     vexaVoiceObservedSocket = socket;
@@ -67,34 +74,34 @@
         }
         state.captureEnabled = true;
         clearVoiceResponseWatchdog();
-        setPhase("listening", "Listening", "");
+        setVoicePhaseAfterEvent("listening", "Listening");
         return;
       }
 
       if (type === "user_transcript") {
         clearVoiceResponseWatchdog();
-        setPhase("thinking", "Thinking", "");
+        setVoicePhaseAfterEvent("thinking", "Thinking");
         armVoiceResponseWatchdog();
         return;
       }
 
       if (type === "agent_response") {
         clearVoiceResponseWatchdog();
-        setPhase("thinking", "Generating response", "");
+        setVoicePhaseAfterEvent("thinking", "Generating response");
         armVoiceResponseWatchdog();
         return;
       }
 
       if (type === "audio") {
         clearVoiceResponseWatchdog();
-        setPhase("speaking", "Speaking", "");
+        setVoicePhaseAfterEvent("speaking", "Speaking");
         return;
       }
 
       if (type === "interruption") {
         clearVoiceResponseWatchdog();
         state.captureEnabled = true;
-        setPhase("listening", "Listening", "");
+        setVoicePhaseAfterEvent("listening", "Listening");
         return;
       }
 
