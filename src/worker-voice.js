@@ -4,8 +4,9 @@ import {
   isVexaVoiceAgentRequest,
 } from "./mini-app/vexa-live/voice-agent.js";
 import VEXA_VOICE_AGENT_SOURCE from "./mini-app/vexa-live/voice-agent-runtime.txt";
+import VEXA_VOICE_ORB_SOURCE from "./mini-app/vexa-live/voice-orb-original.txt";
 
-const VEXA_VOICE_AGENT_VERSION = "20260817-10";
+const VEXA_VOICE_AGENT_VERSION = "20260817-11";
 const LIVE_ROOT = "/mini-app/live";
 const LIVE_INTEGRATION_PATH = LIVE_ROOT + "/integration.js";
 const VOICE_RUNTIME_PATH = LIVE_ROOT + "/voice-agent-runtime.js";
@@ -49,8 +50,27 @@ export default {
   },
 };
 
+function restoreOriginalOrb(source) {
+  let restored = String(source || "");
+  const rendererStart = restored.indexOf("  function createOrbRenderer(canvas) {");
+  const initializeStart = restored.indexOf("  function initialize() {", rendererStart);
+
+  if (rendererStart >= 0 && initializeStart > rendererStart) {
+    restored =
+      restored.slice(0, rendererStart) +
+      String(VEXA_VOICE_ORB_SOURCE || "").trimEnd() +
+      "\n\n" +
+      restored.slice(initializeStart);
+  }
+
+  return restored.replace(
+    "radial-gradient(circle at 50% 50%,#08080a 0 54%,rgba(54,22,118,.62) 67%,#8352ff 80%,#ffc7ea 97%)",
+    "radial-gradient(circle at 50% 50%,#08080a 0 55%,rgba(58,25,120,.55) 68%,#8c5cff 81%,#ffd1f2 98%)",
+  );
+}
+
 function browserVoiceRuntimeSource() {
-  const raw = String(VEXA_VOICE_AGENT_SOURCE || "");
+  const raw = restoreOriginalOrb(VEXA_VOICE_AGENT_SOURCE);
   const exportMarker = "\nexport const VEXA_VOICE_AGENT_JS";
   const exportIndex = raw.lastIndexOf(exportMarker);
   const browserBody = exportIndex >= 0 ? raw.slice(0, exportIndex) : raw;
