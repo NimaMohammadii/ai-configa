@@ -1,22 +1,15 @@
 import { getBalance } from "./credits.js";
-import { getActiveWheelPurchaseDiscount } from "./reward-wheel.js";
 import { MINI_APP_STAR_PACKAGES, CUSTOM_STARS_USD_PER_1000_CREDITS } from "./stars.js";
 import { getState, requireDb } from "./state.js";
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
 
-const TRIBUTE_API_BASE = "https://tribute.tg/api/v1/shop";
-const FX_API_URL = "https://open.er-api.com/v6/latest/USD";
-const FX_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const MAX_CREDITS = 1_000_000;
-const CARD_STEP_CREDITS = 1_000;
+const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
+const PRODUCT_CACHE_TTL_MS = 60 * 1000;
+const DEFAULT_VEXA_PRODUCT_LINKS = Object.freeze([
+  "https://web.tribute.tg/p/CcQ",
+]);
 
-const TRIBUTE_CURRENCIES = Object.freeze({
-  usd: { code: "usd", label: "USD", symbol: "$", minMinor: 100, maxMinor: 300000 },
-  eur: { code: "eur", label: "EUR", symbol: "€", minMinor: 100, maxMinor: 300000 },
-  rub: { code: "rub", label: "RUB", symbol: "₽", minMinor: 10000, maxMinor: 30000000 },
-});
-
-let fxMemory = null;
+let productCache = null;
 
 export function isTributeWebhookRequest(request) {
   const url = new URL(request.url);
@@ -46,11 +39,11 @@ export async function handleTributeMiniAppRequest(request, env) {
     }
 
     if (path === "/mini-app/api/tribute-order") {
-      return json(await createTributeOrder(env, user, body));
+      return json(await createTributePaymentIntent(env, user, body));
     }
 
     if (path === "/mini-app/api/tribute-status") {
-      return json(await getTributeOrderStatus(env, user, body));
+      return json(await getTributePaymentStatus(env, user, body));
     }
 
     return json({ error: "Not Found" }, 404);
@@ -78,105 +71,88 @@ export async function handleTributeWebhook(request, env) {
     return json({ error: "Invalid webhook data" }, 400);
   }
 
-  const name = String(event?.name || "");
+  const name = String(event?.name || "").trim();
   const payload = event?.payload && typeof event.payload === "object" ? event.payload : {};
-  const orderUuid = normalizeOrderUuid(payload.uuid);
-  if (!orderUuid) return json({ error: "Invalid webhook data" }, 400);
+
+  // Tribute's test request and unrelated creator events must be acknowledged.
+  if (name !== "new_digital_product" && name !== "digital_product_refunded") {
+    return json({ status: "ok" });
+  }
 
   try {
-    if (name === "shop_order" && String(payload.status || "").toLowerCase() === "paid") {
-      await settleTributeOrder(env, orderUuid, payload);
-    } else if (name === "shop_order_refunded") {
-      await refundTributeOrder(env, orderUuid, payload);
-    } else if (name === "shop_order_payment_failed") {
-      await markTributeOrderStatus(env, orderUuid, "failed");
+    if (name === "new_digital_product") {
+      await applyDigitalProductPurchase(env, payload);
+    } else {
+      await applyDigitalProductRefund(env, payload);
     }
   } catch (error) {
-    console.error("Tribute webhook processing failed", name, orderUuid, error?.stack || error);
+    console.error("Tribute digital product webhook failed", name, error?.stack || error);
     return json({ error: publicError(error) }, error?.status || 500);
   }
 
   return json({ status: "ok" });
 }
 
-async function buildTributeConfig(env, user) {
-  const discount = await getActiveWheelPurchaseDiscount(env, user.id).catch(() => null);
-  const percent = normalizeDiscountPercent(discount?.percent);
-  const state = await getState(env, user.id).catch(() => null);
-  const fx = await getFxRates();
+export async function getTributeDigitalProductsState(env, options = {}) {
+  if (!tributeApiKey(env)) {
+    return { ready: false, error: "Tribute API key is not configured.", products: [] };
+  }
 
+  try {
+    const products = await getVexaCardProducts(env, { force: options.force === true });
+    return {
+      ready: products.length > 0,
+      error: products.length ? null : "No approved Vexa digital product with card payments was found.",
+      products: products.map((product) => ({
+        productId: product.productId,
+        credits: product.credits,
+        amountMinor: product.amountMinor,
+        currency: product.currency,
+        webLink: product.paymentUrl,
+        acceptCards: true,
+      })),
+    };
+  } catch (error) {
+    return { ready: false, error: publicError(error), products: [] };
+  }
+}
+
+async function buildTributeConfig(env, user) {
+  const state = await getState(env, user.id).catch(() => null);
+  let products = [];
+  let error = null;
+
+  if (tributeApiKey(env)) {
+    try {
+      products = await getVexaCardProducts(env);
+    } catch (caught) {
+      error = publicError(caught);
+    }
+  }
+
+  const currencies = uniqueCurrencies(products);
   return {
-    available: Boolean(tributeApiKey(env)),
-    defaultCurrency: "usd",
+    available: Boolean(tributeApiKey(env) && products.length),
+    configured: Boolean(tributeApiKey(env)),
+    mode: "digital_products",
     language: String(state?.language || user.language_code || "en").toLowerCase(),
-    ratePer1000Usd: CUSTOM_STARS_USD_PER_1000_CREDITS,
-    maximumCredits: MAX_CREDITS,
-    stepCredits: CARD_STEP_CREDITS,
-    discountPercent: percent,
-    discountExpiresAt: Number(discount?.expiresAt || 0),
-    fxUpdatedAt: fx.updatedAt,
-    fxProvider: "ExchangeRate-API",
-    currencies: Object.values(TRIBUTE_CURRENCIES).map((currency) => ({
-      code: currency.code,
-      label: currency.label,
-      symbol: currency.symbol,
-      rateFromUsd: fx.rates[currency.code],
-      minimumMinor: currency.minMinor,
-      maximumMinor: currency.maxMinor,
-      minimumCredits: minimumCustomCredits(percent, currency.code, fx.rates[currency.code]),
-    })),
-    packages: Object.values(MINI_APP_STAR_PACKAGES).map((pack) => ({
-      id: String(pack?.id || ""),
-      credits: Number(pack?.credits || 0),
-      bonus: Number(pack?.bonus || 0),
-      totalCredits: Number(pack?.totalCredits || 0),
-      usd: Number(pack?.usd || 0),
-    })),
+    defaultCurrency: currencies[0]?.code || "usd",
+    currencies,
+    products,
+    error,
   };
 }
 
-async function createTributeOrder(env, user, body) {
+async function createTributePaymentIntent(env, user, body) {
   requireDb(env);
-  await ensureTributePaymentsTable(env);
+  await ensureTributeTables(env);
 
-  const currencyCode = normalizeCurrency(body?.currency);
-  const currency = TRIBUTE_CURRENCIES[currencyCode];
-  const fx = await getFxRates();
-  const offer = await resolveCardOffer(env, user.id, body, currencyCode, fx.rates[currencyCode]);
+  const products = await getVexaCardProducts(env);
+  const product = resolveRequestedProduct(products, body);
+  if (!product) throw httpError("This card pack is not available.", 400);
 
-  if (offer.amountMinor < currency.minMinor) {
-    throw httpError(`Card payments start at ${currencyMinimumLabel(currencyCode)}. Choose a little more credits.`, 400);
-  }
-  if (offer.amountMinor > currency.maxMinor) {
-    throw httpError("This payment amount is above Tribute's limit.", 400);
-  }
-
-  const response = await fetch(TRIBUTE_API_BASE + "/orders", {
-    method: "POST",
-    headers: {
-      "Api-Key": tributeApiKey(env),
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({
-      amount: offer.amountMinor,
-      currency: currencyCode,
-      title: "Vexa Credits",
-      description: `${formatNumber(offer.totalCredits)} Vexa credits`,
-      customerId: String(user.id),
-      comment: offer.packageId ? `Vexa credit pack ${offer.packageId}` : `Vexa custom credits ${offer.totalCredits}`,
-      period: "onetime",
-    }),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  const orderUuid = normalizeOrderUuid(data?.uuid);
-  const paymentUrl = safeTributePaymentUrl(data?.paymentUrl);
-  const webappPaymentUrl = safeTributeWebappUrl(data?.webappPaymentUrl);
-  if (!response.ok || !orderUuid || (!paymentUrl && !webappPaymentUrl)) {
-    console.error("Tribute create order failed", response.status, data);
-    throw httpError(tributeApiError(data, "Could not start card checkout."), response.status >= 400 && response.status < 500 ? response.status : 502);
-  }
+  const orderUuid = crypto.randomUUID().toLowerCase();
+  const packageId = `digital:${product.productId}`;
 
   await env.DB.prepare(
     "INSERT INTO tribute_payments " +
@@ -185,65 +161,54 @@ async function createTributeOrder(env, user, body) {
   ).bind(
     orderUuid,
     String(user.id),
-    offer.packageId || null,
-    offer.totalCredits,
-    offer.amountMinor,
-    currencyCode,
-    paymentUrl || webappPaymentUrl
+    packageId,
+    product.credits,
+    product.amountMinor,
+    product.currency,
+    product.paymentUrl
   ).run();
 
   return {
     ok: true,
     orderUuid,
-    paymentUrl,
-    webappPaymentUrl,
-    credits: offer.totalCredits,
-    amountMinor: offer.amountMinor,
-    originalAmountMinor: offer.originalAmountMinor,
-    discountPercent: offer.discountPercent,
-    currency: currencyCode,
+    productId: product.productId,
+    paymentUrl: product.paymentUrl,
+    webappPaymentUrl: product.telegramLink || "",
+    credits: product.credits,
+    amountMinor: product.amountMinor,
+    currency: product.currency,
     balance: await getBalance(env, user.id),
   };
 }
 
-async function getTributeOrderStatus(env, user, body) {
+async function getTributePaymentStatus(env, user, body) {
   requireDb(env);
-  await ensureTributePaymentsTable(env);
+  await ensureTributeTables(env);
 
   const orderUuid = normalizeOrderUuid(body?.orderUuid);
   if (!orderUuid) throw httpError("Payment not found.", 400);
 
-  let row = await readTributeOrder(env, orderUuid, user.id);
+  let row = await readTributeIntent(env, orderUuid, user.id);
   if (!row) throw httpError("Payment not found.", 404);
 
-  if (row.status === "paid" && row.credited_at) {
-    return statusPayload(env, row, user.id);
-  }
-  if (row.status === "refunded" || row.status === "failed") {
-    return statusPayload(env, row, user.id);
+  if (row.status !== "paid" && row.status !== "refunded") {
+    const productId = productIdFromPackageId(row.package_id);
+    if (productId) {
+      const purchase = await env.DB.prepare(
+        "SELECT * FROM tribute_digital_purchases " +
+        "WHERE user_id = ? AND product_id = ? AND datetime(created_at) >= datetime(?) " +
+        "ORDER BY datetime(created_at) DESC LIMIT 1"
+      ).bind(String(user.id), productId, row.created_at).first();
+
+      if (purchase?.status === "refunded") {
+        await markIntentFromPurchase(env, row.order_uuid, purchase, "refunded");
+      } else if (purchase?.credited_at) {
+        await markIntentFromPurchase(env, row.order_uuid, purchase, "paid");
+      }
+      row = await readTributeIntent(env, orderUuid, user.id);
+    }
   }
 
-  const response = await fetch(TRIBUTE_API_BASE + "/orders/" + encodeURIComponent(orderUuid) + "/status", {
-    method: "GET",
-    headers: {
-      "Api-Key": tributeApiKey(env),
-      "Accept": "application/json",
-    },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    console.error("Tribute status request failed", response.status, data);
-    throw httpError(tributeApiError(data, "Could not check payment status."), response.status >= 400 && response.status < 500 ? response.status : 502);
-  }
-
-  const remoteStatus = String(data?.status || "pending").toLowerCase();
-  if (remoteStatus === "paid") {
-    await settleTributeOrder(env, orderUuid);
-  } else if (remoteStatus === "failed") {
-    await markTributeOrderStatus(env, orderUuid, "failed");
-  }
-
-  row = await readTributeOrder(env, orderUuid, user.id);
   return statusPayload(env, row, user.id);
 }
 
@@ -261,185 +226,348 @@ async function statusPayload(env, row, userId) {
   };
 }
 
-async function resolveCardOffer(env, userId, body, currencyCode, rateFromUsd) {
-  const discount = await getActiveWheelPurchaseDiscount(env, userId).catch(() => null);
-  const percent = normalizeDiscountPercent(discount?.percent);
-  const packageId = String(body?.packageId || "").trim();
+async function applyDigitalProductPurchase(env, payload) {
+  requireDb(env);
+  await ensureTributeTables(env);
 
-  if (packageId) {
-    const pack = MINI_APP_STAR_PACKAGES[packageId];
-    if (!pack) throw httpError("Credit pack not found.", 400);
-    const originalAmountMinor = usdToMinor(Number(pack?.usd || 0), rateFromUsd);
-    return {
-      packageId,
-      totalCredits: Number(pack?.totalCredits || 0),
-      amountMinor: discountedMinor(originalAmountMinor, percent),
-      originalAmountMinor,
-      discountPercent: percent,
-      currency: currencyCode,
-    };
+  const purchaseId = normalizePositiveId(payload?.purchase_id);
+  const transactionId = normalizeOptionalId(payload?.transaction_id);
+  const productId = normalizePositiveId(payload?.product_id);
+  const userId = normalizePositiveId(payload?.telegram_user_id);
+  if (!purchaseId || !productId || !userId) throw httpError("Invalid Tribute digital product webhook.", 400);
+
+  const product = await getVexaProductById(env, productId);
+  verifyDigitalProductPayload(product, payload);
+
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO tribute_digital_purchases " +
+      "(purchase_id, transaction_id, product_id, user_id, product_name, credits, amount, currency, status, purchase_created_at, created_at, updated_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+    ).bind(
+      purchaseId,
+      transactionId,
+      productId,
+      userId,
+      String(payload?.product_name || product.name || "Vexa Credits").slice(0, 240),
+      product.credits,
+      product.amountMinor,
+      product.currency,
+      String(payload?.purchase_created_at || "") || null
+    ),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO user_credits (user_id, credits, updated_at, created_at) VALUES (?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+    ).bind(userId),
+    env.DB.prepare(
+      "UPDATE user_credits SET credits = credits + COALESCE((" +
+      "SELECT credits FROM tribute_digital_purchases WHERE purchase_id = ? AND credited_at IS NULL AND refunded_at IS NULL" +
+      "), 0), updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+    ).bind(purchaseId, userId),
+    env.DB.prepare(
+      "UPDATE tribute_digital_purchases SET status = 'paid', credited_at = COALESCE(credited_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP " +
+      "WHERE purchase_id = ? AND credited_at IS NULL AND refunded_at IS NULL"
+    ).bind(purchaseId),
+  ]);
+
+  await linkPurchaseToLatestIntent(env, userId, productId, purchaseId, "paid");
+}
+
+async function applyDigitalProductRefund(env, payload) {
+  requireDb(env);
+  await ensureTributeTables(env);
+
+  const purchaseId = normalizePositiveId(payload?.purchase_id);
+  const productId = normalizePositiveId(payload?.product_id);
+  const userId = normalizePositiveId(payload?.telegram_user_id);
+  if (!purchaseId || !productId || !userId) throw httpError("Invalid Tribute refund webhook.", 400);
+
+  const product = await getVexaProductById(env, productId);
+  verifyDigitalProductPayload(product, payload);
+
+  const existing = await env.DB.prepare(
+    "SELECT * FROM tribute_digital_purchases WHERE purchase_id = ? LIMIT 1"
+  ).bind(purchaseId).first();
+
+  if (!existing) {
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO tribute_digital_purchases " +
+      "(purchase_id, transaction_id, product_id, user_id, product_name, credits, amount, currency, status, refunded_at, purchase_created_at, created_at, updated_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'refunded', CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+    ).bind(
+      purchaseId,
+      normalizeOptionalId(payload?.transaction_id),
+      productId,
+      userId,
+      String(payload?.product_name || product.name || "Vexa Credits").slice(0, 240),
+      product.credits,
+      product.amountMinor,
+      product.currency,
+      String(payload?.purchase_created_at || "") || null
+    ).run();
+  } else if (!existing.refunded_at) {
+    verifyStoredPurchase(existing, product, userId);
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO user_credits (user_id, credits, updated_at, created_at) VALUES (?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+      ).bind(userId),
+      env.DB.prepare(
+        "UPDATE user_credits SET credits = MAX(credits - COALESCE((" +
+        "SELECT credits FROM tribute_digital_purchases WHERE purchase_id = ? AND credited_at IS NOT NULL AND refunded_at IS NULL" +
+        "), 0), 0), updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+      ).bind(purchaseId, userId),
+      env.DB.prepare(
+        "UPDATE tribute_digital_purchases SET status = 'refunded', refunded_at = COALESCE(refunded_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP " +
+        "WHERE purchase_id = ? AND refunded_at IS NULL"
+      ).bind(purchaseId),
+    ]);
   }
 
-  const credits = Math.floor(Number(body?.credits || 0));
-  if (!Number.isSafeInteger(credits) || credits < 1 || credits > MAX_CREDITS) {
-    throw httpError("Choose a valid credit amount.", 400);
+  await linkPurchaseToLatestIntent(env, userId, productId, purchaseId, "refunded");
+}
+
+async function linkPurchaseToLatestIntent(env, userId, productId, purchaseId, status) {
+  const pendingPackageId = `digital:${productId}`;
+  const linkedPackageId = `digital:${productId}:purchase:${purchaseId}`;
+
+  if (status === "refunded") {
+    await env.DB.prepare(
+      "UPDATE tribute_payments SET status = 'refunded', refunded_at = COALESCE(refunded_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP " +
+      "WHERE user_id = ? AND package_id = ?"
+    ).bind(String(userId), linkedPackageId).run();
+    return;
   }
 
-  const originalAmountMinor = customBaseMinor(credits, rateFromUsd);
+  await env.DB.prepare(
+    "UPDATE tribute_payments SET package_id = ?, status = 'paid', credited_at = COALESCE(credited_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP " +
+    "WHERE order_uuid = (" +
+    "SELECT order_uuid FROM tribute_payments WHERE user_id = ? AND package_id = ? AND status = 'pending' " +
+    "ORDER BY datetime(created_at) DESC LIMIT 1)"
+  ).bind(linkedPackageId, String(userId), pendingPackageId).run();
+}
+
+async function markIntentFromPurchase(env, orderUuid, purchase, status) {
+  const productId = Number(purchase?.product_id || 0);
+  const purchaseId = String(purchase?.purchase_id || "");
+  if (!productId || !purchaseId) return;
+  const linkedPackageId = `digital:${productId}:purchase:${purchaseId}`;
+  const paid = status === "paid";
+  await env.DB.prepare(
+    "UPDATE tribute_payments SET package_id = ?, status = ?, " +
+    (paid
+      ? "credited_at = COALESCE(credited_at, CURRENT_TIMESTAMP), "
+      : "refunded_at = COALESCE(refunded_at, CURRENT_TIMESTAMP), ") +
+    "updated_at = CURRENT_TIMESTAMP WHERE order_uuid = ?"
+  ).bind(linkedPackageId, status, orderUuid).run();
+}
+
+function verifyDigitalProductPayload(product, payload) {
+  const amount = Number(payload?.amount);
+  const currency = String(payload?.currency || "").trim().toLowerCase();
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount !== Number(product.amountMinor)) {
+    throw httpError("Tribute product amount mismatch.", 400);
+  }
+  if (!currency || currency !== product.currency) {
+    throw httpError("Tribute product currency mismatch.", 400);
+  }
+}
+
+function verifyStoredPurchase(row, product, userId) {
+  if (String(row.user_id) !== String(userId) || Number(row.product_id) !== Number(product.productId)) {
+    throw httpError("Tribute purchase identity mismatch.", 400);
+  }
+  if (Number(row.amount) !== Number(product.amountMinor) || String(row.currency).toLowerCase() !== product.currency) {
+    throw httpError("Tribute purchase data mismatch.", 400);
+  }
+}
+
+async function getVexaProductById(env, productId) {
+  const products = await getVexaCardProducts(env, { force: true });
+  const product = products.find((item) => Number(item.productId) === Number(productId));
+  if (!product) throw httpError("Unknown Vexa Tribute product.", 400);
+  return product;
+}
+
+async function getVexaCardProducts(env, options = {}) {
+  const rows = await getTributeProducts(env, options);
+  return rows
+    .filter((row) => isEligibleVexaProduct(row, env))
+    .map((row) => toCardProduct(row))
+    .filter(Boolean)
+    .sort((a, b) => a.amountMinor - b.amountMinor || a.credits - b.credits);
+}
+
+async function getTributeProducts(env, options = {}) {
+  const key = tributeApiKey(env);
+  if (!key) throw httpError("Tribute API key is not configured.", 503);
+
+  const now = Date.now();
+  if (!options.force && productCache && productCache.expiresAt > now) return productCache.rows;
+
+  const rows = [];
+  for (let page = 1; page <= 5; page += 1) {
+    const url = `${TRIBUTE_PRODUCTS_API}?page=${page}&size=100&type=digital&desc=true`;
+    let response;
+    let data;
+    try {
+      response = await fetch(url, {
+        method: "GET",
+        headers: { "Api-Key": key, "Accept": "application/json" },
+      });
+      data = await response.json().catch(() => ({}));
+    } catch {
+      throw httpError("Could not reach Tribute right now.", 502);
+    }
+
+    if (response.status === 401) throw httpError("Tribute API key is invalid.", 503);
+    if (!response.ok) throw httpError(tributeApiError(data, "Could not load Tribute digital products."), 502);
+
+    const pageRows = Array.isArray(data?.rows) ? data.rows : [];
+    rows.push(...pageRows);
+    if (pageRows.length < 100) break;
+  }
+
+  productCache = { rows, expiresAt: now + PRODUCT_CACHE_TTL_MS };
+  return rows;
+}
+
+function isEligibleVexaProduct(row, env) {
+  if (!row || String(row.type || "").toLowerCase() !== "digital") return false;
+  if (String(row.status || "").toLowerCase() !== "approved") return false;
+  if (row.acceptCards !== true) return false;
+
+  const webLink = safeTributePaymentUrl(row.webLink);
+  if (!webLink) return false;
+
+  const allowedLinks = new Set(configuredVexaProductLinks(env));
+  if (allowedLinks.has(normalizeUrl(webLink))) return true;
+
+  const text = `${row.name || ""} ${row.description || ""}`.toLowerCase();
+  return text.includes("vexa") && text.includes("credit");
+}
+
+function configuredVexaProductLinks(env) {
+  const extra = String(env?.TRIBUTE_DIGITAL_PRODUCT_LINKS || env?.TRIBUTE_PRODUCT_LINKS || "")
+    .split(/[\s,;]+/)
+    .map((value) => normalizeUrl(value))
+    .filter(Boolean);
+  return [...new Set([...DEFAULT_VEXA_PRODUCT_LINKS.map(normalizeUrl), ...extra])];
+}
+
+function toCardProduct(row) {
+  const productId = normalizePositiveId(row?.id);
+  const amountMinor = Math.floor(Number(row?.amount || 0));
+  const currency = normalizeCurrency(row?.currency);
+  const paymentUrl = safeTributePaymentUrl(row?.webLink);
+  const telegramLink = safeTributeTelegramUrl(row?.link);
+  if (!productId || !amountMinor || !currency || !paymentUrl) return null;
+
+  const credits = creditsForProduct(row, amountMinor, currency);
+  if (!credits) return null;
+
   return {
-    packageId: null,
-    totalCredits: credits,
-    amountMinor: discountedMinor(originalAmountMinor, percent),
-    originalAmountMinor,
-    discountPercent: percent,
-    currency: currencyCode,
+    productId: Number(productId),
+    name: String(row?.name || "Vexa Credits").slice(0, 120),
+    description: String(row?.description || "").slice(0, 240),
+    credits,
+    amountMinor,
+    currency,
+    paymentUrl,
+    telegramLink,
   };
 }
 
-function customBaseMinor(credits, rateFromUsd) {
-  const usd = (Number(credits || 0) / 1000) * CUSTOM_STARS_USD_PER_1000_CREDITS;
-  return usdToMinor(usd, rateFromUsd);
-}
+function creditsForProduct(row, amountMinor, currency) {
+  const explicit = parseCredits(`${row?.name || ""} ${row?.description || ""}`);
+  if (explicit) return explicit;
 
-function usdToMinor(usd, rateFromUsd) {
-  return Math.max(1, Math.ceil(Math.max(0, Number(usd) || 0) * Math.max(0.000001, Number(rateFromUsd) || 1) * 100));
-}
+  if (currency === "usd") {
+    const packageMatch = Object.values(MINI_APP_STAR_PACKAGES).find((pack) =>
+      Math.round(Number(pack?.usd || 0) * 100) === amountMinor
+    );
+    if (packageMatch) return Number(packageMatch.totalCredits || 0);
 
-function minimumCustomCredits(percent, currencyCode, rateFromUsd) {
-  const currency = TRIBUTE_CURRENCIES[currencyCode];
-  let credits = CARD_STEP_CREDITS;
-  while (credits < MAX_CREDITS && discountedMinor(customBaseMinor(credits, rateFromUsd), percent) < currency.minMinor) {
-    credits += CARD_STEP_CREDITS;
+    const usd = amountMinor / 100;
+    const rawCredits = (usd / CUSTOM_STARS_USD_PER_1000_CREDITS) * 1000;
+    return Math.max(1000, Math.round(rawCredits / 1000) * 1000);
   }
-  return Math.min(MAX_CREDITS, credits);
+
+  // For EUR/RUB products, put the exact credit amount in the Tribute product name/description.
+  return 0;
 }
 
-function discountedMinor(minor, percent) {
-  const clean = Math.max(1, Math.round(Number(minor || 0)));
-  const discount = normalizeDiscountPercent(percent);
-  return discount ? Math.max(1, Math.ceil(clean * (100 - discount) / 100)) : clean;
+function parseCredits(text) {
+  const clean = String(text || "").replace(/\u00a0/g, " ");
+  const match = clean.match(/([0-9][0-9\s,.]{0,14})\s*(?:vexa\s*)?credits?\b/i);
+  if (!match) return 0;
+  const digits = match[1].replace(/[^0-9]/g, "");
+  const value = Number(digits);
+  return Number.isSafeInteger(value) && value > 0 && value <= 10000000 ? value : 0;
 }
 
-function normalizeDiscountPercent(value) {
-  const percent = Math.floor(Number(value) || 0);
-  return percent > 0 && percent < 100 ? percent : 0;
-}
+function resolveRequestedProduct(products, body) {
+  const productId = normalizePositiveId(body?.productId);
+  if (productId) return products.find((item) => Number(item.productId) === Number(productId)) || null;
 
-function normalizeCurrency(value) {
-  const code = String(value || "usd").trim().toLowerCase();
-  return Object.prototype.hasOwnProperty.call(TRIBUTE_CURRENCIES, code) ? code : "usd";
-}
-
-function currencyMinimumLabel(code) {
-  if (code === "eur") return "€1";
-  if (code === "rub") return "₽100";
-  return "$1";
-}
-
-async function getFxRates() {
-  const now = Date.now();
-  if (fxMemory && fxMemory.expiresAt > now) return fxMemory;
-
-  try {
-    const response = await fetch(FX_API_URL, {
-      headers: { "Accept": "application/json" },
-      cf: { cacheTtl: 21600, cacheEverything: true },
-    });
-    const data = await response.json().catch(() => ({}));
-    const eur = Number(data?.rates?.EUR);
-    const rub = Number(data?.rates?.RUB);
-    if (!response.ok || data?.result !== "success" || !Number.isFinite(eur) || eur <= 0 || !Number.isFinite(rub) || rub <= 0) {
-      throw new Error("FX rate response is unavailable");
-    }
-    fxMemory = {
-      rates: { usd: 1, eur, rub },
-      updatedAt: Number(data?.time_last_update_unix || 0) * 1000 || now,
-      expiresAt: now + FX_CACHE_TTL_MS,
-    };
-    return fxMemory;
-  } catch (error) {
-    console.warn("Tribute FX refresh failed", error?.message || error);
-    if (fxMemory) return fxMemory;
-    return {
-      rates: { usd: 1, eur: 0.92, rub: 80 },
-      updatedAt: 0,
-      expiresAt: now + 10 * 60 * 1000,
-    };
+  // Compatibility with the previous client while caches roll over.
+  const currency = normalizeCurrency(body?.currency) || "usd";
+  const requestedCredits = Math.floor(Number(body?.credits || 0));
+  if (requestedCredits > 0) {
+    return products.find((item) => item.currency === currency && item.credits === requestedCredits) || null;
   }
+  const packageId = String(body?.packageId || "").trim();
+  if (packageId && MINI_APP_STAR_PACKAGES[packageId]) {
+    const credits = Number(MINI_APP_STAR_PACKAGES[packageId].totalCredits || 0);
+    return products.find((item) => item.currency === currency && item.credits === credits) || null;
+  }
+  return null;
 }
 
-async function settleTributeOrder(env, orderUuid, webhookPayload = null) {
+function uniqueCurrencies(products) {
+  const meta = {
+    usd: { code: "usd", label: "USD", symbol: "$" },
+    eur: { code: "eur", label: "EUR", symbol: "€" },
+    rub: { code: "rub", label: "RUB", symbol: "₽" },
+  };
+  const seen = new Set();
+  const result = [];
+  for (const product of products) {
+    if (seen.has(product.currency)) continue;
+    seen.add(product.currency);
+    result.push(meta[product.currency] || { code: product.currency, label: product.currency.toUpperCase(), symbol: "" });
+  }
+  return result;
+}
+
+async function ensureTributeTables(env) {
   requireDb(env);
-  await ensureTributePaymentsTable(env);
-  const row = await readTributeOrder(env, orderUuid);
-  if (!row) throw httpError("Unknown Tribute order.", 404);
-
-  verifyWebhookOrder(row, webhookPayload);
-  if (row.credited_at) {
-    if (row.status !== "paid") await markTributeOrderStatus(env, orderUuid, "paid");
-    return row;
-  }
-
   await env.DB.batch([
     env.DB.prepare(
-      "INSERT OR IGNORE INTO user_credits (user_id, credits, updated_at, created_at) VALUES (?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
-    ).bind(String(row.user_id)),
+      "CREATE TABLE IF NOT EXISTS tribute_payments (" +
+      "order_uuid TEXT PRIMARY KEY, user_id TEXT NOT NULL, package_id TEXT, credits INTEGER NOT NULL, " +
+      "amount INTEGER NOT NULL, currency TEXT NOT NULL DEFAULT 'usd', status TEXT NOT NULL DEFAULT 'pending', " +
+      "payment_url TEXT, credited_at TEXT, refunded_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, " +
+      "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    ),
     env.DB.prepare(
-      "UPDATE user_credits SET credits = credits + COALESCE((SELECT credits FROM tribute_payments WHERE order_uuid = ? AND credited_at IS NULL), 0), updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-    ).bind(orderUuid, String(row.user_id)),
+      "CREATE INDEX IF NOT EXISTS idx_tribute_payments_user_created ON tribute_payments (user_id, created_at DESC)"
+    ),
     env.DB.prepare(
-      "UPDATE tribute_payments SET status = 'paid', credited_at = COALESCE(credited_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE order_uuid = ? AND credited_at IS NULL"
-    ).bind(orderUuid),
+      "CREATE TABLE IF NOT EXISTS tribute_digital_purchases (" +
+      "purchase_id TEXT PRIMARY KEY, transaction_id TEXT, product_id INTEGER NOT NULL, user_id TEXT NOT NULL, " +
+      "product_name TEXT, credits INTEGER NOT NULL, amount INTEGER NOT NULL, currency TEXT NOT NULL, " +
+      "status TEXT NOT NULL DEFAULT 'paid', credited_at TEXT, refunded_at TEXT, purchase_created_at TEXT, " +
+      "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    ),
+    env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_tribute_digital_user_product ON tribute_digital_purchases (user_id, product_id, created_at DESC)"
+    ),
+    env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_tribute_digital_transaction ON tribute_digital_purchases (transaction_id)"
+    ),
   ]);
-
-  return readTributeOrder(env, orderUuid);
 }
 
-async function refundTributeOrder(env, orderUuid, webhookPayload = null) {
-  requireDb(env);
-  await ensureTributePaymentsTable(env);
-  const row = await readTributeOrder(env, orderUuid);
-  if (!row) throw httpError("Unknown Tribute order.", 404);
-
-  verifyWebhookOrder(row, webhookPayload);
-  if (row.refunded_at) return row;
-
-  await env.DB.batch([
-    env.DB.prepare(
-      "INSERT OR IGNORE INTO user_credits (user_id, credits, updated_at, created_at) VALUES (?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
-    ).bind(String(row.user_id)),
-    env.DB.prepare(
-      "UPDATE user_credits SET credits = MAX(credits - COALESCE((SELECT credits FROM tribute_payments WHERE order_uuid = ? AND credited_at IS NOT NULL AND refunded_at IS NULL), 0), 0), updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-    ).bind(orderUuid, String(row.user_id)),
-    env.DB.prepare(
-      "UPDATE tribute_payments SET status = 'refunded', refunded_at = COALESCE(refunded_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE order_uuid = ? AND refunded_at IS NULL"
-    ).bind(orderUuid),
-  ]);
-
-  return readTributeOrder(env, orderUuid);
-}
-
-function verifyWebhookOrder(row, payload) {
-  if (!payload) return;
-  const amount = Number(payload.amount);
-  const currency = String(payload.currency || "").toLowerCase();
-  if (Number.isFinite(amount) && amount > 0 && amount !== Number(row.amount)) {
-    throw httpError("Tribute order amount mismatch.", 400);
-  }
-  if (currency && currency !== String(row.currency || "").toLowerCase()) {
-    throw httpError("Tribute order currency mismatch.", 400);
-  }
-}
-
-async function markTributeOrderStatus(env, orderUuid, status) {
-  requireDb(env);
-  await ensureTributePaymentsTable(env);
-  await env.DB.prepare(
-    "UPDATE tribute_payments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE order_uuid = ? AND credited_at IS NULL AND refunded_at IS NULL"
-  ).bind(String(status), orderUuid).run();
-}
-
-async function readTributeOrder(env, orderUuid, userId = null) {
+async function readTributeIntent(env, orderUuid, userId = null) {
   const sql = userId == null
     ? "SELECT * FROM tribute_payments WHERE order_uuid = ?"
     : "SELECT * FROM tribute_payments WHERE order_uuid = ? AND user_id = ?";
@@ -447,34 +575,6 @@ async function readTributeOrder(env, orderUuid, userId = null) {
   return userId == null
     ? statement.bind(orderUuid).first()
     : statement.bind(orderUuid, String(userId)).first();
-}
-
-async function ensureTributePaymentsTable(env) {
-  requireDb(env);
-  await env.DB.batch([
-    env.DB.prepare(
-      "CREATE TABLE IF NOT EXISTS tribute_payments (" +
-      "order_uuid TEXT PRIMARY KEY, " +
-      "user_id TEXT NOT NULL, " +
-      "package_id TEXT, " +
-      "credits INTEGER NOT NULL, " +
-      "amount INTEGER NOT NULL, " +
-      "currency TEXT NOT NULL DEFAULT 'usd', " +
-      "status TEXT NOT NULL DEFAULT 'pending', " +
-      "payment_url TEXT, " +
-      "credited_at TEXT, " +
-      "refunded_at TEXT, " +
-      "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, " +
-      "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP" +
-      ")"
-    ),
-    env.DB.prepare(
-      "CREATE INDEX IF NOT EXISTS idx_tribute_payments_user_created ON tribute_payments (user_id, created_at DESC)"
-    ),
-    env.DB.prepare(
-      "CREATE INDEX IF NOT EXISTS idx_tribute_payments_status ON tribute_payments (status, created_at DESC)"
-    ),
-  ]);
 }
 
 async function verifyTributeSignature(rawBody, providedSignature, apiKey) {
@@ -517,22 +617,54 @@ function normalizeOrderUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(uuid) ? uuid : "";
 }
 
+function normalizePositiveId(value) {
+  const text = String(value ?? "").trim();
+  if (!/^\d+$/.test(text)) return "";
+  const valueNumber = Number(text);
+  return Number.isSafeInteger(valueNumber) && valueNumber > 0 ? text : "";
+}
+
+function normalizeOptionalId(value) {
+  const text = String(value ?? "").trim();
+  return /^\d+$/.test(text) ? text : null;
+}
+
+function productIdFromPackageId(value) {
+  const match = String(value || "").match(/^digital:(\d+)/);
+  return match ? Number(match[1]) : 0;
+}
+
+function normalizeCurrency(value) {
+  const currency = String(value || "").trim().toLowerCase();
+  return currency === "usd" || currency === "eur" || currency === "rub" ? currency : "";
+}
+
 function safeTributePaymentUrl(value) {
   try {
     const url = new URL(String(value || ""));
-    if (url.protocol !== "https:") return "";
-    if (url.hostname !== "web.tribute.tg" && url.hostname !== "tribute.tg") return "";
+    if (url.protocol !== "https:" || url.hostname !== "web.tribute.tg") return "";
+    if (!/^\/p\/[A-Za-z0-9_-]+\/?$/.test(url.pathname)) return "";
+    url.hash = "";
     return url.toString();
   } catch {
     return "";
   }
 }
 
-function safeTributeWebappUrl(value) {
+function safeTributeTelegramUrl(value) {
   try {
     const url = new URL(String(value || ""));
-    if (url.protocol !== "https:" || url.hostname !== "t.me") return "";
-    if (!/^\/(tribute|tribute_bot)\//i.test(url.pathname)) return "";
+    if (url.protocol !== "https:" || (url.hostname !== "t.me" && url.hostname !== "telegram.me")) return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function normalizeUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    url.hash = "";
     return url.toString();
   } catch {
     return "";
@@ -542,10 +674,6 @@ function safeTributeWebappUrl(value) {
 function tributeApiError(data, fallback) {
   const message = data?.message || data?.error || data?.detail?.message || data?.detail;
   return typeof message === "string" && message.trim() ? message.trim() : fallback;
-}
-
-function formatNumber(value) {
-  return Math.max(0, Math.floor(Number(value) || 0)).toLocaleString("en-US");
 }
 
 function publicError(error) {
