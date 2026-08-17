@@ -54,4 +54,10 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 .history-sheet{background:transparent!important}
 .history-backdrop{background:transparent!important}
 .history-card{padding:0 16px!important;background:#000!important;box-shadow:none!important}
+
+/* Image creation: referral-style metallic line and clean white-metal actions. */
+.image-composer{position:relative!important;border:0!important;overflow:hidden}
+.image-composer:before{content:"";position:absolute;left:18%;right:18%;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.2),transparent);pointer-events:none}
+.image-upload-trigger,.image-generate{border:0!important;background:linear-gradient(145deg,#fff 0%,#f2f2f2 34%,#d4d4d4 66%,#f8f8f8 100%)!important;color:#050505!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.96),inset 0 -1px 0 rgba(0,0,0,.16)!important;filter:none!important;text-shadow:none!important;outline:0!important;-webkit-appearance:none!important;appearance:none!important}
+.image-upload-trigger:focus,.image-upload-trigger:focus-visible,.image-upload-trigger:active,.image-generate:focus,.image-generate:focus-visible,.image-generate:active{box-shadow:inset 0 1px 0 rgba(255,255,255,.96),inset 0 -1px 0 rgba(0,0,0,.18)!important;filter:none!important;outline:0!important}
 `;
