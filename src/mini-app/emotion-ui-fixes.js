@@ -93,7 +93,49 @@ export const EMOTION_UI_FIXES_JS = String.raw`
     window.visualViewport.addEventListener('resize',syncAll,{passive:true});
     window.visualViewport.addEventListener('scroll',syncAll,{passive:true});
   }
+
+  var creditWarningBuyLabels={
+    'Not enough credits':'Buy credits',
+    'اعتبار کافی نیست':'خرید کردیت',
+    'Недостаточно кредитов':'Купить кредиты',
+    'Nicht genügend Credits':'Credits kaufen',
+    'Yetersiz kredi':'Kredi satın al',
+    'الرصيد غير كافٍ':'شراء رصيد',
+    '积分不足':'购买积分',
+    'クレジットが足りません':'クレジット購入',
+    'No tienes suficientes créditos':'Comprar créditos',
+    'Credits कम हैं':'Credits खरीदें'
+  };
+  function syncCreditWarningUi(){
+    var sheet=document.getElementById('ttsLimitSheet');
+    var card=document.getElementById('ttsWarningCard');
+    var button=document.getElementById('ttsWarningClose');
+    var flow=document.getElementById('flow');
+    if(!sheet||!card||!button||!flow)return;
+    var isCreditWarning=sheet.classList.contains('open')&&flow.classList.contains('over-credits');
+    card.classList.toggle('credit-warning-buy',isCreditWarning);
+    button.classList.toggle('credit-warning-buy-button',isCreditWarning);
+    if(!isCreditWarning)return;
+    var title=document.getElementById('ttsWarningTitle');
+    var titleText=String(title&&title.textContent||'').trim();
+    var label=creditWarningBuyLabels[titleText]||(card.dir==='rtl'?'خرید کردیت':'Buy credits');
+    button.textContent=label;
+    button.setAttribute('aria-label',label);
+  }
+  var creditWarningSheet=document.getElementById('ttsLimitSheet');
+  if(creditWarningSheet)new MutationObserver(syncCreditWarningUi).observe(creditWarningSheet,{attributes:true,attributeFilter:['class']});
+  document.addEventListener('click',function(event){
+    var button=event.target&&event.target.closest?event.target.closest('#ttsWarningClose.credit-warning-buy-button'):null;
+    if(!button)return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    var sheet=document.getElementById('ttsLimitSheet');
+    if(sheet){sheet.classList.remove('open');sheet.setAttribute('aria-hidden','true')}
+    var creditPill=document.getElementById('creditPill');
+    if(creditPill)creditPill.click();
+  },true);
+
   document.body.classList.add('emotion-highlight-ready');
-  requestAnimationFrame(syncAll);
+  requestAnimationFrame(function(){syncAll();syncCreditWarningUi()});
 })();
 `;
