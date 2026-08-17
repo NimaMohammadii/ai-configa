@@ -6,7 +6,7 @@ import {
 import VEXA_VOICE_AGENT_SOURCE from "./mini-app/vexa-live/voice-agent-runtime.txt";
 import VEXA_VOICE_ORB_SOURCE from "./mini-app/vexa-live/voice-orb-original.txt";
 
-const VEXA_VOICE_AGENT_VERSION = "20260817-13";
+const VEXA_VOICE_AGENT_VERSION = "20260817-14";
 const LIVE_ROOT = "/mini-app/live";
 const LIVE_INTEGRATION_PATH = LIVE_ROOT + "/integration.js";
 const VOICE_RUNTIME_PATH = LIVE_ROOT + "/voice-agent-runtime.js";
@@ -165,8 +165,83 @@ function makeVoiceOrbOnly(source) {
   return result;
 }
 
+function diagnoseVoiceFailures(source) {
+  let result = String(source || "");
+
+  result = result.replace(
+    `  function fail(error) {
+    if (!state.active) return;
+    console.error("Vexa voice agent", error);
+    state.captureEnabled = false;
+    setPhase("error", "Connection issue", cleanError(error));
+    haptic("error");
+    window.setTimeout(() => {
+      if (state.active && state.phase === "error") closeVoiceMode();
+    }, 3200);
+  }`,
+    `  function fail(error) {
+    if (!state.active) return;
+    console.error("Vexa voice agent", error);
+    state.captureEnabled = false;
+    const message = cleanError(error);
+    setPhase("error", "Error · " + message, "");
+    haptic("error");
+  }`,
+  );
+
+  result = result.replace(
+    `    socket.addEventListener("close", () => {
+      if (state.active && state.phase !== "error") fail(new Error("V3 voice connection closed"));
+    });`,
+    `    socket.addEventListener("close", (event) => {
+      if (state.active && state.phase !== "error") {
+        const code = Number(event?.code || 0);
+        const reason = String(event?.reason || "").trim();
+        const detail = reason || (code ? "WebSocket closed · " + code : "V3 voice connection closed");
+        fail(new Error(detail));
+      }
+    });`,
+  );
+
+  result = result.replace(
+    `    if (type.includes("error")) {
+      fail(new Error(String(message?.message || message?.error || "V3 voice was interrupted")));
+    }`,
+    `    if (type.includes("error")) {
+      const nested = message?.client_error_event || message?.error_event || {};
+      const value = nested?.message ?? nested?.error ?? nested?.reason ?? nested?.code ?? message?.message ?? message?.error ?? "V3 voice was interrupted";
+      let detail = "";
+      try { detail = typeof value === "string" ? value : JSON.stringify(value); } catch (error) { detail = String(value || ""); }
+      fail(new Error(detail || "V3 voice was interrupted"));
+    }`,
+  );
+
+  result = result.replace(
+    `      if (type.includes("error")) {
+        clearVoiceResponseWatchdog();
+        const messageText = String(message?.message || message?.error || "Voice connection failed");
+        fail(new Error(messageText));
+      }`,
+    `      if (type.includes("error")) {
+        clearVoiceResponseWatchdog();
+        const nested = message?.client_error_event || message?.error_event || {};
+        const value = nested?.message ?? nested?.error ?? nested?.reason ?? nested?.code ?? message?.message ?? message?.error ?? "Voice connection failed";
+        let messageText = "";
+        try { messageText = typeof value === "string" ? value : JSON.stringify(value); } catch (error) { messageText = String(value || ""); }
+        fail(new Error(messageText || "Voice connection failed"));
+      }`,
+  );
+
+  result = result.replace(
+    ".vexa-voice-status{height:24px!important;color:rgba(255,255,255,.68)!important;font-size:12px!important;font-weight:650!important;letter-spacing:-.015em!important}",
+    ".vexa-voice-status{min-height:24px!important;height:auto!important;max-width:min(88vw,420px)!important;color:rgba(255,255,255,.68)!important;font-size:12px!important;font-weight:650!important;line-height:1.35!important;letter-spacing:-.015em!important;text-align:center!important;white-space:normal!important}",
+  );
+
+  return result;
+}
+
 function browserVoiceRuntimeSource() {
-  const raw = makeVoiceOrbOnly(polishVoiceUi(restoreOriginalOrb(VEXA_VOICE_AGENT_SOURCE)));
+  const raw = diagnoseVoiceFailures(makeVoiceOrbOnly(polishVoiceUi(restoreOriginalOrb(VEXA_VOICE_AGENT_SOURCE))));
   const exportMarker = "\nexport const VEXA_VOICE_AGENT_JS";
   const exportIndex = raw.lastIndexOf(exportMarker);
   const browserBody = exportIndex >= 0 ? raw.slice(0, exportIndex) : raw;
