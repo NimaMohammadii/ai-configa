@@ -118,16 +118,25 @@ export const VEXA_LIVE_HTML = `<!doctype html>
     body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-record-inner{opacity:0!important;transform:scale(.98)!important}
     body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-record::after{content:"Transcribing";position:absolute;z-index:2;inset:0;display:grid;place-items:center;color:#050505;font-size:12.5px;font-weight:760;letter-spacing:-.015em;animation:vexaSttButtonState .3s cubic-bezier(.16,1,.3,1) both}
     body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-status{opacity:0!important;transform:translate(-50%,5px)!important}
-    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-stage{height:72px!important;bottom:86px!important;transform:translate(-50%,0) scale(1)!important}
-    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track{position:relative!important;height:34px!important;filter:none!important;overflow:visible!important}
-    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i{animation:none!important;opacity:0!important;transform:scaleY(.02)!important}
-    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track::before{content:"";position:absolute;left:7%;right:7%;top:50%;height:1px;border-radius:999px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14) 12%,rgba(255,255,255,.27) 50%,rgba(255,255,255,.14) 88%,transparent);transform:translateY(-50%)}
-    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track::after{content:"";position:absolute;left:7%;top:50%;width:48px;height:16px;background:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 56 18%22%3E%3Cpath d=%22M1 9h10c3 0 3-5 6-5s3 10 6 10 3-8 6-8 3 6 6 6 3-3 6-3h14%22 fill=%22none%22 stroke=%22white%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E") center/contain no-repeat;filter:drop-shadow(0 0 7px rgba(255,255,255,.12));opacity:0;transform:translateY(-50%) scale(.88);animation:vexaSttQuietWave 2.05s cubic-bezier(.4,0,.2,1) infinite}
-    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-caption{bottom:0!important;color:rgba(255,255,255,.38)!important}
-    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-caption strong{display:none!important}
-    @keyframes vexaSttQuietWave{0%{left:7%;opacity:0;transform:translateY(-50%) scale(.84)}14%{opacity:.55}48%{opacity:.92;transform:translateY(-50%) scale(1)}86%{opacity:.52}100%{left:calc(93% - 48px);opacity:0;transform:translateY(-50%) scale(.84)}}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-stage{height:62px!important;bottom:90px!important;transform:translate(-50%,0) scale(1)!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track{position:relative!important;width:100%!important;height:30px!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:3px!important;padding:0!important;filter:none!important;overflow:hidden!important;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%)!important;mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%)!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track::before{content:"";position:absolute;z-index:0;left:7%;right:7%;top:50%;height:1px;border-radius:999px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.11) 12%,rgba(255,255,255,.24) 50%,rgba(255,255,255,.11) 88%,transparent);transform:translateY(-50%)}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track::after{display:none!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i{position:relative!important;z-index:1!important;left:calc(-50% - 54px);display:block!important;width:2.4px!important;flex:0 0 2.4px!important;border-radius:999px!important;background:#fff!important;transform-origin:center!important;will-change:left,transform,opacity!important;animation:vexaSttProcessingTravel 2.4s linear infinite,vexaSttProcessingPulse .68s ease-in-out infinite!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i:nth-child(n+19){display:none!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+1){height:8px!important;animation-delay:0s,-.56s!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+2){height:13px!important;animation-delay:0s,-.49s!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+3){height:18px!important;animation-delay:0s,-.42s!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+4){height:11px!important;animation-delay:0s,-.35s!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+5){height:16px!important;animation-delay:0s,-.28s!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+6){height:9px!important;animation-delay:0s,-.21s!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+7){height:14px!important;animation-delay:0s,-.14s!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n){height:20px!important;animation-delay:0s,-.07s!important}
+    body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-caption{display:none!important}
+    @keyframes vexaSttProcessingTravel{0%{left:calc(-50% - 54px)}100%{left:calc(50% + 54px)}}
+    @keyframes vexaSttProcessingPulse{0%,100%{transform:scaleY(.65);opacity:.55}50%{transform:scaleY(1.15);opacity:1}}
     @keyframes vexaSttButtonState{from{opacity:0;transform:translateY(3px) scale(.98)}to{opacity:1;transform:none}}
-    @media(prefers-reduced-motion:reduce){body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track::after{animation:none!important;left:50%!important;opacity:.72!important;transform:translate(-50%,-50%)!important}}
+    @media(prefers-reduced-motion:reduce){body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i{animation:none!important;left:0!important;opacity:.72!important}body.vexa-stt-embedded .vexa-stt.processing .vexa-stt-wave-track i:nth-child(n+13){display:none!important}}
   </style>
 </head>
 <body>
