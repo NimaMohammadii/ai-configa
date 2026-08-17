@@ -18,6 +18,8 @@ import {
   adminAiChatLockPromptText,
   adminBuyersKeyboard,
   adminBuyersText,
+  adminReferralUsersKeyboard,
+  adminReferralUsersText,
   adminMainKeyboard,
   adminMainText,
   adminImageUserKeyboard,
@@ -407,6 +409,15 @@ export async function handleCallback(query, env) {
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminUsersText(env, page), await adminUsersKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_referrals:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const page = Number(data.split(":")[1] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminReferralUsersText(env, page), await adminReferralUsersKeyboard(env, page));
     return;
   }
 
