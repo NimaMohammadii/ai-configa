@@ -9,13 +9,20 @@ import {
   injectAiBackgroundTasksClient,
   isAiBackgroundTasksClientRequest,
 } from "./mini-app/ai-background-tasks-client.js";
+import {
+  handleVexaLiveProjectRequest,
+  isVexaLiveProjectRequest,
+} from "./mini-app/vexa-live/projects.js";
 import { VEXA_LIVE_EDITOR_JS } from "./mini-app/vexa-live/editor-client.js";
+import { VEXA_STT_EXPORT_JS } from "./mini-app/vexa-live/stt-export-client.js";
 
 const VEXA_EDITOR_VERSION = "20260815-12";
+const VEXA_STT_EXPORT_VERSION = "20260817-1";
 const AI_CHAT_HEARTBEAT_MS = 10_000;
 const AI_CHAT_PATH = "/mini-app/api/chat";
 
 export { AiCodingWorkflow };
+export { VexaMediaContainerV2 } from "./mini-app/vexa-live/media-container.js";
 
 async function injectVexaEditorClient(response) {
   if (!response || !response.ok) return response;
@@ -36,7 +43,15 @@ async function injectVexaEditorClient(response) {
     VEXA_LIVE_EDITOR_JS.replace(/<\/script/gi, "<\\/script") +
     '</script>';
 
-  const injection = disabledContainerUi + editorRuntime;
+  const exportRuntime =
+    '<script id="vexaSttExportRuntime">' +
+    'document.documentElement.dataset.vexaSttExportVersion="' +
+    VEXA_STT_EXPORT_VERSION +
+    '";' +
+    VEXA_STT_EXPORT_JS.replace(/<\/script/gi, "<\\/script") +
+    '</script>';
+
+  const injection = disabledContainerUi + editorRuntime + exportRuntime;
   const html = source.includes("</body>")
     ? source.replace("</body>", injection + "\n</body>")
     : source + injection;
@@ -61,6 +76,10 @@ export default {
 
     if (isAiBackgroundTasksClientRequest(request)) {
       return handleAiBackgroundTasksClientRequest();
+    }
+
+    if (isVexaLiveProjectRequest(request)) {
+      return handleVexaLiveProjectRequest(request, env);
     }
 
     const url = new URL(request.url);
