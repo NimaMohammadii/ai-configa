@@ -20,7 +20,6 @@ import {
 } from "./styles.js";
 
 const LIVE_ROOT = "/mini-app/live";
-const INTEGRATION_VERSION = "20260814-2";
 const SCRIBE_MODEL = "scribe_v2";
 const REALTIME_SCRIBE_MODEL = "scribe_v2_realtime";
 const MAX_TRANSLATION_TEXT = 1200;
@@ -39,6 +38,219 @@ const SUPPORTED_LANGUAGES = Object.freeze({
   zh: "Chinese",
   ja: "Japanese",
 });
+
+const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
+(function () {
+  const BUTTON_ID = "vexaLiveOpen";
+  const WORKSPACE_ID = "vexaLiveWorkspace";
+  let liveOpen = false;
+  let liveFrame = null;
+
+  function requestedSection() {
+    let raw = "";
+    const tg = window.Telegram && window.Telegram.WebApp;
+
+    try {
+      raw = tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param || "";
+    } catch (error) {}
+
+    if (!raw) {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        raw = params.get("tgWebAppStartParam") ||
+          params.get("startapp") ||
+          params.get("section") ||
+          "";
+      } catch (error) {}
+    }
+
+    return String(raw || "").trim().toLowerCase();
+  }
+
+  function haptic() {
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if (!tg || !tg.HapticFeedback || !tg.HapticFeedback.impactOccurred) return;
+    try {
+      tg.HapticFeedback.impactOccurred("light");
+    } catch (error) {}
+  }
+
+  function hideTelegramBackButton() {
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if (!tg || !tg.BackButton || !tg.BackButton.hide) return;
+    try {
+      tg.BackButton.hide();
+    } catch (error) {}
+  }
+
+  function installWorkspace() {
+    const existing = document.getElementById(WORKSPACE_ID);
+    if (existing) return existing;
+
+    const page = document.querySelector(".tts-page");
+    if (!page) return null;
+
+    const workspace = document.createElement("section");
+    workspace.id = WORKSPACE_ID;
+    workspace.setAttribute("aria-hidden", "true");
+    workspace.style.cssText =
+      "position:absolute;z-index:34;left:0;right:0;top:50px;bottom:0;" +
+      "display:block;overflow:hidden;background:#000;opacity:0;" +
+      "transform:translateX(34px) scale(.985);pointer-events:none;" +
+      "transition:opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1);";
+
+    page.appendChild(workspace);
+    return workspace;
+  }
+
+  function prepareEmbeddedFrame(frame) {
+    if (!frame) return;
+
+    try {
+      const doc = frame.contentDocument;
+      if (doc && doc.head && !doc.getElementById("vexaLiveInlineEmbedStyle")) {
+        const style = doc.createElement("style");
+        style.id = "vexaLiveInlineEmbedStyle";
+        style.textContent =
+          ".live-header,.live-hero{display:none!important}" +
+          ".live-app{width:100%!important;min-height:100%!important;margin:0!important;" +
+          "padding:8px 16px calc(18px + env(safe-area-inset-bottom))!important}";
+        doc.head.appendChild(style);
+      }
+    } catch (error) {}
+
+    hideTelegramBackButton();
+  }
+
+  function ensureFrame() {
+    if (liveFrame) return liveFrame;
+
+    const workspace = installWorkspace();
+    if (!workspace) return null;
+
+    const frame = document.createElement("iframe");
+    frame.id = "vexaLiveInlineFrame";
+    frame.src = "/mini-app/live";
+    frame.title = "Vexa Live";
+    frame.setAttribute("aria-label", "Vexa Live captions");
+    frame.style.cssText = "display:block;width:100%;height:100%;border:0;background:#000;";
+    frame.addEventListener("load", function () {
+      prepareEmbeddedFrame(frame);
+    });
+
+    workspace.appendChild(frame);
+    liveFrame = frame;
+    return frame;
+  }
+
+  function setMainContentHidden(hidden) {
+    const area = document.querySelector(".tts-area");
+    const bottom = document.querySelector(".tts-bottom");
+
+    if (area) {
+      area.style.opacity = hidden ? "0" : "";
+      area.style.transform = hidden ? "translateX(-36px)" : "";
+      area.style.pointerEvents = hidden ? "none" : "";
+    }
+
+    if (bottom) {
+      bottom.style.opacity = hidden ? "0" : "";
+      bottom.style.transform = hidden ? "translateX(-36px)" : "";
+      bottom.style.pointerEvents = hidden ? "none" : "";
+    }
+  }
+
+  function closeImageMode() {
+    if (!document.body.classList.contains("image-mode")) return;
+    const imageToggle = document.getElementById("modeToggle");
+    if (imageToggle) imageToggle.click();
+  }
+
+  function setLiveOpen(open) {
+    const next = Boolean(open);
+    if (next === liveOpen) return;
+
+    if (next) closeImageMode();
+
+    const workspace = installWorkspace();
+    const button = document.getElementById(BUTTON_ID);
+    if (!workspace || !button) return;
+
+    liveOpen = next;
+    button.setAttribute("aria-pressed", next ? "true" : "false");
+    button.setAttribute(
+      "aria-label",
+      next ? "Return to voice creation" : "Open Vexa Live captions"
+    );
+    workspace.setAttribute("aria-hidden", next ? "false" : "true");
+    workspace.style.opacity = next ? "1" : "0";
+    workspace.style.transform = next
+      ? "translateX(0) scale(1)"
+      : "translateX(34px) scale(.985)";
+    workspace.style.pointerEvents = next ? "auto" : "none";
+    setMainContentHidden(next);
+
+    if (next) {
+      ensureFrame();
+      hideTelegramBackButton();
+    }
+  }
+
+  function installButton() {
+    const existing = document.getElementById(BUTTON_ID);
+    if (existing) return existing;
+
+    const wheel = document.getElementById("wheelOpenButton");
+    if (!wheel || !wheel.parentElement) return null;
+
+    const button = document.createElement("button");
+    button.id = BUTTON_ID;
+    button.type = "button";
+    button.className = "mode-toggle";
+    button.setAttribute("aria-label", "Open Vexa Live captions");
+    button.setAttribute("aria-pressed", "false");
+    button.innerHTML =
+      '<svg class="mode-image-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+        '<rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/>' +
+        '<path d="M6.8 10.15h10.4M8.6 14h6.8" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/>' +
+      '</svg>' +
+      '<svg class="mode-voice-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+        '<rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/>' +
+        '<path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>' +
+      '</svg>';
+
+    button.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      haptic();
+      setLiveOpen(!liveOpen);
+    });
+
+    wheel.insertAdjacentElement("afterend", button);
+
+    const imageToggle = document.getElementById("modeToggle");
+    if (imageToggle) {
+      imageToggle.addEventListener("click", function () {
+        if (liveOpen) setLiveOpen(false);
+      });
+    }
+
+    return button;
+  }
+
+  function initialize() {
+    const button = installButton();
+    installWorkspace();
+    if (button && requestedSection() === "live") setLiveOpen(true);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initialize, { once: true });
+  } else {
+    initialize();
+  }
+})();
+`;
 
 export function isVexaLiveRequest(request) {
   const path = new URL(request.url).pathname;
@@ -108,9 +320,9 @@ export async function handleMiniAppWithVexaLive(request, env) {
 
   const source = await response.text();
   const script =
-    '<script src="/mini-app/live/integration.js?v=' +
-    INTEGRATION_VERSION +
-    '"></script>';
+    "<script>" +
+    VEXA_LIVE_INLINE_INTEGRATION_JS.replace(/<\/script/gi, "<\\/script") +
+    "</script>";
   const html = source.includes("</body>")
     ? source.replace("</body>", script + "\n</body>")
     : source + script;
