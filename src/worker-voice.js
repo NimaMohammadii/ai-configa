@@ -6,7 +6,7 @@ import {
 import VEXA_VOICE_AGENT_SOURCE from "./mini-app/vexa-live/voice-agent-runtime.txt";
 import VEXA_VOICE_ORB_SOURCE from "./mini-app/vexa-live/voice-orb-original.txt";
 
-const VEXA_VOICE_AGENT_VERSION = "20260817-11";
+const VEXA_VOICE_AGENT_VERSION = "20260817-12";
 const LIVE_ROOT = "/mini-app/live";
 const LIVE_INTEGRATION_PATH = LIVE_ROOT + "/integration.js";
 const VOICE_RUNTIME_PATH = LIVE_ROOT + "/voice-agent-runtime.js";
@@ -69,8 +69,34 @@ function restoreOriginalOrb(source) {
   );
 }
 
+function polishVoiceUi(source) {
+  let polished = String(source || "");
+
+  polished = polished.replace(
+    "background:#080808;color:#fff;opacity:0;visibility:hidden",
+    "background:#000000;color:#fff;opacity:0;visibility:hidden",
+  );
+
+  polished = polished.replace(
+    ".vexa-voice-close{position:absolute;z-index:4;top:calc(14px + env(safe-area-inset-top));left:14px;width:38px;height:38px;padding:0;display:grid;place-items:center;border:1px solid rgba(255,255,255,.1);border-radius:50%;color:#fff;background:rgba(255,255,255,.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 9px 24px rgba(0,0,0,.3);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:20px;font-weight:300;transition:transform .2s cubic-bezier(.16,1,.3,1),background .2s ease}",
+    ".vexa-voice-close{position:absolute;z-index:4;top:calc(14px + env(safe-area-inset-top));left:14px;width:38px;height:38px;padding:0;display:grid;place-items:center;border:0;border-radius:50%;color:#fff;background:rgba(13,13,13,.66);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),inset 0 -1px 0 rgba(255,255,255,.045),0 10px 26px rgba(0,0,0,.28);backdrop-filter:blur(12px) saturate(1.08);-webkit-backdrop-filter:blur(12px) saturate(1.08);font-size:21px;line-height:1;font-weight:800;letter-spacing:-.04em;transition:transform .2s cubic-bezier(.16,1,.3,1),background .2s ease}",
+  );
+
+  polished = polished.replace(
+    ".vexa-voice-stage{position:relative;width:min(82vw,390px);aspect-ratio:1;display:grid;place-items:center;opacity:0;transform:scale(.74);filter:blur(8px);transition:opacity .48s .06s ease,transform .72s .04s cubic-bezier(.16,1,.3,1),filter .5s .04s ease}",
+    ".vexa-voice-stage{position:relative;width:min(82vw,390px);aspect-ratio:1;display:grid;place-items:center;opacity:0;transform:translateY(-42px) scale(.74);filter:blur(8px);transition:opacity .48s .06s ease,transform .72s .04s cubic-bezier(.16,1,.3,1),filter .5s .04s ease}",
+  );
+
+  polished = polished.replace(
+    ".vexa-voice-overlay.open .vexa-voice-stage{opacity:1;transform:scale(1);filter:blur(0)}",
+    ".vexa-voice-overlay.open .vexa-voice-stage{opacity:1;transform:translateY(-42px) scale(1);filter:blur(0)}",
+  );
+
+  return polished;
+}
+
 function browserVoiceRuntimeSource() {
-  const raw = restoreOriginalOrb(VEXA_VOICE_AGENT_SOURCE);
+  const raw = polishVoiceUi(restoreOriginalOrb(VEXA_VOICE_AGENT_SOURCE));
   const exportMarker = "\nexport const VEXA_VOICE_AGENT_JS";
   const exportIndex = raw.lastIndexOf(exportMarker);
   const browserBody = exportIndex >= 0 ? raw.slice(0, exportIndex) : raw;
