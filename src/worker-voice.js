@@ -5,7 +5,7 @@ import {
 } from "./mini-app/vexa-live/voice-agent.js";
 import VEXA_VOICE_AGENT_SOURCE from "./mini-app/vexa-live/voice-agent-runtime.txt";
 
-const VEXA_VOICE_AGENT_VERSION = "20260817-9";
+const VEXA_VOICE_AGENT_VERSION = "20260817-10";
 const LIVE_ROOT = "/mini-app/live";
 const LIVE_INTEGRATION_PATH = LIVE_ROOT + "/integration.js";
 const VOICE_RUNTIME_PATH = LIVE_ROOT + "/voice-agent-runtime.js";
