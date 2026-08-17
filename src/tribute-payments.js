@@ -102,7 +102,7 @@ export async function getTributeDigitalProductsState(env, options = {}) {
     const products = await getVexaCardProducts(env, { force: options.force === true });
     return {
       ready: products.length > 0,
-      error: products.length ? null : "No approved Vexa digital product with card payments was found.",
+      error: products.length ? null : "No active Vexa digital product with card payments was found.",
       products: products.map((product) => ({
         productId: product.productId,
         credits: product.credits,
@@ -432,14 +432,21 @@ async function getTributeProducts(env, options = {}) {
 
 function isEligibleVexaProduct(row, env) {
   if (!row || String(row.type || "").toLowerCase() !== "digital") return false;
-  if (String(row.status || "").toLowerCase() !== "approved") return false;
   if (row.acceptCards !== true) return false;
 
   const webLink = safeTributePaymentUrl(row.webLink);
   if (!webLink) return false;
 
+  const status = String(row.status || "").toLowerCase();
   const allowedLinks = new Set(configuredVexaProductLinks(env));
-  if (allowedLinks.has(normalizeUrl(webLink))) return true;
+  const configuredLink = allowedLinks.has(normalizeUrl(webLink));
+
+  // Tribute's live Digital Products API currently returns `new` for a freshly
+  // created, immediately shareable card-enabled product, even though the public
+  // schema still documents pending/approved/rejected. Only explicitly configured
+  // Vexa links may use this live `new` status; inferred products still require approved.
+  if (configuredLink) return status === "approved" || status === "new";
+  if (status !== "approved") return false;
 
   const text = `${row.name || ""} ${row.description || ""}`.toLowerCase();
   return text.includes("vexa") && text.includes("credit");
