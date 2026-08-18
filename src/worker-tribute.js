@@ -8,10 +8,11 @@ import {
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
 
-const TRIBUTE_UI_VERSION = "20260818-9";
+const TRIBUTE_UI_VERSION = "20260818-10";
 const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
 const CONFIGURED_VEXA_PRODUCT_LINKS = new Set([
   "https://web.tribute.tg/p/CcQ",
+  "https://web.tribute.tg/p/Cdn",
 ]);
 
 export { AiCodingWorkflow } from "./worker-with-media.js";
