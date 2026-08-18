@@ -12,6 +12,7 @@ import { PURCHASE_UI_CSS } from "./purchase-ui-styles.js";
 import { REFERRAL_UI_PATCH } from "./referral-ui.js";
 import { VOICE_INTRO_REFERRAL_UI_PATCH } from "./voice-intro-referral-ui.js";
 import { HISTORY_FILE_IDENTITY_PATCH } from "./history-file-identity.js";
+import { TTS_KEYBOARD_LOCK_PATCH } from "./tts-keyboard-lock.js";
 
 export { isMiniAppRequest };
 
@@ -229,7 +230,7 @@ async function injectMiniAppUi(response, includeHistoryIdentity) {
   if (!source.includes(marker)) return cloneTextResponse(response, source);
   const injection =
     REFERRAL_UI_PATCH +
-    (includeHistoryIdentity ? "\n" + VOICE_INTRO_REFERRAL_UI_PATCH + "\n" + HISTORY_FILE_IDENTITY_PATCH : "");
+    (includeHistoryIdentity ? "\n" + TTS_KEYBOARD_LOCK_PATCH + "\n" + VOICE_INTRO_REFERRAL_UI_PATCH + "\n" + HISTORY_FILE_IDENTITY_PATCH : "");
   const patched = source.replace(marker, marker + "\n" + injection);
   return cloneTextResponse(response, patched);
 }
