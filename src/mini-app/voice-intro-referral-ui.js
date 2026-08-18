@@ -83,14 +83,18 @@ export const VOICE_INTRO_REFERRAL_UI_PATCH = String.raw`
       document.head.appendChild(style);
     }
 
+    function setVoiceText(node,value){
+      if(node&&node.textContent!==value)node.textContent=value;
+    }
+
     function applyVoiceCopy(sheet,card){
       var copy=currentVoiceCopy();
-      card.dir=copy.dir;
-      var title=card.querySelector('h3');if(title)title.textContent=copy.title;
-      var text=card.querySelector('p');if(text)text.textContent=copy.body;
-      var price=card.querySelector('.vexa-voice-intro-price');if(price)price.textContent=copy.price;
-      var okay=card.querySelector('.vexa-voice-intro-okay');if(okay){okay.textContent=copy.okay;okay.setAttribute('aria-label',copy.okay)}
-      var never=card.querySelector('.vexa-voice-intro-never');if(never){never.textContent=copy.never;never.setAttribute('aria-label',copy.never)}
+      if(card.getAttribute('dir')!==copy.dir)card.setAttribute('dir',copy.dir);
+      var title=card.querySelector('h3');setVoiceText(title,copy.title);
+      var text=card.querySelector('p');setVoiceText(text,copy.body);
+      var price=card.querySelector('.vexa-voice-intro-price');setVoiceText(price,copy.price);
+      var okay=card.querySelector('.vexa-voice-intro-okay');if(okay){setVoiceText(okay,copy.okay);okay.setAttribute('aria-label',copy.okay)}
+      var never=card.querySelector('.vexa-voice-intro-never');if(never){setVoiceText(never,copy.never);never.setAttribute('aria-label',copy.never)}
       var backdrop=sheet.querySelector('.limit-backdrop');if(backdrop)backdrop.setAttribute('aria-label',copy.close);
       var close=card.querySelector('.vexa-voice-intro-x');if(close)close.setAttribute('aria-label',copy.close);
     }
