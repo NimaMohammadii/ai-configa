@@ -69,7 +69,7 @@ function vexaVoiceAgentBootstrap() {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
       cache: "no-store",
-      body: JSON.stringify(Object.assign({ initData: initData() }, body || {})),
+      body: JSON.stringify(Object.assign({ initData: initData(), vexaVoice: true }, body || {})),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(String(data?.error || "Voice connection failed"));
