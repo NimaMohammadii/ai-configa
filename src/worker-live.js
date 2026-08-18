@@ -12,7 +12,7 @@ const VOICE_CREDITS_PER_MINUTE = 800;
 const VOICE_SESSION_TTL_MS = 15 * 60 * 1000;
 const VOICE_MAX_SESSION_MS = 10 * 60 * 1000;
 const VOICE_MAX_SETTLE_INTERVAL_MS = 5000;
-const BILLING_VERSION = "20260818-3";
+const BILLING_VERSION = "20260818-4";
 
 let proxyTableReady = null;
 
@@ -191,7 +191,14 @@ async function handleVoiceProxy(request, env, ctx) {
 
   let upstreamResponse;
   try {
-    upstreamResponse = await fetch(String(row.signed_url || ""), {
+    const signedUrl = String(row.signed_url || "");
+    const upstreamFetchUrl = signedUrl
+      .replace(/^wss:/i, "https:")
+      .replace(/^ws:/i, "http:");
+    if (!/^https?:\/\//i.test(upstreamFetchUrl)) {
+      throw new Error("Invalid upstream WebSocket URL");
+    }
+    upstreamResponse = await fetch(upstreamFetchUrl, {
       headers: { Upgrade: "websocket" },
     });
   } catch (error) {
@@ -466,8 +473,8 @@ async function patchLiveIntegration(response) {
 
   source = replaceOrKeep(
     source,
-    "Transcript</span><span id=\\\"vexaSttLanguage\\\"",
-    "Transcript <small style=\\\"margin-left:5px;color:rgba(255,255,255,.28);font-size:8.5px;font-weight:620;letter-spacing:-.01em;text-transform:none\\\">· 30 credits/min</small></span><span id=\\\"vexaSttLanguage\\\"",
+    "Transcript</span><span id=\"vexaSttLanguage\"",
+    "Transcript <small style=\"margin-left:5px;color:rgba(255,255,255,.28);font-size:8.5px;font-weight:620;letter-spacing:-.01em;text-transform:none\">· 30 credits/min</small></span><span id=\"vexaSttLanguage\"",
     "STT rate label",
   );
 
