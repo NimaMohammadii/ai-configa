@@ -1,20 +1,104 @@
 import worker from "./worker-voice.js";
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
 import { getBalance, spendCredits } from "./credits.js";
+import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
+import { textToSpeech } from "./elevenlabs.js";
+import { VOICES } from "./voices.js";
 
 const STT_TOKEN_PATH = "/mini-app/live/api/scribe-token";
 const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
+const VOICE_RUNTIME_PATH = "/mini-app/live/voice-agent-runtime.js";
 const VOICE_ROOT = "/mini-app/live/api/voice-agent";
 const VOICE_SESSION_PATH = VOICE_ROOT + "/session";
 const VOICE_PROXY_PATH = VOICE_ROOT + "/connect";
+const VOICE_LOCKED_PROMPT_PATH = VOICE_ROOT + "/locked-prompt";
 const STT_CREDITS_PER_MINUTE = 30;
 const VOICE_CREDITS_PER_MINUTE = 800;
+const VOICE_MINIMUM_BALANCE = 10000;
+const VOICE_LOCKED_PROMPT_VERSION = "v1";
+const VOICE_LOCKED_PROMPT_VOICE = "VexaVoiceLocked:Laura:" + VOICE_LOCKED_PROMPT_VERSION;
+const VOICE_LOCKED_PROMPT_COUNT = 5;
+const VOICE_LOCKED_PROMPT_VOICE_ID = VOICES.Laura;
 const VOICE_SESSION_TTL_MS = 15 * 60 * 1000;
 const VOICE_MAX_SESSION_MS = 10 * 60 * 1000;
 const VOICE_MAX_SETTLE_INTERVAL_MS = 5000;
-const BILLING_VERSION = "20260818-4";
+const BILLING_VERSION = "20260818-5";
+const VOICE_LOCKED_LANGUAGES = new Set(["en", "fa", "ru", "de", "tr", "ar", "es", "hi", "zh", "ja"]);
+const VOICE_LOCKED_PROMPTS = {
+  en: [
+    "[clears throat] To talk with me, you need at least ten thousand credits in your balance.",
+    "[sighs] Your balance is still below ten thousand credits. Top it up a little, then we can talk.",
+    "[laughs] You're still a little short on credits. Once you reach ten thousand, I'm right here.",
+    "Voice Agent unlocks when your balance reaches at least ten thousand credits.",
+    "[clears throat] Still under ten thousand credits. Bring your balance up to ten thousand and we can start.",
+  ],
+  fa: [
+    "[clears throat] برای صحبت با من، باید حداقل ده هزار کردیت موجودی داشته باشی.",
+    "[sighs] موجودیت هنوز به ده هزار کردیت نرسیده. یکم شارژش کن تا بتونیم حرف بزنیم.",
+    "[laughs] هنوز یکم کردیت کم داری. وقتی موجودیت به ده هزار برسه، من اینجام.",
+    "ویس ایجنت وقتی باز می‌شه که حداقل ده هزار کردیت موجودی داشته باشی.",
+    "[clears throat] هنوز زیر ده هزار کردیتی. موجودیت رو برسون به ده هزار تا شروع کنیم.",
+  ],
+  ru: [
+    "[clears throat] Чтобы поговорить со мной, на балансе должно быть минимум десять тысяч кредитов.",
+    "[sighs] На балансе пока меньше десяти тысяч кредитов. Немного пополни его, и сможем поговорить.",
+    "[laughs] Тебе совсем немного не хватает кредитов. Как только будет десять тысяч, я здесь.",
+    "Голосовой агент откроется, когда на балансе будет минимум десять тысяч кредитов.",
+    "[clears throat] Пока меньше десяти тысяч кредитов. Пополни баланс до десяти тысяч, и начнём.",
+  ],
+  de: [
+    "[clears throat] Um mit mir zu sprechen, brauchst du mindestens zehntausend Credits auf deinem Guthaben.",
+    "[sighs] Dein Guthaben liegt noch unter zehntausend Credits. Lade es etwas auf, dann können wir reden.",
+    "[laughs] Dir fehlen nur noch ein paar Credits. Sobald du zehntausend hast, bin ich da.",
+    "Der Voice Agent wird freigeschaltet, sobald dein Guthaben mindestens zehntausend Credits erreicht.",
+    "[clears throat] Noch unter zehntausend Credits. Lade dein Guthaben auf zehntausend auf, dann legen wir los.",
+  ],
+  tr: [
+    "[clears throat] Benimle konuşmak için bakiyende en az on bin kredi olmalı.",
+    "[sighs] Bakiyen hâlâ on bin kredinin altında. Biraz yükle, sonra konuşabiliriz.",
+    "[laughs] Biraz daha krediye ihtiyacın var. On bine ulaştığında ben buradayım.",
+    "Sesli asistan, bakiyen en az on bin krediye ulaştığında açılır.",
+    "[clears throat] Hâlâ on bin kredinin altındasın. Bakiyeni on bine çıkar, başlayalım.",
+  ],
+  ar: [
+    "[clears throat] للتحدث معي، يجب أن يكون رصيدك عشرة آلاف كريدت على الأقل.",
+    "[sighs] رصيدك ما زال أقل من عشرة آلاف كريدت. اشحنه قليلاً وبعدها نقدر نتكلم.",
+    "[laughs] باقي لك شوية كريدت فقط. لما توصل لعشرة آلاف، أنا هنا.",
+    "الوكيل الصوتي يفتح عندما يصل رصيدك إلى عشرة آلاف كريدت على الأقل.",
+    "[clears throat] ما زلت تحت عشرة آلاف كريدت. ارفع رصيدك لعشرة آلاف ونبدأ.",
+  ],
+  es: [
+    "[clears throat] Para hablar conmigo, necesitas al menos diez mil créditos en tu saldo.",
+    "[sighs] Tu saldo todavía está por debajo de diez mil créditos. Recárgalo un poco y podremos hablar.",
+    "[laughs] Te faltan solo unos pocos créditos. Cuando llegues a diez mil, aquí estaré.",
+    "El agente de voz se desbloquea cuando tu saldo llega al menos a diez mil créditos.",
+    "[clears throat] Sigues por debajo de diez mil créditos. Sube tu saldo a diez mil y empezamos.",
+  ],
+  hi: [
+    "[clears throat] मुझसे बात करने के लिए तुम्हारे बैलेंस में कम से कम दस हज़ार क्रेडिट होने चाहिए।",
+    "[sighs] तुम्हारा बैलेंस अभी दस हज़ार क्रेडिट से कम है। थोड़ा टॉप अप कर लो, फिर हम बात कर सकते हैं।",
+    "[laughs] बस थोड़े से क्रेडिट और चाहिए। दस हज़ार होते ही मैं यहीं हूँ।",
+    "वॉइस एजेंट तब खुलेगा जब तुम्हारे बैलेंस में कम से कम दस हज़ार क्रेडिट होंगे।",
+    "[clears throat] अभी भी दस हज़ार से कम है। बैलेंस दस हज़ार तक कर लो, फिर शुरू करते हैं।",
+  ],
+  zh: [
+    "[clears throat] 要和我语音聊天，你的余额至少需要一万积分。",
+    "[sighs] 你的余额还不到一万积分。再充一点，我们就能聊天了。",
+    "[laughs] 还差一点积分。到一万以后，我就在这里等你。",
+    "余额达到至少一万积分后，语音助手就会解锁。",
+    "[clears throat] 现在还不到一万积分。把余额补到一万，我们就开始吧。",
+  ],
+  ja: [
+    "[clears throat] 私と話すには、残高が最低一万クレジット必要です。",
+    "[sighs] まだ一万クレジットに届いていません。少しチャージしたら、話せます。",
+    "[laughs] あと少しクレジットが必要です。一万になったら、ここで待っています。",
+    "残高が最低一万クレジットになると、ボイスエージェントが使えるようになります。",
+    "[clears throat] まだ一万クレジット未満です。一万までチャージして、始めましょう。",
+  ],
+};
 
 let proxyTableReady = null;
+const lockedPromptInflight = new Map();
 
 export { AiCodingWorkflow } from "./worker-voice.js";
 
@@ -33,11 +117,18 @@ export default {
         return handleScribeTokenBilling(request, env, ctx);
       }
 
+      if (request.method === "POST" && path === VOICE_LOCKED_PROMPT_PATH) {
+        return handleVoiceLockedPrompt(request, env);
+      }
+
       if (request.method === "POST" && path === VOICE_SESSION_PATH) {
         return handleVoiceSessionBilling(request, env, ctx);
       }
 
       const response = await worker.fetch(request, env, ctx);
+      if (request.method === "GET" && path === VOICE_RUNTIME_PATH) {
+        return patchVoiceRuntime(response);
+      }
       if (request.method === "GET" && path === LIVE_INTEGRATION_PATH) {
         return patchLiveIntegration(response);
       }
@@ -97,18 +188,75 @@ async function handleScribeTokenBilling(request, env, ctx) {
   });
 }
 
+async function handleVoiceLockedPrompt(request, env) {
+  const payload = await request.clone().json().catch(() => ({}));
+  const user = await authenticateMiniAppPayload(payload, env);
+  const balance = await getBalance(env, user.id);
+
+  if (balance >= VOICE_MINIMUM_BALANCE) {
+    return json({
+      ok: true,
+      unlocked: true,
+      balance,
+      minimumBalance: VOICE_MINIMUM_BALANCE,
+    }, 409);
+  }
+
+  const language = normalizeLockedVoiceLanguage(payload.language);
+  const prompts = VOICE_LOCKED_PROMPTS[language] || VOICE_LOCKED_PROMPTS.en;
+  const rawVariant = Math.trunc(Number(payload.variant || 0));
+  const variant = ((Number.isFinite(rawVariant) ? rawVariant : 0) % prompts.length + prompts.length) % prompts.length;
+  const text = prompts[variant];
+  const cached = await lockedVoicePromptAudio(env, language, variant, text);
+
+  return new Response(cached.audio, {
+    status: 200,
+    headers: {
+      "Content-Type": "audio/mpeg",
+      "Cache-Control": "no-store",
+      "X-Vexa-Locked-Voice": VOICE_LOCKED_PROMPT_VERSION,
+      "X-Vexa-Locked-Voice-Cache": cached.cache,
+      "X-Vexa-Locked-Voice-Variant": String(variant),
+    },
+  });
+}
+
+async function lockedVoicePromptAudio(env, language, variant, text) {
+  let audio = await getDemoAudio(env, VOICE_LOCKED_PROMPT_VOICE, language, text);
+  if (audio) return { audio, cache: "hit" };
+
+  const key = language + ":" + String(variant) + ":" + VOICE_LOCKED_PROMPT_VERSION;
+  let pending = lockedPromptInflight.get(key);
+  if (!pending) {
+    pending = (async () => {
+      const existing = await getDemoAudio(env, VOICE_LOCKED_PROMPT_VOICE, language, text);
+      if (existing) return { audio: existing, cache: "hit" };
+      if (!VOICE_LOCKED_PROMPT_VOICE_ID) throw httpError("Voice is unavailable", 503);
+      const generated = await textToSpeech(env, text, VOICE_LOCKED_PROMPT_VOICE_ID, language);
+      await saveDemoAudio(env, VOICE_LOCKED_PROMPT_VOICE, language, generated, text);
+      return { audio: generated, cache: "generated" };
+    })().finally(() => lockedPromptInflight.delete(key));
+    lockedPromptInflight.set(key, pending);
+  }
+  return pending;
+}
+
 async function handleVoiceSessionBilling(request, env, ctx) {
   const payload = await request.clone().json().catch(() => ({}));
   const user = await authenticateMiniAppPayload(payload, env);
   const balance = await getBalance(env, user.id);
 
-  if (balance <= 0) {
+  if (balance < VOICE_MINIMUM_BALANCE) {
     return json({
-      error: "Not enough credits",
+      ok: true,
+      locked: true,
       balance,
-      needed: 1,
+      minimumBalance: VOICE_MINIMUM_BALANCE,
+      creditsNeeded: Math.max(0, VOICE_MINIMUM_BALANCE - Number(balance || 0)),
       creditsPerMinute: VOICE_CREDITS_PER_MINUTE,
-    }, 402);
+      lockedPromptCount: VOICE_LOCKED_PROMPT_COUNT,
+      language: normalizeLockedVoiceLanguage(payload.language),
+    });
   }
 
   const upstream = await worker.fetch(request, env, ctx);
@@ -139,6 +287,7 @@ async function handleVoiceSessionBilling(request, env, ctx) {
     signedUrl: proxyUrl,
     billingSessionId: proxy.id,
     creditsPerMinute: VOICE_CREDITS_PER_MINUTE,
+    minimumBalance: VOICE_MINIMUM_BALANCE,
     balance,
   });
 }
@@ -464,6 +613,249 @@ async function markProxySession(env, sessionId, status, chargedCredits, clearSig
   ).bind(String(status), Math.max(0, Number(chargedCredits || 0)), clearSignedUrl ? 1 : 0, now, sessionId).run();
 }
 
+async function patchVoiceRuntime(response) {
+  if (!response?.ok) return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("javascript")) return response;
+
+  let source = await response.text();
+
+  source = replaceOrKeep(
+    source,
+    `    playbackTimer: 0,
+  };`,
+    `    playbackTimer: 0,
+    lockedVoice: false,
+    lockedMinimumBalance: ${VOICE_MINIMUM_BALANCE},
+    lockedPromptCount: ${VOICE_LOCKED_PROMPT_COUNT},
+    lockedPromptIndex: 0,
+    lockedSpeechStartedAt: 0,
+    lockedLastPromptAt: 0,
+    lockedPromptBusy: false,
+  };`,
+    "locked voice runtime state",
+  );
+
+  source = replaceOrKeep(
+    source,
+    `      state.session = session;
+      await Promise.all([connectSpeechEngine(), micPromise]);`,
+    `      state.session = session;
+      if (session?.locked) {
+        state.lockedVoice = true;
+        state.lockedMinimumBalance = Math.max(1, Number(session.minimumBalance || ${VOICE_MINIMUM_BALANCE}));
+        state.lockedPromptCount = Math.max(1, Number(session.lockedPromptCount || ${VOICE_LOCKED_PROMPT_COUNT}));
+        state.lockedPromptIndex = loadLockedVoicePromptIndex();
+        await micPromise;
+        if (!state.active) return;
+        state.captureEnabled = false;
+        setPhase("listening", "Listening", "");
+        return;
+      }
+      state.lockedVoice = false;
+      await Promise.all([connectSpeechEngine(), micPromise]);`,
+    "locked voice session branch",
+  );
+
+  source = replaceOrKeep(
+    source,
+    `      state.micEnergy = rmsFloat(input);
+      if (!state.captureEnabled || state.socket?.readyState !== WebSocket.OPEN) return;`,
+    `      state.micEnergy = rmsFloat(input);
+      if (state.lockedVoice) {
+        handleLockedVoiceMic(state.micEnergy);
+        return;
+      }
+      if (!state.captureEnabled || state.socket?.readyState !== WebSocket.OPEN) return;`,
+    "locked voice local speech detector",
+  );
+
+  const lockedHelpers = `  function lockedVoicePromptStorageKey() {
+    const userId = String(telegram()?.initDataUnsafe?.user?.id || "guest");
+    const language = String(preferredLanguage() || "en").toLowerCase().replace("_", "-").split("-")[0] || "en";
+    return "vexa_locked_voice_prompt_${VOICE_LOCKED_PROMPT_VERSION}:" + userId + ":" + language;
+  }
+
+  function loadLockedVoicePromptIndex() {
+    const count = Math.max(1, Number(state.lockedPromptCount || ${VOICE_LOCKED_PROMPT_COUNT}));
+    try {
+      const stored = Math.trunc(Number(localStorage.getItem(lockedVoicePromptStorageKey()) || 0));
+      if (Number.isFinite(stored)) return ((stored % count) + count) % count;
+    } catch (error) {}
+    return 0;
+  }
+
+  function saveLockedVoicePromptIndex(value) {
+    try { localStorage.setItem(lockedVoicePromptStorageKey(), String(Math.max(0, Math.trunc(Number(value || 0))))); } catch (error) {}
+  }
+
+  function lockedVoiceNow() {
+    try { return performance.now(); } catch (error) { return Date.now(); }
+  }
+
+  function handleLockedVoiceMic(energy) {
+    if (!state.active || !state.lockedVoice) {
+      state.lockedSpeechStartedAt = 0;
+      return;
+    }
+
+    const now = lockedVoiceNow();
+    if (state.lockedPromptBusy || state.phase === "speaking" || now - Number(state.lockedLastPromptAt || 0) < 1200) {
+      state.lockedSpeechStartedAt = 0;
+      return;
+    }
+
+    const level = Math.max(0, Number(energy || 0));
+    if (level >= .065) {
+      if (!state.lockedSpeechStartedAt) state.lockedSpeechStartedAt = now;
+      if (now - state.lockedSpeechStartedAt >= 170) {
+        state.lockedSpeechStartedAt = 0;
+        state.lockedLastPromptAt = now;
+        playLockedVoicePrompt().catch((error) => console.error("Vexa locked voice prompt", error));
+      }
+      return;
+    }
+
+    if (level < .042) state.lockedSpeechStartedAt = 0;
+  }
+
+  async function requestLockedVoicePrompt(variant) {
+    const response = await fetch(API + "/locked-prompt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "audio/mpeg,application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        initData: initData(),
+        language: preferredLanguage(),
+        variant: variant,
+      }),
+    });
+
+    if (response.status === 409) {
+      const data = await response.json().catch(() => ({}));
+      if (data?.unlocked) return { unlocked: true };
+      throw new Error(String(data?.error || "Voice balance changed"));
+    }
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(String(data?.error || "Could not play voice message"));
+    }
+
+    const audio = await response.arrayBuffer();
+    if (!audio.byteLength) throw new Error("Voice message is empty");
+    return { audio };
+  }
+
+  async function playLockedVoiceAudio(bytes) {
+    const context = await ensureAudioContext();
+    const audioBuffer = await context.decodeAudioData(bytes.slice(0));
+    if (!state.active || !state.lockedVoice) return;
+
+    stopPlayback();
+    const source = context.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(state.playbackGain || context.destination);
+    state.playbackSources.add(source);
+    state.nextPlaybackTime = context.currentTime + audioBuffer.duration;
+
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        state.playbackSources.delete(source);
+        resolve();
+      };
+      source.addEventListener("ended", finish, { once: true });
+      try { source.start(); } catch (error) {
+        state.playbackSources.delete(source);
+        reject(error);
+      }
+    });
+  }
+
+  async function activateUnlockedVoice() {
+    const session = await api("/session", { language: preferredLanguage() });
+    if (!state.active) return false;
+    state.session = session;
+    if (session?.locked) {
+      state.lockedMinimumBalance = Math.max(1, Number(session.minimumBalance || ${VOICE_MINIMUM_BALANCE}));
+      state.lockedPromptCount = Math.max(1, Number(session.lockedPromptCount || ${VOICE_LOCKED_PROMPT_COUNT}));
+      return false;
+    }
+
+    state.lockedVoice = false;
+    state.lockedSpeechStartedAt = 0;
+    setPhase("connecting", "Preparing voice", "");
+    await connectSpeechEngine();
+    return true;
+  }
+
+  async function playLockedVoicePrompt() {
+    if (!state.active || !state.lockedVoice || state.lockedPromptBusy) return;
+    state.lockedPromptBusy = true;
+    const count = Math.max(1, Number(state.lockedPromptCount || ${VOICE_LOCKED_PROMPT_COUNT}));
+    const variant = ((Math.trunc(Number(state.lockedPromptIndex || 0)) % count) + count) % count;
+    state.lockedPromptIndex = (variant + 1) % count;
+    saveLockedVoicePromptIndex(state.lockedPromptIndex);
+
+    try {
+      setPhase("thinking", "…", "");
+      const result = await requestLockedVoicePrompt(variant);
+      if (!state.active) return;
+
+      if (result?.unlocked) {
+        const activated = await activateUnlockedVoice();
+        if (!activated && state.active && state.lockedVoice) setPhase("listening", "Listening", "");
+        return;
+      }
+
+      setPhase("speaking", "Speaking", "");
+      await playLockedVoiceAudio(result.audio);
+      if (state.active && state.lockedVoice) setPhase("listening", "Listening", "");
+    } catch (error) {
+      console.error("Vexa locked voice prompt", error);
+      if (state.active && state.lockedVoice) setPhase("listening", "Listening", "");
+    } finally {
+      state.lockedPromptBusy = false;
+    }
+  }
+
+`;
+
+  source = replaceOrKeep(
+    source,
+    `  async function connectSpeechEngine() {`,
+    lockedHelpers + `  async function connectSpeechEngine() {`,
+    "locked voice helper injection",
+  );
+
+  source = replaceOrKeep(
+    source,
+    `    state.active = false;
+    state.captureEnabled = false;`,
+    `    state.active = false;
+    state.captureEnabled = false;
+    state.lockedVoice = false;
+    state.lockedSpeechStartedAt = 0;
+    state.lockedLastPromptAt = 0;
+    state.lockedPromptBusy = false;`,
+    "locked voice cleanup",
+  );
+
+  source = replaceOrKeep(
+    source,
+    `      if (!state.active) return;
+      if (state.socket) {`,
+    `      if (!state.active || state.lockedVoice) return;
+      if (state.socket) {`,
+    "locked voice protocol observer",
+  );
+
+  return cloneTextResponse(response, source);
+}
+
 async function patchLiveIntegration(response) {
   if (!response?.ok) return response;
   const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
@@ -559,6 +951,12 @@ async function patchLiveIntegration(response) {
   );
 
   return cloneTextResponse(response, source);
+}
+
+function normalizeLockedVoiceLanguage(value) {
+  const raw = String(value || "").trim().toLowerCase().replace("_", "-");
+  const base = raw.split("-")[0];
+  return VOICE_LOCKED_LANGUAGES.has(base) ? base : "en";
 }
 
 function creditsForDuration(durationMs, creditsPerMinute) {
