@@ -17,10 +17,10 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   var SUCCESS_KEY='vexa_tribute_success_v2';
 
   var CARD_CATALOG=[
-    {id:'card_6000',credits:6000,bonus:0,discountPercent:0,usdPer1000:0.34,prices:{usd:{amountMinor:200},eur:{amountMinor:199},rub:{amountMinor:17000}}},
+    {id:'card_6000',credits:6000,bonus:0,discountPercent:0,prices:{usd:{amountMinor:200},eur:{amountMinor:199},rub:{amountMinor:17000}}},
     {id:'card_40000',credits:40000,bonus:0,discountPercent:30,prices:{usd:{amountMinor:700,originalAmountMinor:1000},eur:{amountMinor:699,originalAmountMinor:999},rub:{amountMinor:59500,originalAmountMinor:85000}}},
     {id:'card_120000',credits:120000,bonus:10000,discountPercent:0,prices:{usd:{amountMinor:1900},eur:{amountMinor:1899},rub:{amountMinor:161500}}},
-    {id:'card_350000',credits:350000,bonus:0,discountPercent:0,usdPer1000:0.14,prices:{usd:{amountMinor:4900},eur:{amountMinor:4899},rub:{amountMinor:416500}}}
+    {id:'card_350000',credits:350000,bonus:0,discountPercent:0,prices:{usd:{amountMinor:4900},eur:{amountMinor:4899},rub:{amountMinor:416500}}}
   ];
   var CURRENCIES=[
     {code:'usd',label:'USD',symbol:'$'},
@@ -30,7 +30,6 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function q(id){return document.getElementById(id)}
   function number(value){return Math.max(0,Math.floor(Number(value)||0)).toLocaleString('en-US')}
-  function minutes(credits){return (Math.max(0,Number(credits)||0)/1000).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:1})}
   function toast(message){var node=q('toast');if(!node)return;node.textContent=String(message||'').replace(/[.!]+$/,'');node.classList.remove('show');void node.offsetWidth;node.classList.add('show');setTimeout(function(){node.classList.remove('show')},3200)}
   function haptic(kind){if(!tg||!tg.HapticFeedback)return;try{if(kind==='success'&&tg.HapticFeedback.notificationOccurred)tg.HapticFeedback.notificationOccurred('success');else if(kind==='error'&&tg.HapticFeedback.notificationOccurred)tg.HapticFeedback.notificationOccurred('error');else if(tg.HapticFeedback.impactOccurred)tg.HapticFeedback.impactOccurred(kind||'light')}catch(error){}}
   function api(path,payload){return fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({initData:initData},payload||{}))}).then(async function(response){var data=await response.json().catch(function(){return{}});if(!response.ok)throw new Error(data.error||'Card payment error');return data})}
@@ -72,7 +71,6 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
         originalAmountMinor:price.originalAmountMinor==null?null:Number(price.originalAmountMinor||0),
         currency:currency,
         discountPercent:Number(pack.discountPercent||0),
-        usdPer1000:pack.usdPer1000==null?null:Number(pack.usdPer1000),
         checkoutReady:!!(live&&live.productId)
       };
     }).filter(Boolean).slice(0,MAX_CARD_PACKS);
@@ -162,14 +160,27 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     return null;
   }
 
+  function giftIcon(){
+    return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true"><path d="M12 9v12m-6-8v6a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-6M5 13h14v-3a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v3z" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 9V6a3 3 0 1 0-3 3h3zm0 0V7a2 2 0 1 1 2 2h-2z" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function bonusMarkup(product){
+    if(!(Number(product.bonus||0)>0))return '';
+    return '<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.035));border:1px solid rgba(255,255,255,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.08);white-space:nowrap"><span style="display:inline-grid;place-items:center;width:18px;height:18px;border-radius:999px;background:rgba(255,255,255,.06);color:#fff">'+giftIcon()+'</span><span style="color:#fff">'+number(product.bonus)+' gift</span></span>';
+  }
+  function perThousandLabel(product){
+    var total=Math.max(1,Number(product.totalCredits||product.credits||0));
+    var code=String(product.currency||selectedCurrency||'usd').toLowerCase();
+    var symbol=currencyInfo(code).symbol||'';
+    var amount=(Math.max(0,Number(product.amountMinor)||0)/100)/(total/1000);
+    var digits=code==='rub'?1:2;
+    return symbol+amount.toLocaleString('en-US',{minimumFractionDigits:digits,maximumFractionDigits:digits})+' / 1K';
+  }
   function defaultMeta(product){
     var parts=[];
-    if(Number(product.bonus||0)>0)parts.push('+'+number(product.bonus)+' credits gift');
-    if(Number(product.discountPercent||0)>0)parts.push(number(product.discountPercent)+'% OFF');
-    if(product.usdPer1000!=null)parts.push('$'+Number(product.usdPer1000).toFixed(2)+' / 1K credits');
-    if(!parts.length)parts.push(number(product.totalCredits||product.credits)+' credits total');
-    if(!product.checkoutReady)parts.push('payment link coming soon');
-    return parts.join(' · ');
+    var bonus=bonusMarkup(product);
+    if(bonus)parts.push(bonus);
+    parts.push('<span style="white-space:nowrap">'+perThousandLabel(product)+' credits</span>');
+    return parts.join('<span style="opacity:.26"> · </span>');
   }
 
   function stateMarkup(state,product){
@@ -180,16 +191,20 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     return '<span class="tribute-inline-dot" aria-hidden="true"></span><span>'+String(state.copy||'Waiting for payment · tap to reopen')+'</span>';
   }
 
+  function discountBadge(product){
+    if(!(Number(product.discountPercent||0)>0))return '';
+    return '<span style="flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;height:24px;padding:0 9px;border-radius:999px;background:linear-gradient(135deg,rgba(122,110,255,.24),rgba(66,214,255,.14));border:1px solid rgba(182,173,255,.24);box-shadow:inset 0 1px 0 rgba(255,255,255,.11),0 10px 22px rgba(18,18,28,.18);color:#f7f8ff;font-size:8px;font-weight:800;letter-spacing:.08em;white-space:nowrap">'+number(product.discountPercent)+'% OFF</span>';
+  }
   function priceMarkup(product){
     var current=money(product.amountMinor,product.currency);
     var old=product.originalAmountMinor!=null?money(product.originalAmountMinor,product.currency):'';
-    return '<strong>'+(old?'<s>'+old+'</s> ':'')+current+'</strong><small>'+String(product.currency||'').toUpperCase()+(product.discountPercent?' · '+number(product.discountPercent)+'% OFF':'')+'</small>';
+    return '<strong>'+(old?'<s style="margin-right:13px;opacity:.34;text-decoration-thickness:1.1px">'+old+'</s>':'')+current+'</strong><small>'+String(product.currency||'').toUpperCase()+'</small>';
   }
-
   function creditTitle(product){
-    return Number(product.bonus||0)>0
-      ? number(product.credits)+' + '+number(product.bonus)+' 🎁 credits'
-      : number(product.credits)+' credits';
+    return number(product.credits)+' credits';
+  }
+  function titleMarkup(product){
+    return '<span style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%"><span style="min-width:0;display:block">'+creditTitle(product)+'</span>'+discountBadge(product)+'</span>';
   }
 
   function renderProducts(){
@@ -198,7 +213,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     list.innerHTML=products.map(function(product){
       var state=stateForProduct(product);var kind=state&&String(state.kind||'');var pending=kind==='waiting';var loading=kind==='loading';
       var action=pending?'open-tribute-checkout':(product.checkoutReady?'buy-tribute-product':'catalog-tribute-product');
-      return '<button class="tribute-product'+(kind?' '+kind:'')+'" type="button" data-action="'+action+'" data-product-id="'+String(product.productId||'')+'" data-catalog-id="'+String(product.catalogId||'')+'"'+(loading?' disabled':'')+'><span class="tribute-product-main"><strong>'+creditTitle(product)+'</strong><small class="tribute-product-meta">'+stateMarkup(state,product)+'</small></span><span class="tribute-product-price">'+priceMarkup(product)+'</span></button>';
+      return '<button class="tribute-product'+(kind?' '+kind:'')+'" type="button" data-action="'+action+'" data-product-id="'+String(product.productId||'')+'" data-catalog-id="'+String(product.catalogId||'')+'"'+(loading?' disabled':'')+'><span class="tribute-product-main"><strong>'+titleMarkup(product)+'</strong><small class="tribute-product-meta">'+stateMarkup(state,product)+'</small></span><span class="tribute-product-price">'+priceMarkup(product)+'</span></button>';
     }).join('');
   }
 
