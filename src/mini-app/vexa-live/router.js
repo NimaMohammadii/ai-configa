@@ -2,40 +2,36 @@ import {
   getElevenApiSetting,
   getMiniAppAccessSettings,
   isAdmin,
-  trackMiniAppOpen,
-  trackMiniAppSectionOpen,
 } from "../../admin.js";
-import { AI_CHAT_MODELS } from "../../ai-chat-model.js";
 import { authenticateMiniAppPayload } from "../auth.js";
 import { handleMiniAppRequest } from "../server.js";
 import { getVexaLiveAccessSettings } from "./access.js";
-import { VEXA_LIVE_JS } from "./client.js";
-import { VEXA_LIVE_HTML } from "./html.js";
-import {
-  VEXA_LIVE_CSS,
-  VEXA_LIVE_INTEGRATION_CSS,
-} from "./styles.js";
 
 const LIVE_ROOT = "/mini-app/live";
-const INTEGRATION_VERSION = "20260817-2";
+const INTEGRATION_VERSION = "20260818-1";
+const VOICE_RUNTIME_VERSION = "20260818-1";
 const SCRIBE_MODEL = "scribe_v2";
-const REALTIME_SCRIBE_MODEL = "scribe_v2_realtime";
-const MAX_TRANSLATION_TEXT = 1200;
-const MAX_TRANSLATION_SEGMENTS = 30;
-const MAX_TRANSLATION_BATCH_CHARS = 9000;
 
-const SUPPORTED_LANGUAGES = Object.freeze({
-  en: "English",
-  fa: "Persian",
-  ru: "Russian",
-  de: "German",
-  tr: "Turkish",
-  ar: "Arabic",
-  es: "Spanish",
-  hi: "Hindi",
-  zh: "Chinese",
-  ja: "Japanese",
-});
+const VEXA_LIVE_SHELL_HTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <title>Vexa Live</title>
+  <style>
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{margin:0;width:100%;height:100%;min-height:100%;background:#000;color:#fff;overflow:hidden;overscroll-behavior:none}
+    body{min-height:100dvh}
+    .live-app{position:relative;width:100%;height:100%;min-height:100dvh;background:#000;overflow:hidden}
+  </style>
+</head>
+<body>
+  <main class="live-app"></main>
+  <script id="vexaVoiceRuntime" src="/mini-app/live/voice-agent-runtime.js?v=${VOICE_RUNTIME_VERSION}"></script>
+</body>
+</html>`;
 
 const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
 (function () {
@@ -60,11 +56,9 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   function requestedSection() {
     let raw = "";
     const tg = window.Telegram && window.Telegram.WebApp;
-
     try {
       raw = tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param || "";
     } catch (error) {}
-
     if (!raw) {
       try {
         const params = new URLSearchParams(window.location.search);
@@ -74,7 +68,6 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
           "";
       } catch (error) {}
     }
-
     return String(raw || "").trim().toLowerCase();
   }
 
@@ -125,17 +118,15 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
 
   function embeddedStyle() {
     return [
-      ".live-header,.live-hero{display:none!important}",
-      "html,body{height:100%!important;min-height:100%!important;overflow:hidden!important}",
-      ".live-app{width:100%!important;height:100%!important;min-height:100%!important;margin:0!important;padding:0!important;overflow:hidden!important}",
-      "body.vexa-stt-embedded .video-picker-state,body.vexa-stt-embedded .video-ready-state,body.vexa-stt-embedded .youtube-ready-state,body.vexa-stt-embedded .live-footer{display:none!important}",
-      ".vexa-stt{--stt-ease:cubic-bezier(.16,.86,.22,1);position:relative;width:100%;height:100%;min-height:100%;display:flex;flex-direction:column;padding:5px 16px calc(96px + env(safe-area-inset-bottom));overflow:hidden;background:#000;color:#fff;opacity:0;transform:translateX(24px) scale(.988);transition:opacity .34s ease,transform .5s var(--stt-ease)}",
+      "html,body{height:100%!important;min-height:100%!important;overflow:hidden!important;background:#000!important}",
+      ".live-app{width:100%!important;height:100%!important;min-height:100%!important;margin:0!important;padding:0!important;overflow:hidden!important;background:#000!important}",
+      ".vexa-stt{--stt-ease:cubic-bezier(.16,.86,.22,1);position:relative;width:100%;height:100%;min-height:100%;display:flex;flex-direction:column;padding:0 16px calc(82px + env(safe-area-inset-bottom));overflow:hidden;background:#000;color:#fff;opacity:0;transform:translateX(24px) scale(.988);transition:opacity .34s ease,transform .5s var(--stt-ease)}",
       ".vexa-stt.ready{opacity:1;transform:translateX(0) scale(1)}",
-      ".vexa-stt-top{height:34px;flex:0 0 34px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}",
+      ".vexa-stt-top{display:none!important}",
       ".vexa-stt-kicker{display:flex;align-items:center;gap:7px;color:rgba(255,255,255,.42);font-size:9px;font-weight:720;letter-spacing:.13em;text-transform:uppercase}",
       ".vexa-stt-kicker i{width:5px;height:5px;border-radius:50%;background:#fff;opacity:.7;box-shadow:0 0 12px rgba(255,255,255,.3)}",
-      ".vexa-stt-engine{height:24px;padding:0 8px;border-radius:999px;display:flex;align-items:center;color:rgba(255,255,255,.38);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);font-size:8.5px;font-weight:650;white-space:nowrap}",
-      ".vexa-stt-editor{position:relative;flex:1;min-height:0;overflow:hidden;transition:opacity .28s ease,transform .42s var(--stt-ease),filter .3s ease}",
+      ".vexa-stt-engine{height:24px;padding:0 8px;display:flex;align-items:center;color:rgba(255,255,255,.38);font-size:8.5px;font-weight:650;white-space:nowrap}",
+      ".vexa-stt-editor{position:relative;flex:1;min-height:0;overflow:hidden;margin-top:-4px;transition:opacity .28s ease,transform .42s var(--stt-ease),filter .3s ease}",
       ".vexa-stt-label{display:flex;align-items:center;justify-content:space-between;gap:10px;height:30px;color:rgba(255,255,255,.36);font-size:9px;font-weight:720;letter-spacing:.08em;text-transform:uppercase}",
       ".vexa-stt-language{font-size:8.5px;font-weight:620;letter-spacing:0;text-transform:none;color:rgba(255,255,255,.3);opacity:0;transform:translateY(-3px);transition:opacity .2s ease,transform .3s var(--stt-ease)}",
       ".vexa-stt-language.show{opacity:1;transform:none}",
@@ -144,17 +135,17 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       ".vexa-stt textarea::placeholder{color:rgba(255,255,255,.26)}",
       ".vexa-stt.has-result textarea{animation:vexaSttTextIn .48s var(--stt-ease)}",
       ".vexa-stt.recording .vexa-stt-editor{opacity:.35;transform:translateY(-7px) scale(.985);filter:blur(.15px)}",
-      ".vexa-stt-wave-stage{position:absolute;z-index:4;left:50%;bottom:112px;width:100vw;max-width:560px;height:132px;display:flex;align-items:center;justify-content:center;overflow:hidden;pointer-events:none;opacity:0;transform:translate(-50%,18px) scale(.965);transition:opacity .24s ease,transform .48s var(--stt-ease);-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%)}",
+      ".vexa-stt-wave-stage{position:absolute;z-index:4;left:50%;bottom:100px;width:100vw;max-width:560px;height:132px;display:flex;align-items:center;justify-content:center;overflow:hidden;pointer-events:none;opacity:0;transform:translate(-50%,18px) scale(.965);transition:opacity .24s ease,transform .48s var(--stt-ease);-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%)}",
       ".vexa-stt.recording .vexa-stt-wave-stage,.vexa-stt.processing .vexa-stt-wave-stage{opacity:1;transform:translate(-50%,0) scale(1)}",
       ".vexa-stt-wave-track{width:calc(100% + 20px);height:94px;display:flex;align-items:center;justify-content:center;gap:2.5px;padding:0 5px;filter:drop-shadow(0 0 10px rgba(255,255,255,.08))}",
       ".vexa-stt-wave-track i{display:block;width:2.6px;flex:0 0 2.6px;height:72px;border-radius:999px;background:#fff;opacity:.82;transform:scaleY(.08);transform-origin:center;will-change:transform,opacity;transition:transform .055s linear,opacity .12s ease}",
       ".vexa-stt.processing .vexa-stt-wave-track i{animation:vexaSttProcessing .78s ease-in-out infinite}",
       ".vexa-stt-wave-caption{position:absolute;left:50%;bottom:4px;display:flex;align-items:center;gap:7px;color:rgba(255,255,255,.46);font-size:9px;font-weight:680;letter-spacing:.02em;transform:translateX(-50%);white-space:nowrap}",
       ".vexa-stt-wave-caption strong{color:#fff;font-size:10px;font-weight:720;font-variant-numeric:tabular-nums}",
-      ".vexa-stt-controls{position:fixed;z-index:7;left:16px;right:16px;bottom:calc(24px + env(safe-area-inset-bottom));display:grid;grid-template-columns:minmax(0,1fr) 48px;gap:8px;align-items:center;transition:transform .42s var(--stt-ease),opacity .24s ease}",
-      ".vexa-stt-record,.vexa-stt-upload{height:48px;border:0;outline:0;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:transform .2s var(--stt-ease),box-shadow .24s ease,opacity .2s ease,background .24s ease,color .24s ease}",
-      ".vexa-stt-record{position:relative;border-radius:15px;color:#050505;background:linear-gradient(180deg,#fff 0%,#f5f5f5 54%,#dedede 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(0,0,0,.16),0 12px 28px rgba(0,0,0,.32),0 0 28px rgba(255,255,255,.08);font-size:12.5px;font-weight:760;letter-spacing:-.015em}",
-      ".vexa-stt-record::before{content:\"\";position:absolute;left:7%;right:7%;top:1px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.95),transparent);opacity:.8}",
+      ".vexa-stt-controls{position:fixed;z-index:7;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));display:grid;grid-template-columns:minmax(0,1fr) 42px;gap:8px;align-items:center;transition:transform .42s var(--stt-ease),opacity .24s ease}",
+      ".vexa-stt-record,.vexa-stt-upload{height:42px;min-height:42px;border:0;outline:0;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:13px;transition:transform .2s var(--stt-ease),box-shadow .24s ease,opacity .2s ease,background .24s ease,color .24s ease}",
+      ".vexa-stt-record{position:relative;color:#050505;background:linear-gradient(180deg,#fff 0%,#f4f4f4 48%,#d9d9d9 100%);border:1px solid rgba(255,255,255,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.98),inset 0 -1px 0 rgba(0,0,0,.18),0 8px 24px rgba(0,0,0,.34),0 0 24px rgba(255,255,255,.07);font-size:12.5px;font-weight:760;letter-spacing:-.015em}",
+      ".vexa-stt-record::before{content:\"\";position:absolute;left:9%;right:9%;top:1px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.95),transparent);opacity:.92}",
       ".vexa-stt-record:active,.vexa-stt-upload:active{transform:scale(.97)}",
       ".vexa-stt-record-inner{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:8px;transition:opacity .18s ease,transform .28s var(--stt-ease)}",
       ".vexa-stt-record-icon{position:relative;width:18px;height:18px;display:grid;place-items:center}",
@@ -164,25 +155,47 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       ".vexa-stt.recording .vexa-stt-stop-shape{opacity:1;transform:scale(1) rotate(0)}",
       ".vexa-stt.recording .vexa-stt-record{box-shadow:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(0,0,0,.16),0 12px 30px rgba(0,0,0,.36),0 0 34px rgba(255,255,255,.13)}",
       ".vexa-stt.processing .vexa-stt-record{pointer-events:none}",
-      ".vexa-stt.processing .vexa-stt-record-inner{opacity:.28;transform:scale(.97)}",
-      ".vexa-stt-spinner{position:absolute;z-index:2;width:17px;height:17px;border-radius:50%;border:1.8px solid rgba(0,0,0,.18);border-top-color:#050505;opacity:0;animation:vexaSttSpin .72s linear infinite}",
-      ".vexa-stt.processing .vexa-stt-spinner{opacity:1}",
-      ".vexa-stt-upload{border-radius:15px;padding:0;color:rgba(255,255,255,.82);background:linear-gradient(145deg,rgba(255,255,255,.09),rgba(255,255,255,.025));border:1px solid rgba(255,255,255,.15);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.3)}",
-      ".vexa-stt-upload svg{width:19px;height:19px}",
+      ".vexa-stt-spinner{display:none!important}",
+      ".vexa-stt-upload{position:relative;padding:0;color:rgba(255,255,255,.82);background:rgba(13,13,13,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);transition:transform .3s cubic-bezier(.16,1,.3,1),background .24s ease,box-shadow .24s ease}",
+      ".vexa-stt-upload svg{display:none!important}",
+      ".vexa-stt-upload::before,.vexa-stt-upload::after{content:\"\";position:absolute;left:50%;top:50%;width:18px;height:2.5px;border-radius:999px;background:currentColor;transform:translate(-50%,-50%);transition:transform .34s cubic-bezier(.16,1,.3,1),opacity .2s ease}",
+      ".vexa-stt-upload::after{transform:translate(-50%,-50%) rotate(90deg)}",
+      ".vexa-stt-upload:active{transform:scale(.88) rotate(-2deg)!important;background:rgba(24,24,24,.82);box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),inset 0 0 18px rgba(255,255,255,.065),0 5px 13px rgba(0,0,0,.25)}",
+      ".vexa-stt-upload:active::before{transform:translate(-50%,-50%) rotate(90deg) scale(.78)}",
+      ".vexa-stt-upload:active::after{transform:translate(-50%,-50%) rotate(180deg) scale(.78)}",
       ".vexa-stt.recording .vexa-stt-upload,.vexa-stt.processing .vexa-stt-upload{opacity:.28;pointer-events:none;transform:scale(.92)}",
-      ".vexa-stt-status{position:fixed;z-index:6;left:50%;bottom:calc(80px + env(safe-area-inset-bottom));max-width:calc(100% - 32px);height:24px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.38);font-size:8.7px;font-weight:650;white-space:nowrap;opacity:0;transform:translate(-50%,5px);transition:opacity .2s ease,transform .3s var(--stt-ease)}",
+      ".vexa-stt-status{position:fixed;z-index:6;left:50%;bottom:calc(65px + env(safe-area-inset-bottom));max-width:calc(100% - 32px);height:24px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.38);font-size:8.7px;font-weight:650;white-space:nowrap;opacity:0;transform:translate(-50%,5px);transition:opacity .2s ease,transform .3s var(--stt-ease)}",
       ".vexa-stt-status.show{opacity:1;transform:translate(-50%,0)}",
+      ".vexa-stt.processing .vexa-stt-record-inner{opacity:0;transform:scale(.98)}",
+      ".vexa-stt.processing .vexa-stt-record::after{content:\"Transcribing\";position:absolute;z-index:2;inset:0;display:grid;place-items:center;color:#050505;font-size:12.5px;font-weight:760;letter-spacing:-.015em;animation:vexaSttButtonState .3s cubic-bezier(.16,1,.3,1) both}",
+      ".vexa-stt.processing .vexa-stt-status{opacity:0!important;transform:translate(-50%,5px)!important}",
+      ".vexa-stt.processing .vexa-stt-wave-stage{height:62px;bottom:90px;transform:translate(-50%,0) scale(1)}",
+      ".vexa-stt.processing .vexa-stt-wave-track{position:relative;width:100%;height:30px;display:flex;align-items:center;justify-content:center;gap:3px;padding:0;filter:none;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%)}",
+      ".vexa-stt.processing .vexa-stt-wave-track::before{content:\"\";position:absolute;z-index:0;left:7%;right:7%;top:50%;height:1px;border-radius:999px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.11) 12%,rgba(255,255,255,.24) 50%,rgba(255,255,255,.11) 88%,transparent);transform:translateY(-50%)}",
+      ".vexa-stt.processing .vexa-stt-wave-track::after{display:none}",
+      ".vexa-stt.processing .vexa-stt-wave-track i{position:relative;z-index:1;left:calc(-50% - 54px);display:block;width:2.4px;flex:0 0 2.4px;border-radius:999px;background:#fff;transform-origin:center;will-change:left,transform,opacity;animation:vexaSttProcessingTravel 2.4s linear infinite,vexaSttProcessingPulse .68s ease-in-out infinite}",
+      ".vexa-stt.processing .vexa-stt-wave-track i:nth-child(n+19){display:none!important}",
+      ".vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+1){height:8px!important;animation-delay:0s,-.56s!important}",
+      ".vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+2){height:13px!important;animation-delay:0s,-.49s!important}",
+      ".vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+3){height:18px!important;animation-delay:0s,-.42s!important}",
+      ".vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+4){height:11px!important;animation-delay:0s,-.35s!important}",
+      ".vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+5){height:16px!important;animation-delay:0s,-.28s!important}",
+      ".vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+6){height:9px!important;animation-delay:0s,-.21s!important}",
+      ".vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+7){height:14px!important;animation-delay:0s,-.14s!important}",
+      ".vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n){height:20px!important;animation-delay:0s,-.07s!important}",
+      ".vexa-stt.processing .vexa-stt-wave-caption{display:none!important}",
       "@keyframes vexaSttTextIn{0%{opacity:.08;transform:translateY(9px)}100%{opacity:1;transform:none}}",
       "@keyframes vexaSttProcessing{0%,100%{transform:scaleY(.1);opacity:.34}50%{transform:scaleY(.82);opacity:.92}}",
-      "@keyframes vexaSttSpin{to{transform:rotate(360deg)}}",
+      "@keyframes vexaSttProcessingTravel{0%{left:calc(-50% - 54px)}100%{left:calc(50% + 54px)}}",
+      "@keyframes vexaSttProcessingPulse{0%,100%{transform:scaleY(.65);opacity:.55}50%{transform:scaleY(1.15);opacity:1}}",
+      "@keyframes vexaSttButtonState{from{opacity:0;transform:translateY(3px) scale(.98)}to{opacity:1;transform:none}}",
       "@media(max-height:680px){.vexa-stt-wave-stage{bottom:104px;height:104px}.vexa-stt-wave-track{height:76px}.vexa-stt-wave-track i{height:58px}.vexa-stt-controls{bottom:calc(18px + env(safe-area-inset-bottom))}.vexa-stt-status{bottom:calc(73px + env(safe-area-inset-bottom))}}",
-      "@media(prefers-reduced-motion:reduce){.vexa-stt,.vexa-stt-editor,.vexa-stt-wave-stage,.vexa-stt-record,.vexa-stt-upload,.vexa-stt-language,.vexa-stt textarea{transition:none!important;animation:none!important}}"
+      "@media(prefers-reduced-motion:reduce){.vexa-stt,.vexa-stt-editor,.vexa-stt-wave-stage,.vexa-stt-record,.vexa-stt-upload,.vexa-stt-language,.vexa-stt textarea{transition:none!important;animation:none!important}.vexa-stt.processing .vexa-stt-wave-track i{animation:none!important;left:0!important;opacity:.72!important}.vexa-stt.processing .vexa-stt-wave-track i:nth-child(n+13){display:none!important}}"
     ].join("");
   }
 
   function prepareEmbeddedFrame(frame) {
     if (!frame) return;
-
     try {
       const doc = frame.contentDocument;
       if (doc && doc.head && !doc.getElementById("vexaLiveInlineEmbedStyle")) {
@@ -193,13 +206,11 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       }
       installTranscribeExperience(frame);
     } catch (error) {}
-
     hideTelegramBackButton();
   }
 
   function ensureFrame() {
     if (liveFrame) return liveFrame;
-
     const workspace = installWorkspace();
     if (!workspace) return null;
 
@@ -213,7 +224,6 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     frame.addEventListener("load", function () {
       prepareEmbeddedFrame(frame);
     });
-
     workspace.appendChild(frame);
     liveFrame = frame;
     return frame;
@@ -261,7 +271,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
         '<input id="vexaSttFile" type="file" accept="audio/*,video/*" hidden>' +
       '</div>';
 
-    root.appendChild(shell);
+    root.replaceChildren(shell);
     buildWaveBars(doc);
 
     const record = doc.getElementById("vexaSttRecord");
@@ -334,16 +344,13 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       cache: "no-store",
       body: JSON.stringify(Object.assign({ initData: initData() }, body || {})),
     });
-
     const data = await response.json().catch(function () { return {}; });
     if (!response.ok) throw new Error(data.error || "Could not start transcription");
     return data;
   }
 
   async function transcribeFile(file, doc) {
-    if (transcribing) return;
-    if (!file) return;
-
+    if (transcribing || !file) return;
     const type = String(file.type || "").toLowerCase();
     if (type && !type.startsWith("audio/") && !type.startsWith("video/")) {
       throw new Error("Choose an audio or video file");
@@ -646,7 +653,6 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       area.style.transform = hidden ? "translateX(-36px)" : "";
       area.style.pointerEvents = hidden ? "none" : "";
     }
-
     if (bottom) {
       bottom.style.opacity = hidden ? "0" : "";
       bottom.style.transform = hidden ? "translateX(-36px)" : "";
@@ -663,7 +669,6 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   function setLiveOpen(open) {
     const next = Boolean(open);
     if (next === liveOpen) return;
-
     if (next) closeImageMode();
 
     const workspace = installWorkspace();
@@ -761,35 +766,15 @@ export async function handleVexaLiveRequest(request, env) {
     const path = url.pathname;
 
     if (request.method === "GET" && (path === LIVE_ROOT || path === LIVE_ROOT + "/")) {
-      return textResponse(VEXA_LIVE_HTML, "text/html;charset=utf-8");
-    }
-
-    if (request.method === "GET" && path === LIVE_ROOT + "/styles.css") {
-      return textResponse(VEXA_LIVE_CSS, "text/css;charset=utf-8");
-    }
-
-    if (request.method === "GET" && path === LIVE_ROOT + "/app.js") {
-      return textResponse(VEXA_LIVE_JS, "application/javascript;charset=utf-8");
-    }
-
-    if (request.method === "GET" && path === LIVE_ROOT + "/integration.css") {
-      return textResponse(VEXA_LIVE_INTEGRATION_CSS, "text/css;charset=utf-8");
+      return textResponse(VEXA_LIVE_SHELL_HTML, "text/html;charset=utf-8");
     }
 
     if (request.method === "GET" && path === LIVE_ROOT + "/integration.js") {
       return textResponse(VEXA_LIVE_INLINE_INTEGRATION_JS, "application/javascript;charset=utf-8");
     }
 
-    if (request.method === "POST" && path === LIVE_ROOT + "/api/session") {
-      return jsonResponse(await liveSession(request, env));
-    }
-
     if (request.method === "POST" && path === LIVE_ROOT + "/api/scribe-token") {
       return jsonResponse(await createScribeToken(request, env));
-    }
-
-    if (request.method === "POST" && path === LIVE_ROOT + "/api/translate") {
-      return jsonResponse(await translateCaption(request, env));
     }
 
     return jsonResponse({ error: "Not Found" }, 404);
@@ -819,12 +804,15 @@ export async function handleMiniAppWithVexaLive(request, env) {
     '<script src="/mini-app/live/integration.js?v=' +
     INTEGRATION_VERSION +
     '"></script>';
-  const html = source.includes("</body>")
-    ? source.replace("</body>", script + "\n</body>")
-    : source + script;
+  const html = source.includes("/mini-app/live/integration.js")
+    ? source
+    : source.includes("</body>")
+      ? source.replace("</body>", script + "\n</body>")
+      : source + script;
 
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
+  headers.delete("Content-Encoding");
   headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
 
   return new Response(html, {
@@ -834,52 +822,17 @@ export async function handleMiniAppWithVexaLive(request, env) {
   });
 }
 
-async function liveSession(request, env) {
-  const payload = await request.json().catch(() => ({}));
-  const user = await authenticateMiniAppPayload(payload, env);
-  const access = await getLiveAccess(env, user.id);
-
-  if (access.locked) {
-    return lockPayload(access.settings, access.scope);
-  }
-
-  await trackMiniAppOpen(env, user);
-  await trackMiniAppSectionOpen(env, user, "live");
-
-  return {
-    locked: false,
-    section: "live",
-    name: "Vexa Live",
-    languages: SUPPORTED_LANGUAGES,
-  };
-}
-
 async function createScribeToken(request, env) {
   const payload = await request.json().catch(() => ({}));
   const user = await authenticateMiniAppPayload(payload, env);
   await assertLiveAccess(env, user.id);
 
-  const requestedMode = String(payload.mode || "").trim().toLowerCase();
-  const transcribeMode = requestedMode === "transcribe";
-  const liveMode = requestedMode === "live";
-  let sourceLanguage = "";
-
-  if (!transcribeMode) {
-    sourceLanguage = normalizeLanguage(payload.sourceLanguage);
-    normalizeLanguage(payload.targetLanguage);
-  }
-
-  const tokenType = liveMode ? "realtime_scribe" : "batch_scribe";
-  const modelId = liveMode ? REALTIME_SCRIBE_MODEL : SCRIBE_MODEL;
-
   const selectedKeyName = await getElevenApiSetting(env);
   const apiKey = String(env[selectedKeyName] || "").trim();
-  if (!apiKey) {
-    throw httpError("ElevenLabs API is unavailable", 503);
-  }
+  if (!apiKey) throw httpError("ElevenLabs API is unavailable", 503);
 
   const response = await fetch(
-    "https://api.elevenlabs.io/v1/single-use-token/" + tokenType,
+    "https://api.elevenlabs.io/v1/single-use-token/batch_scribe",
     {
       method: "POST",
       headers: {
@@ -896,265 +849,28 @@ async function createScribeToken(request, env) {
       response.status,
       String(data?.detail?.message || data?.detail || data?.message || "unknown error")
     );
-    throw httpError(
-      liveMode
-        ? "Could not start live captions"
-        : transcribeMode
-          ? "Could not start transcription"
-          : "Could not start video captions",
-      502
-    );
+    throw httpError("Could not start transcription", 502);
   }
 
   return {
     token: data.token,
-    mode: transcribeMode ? "transcribe" : liveMode ? "live" : "standard",
-    modelId,
-    languageCode: sourceLanguage,
+    mode: "transcribe",
+    modelId: SCRIBE_MODEL,
   };
 }
 
-async function translateCaption(request, env) {
-  const payload = await request.json().catch(() => ({}));
-  const user = await authenticateMiniAppPayload(payload, env);
-  await assertLiveAccess(env, user.id);
-
-  const sourceLanguage = normalizeLanguage(payload.sourceLanguage);
-  const targetLanguage = normalizeLanguage(payload.targetLanguage);
-
-  if (Array.isArray(payload.segments)) {
-    const segments = normalizeTranslationSegments(payload.segments);
-
-    if (sourceLanguage === targetLanguage) {
-      return { segments };
-    }
-
-    const translated = await translateSegments(
-      env,
-      segments,
-      sourceLanguage,
-      targetLanguage
-    );
-
-    return { segments: translated };
-  }
-
-  const text = String(payload.text || "").trim();
-  if (!text) return { text: "" };
-  if (text.length > MAX_TRANSLATION_TEXT) {
-    throw httpError("Subtitle segment is too long", 413);
-  }
-
-  if (sourceLanguage === targetLanguage) {
-    return { text };
-  }
-
-  const translated = await translateSegments(
-    env,
-    [{ id: 0, text }],
-    sourceLanguage,
-    targetLanguage
-  );
-
-  return { text: translated[0]?.text || "" };
-}
-
-function normalizeTranslationSegments(value) {
-  const source = value.slice(0, MAX_TRANSLATION_SEGMENTS);
-  const segments = [];
-  let totalChars = 0;
-
-  for (const item of source) {
-    const id = Number(item?.id);
-    const text = String(item?.text || "").trim();
-
-    if (!Number.isInteger(id) || id < 0 || !text) {
-      throw httpError("Invalid subtitle segment", 400);
-    }
-
-    if (text.length > MAX_TRANSLATION_TEXT) {
-      throw httpError("Subtitle segment is too long", 413);
-    }
-
-    totalChars += text.length;
-    if (totalChars > MAX_TRANSLATION_BATCH_CHARS) {
-      throw httpError("Subtitle batch is too large", 413);
-    }
-
-    segments.push({ id, text });
-  }
-
-  if (!segments.length) {
-    throw httpError("Subtitle segments are empty", 400);
-  }
-
-  return segments;
-}
-
-async function translateSegments(env, segments, sourceLanguage, targetLanguage) {
-  const apiKey = String(env.GPT_API || "").trim();
-  if (!apiKey) {
-    throw httpError("Translation is unavailable", 503);
-  }
-
-  const model = translationModel();
-  if (!model) {
-    throw httpError("Translation model is unavailable", 503);
-  }
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      store: false,
-      reasoning: { effort: "none" },
-      max_output_tokens: 4000,
-      input: [
-        {
-          role: "system",
-          content: [
-            {
-              type: "input_text",
-              text:
-                "Translate subtitle segments from " +
-                SUPPORTED_LANGUAGES[sourceLanguage] +
-                " to " +
-                SUPPORTED_LANGUAGES[targetLanguage] +
-                ". Return ONLY valid JSON. The output must be a JSON array of objects in the exact same order, each with exactly two fields: id and text. Keep every input id unchanged. Translate only the text. Do not merge, split, omit, reorder, explain, or add markdown.",
-            },
-          ],
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: JSON.stringify(segments),
-            },
-          ],
-        },
-      ],
-    }),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    console.error(
-      "Vexa Live translation failed",
-      response.status,
-      String(data?.error?.message || "unknown error")
-    );
-    throw httpError("Could not translate captions", 502);
-  }
-
-  const parsed = parseTranslatedSegments(extractResponseText(data));
-  const byId = new Map();
-
-  for (const item of parsed) {
-    const id = Number(item?.id);
-    const text = String(item?.text || "").trim();
-    if (Number.isInteger(id) && text) {
-      byId.set(id, text);
-    }
-  }
-
-  const translated = segments.map((segment) => ({
-    id: segment.id,
-    text: byId.get(segment.id) || "",
-  }));
-
-  if (translated.some((segment) => !segment.text)) {
-    throw httpError("Could not translate captions", 502);
-  }
-
-  return translated;
-}
-
-function parseTranslatedSegments(value) {
-  let text = String(value || "").trim();
-  text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-
-  const arrayStart = text.indexOf("[");
-  const arrayEnd = text.lastIndexOf("]");
-
-  if (arrayStart >= 0 && arrayEnd > arrayStart) {
-    text = text.slice(arrayStart, arrayEnd + 1);
-  }
-
-  try {
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) return parsed;
-    if (Array.isArray(parsed?.segments)) return parsed.segments;
-  } catch (error) {}
-
-  throw httpError("Could not translate captions", 502);
-}
-
 async function assertLiveAccess(env, userId) {
-  const access = await getLiveAccess(env, userId);
-  if (!access.locked) return;
-  throw httpError("Vexa Live is updating", 423);
-}
-
-async function getLiveAccess(env, userId) {
   const admin = await isAdmin(env, userId);
+  if (admin) return;
+
   const [globalAccess, liveAccess] = await Promise.all([
     getMiniAppAccessSettings(env),
     getVexaLiveAccessSettings(env),
   ]);
 
-  if (globalAccess.adminOnly && !admin) {
-    return { locked: true, settings: globalAccess, scope: "mini_app" };
+  if (globalAccess.adminOnly || liveAccess.adminOnly) {
+    throw httpError("Vexa Live is updating", 423);
   }
-
-  if (liveAccess.adminOnly && !admin) {
-    return { locked: true, settings: liveAccess, scope: "vexa_live" };
-  }
-
-  return { locked: false, settings: null, scope: "" };
-}
-
-function normalizeLanguage(value) {
-  const language = String(value || "").trim().toLowerCase();
-  if (!SUPPORTED_LANGUAGES[language]) {
-    throw httpError("Choose both languages first", 400);
-  }
-  return language;
-}
-
-function translationModel() {
-  const luna = AI_CHAT_MODELS.find((model) =>
-    String(model.label || "").toLowerCase() === "luna"
-  );
-  return luna?.id || AI_CHAT_MODELS[0]?.id || "";
-}
-
-function extractResponseText(data) {
-  if (typeof data?.output_text === "string") return data.output_text;
-
-  const parts = [];
-  for (const item of Array.isArray(data?.output) ? data.output : []) {
-    for (const content of Array.isArray(item?.content) ? item.content : []) {
-      if (content?.type === "output_text" && typeof content.text === "string") {
-        parts.push(content.text);
-      }
-    }
-  }
-  return parts.join("");
-}
-
-function lockPayload(settings, scope) {
-  return {
-    locked: true,
-    scope,
-    lockedFrom: Number(settings.lockedFrom || 0),
-    lockedUntil: Number(settings.lockedUntil || 0),
-    serverNow: Math.floor(Date.now() / 1000),
-  };
 }
 
 function textResponse(body, contentType) {
@@ -1162,6 +878,7 @@ function textResponse(body, contentType) {
     headers: {
       "Content-Type": contentType,
       "Cache-Control": "no-cache, no-store, must-revalidate",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }
