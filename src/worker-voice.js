@@ -6,7 +6,7 @@ import {
 import VEXA_VOICE_AGENT_SOURCE from "./mini-app/vexa-live/voice-agent-runtime.txt";
 import VEXA_VOICE_ORB_SOURCE from "./mini-app/vexa-live/voice-orb-original.txt";
 
-const VEXA_VOICE_AGENT_VERSION = "20260818-3";
+const VEXA_VOICE_AGENT_VERSION = "20260818-4";
 const VOICE_RUNTIME_PATH = "/mini-app/live/voice-agent-runtime.js";
 const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
 
@@ -74,6 +74,12 @@ function makeInlineVoice(source) {
     ".vexa-voice-overlay.open .vexa-voice-copy{display:flex!important;transform:none!important;opacity:1!important}",
   );
 
+  // Replace the old mini Orb button mark with a compact three-bar Voice mark.
+  result = result.replace(
+    `      button.innerHTML = '<span class="vexa-voice-open-orb" aria-hidden="true"></span>';`,
+    `      button.innerHTML = '<span class="vexa-voice-button-icon" aria-hidden="true"><i class="vexa-voice-button-bar vexa-voice-button-bar-a"></i><i class="vexa-voice-button-bar vexa-voice-button-bar-b"></i><i class="vexa-voice-button-bar vexa-voice-button-bar-c"></i></span>';`,
+  );
+
   // Replace the fullscreen presentation with one compact, in-page voice surface.
   const cssMarker = "      @keyframes vexaVoiceButtonBreath";
   if (result.includes(cssMarker)) {
@@ -86,8 +92,19 @@ function makeInlineVoice(source) {
       .vexa-voice-copy{width:188px!important;min-height:24px!important;margin:0!important;display:flex!important;align-items:center!important;justify-content:center!important;opacity:0!important;transform:translateY(8px)!important;transition:opacity .28s .16s ease,transform .42s .12s cubic-bezier(.16,1,.3,1)!important}
       .vexa-voice-overlay.open .vexa-voice-copy{opacity:1!important;transform:none!important}
       .vexa-voice-status{min-height:22px!important;height:auto!important;max-width:184px!important;color:rgba(255,255,255,.68)!important;font-size:10.5px!important;font-weight:650!important;line-height:1.3!important;letter-spacing:-.01em!important;text-align:center!important;white-space:normal!important}
+      .vexa-voice-button-icon{position:relative;width:20px;height:20px;display:block;transform:scale(.96);transition:transform .34s cubic-bezier(.16,1,.3,1)}
+      .vexa-voice-button-bar{position:absolute;left:50%;top:50%;display:block;width:2.8px;border-radius:999px;background:currentColor;transform-origin:50% 50%;transition:left .38s cubic-bezier(.16,1,.3,1),height .38s cubic-bezier(.16,1,.3,1),opacity .22s ease,transform .42s cubic-bezier(.16,1,.3,1)}
+      .vexa-voice-button-bar-a{height:8px;transform:translate(-7px,-50%)}
+      .vexa-voice-button-bar-b{height:15px;transform:translate(-50%,-50%)}
+      .vexa-voice-button-bar-c{height:10px;transform:translate(4.2px,-50%)}
+      .vexa-voice-open:not([aria-pressed="true"]) .vexa-voice-button-icon{animation:vexaVoiceMarkBreath 2.5s ease-in-out infinite}
+      .vexa-voice-open[aria-pressed="true"] .vexa-voice-button-icon{transform:scale(1)}
+      .vexa-voice-open[aria-pressed="true"] .vexa-voice-button-bar-a{left:50%;height:18px;width:3.2px;transform:translate(-50%,-50%) rotate(45deg)}
+      .vexa-voice-open[aria-pressed="true"] .vexa-voice-button-bar-b{height:3px;opacity:0;transform:translate(-50%,-50%) scale(.35)}
+      .vexa-voice-open[aria-pressed="true"] .vexa-voice-button-bar-c{left:50%;height:18px;width:3.2px;transform:translate(-50%,-50%) rotate(-45deg)}
       .vexa-stt.voice-active .vexa-stt-record,.vexa-stt.voice-active .vexa-stt-upload{opacity:.2!important;pointer-events:none!important;transform:scale(.94)!important}
-      .vexa-stt.voice-active .vexa-voice-open{opacity:1!important;pointer-events:auto!important;transform:none!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),0 0 0 1px rgba(143,102,255,.22),0 10px 24px rgba(0,0,0,.28)!important}
+      .vexa-stt.voice-active .vexa-voice-open{opacity:1!important;pointer-events:auto!important;transform:none!important;background:rgba(20,20,20,.82)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),0 0 0 1px rgba(255,255,255,.1),0 10px 24px rgba(0,0,0,.28)!important}
+      @keyframes vexaVoiceMarkBreath{0%,100%{transform:scale(.93);opacity:.72}50%{transform:scale(1.04);opacity:1}}
 `;
     result = result.replace(cssMarker, inlineCss + cssMarker);
   }
@@ -117,7 +134,8 @@ function makeInlineVoice(source) {
     `    state.active = true;
     state.captureEnabled = false;
     q("vexaStt")?.classList.add("voice-active");
-    q("vexaVoiceAgentOpen")?.setAttribute("aria-pressed", "true");`,
+    q("vexaVoiceAgentOpen")?.setAttribute("aria-pressed", "true");
+    q("vexaVoiceAgentOpen")?.setAttribute("aria-label", "Stop Vexa Voice");`,
   );
 
   result = result.replace(
@@ -128,6 +146,7 @@ function makeInlineVoice(source) {
     state.captureEnabled = false;
     q("vexaStt")?.classList.remove("voice-active");
     q("vexaVoiceAgentOpen")?.setAttribute("aria-pressed", "false");
+    q("vexaVoiceAgentOpen")?.setAttribute("aria-label", "Talk to Vexa");
     closeSpeechEngine();`,
   );
 
