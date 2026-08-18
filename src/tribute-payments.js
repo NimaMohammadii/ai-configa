@@ -7,6 +7,7 @@ const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
 const PRODUCT_CACHE_TTL_MS = 60 * 1000;
 const DEFAULT_VEXA_PRODUCT_LINKS = Object.freeze([
   "https://web.tribute.tg/p/CcQ",
+  "https://web.tribute.tg/p/Cdn",
 ]);
 
 let productCache = null;
@@ -484,6 +485,9 @@ function toCardProduct(row) {
 }
 
 function creditsForProduct(row, amountMinor, currency) {
+  const paymentUrl = normalizeUrl(safeTributePaymentUrl(row?.webLink));
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/Cdn")) return 20000;
+
   const explicit = parseCredits(`${row?.name || ""} ${row?.description || ""}`);
   if (explicit) return explicit;
 
