@@ -5,7 +5,6 @@ export const EMOTION_UI_FIXES_CSS = String.raw`
 .emotion-real-icon{display:block;width:22px;height:22px;filter:drop-shadow(0 1px 4px rgba(255,255,255,.08));transition:transform .24s cubic-bezier(.2,.9,.2,1)}
 .emotion-trigger:active .emotion-real-icon,.emotion-trigger.active .emotion-real-icon{transform:scale(.9) rotate(-4deg)}
 body.emotion-audio-ready:not(.keyboard-open):not(.image-mode) .player-history-row .emotion-trigger{right:0!important;top:-54px!important;width:46px!important;min-width:46px!important;height:46px!important}
-body.keyboard-open #flow.active .emotion-trigger,body.keyboard-open.emotion-audio-ready #flow.active .emotion-trigger{position:fixed!important;z-index:57;right:22px!important;top:auto!important;bottom:calc(64px + env(safe-area-inset-bottom))!important;width:42px!important;min-width:42px!important;height:42px!important;border-radius:50%!important;margin:0;transform:none}
 .emotion-head{display:none!important}
 .emotion-backdrop{background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 .emotion-card{left:24px!important;right:24px!important;max-width:410px!important;max-height:min(42dvh,350px)!important;bottom:calc(108px + env(safe-area-inset-bottom))!important;border-radius:22px!important;padding:7px 9px 9px!important}
@@ -20,7 +19,7 @@ body.emotion-highlight-ready .tts-area textarea{position:relative;z-index:2;colo
 body.emotion-highlight-ready .tts-area textarea::placeholder{color:transparent!important;-webkit-text-fill-color:transparent!important}
 body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,72,178,.42)}
 @keyframes emotionButtonLift{from{opacity:0;transform:translateY(12px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
-@media(max-width:380px){.emotion-card{left:14px!important;right:14px!important;max-height:min(40dvh,320px)!important}body.keyboard-open #flow.active .emotion-trigger,body.keyboard-open.emotion-audio-ready #flow.active .emotion-trigger{right:22px!important;width:42px!important;min-width:42px!important}}
+@media(max-width:380px){.emotion-card{left:14px!important;right:14px!important;max-height:min(40dvh,320px)!important}}
 
 /* Preserve the original Voices header and search geometry. */
 .voices-page-head{overflow:visible!important}
@@ -28,7 +27,7 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 .demo-language-title-row{display:block!important;position:relative!important;width:100%!important;min-width:0!important;overflow:visible!important}
 .demo-language-wrap{position:absolute!important;left:auto!important;right:0!important;top:auto!important;bottom:-3px!important;z-index:12!important;height:36px!important;min-height:36px!important;max-height:36px!important;align-self:auto!important;overflow:visible!important;transform:none!important}
 .demo-language-wrap .voice-btn{width:auto!important;min-width:116px!important;max-width:132px!important;height:36px!important;min-height:36px!important;max-height:36px!important;padding:0 10px 0 8px!important;gap:7px!important;overflow:hidden!important;white-space:nowrap!important;border:0!important;border-radius:16px!important;background:rgba(13,13,13,.62)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22)!important;backdrop-filter:blur(10px) saturate(1.12)!important;-webkit-backdrop-filter:blur(10px) saturate(1.12)!important;transform:none!important}
-.demo-language-wrap .voice-btn:active{background:rgba(255,255,255,.105)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),0 5px 14px rgba(0,0,0,.2)!important}
+.demo-language-wrap .voice-btn:active{background:rgba(255,255,255,.105)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(0,0,0,.07),0 5px 14px rgba(0,0,0,.2)!important}
 #demoLanguageLabel{min-width:0!important;flex:1 1 auto!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
 .demo-language-wrap .voice-menu{left:auto!important;right:0!important;top:44px!important;width:230px!important;transform-origin:top right!important}
 .demo-language-button-avatar{display:contents!important;border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important}
