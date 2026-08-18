@@ -8,6 +8,7 @@ const PRODUCT_CACHE_TTL_MS = 60 * 1000;
 const DEFAULT_VEXA_PRODUCT_LINKS = Object.freeze([
   "https://web.tribute.tg/p/CcQ",
   "https://web.tribute.tg/p/Cdn",
+  "https://web.tribute.tg/p/Cdq",
 ]);
 
 let productCache = null;
@@ -75,7 +76,6 @@ export async function handleTributeWebhook(request, env) {
   const name = String(event?.name || "").trim();
   const payload = event?.payload && typeof event.payload === "object" ? event.payload : {};
 
-  // Tribute's test request and unrelated creator events must be acknowledged.
   if (name !== "new_digital_product" && name !== "digital_product_refunded") {
     return json({ status: "ok" });
   }
@@ -442,10 +442,6 @@ function isEligibleVexaProduct(row, env) {
   const allowedLinks = new Set(configuredVexaProductLinks(env));
   const configuredLink = allowedLinks.has(normalizeUrl(webLink));
 
-  // Tribute's live Digital Products API currently returns `new` for a freshly
-  // created, immediately shareable card-enabled product, even though the public
-  // schema still documents pending/approved/rejected. Only explicitly configured
-  // Vexa links may use this live `new` status; inferred products still require approved.
   if (configuredLink) return status === "approved" || status === "new";
   if (status !== "approved") return false;
 
@@ -487,6 +483,7 @@ function toCardProduct(row) {
 function creditsForProduct(row, amountMinor, currency) {
   const paymentUrl = normalizeUrl(safeTributePaymentUrl(row?.webLink));
   if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/Cdn")) return 20000;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/Cdq")) return 100000;
 
   const explicit = parseCredits(`${row?.name || ""} ${row?.description || ""}`);
   if (explicit) return explicit;
@@ -502,7 +499,6 @@ function creditsForProduct(row, amountMinor, currency) {
     return Math.max(1000, Math.round(rawCredits / 1000) * 1000);
   }
 
-  // For EUR/RUB products, put the exact credit amount in the Tribute product name/description.
   return 0;
 }
 
@@ -519,7 +515,6 @@ function resolveRequestedProduct(products, body) {
   const productId = normalizePositiveId(body?.productId);
   if (productId) return products.find((item) => Number(item.productId) === Number(productId)) || null;
 
-  // Compatibility with the previous client while caches roll over.
   const currency = normalizeCurrency(body?.currency) || "usd";
   const requestedCredits = Math.floor(Number(body?.credits || 0));
   if (requestedCredits > 0) {
