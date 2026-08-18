@@ -265,12 +265,29 @@ function applyUsagePricedImageUi(source) {
   return patched;
 }
 
+function stripLegacyTtsKeyboardGeometry(source) {
+  const legacyRules = [
+    "body.keyboard-open:not(.image-mode) #flow.active,body.keyboard-closing:not(.image-mode) #flow.active,body.keyboard-open:not(.image-mode) #flow.active .tts-page,body.keyboard-closing:not(.image-mode) #flow.active .tts-page{position:static}",
+    "body.keyboard-open:not(.image-mode) #flow.active .tts-bottom,body.keyboard-closing:not(.image-mode) #flow.active .tts-bottom{position:absolute!important;bottom:60px!important;display:grid!important}",
+  ];
+
+  let patched = source;
+  for (const rule of legacyRules) {
+    if (!patched.includes(rule)) {
+      console.error("legacy TTS keyboard geometry rule missing");
+      continue;
+    }
+    patched = patched.replace(rule, "");
+  }
+  return patched;
+}
+
 async function appendPurchaseStyles(response) {
   if (!response?.ok) return response;
   const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
   if (!contentType.includes("text/css")) return response;
 
-  const source = await response.text();
+  const source = stripLegacyTtsKeyboardGeometry(await response.text());
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
   headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
