@@ -5,7 +5,7 @@ import { getBalance } from "../credits.js";
 import { buildPreparedReferralShare, getReferralLanguage, getReferralStatus, parseReferralStartParam, registerReferralFromStartParam } from "../referrals.js";
 import { MINI_APP_STAR_PACKAGES, createCustomStarPackage, applyStarPackageDiscount, starInvoicePayload } from "../stars.js";
 import { getActiveWheelPurchaseDiscount } from "../reward-wheel.js";
-import { tgJson } from "../telegram-api.js";
+import { tgForm, tgJson } from "../telegram-api.js";
 import { handlePaymentHeroImageRequest, isPaymentHeroImageRequest } from "../payment-hero.js";
 import { dynamicPricingPayload, handleUsagePricedImageRequest, isUsagePricedImageRequest } from "../image-usage-pricing.js";
 import { PURCHASE_UI_CSS } from "./purchase-ui-styles.js";
@@ -47,6 +47,10 @@ export async function handleMiniAppRequest(request, env) {
       console.error("mini app referral registration failed", error?.message || error);
     });
     return overrideSessionImagePricing(await baseHandleMiniAppRequest(request, env));
+  }
+
+  if (request.method === "POST" && url.pathname === "/mini-app/api/history-send-to-bot") {
+    return handleHistorySendToBot(request, env);
   }
 
   if (request.method === "POST" && url.pathname === "/mini-app/api/referral-status") {
@@ -131,6 +135,56 @@ export async function handleMiniAppRequest(request, env) {
   } catch (error) {
     return json({ error: error?.message || "Mini app error" }, error?.status || 500);
   }
+}
+
+async function handleHistorySendToBot(request, env) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const historyId = String(body.id || "").trim();
+    if (!historyId) return json({ error: "History item not found." }, 400);
+
+    const user = await authenticateMiniAppPayload(body, env);
+    const audioRequest = new Request(new URL("/mini-app/api/history-audio", request.url), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    const audioResponse = await baseHandleMiniAppRequest(audioRequest, env);
+    const audioData = await audioResponse.json().catch(() => null);
+    if (!audioResponse.ok) {
+      return json({ error: audioData?.error || "Audio is not available." }, audioResponse.status);
+    }
+
+    const audioBase64 = String(audioData?.audioBase64 || "").replace(/\s/g, "");
+    if (!audioBase64) return json({ error: "Audio is not available." }, 404);
+
+    const audio = base64ToArrayBuffer(audioBase64);
+    const filename = String(audioData?.filename || "vexa-voice.mp3").trim() || "vexa-voice.mp3";
+    const mimeType = String(audioData?.mimeType || "audio/mpeg").toLowerCase();
+    const telegramAudio = mimeType === "audio/mpeg" || /\.(mp3|m4a)$/i.test(filename);
+    const form = new FormData();
+    form.append("chat_id", String(user.id));
+
+    if (telegramAudio) {
+      form.append("title", filename.replace(/\.[^.]+$/, "") || "Vexa Voice");
+      form.append("audio", new Blob([audio], { type: mimeType || "audio/mpeg" }), filename);
+      await tgForm(env, "sendAudio", form);
+    } else {
+      form.append("document", new Blob([audio], { type: mimeType || "application/octet-stream" }), filename);
+      await tgForm(env, "sendDocument", form);
+    }
+
+    return json({ ok: true });
+  } catch (error) {
+    return json({ error: error?.message || "Could not send audio to bot." }, error?.status || 500);
+  }
+}
+
+function base64ToArrayBuffer(value) {
+  const binary = atob(String(value || ""));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes.buffer;
 }
 
 async function overrideSessionImagePricing(response) {
