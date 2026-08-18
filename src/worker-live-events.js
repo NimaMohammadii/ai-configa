@@ -334,6 +334,14 @@ function attachEventBilledVoiceProxy({ server, upstream, env, ctx, sessionId, us
     balance = Math.max(0, Number(spent.balance || 0));
     await persistActive();
     sendBillingEvent(turn, credits);
+    if (balance <= 0 && !closed) {
+      closed = true;
+      if (sessionLimitTimer) clearTimeout(sessionLimitTimer);
+      sessionLimitTimer = 0;
+      await markProxySession(env, sessionId, "insufficient", chargedCredits, true).catch(() => null);
+      closeBoth(4002, "Not enough credits");
+      return false;
+    }
     return true;
   };
 
@@ -371,6 +379,7 @@ function attachEventBilledVoiceProxy({ server, upstream, env, ctx, sessionId, us
     const eventId = String(message?.agent_response_complete_event?.event_id ?? "");
     if (eventId && eventId === lastCompleteEventId) return;
     if (eventId) lastCompleteEventId = eventId;
+    vadSpeaking = false;
     pendingTurn = {
       startedAt: activeTurnStartedAt,
       completedAt: now,
@@ -402,7 +411,7 @@ function attachEventBilledVoiceProxy({ server, upstream, env, ctx, sessionId, us
     }
 
     if (type === "user_transcript" && !activeTurnStartedAt) {
-      activeTurnStartedAt = now;
+      onUserSpeechStart(now);
       return;
     }
 
