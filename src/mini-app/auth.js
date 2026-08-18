@@ -17,11 +17,18 @@ export async function authenticateMiniAppPayload(payload, env) {
   }
   if (!user?.id) throw httpError("کاربر تلگرام پیدا نشد.", 401);
 
-  // Vexa Voice sends a language hint from the browser/Telegram client, but the
-  // user's language selected in Vexa is the authoritative source. Mutating the
-  // parsed payload here keeps both the billed wrapper and Speech Engine session
-  // on the same saved language without trusting a WebView locale.
-  if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "language")) {
+  // Only Vexa Voice should force the language saved in the app. Other Mini App
+  // features, especially the independent voice-demo language picker, must keep
+  // the explicit language sent by the user.
+  const isVexaVoiceRequest = Boolean(
+    payload &&
+    typeof payload === "object" &&
+    (payload.vexaVoice === true || Object.prototype.hasOwnProperty.call(payload, "variant"))
+  );
+  if (
+    isVexaVoiceRequest &&
+    Object.prototype.hasOwnProperty.call(payload, "language")
+  ) {
     let savedLanguage = "";
     try {
       const state = await getState(env, user.id);
