@@ -6,8 +6,9 @@ import {
 import VEXA_VOICE_AGENT_SOURCE from "./mini-app/vexa-live/voice-agent-runtime.txt";
 import VEXA_VOICE_ORB_SOURCE from "./mini-app/vexa-live/voice-orb-original.txt";
 
-const VEXA_VOICE_AGENT_VERSION = "20260818-1";
+const VEXA_VOICE_AGENT_VERSION = "20260818-2";
 const VOICE_RUNTIME_PATH = "/mini-app/live/voice-agent-runtime.js";
+const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
 
 export { AiCodingWorkflow } from "./worker-tribute.js";
 
@@ -24,7 +25,13 @@ export default {
       return voiceRuntimeResponse();
     }
 
-    return worker.fetch(request, env, ctx);
+    const response = await worker.fetch(request, env, ctx);
+
+    if (request.method === "GET" && url.pathname === LIVE_INTEGRATION_PATH) {
+      return fixLiveIntegration(response);
+    }
+
+    return response;
   },
 };
 
@@ -62,12 +69,12 @@ function polishVoiceUi(source) {
 
   polished = polished.replace(
     ".vexa-voice-stage{position:relative;width:min(82vw,390px);aspect-ratio:1;display:grid;place-items:center;opacity:0;transform:scale(.74);filter:blur(8px);transition:opacity .48s .06s ease,transform .72s .04s cubic-bezier(.16,1,.3,1),filter .5s .04s ease}",
-    ".vexa-voice-stage{position:relative;width:min(82vw,390px);aspect-ratio:1;display:grid;place-items:center;opacity:0;transform:translateY(-42px) scale(.74);filter:blur(8px);transition:opacity .48s .06s ease,transform .72s .04s cubic-bezier(.16,1,.3,1),filter .5s .04s ease}",
+    ".vexa-voice-stage{position:relative;width:min(82vw,390px);aspect-ratio:1;display:grid;place-items:center;opacity:0;transform:translateY(-24px) scale(.74);filter:blur(8px);transition:opacity .48s .06s ease,transform .72s .04s cubic-bezier(.16,1,.3,1),filter .5s .04s ease}",
   );
 
   polished = polished.replace(
     ".vexa-voice-overlay.open .vexa-voice-stage{opacity:1;transform:scale(1);filter:blur(0)}",
-    ".vexa-voice-overlay.open .vexa-voice-stage{opacity:1;transform:translateY(-42px) scale(1);filter:blur(0)}",
+    ".vexa-voice-overlay.open .vexa-voice-stage{opacity:1;transform:translateY(-24px) scale(1);filter:blur(0)}",
   );
 
   return polished;
@@ -251,5 +258,61 @@ function voiceRuntimeResponse() {
       "X-Content-Type-Options": "nosniff",
       "X-Vexa-Voice-Agent": VEXA_VOICE_AGENT_VERSION,
     },
+  });
+}
+
+async function fixLiveIntegration(response) {
+  if (!response || !response.ok) return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("javascript")) return response;
+
+  let source = await response.text();
+
+  source = source.replace(
+    `    cleanupRecording(false);
+    setStatus(doc, "Requesting microphone…", true);`,
+    `    cleanupRecording(false);
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      try {
+        recorderContext = new AudioContextClass();
+        if (recorderContext.state === "suspended") {
+          const resumed = recorderContext.resume();
+          if (resumed && typeof resumed.catch === "function") resumed.catch(function () {});
+        }
+      } catch (error) {
+        recorderContext = null;
+      }
+    }
+
+    setStatus(doc, "Requesting microphone…", true);`,
+  );
+
+  source = source.replace(
+    `      recorderContext = new AudioContextClass();
+      recorderAnalyser = recorderContext.createAnalyser();`,
+    `      recorderContext = recorderContext && recorderContext.state !== "closed"
+        ? recorderContext
+        : new AudioContextClass();
+      if (recorderContext.state === "suspended") {
+        try {
+          const resumed = recorderContext.resume();
+          if (resumed && typeof resumed.catch === "function") resumed.catch(function () {});
+        } catch (error) {}
+      }
+      recorderAnalyser = recorderContext.createAnalyser();`,
+  );
+
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  headers.delete("Content-Encoding");
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  headers.set("X-Vexa-Live-Fix", VEXA_VOICE_AGENT_VERSION);
+
+  return new Response(source, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
 }
