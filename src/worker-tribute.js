@@ -9,7 +9,7 @@ import {
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
 import { TRIBUTE_UI_POLISH_JS } from "./mini-app/tribute-ui-polish.js";
 
-const TRIBUTE_UI_VERSION = "20260818-12";
+const TRIBUTE_UI_VERSION = "20260818-13";
 const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
 const CONFIGURED_VEXA_PRODUCT_LINKS = new Set([
   "https://web.tribute.tg/p/CcQ",
