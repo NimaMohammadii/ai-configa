@@ -7,8 +7,9 @@ import {
   isTributeWebhookRequest,
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
+import { TRIBUTE_UI_POLISH_JS } from "./mini-app/tribute-ui-polish.js";
 
-const TRIBUTE_UI_VERSION = "20260818-11";
+const TRIBUTE_UI_VERSION = "20260818-12";
 const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
 const CONFIGURED_VEXA_PRODUCT_LINKS = new Set([
   "https://web.tribute.tg/p/CcQ",
@@ -176,7 +177,7 @@ function json(value, status = 200) {
 }
 
 function tributeMiniAppIntegrationSource() {
-  return TRIBUTE_PAYMENTS_INTEGRATION_JS;
+  return TRIBUTE_PAYMENTS_INTEGRATION_JS + "\n" + TRIBUTE_UI_POLISH_JS;
 }
 
 async function injectTributeIntoMiniAppBundle(response) {
