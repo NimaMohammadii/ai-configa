@@ -102,8 +102,6 @@ export const MINI_APP_HTML = `<!doctype html>
     .credits-page .toman-upload-icon,.credits-page .toman-back{border-radius:13px}
     .credits-page .credits-amount-field{padding:0 14px}
     .credits-page .credits-pack:active,.credits-page .toman-card:active,.credits-page .toman-receipt-picker:active,.credits-page .toman-back:active,.credits-page .credits-amount-field:focus-within{background:rgba(255,255,255,.105);box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),0 5px 14px rgba(0,0,0,.2)}
-    .credits-page.toman-payment-active .credits-page-head{background:#000 url("/mini-app/assets/toman-checkout-hero.png?v=20260812-3") center/cover no-repeat}
-    .credits-page.toman-payment-active .credits-page-head:before{z-index:0;background:linear-gradient(90deg,rgba(0,0,0,.98) 0%,rgba(0,0,0,.72) 36%,rgba(0,0,0,.12) 72%,rgba(0,0,0,.28) 100%)}
     .explore-page-head,.voices-page-head{box-shadow:0 -140px 0 140px #000}
   </style>
 </head>
@@ -203,7 +201,7 @@ export const MINI_APP_HTML = `<!doctype html>
               <button class="image-size-option" data-action="select-image-size" data-image-size="1792x768" data-size-name="Ultrawide" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-wide" aria-hidden="true"></span><span><strong>Ultrawide</strong><small>21:9 · 1792×768</small></span></button>
               <button class="image-size-option" data-action="select-image-size" data-image-size="2048x1024" data-size-name="Panorama" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-wide" aria-hidden="true"></span><span><strong>Panorama</strong><small>2:1 · 2048×1024</small></span></button>
               <button class="image-size-option" data-action="select-image-size" data-image-size="2592x864" data-size-name="Banner" type="button" role="menuitem" aria-pressed="false"><span class="size-shape size-ultra-wide" aria-hidden="true"></span><span><strong>Banner</strong><small>3:1 · 2592×864</small></span></button>
-            </div></div><button class="image-upload-trigger" data-action="pick-image" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 13.5v4A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Add photos</span></button></div></div>
+            </div></div><button class="image-upload-trigger" data-action="pick-image" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V5m0 0L8 9m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Add photos</span></button></div></div>
           </div>
           <input id="imageFile" class="image-file-input" type="file" accept="image/jpeg,image/png,image/webp" multiple/>
           <div id="imageSources" class="image-sources" aria-hidden="true"><div class="image-sources-head"><span id="imageSourcesCount">0 selected</span><small>Up to 4 photos</small></div><div id="imageSourcesGrid" class="image-sources-grid"></div></div>
