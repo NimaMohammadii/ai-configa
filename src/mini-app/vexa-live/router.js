@@ -8,7 +8,7 @@ import { handleMiniAppRequest } from "../server.js";
 import { getVexaLiveAccessSettings } from "./access.js";
 
 const LIVE_ROOT = "/mini-app/live";
-const INTEGRATION_VERSION = "20260818-1";
+const INTEGRATION_VERSION = "20260818-2";
 const VOICE_RUNTIME_VERSION = "20260818-1";
 const SCRIBE_MODEL = "scribe_v2";
 
@@ -39,6 +39,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   const WORKSPACE_ID = "vexaLiveWorkspace";
   const BATCH_SCRIBE_URL = "https://api.elevenlabs.io/v1/speech-to-text";
   const BATCH_SCRIBE_MODEL = "scribe_v2";
+  const WORKSPACE_TRANSITION = "opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1)";
   let liveOpen = false;
   let liveFrame = null;
   let recorder = null;
@@ -52,6 +53,13 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   let waveFrame = 0;
   let waveData = null;
   let transcribing = false;
+  let liveStableHeight = 0;
+  let liveKeyboardActive = false;
+  let liveKeyboardDoc = null;
+  let liveKeyboardTextarea = null;
+  let liveKeyboardButton = null;
+  let liveKeyboardCloseTimer = 0;
+  let liveViewportHandlersBound = false;
 
   function requestedSection() {
     let raw = "";
@@ -96,6 +104,15 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     return tg && tg.initData ? String(tg.initData) : "";
   }
 
+  function currentStableViewportHeight() {
+    const tg = telegram();
+    const telegramStable = Number(tg && tg.viewportStableHeight || 0);
+    if (Number.isFinite(telegramStable) && telegramStable >= 320) return telegramStable;
+    const documentHeight = Number(document.documentElement && document.documentElement.clientHeight || 0);
+    if (Number.isFinite(documentHeight) && documentHeight >= 320) return documentHeight;
+    return Math.max(320, Number(window.innerHeight || 0));
+  }
+
   function installWorkspace() {
     const existing = document.getElementById(WORKSPACE_ID);
     if (existing) return existing;
@@ -107,13 +124,199 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     workspace.id = WORKSPACE_ID;
     workspace.setAttribute("aria-hidden", "true");
     workspace.style.cssText =
-      "position:absolute;z-index:34;left:0;right:0;top:50px;bottom:0;" +
+      "position:fixed;z-index:34;left:0;right:0;top:50px;height:calc(100vh - 50px);" +
       "display:block;overflow:hidden;background:#000;opacity:0;" +
       "transform:translateX(34px) scale(.985);pointer-events:none;" +
-      "transition:opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1);";
+      "transition:" + WORKSPACE_TRANSITION + ";";
 
     page.appendChild(workspace);
     return workspace;
+  }
+
+  function lockLiveWorkspaceGeometry(force) {
+    const workspace = document.getElementById(WORKSPACE_ID);
+    if (!workspace || !liveOpen) return;
+
+    if (force || liveStableHeight < 320) {
+      liveStableHeight = Math.max(320, Math.round(currentStableViewportHeight() - 50));
+    }
+
+    workspace.style.position = "fixed";
+    workspace.style.left = "0";
+    workspace.style.right = "0";
+    workspace.style.top = "50px";
+    workspace.style.bottom = "auto";
+    workspace.style.height = String(liveStableHeight) + "px";
+    if (liveFrame) {
+      liveFrame.style.height = String(liveStableHeight) + "px";
+      liveFrame.style.minHeight = String(liveStableHeight) + "px";
+      liveFrame.style.maxHeight = String(liveStableHeight) + "px";
+    }
+  }
+
+  function resetLiveWorkspaceGeometry() {
+    const workspace = document.getElementById(WORKSPACE_ID);
+    liveStableHeight = 0;
+    if (!workspace) return;
+    workspace.style.position = "fixed";
+    workspace.style.left = "0";
+    workspace.style.right = "0";
+    workspace.style.top = "50px";
+    workspace.style.bottom = "auto";
+    workspace.style.height = "calc(100vh - 50px)";
+    workspace.style.transition = WORKSPACE_TRANSITION;
+    if (liveFrame) {
+      liveFrame.style.height = "100%";
+      liveFrame.style.minHeight = "";
+      liveFrame.style.maxHeight = "";
+    }
+  }
+
+  function liveVisibleBottom() {
+    const workspace = document.getElementById(WORKSPACE_ID);
+    if (!workspace) return Math.max(0, liveStableHeight);
+
+    const rect = workspace.getBoundingClientRect();
+    const candidates = [];
+    const viewport = window.visualViewport;
+    if (viewport) {
+      const visualBottom = Number(viewport.offsetTop || 0) + Number(viewport.height || 0);
+      if (Number.isFinite(visualBottom) && visualBottom > 0) candidates.push(visualBottom);
+    }
+    const innerHeight = Number(window.innerHeight || 0);
+    if (Number.isFinite(innerHeight) && innerHeight > 0) candidates.push(innerHeight);
+    const tgHeight = Number(telegram() && telegram().viewportHeight || 0);
+    if (Number.isFinite(tgHeight) && tgHeight > 0) candidates.push(tgHeight);
+
+    const visibleBottom = candidates.length ? Math.min.apply(Math, candidates) : rect.bottom;
+    return Math.max(0, Math.min(rect.height, visibleBottom - rect.top));
+  }
+
+  function syncLiveKeyboardViewport() {
+    if (!liveOpen || !liveKeyboardActive || !liveKeyboardDoc || !liveKeyboardButton) return;
+    const workspace = document.getElementById(WORKSPACE_ID);
+    const shell = liveKeyboardDoc.getElementById("vexaStt");
+    if (!workspace || !shell) return;
+
+    lockLiveWorkspaceGeometry(false);
+    workspace.style.transition = "none";
+    workspace.style.transform = "translate3d(0,0,0) scale(1)";
+
+    const rect = workspace.getBoundingClientRect();
+    const correction = Math.max(-240, Math.min(240, 50 - Number(rect.top || 0)));
+    if (Math.abs(correction) > .5) {
+      workspace.style.transform = "translate3d(0," + correction.toFixed(1) + "px,0) scale(1)";
+    }
+
+    const visibleBottom = liveVisibleBottom();
+    const maximum = Math.max(10, liveStableHeight - 56);
+    const top = Math.max(10, Math.min(maximum, visibleBottom - 56));
+    shell.style.setProperty("--vexa-keyboard-top", Math.round(top) + "px");
+  }
+
+  function finishLiveKeyboardClose() {
+    if (liveKeyboardCloseTimer) window.clearTimeout(liveKeyboardCloseTimer);
+    liveKeyboardCloseTimer = 0;
+    liveKeyboardActive = false;
+    const workspace = document.getElementById(WORKSPACE_ID);
+    const shell = liveKeyboardDoc && liveKeyboardDoc.getElementById("vexaStt");
+    if (shell) {
+      shell.classList.remove("keyboard-open", "keyboard-closing");
+      shell.style.removeProperty("--vexa-keyboard-top");
+    }
+    if (workspace) {
+      workspace.style.transition = WORKSPACE_TRANSITION;
+      workspace.style.transform = liveOpen ? "translateX(0) scale(1)" : "translateX(34px) scale(.985)";
+    }
+    if (liveOpen) {
+      liveStableHeight = 0;
+      lockLiveWorkspaceGeometry(true);
+    }
+  }
+
+  function beginLiveKeyboardClose() {
+    const shell = liveKeyboardDoc && liveKeyboardDoc.getElementById("vexaStt");
+    if (shell) {
+      shell.classList.remove("keyboard-open");
+      shell.classList.add("keyboard-closing");
+    }
+    if (liveKeyboardCloseTimer) window.clearTimeout(liveKeyboardCloseTimer);
+    liveKeyboardCloseTimer = window.setTimeout(finishLiveKeyboardClose, 320);
+  }
+
+  function installLiveKeyboard(frame, doc) {
+    const textarea = doc && doc.getElementById("vexaSttText");
+    const button = doc && doc.getElementById("vexaKeyboardDismiss");
+    if (!frame || !textarea || !button) return;
+    if (textarea.getAttribute("data-vexa-keyboard") === "ready") return;
+    textarea.setAttribute("data-vexa-keyboard", "ready");
+
+    liveKeyboardDoc = doc;
+    liveKeyboardTextarea = textarea;
+    liveKeyboardButton = button;
+
+    textarea.addEventListener("pointerdown", function () {
+      if (!liveOpen) return;
+      lockLiveWorkspaceGeometry(false);
+    }, { capture: true });
+
+    textarea.addEventListener("focus", function () {
+      if (!liveOpen) return;
+      if (liveKeyboardCloseTimer) window.clearTimeout(liveKeyboardCloseTimer);
+      liveKeyboardCloseTimer = 0;
+      liveKeyboardActive = true;
+      const shell = doc.getElementById("vexaStt");
+      if (shell) {
+        shell.classList.remove("keyboard-closing");
+        shell.classList.add("keyboard-open");
+      }
+      lockLiveWorkspaceGeometry(false);
+      syncLiveKeyboardViewport();
+      window.requestAnimationFrame(syncLiveKeyboardViewport);
+      window.setTimeout(syncLiveKeyboardViewport, 80);
+      window.setTimeout(syncLiveKeyboardViewport, 220);
+      window.setTimeout(syncLiveKeyboardViewport, 420);
+    });
+
+    textarea.addEventListener("blur", function () {
+      beginLiveKeyboardClose();
+    });
+
+    button.addEventListener("pointerdown", function (event) {
+      event.preventDefault();
+    });
+    button.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      haptic("light");
+      beginLiveKeyboardClose();
+      try { textarea.blur(); } catch (error) {}
+    });
+  }
+
+  function bindLiveViewportHandlers() {
+    if (liveViewportHandlersBound) return;
+    liveViewportHandlersBound = true;
+
+    const handleViewport = function () {
+      if (!liveOpen) return;
+      if (liveKeyboardActive) {
+        syncLiveKeyboardViewport();
+      } else {
+        liveStableHeight = 0;
+        lockLiveWorkspaceGeometry(true);
+      }
+    };
+
+    window.addEventListener("resize", handleViewport, { passive: true });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", handleViewport, { passive: true });
+      window.visualViewport.addEventListener("scroll", handleViewport, { passive: true });
+    }
+    const tg = telegram();
+    if (tg && tg.onEvent) {
+      try { tg.onEvent("viewportChanged", handleViewport); } catch (error) {}
+    }
   }
 
   function embeddedStyle() {
@@ -142,7 +345,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       ".vexa-stt.processing .vexa-stt-wave-track i{animation:vexaSttProcessing .78s ease-in-out infinite}",
       ".vexa-stt-wave-caption{position:absolute;left:50%;bottom:4px;display:flex;align-items:center;gap:7px;color:rgba(255,255,255,.46);font-size:9px;font-weight:680;letter-spacing:.02em;transform:translateX(-50%);white-space:nowrap}",
       ".vexa-stt-wave-caption strong{color:#fff;font-size:10px;font-weight:720;font-variant-numeric:tabular-nums}",
-      ".vexa-stt-controls{position:fixed;z-index:7;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));display:grid;grid-template-columns:minmax(0,1fr) 42px;gap:8px;align-items:center;transition:transform .42s var(--stt-ease),opacity .24s ease}",
+      ".vexa-stt-controls{position:absolute;z-index:7;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));display:grid;grid-template-columns:minmax(0,1fr) 42px;gap:8px;align-items:center;transition:transform .42s var(--stt-ease),opacity .24s ease}",
       ".vexa-stt-record,.vexa-stt-upload{height:42px;min-height:42px;border:0;outline:0;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:13px;transition:transform .2s var(--stt-ease),box-shadow .24s ease,opacity .2s ease,background .24s ease,color .24s ease}",
       ".vexa-stt-record{position:relative;color:#050505;background:linear-gradient(180deg,#fff 0%,#f4f4f4 48%,#d9d9d9 100%);border:1px solid rgba(255,255,255,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.98),inset 0 -1px 0 rgba(0,0,0,.18),0 8px 24px rgba(0,0,0,.34),0 0 24px rgba(255,255,255,.07);font-size:12.5px;font-weight:760;letter-spacing:-.015em}",
       ".vexa-stt-record::before{content:\"\";position:absolute;left:9%;right:9%;top:1px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.95),transparent);opacity:.92}",
@@ -164,8 +367,11 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       ".vexa-stt-upload:active::before{transform:translate(-50%,-50%) rotate(90deg) scale(.78)}",
       ".vexa-stt-upload:active::after{transform:translate(-50%,-50%) rotate(180deg) scale(.78)}",
       ".vexa-stt.recording .vexa-stt-upload,.vexa-stt.processing .vexa-stt-upload{opacity:.28;pointer-events:none;transform:scale(.92)}",
-      ".vexa-stt-status{position:fixed;z-index:6;left:50%;bottom:calc(65px + env(safe-area-inset-bottom));max-width:calc(100% - 32px);height:24px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.38);font-size:8.7px;font-weight:650;white-space:nowrap;opacity:0;transform:translate(-50%,5px);transition:opacity .2s ease,transform .3s var(--stt-ease)}",
+      ".vexa-stt-status{position:absolute;z-index:6;left:50%;bottom:calc(65px + env(safe-area-inset-bottom));max-width:calc(100% - 32px);height:24px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.38);font-size:8.7px;font-weight:650;white-space:nowrap;opacity:0;transform:translate(-50%,5px);transition:opacity .2s ease,transform .3s var(--stt-ease)}",
       ".vexa-stt-status.show{opacity:1;transform:translate(-50%,0)}",
+      ".vexa-keyboard-dismiss{position:absolute;z-index:30;right:22px;top:var(--vexa-keyboard-top,calc(100% - 58px));width:42px;height:42px;border:0;border-radius:15px;padding:0;display:grid;place-items:center;color:#fff;background:rgba(13,13,13,.62);opacity:0;transform:translateY(12px) scale(.92);pointer-events:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);transition:opacity .2s ease,transform .22s cubic-bezier(.2,.8,.2,1),background .2s ease,box-shadow .2s ease}",
+      ".vexa-stt.keyboard-open .vexa-keyboard-dismiss,.vexa-stt.keyboard-closing .vexa-keyboard-dismiss{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}",
+      ".vexa-stt.keyboard-open .vexa-keyboard-dismiss svg{animation:vexaKeyboardArrow .95s ease-in-out infinite}",
       ".vexa-stt.processing .vexa-stt-record-inner{opacity:0;transform:scale(.98)}",
       ".vexa-stt.processing .vexa-stt-record::after{content:\"Transcribing\";position:absolute;z-index:2;inset:0;display:grid;place-items:center;color:#050505;font-size:12.5px;font-weight:760;letter-spacing:-.015em;animation:vexaSttButtonState .3s cubic-bezier(.16,1,.3,1) both}",
       ".vexa-stt.processing .vexa-stt-status{opacity:0!important;transform:translate(-50%,5px)!important}",
@@ -184,13 +390,14 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       ".vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n+7){height:14px!important;animation-delay:0s,-.14s!important}",
       ".vexa-stt.processing .vexa-stt-wave-track i:nth-child(8n){height:20px!important;animation-delay:0s,-.07s!important}",
       ".vexa-stt.processing .vexa-stt-wave-caption{display:none!important}",
+      "@keyframes vexaKeyboardArrow{0%,100%{transform:translateY(-1px)}50%{transform:translateY(4px)}}",
       "@keyframes vexaSttTextIn{0%{opacity:.08;transform:translateY(9px)}100%{opacity:1;transform:none}}",
       "@keyframes vexaSttProcessing{0%,100%{transform:scaleY(.1);opacity:.34}50%{transform:scaleY(.82);opacity:.92}}",
       "@keyframes vexaSttProcessingTravel{0%{left:calc(-50% - 54px)}100%{left:calc(50% + 54px)}}",
       "@keyframes vexaSttProcessingPulse{0%,100%{transform:scaleY(.65);opacity:.55}50%{transform:scaleY(1.15);opacity:1}}",
       "@keyframes vexaSttButtonState{from{opacity:0;transform:translateY(3px) scale(.98)}to{opacity:1;transform:none}}",
       "@media(max-height:680px){.vexa-stt-wave-stage{bottom:104px;height:104px}.vexa-stt-wave-track{height:76px}.vexa-stt-wave-track i{height:58px}.vexa-stt-controls{bottom:calc(18px + env(safe-area-inset-bottom))}.vexa-stt-status{bottom:calc(73px + env(safe-area-inset-bottom))}}",
-      "@media(prefers-reduced-motion:reduce){.vexa-stt,.vexa-stt-editor,.vexa-stt-wave-stage,.vexa-stt-record,.vexa-stt-upload,.vexa-stt-language,.vexa-stt textarea{transition:none!important;animation:none!important}.vexa-stt.processing .vexa-stt-wave-track i{animation:none!important;left:0!important;opacity:.72!important}.vexa-stt.processing .vexa-stt-wave-track i:nth-child(n+13){display:none!important}}"
+      "@media(prefers-reduced-motion:reduce){.vexa-stt,.vexa-stt-editor,.vexa-stt-wave-stage,.vexa-stt-record,.vexa-stt-upload,.vexa-stt-language,.vexa-stt textarea,.vexa-keyboard-dismiss{transition:none!important;animation:none!important}.vexa-stt.processing .vexa-stt-wave-track i{animation:none!important;left:0!important;opacity:.72!important}.vexa-stt.processing .vexa-stt-wave-track i:nth-child(n+13){display:none!important}}"
     ].join("");
   }
 
@@ -223,9 +430,11 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     frame.style.cssText = "display:block;width:100%;height:100%;border:0;background:#000;";
     frame.addEventListener("load", function () {
       prepareEmbeddedFrame(frame);
+      if (liveOpen) lockLiveWorkspaceGeometry(false);
     });
     workspace.appendChild(frame);
     liveFrame = frame;
+    if (liveOpen) lockLiveWorkspaceGeometry(false);
     return frame;
   }
 
@@ -269,10 +478,14 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
           '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 15V4m0 0L8.4 7.6M12 4l3.6 3.6M5 13.5v3.2A2.3 2.3 0 0 0 7.3 19h9.4a2.3 2.3 0 0 0 2.3-2.3v-3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
         '</button>' +
         '<input id="vexaSttFile" type="file" accept="audio/*,video/*" hidden>' +
-      '</div>';
+      '</div>' +
+      '<button id="vexaKeyboardDismiss" class="vexa-keyboard-dismiss" type="button" aria-label="Hide keyboard">' +
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      '</button>';
 
     root.replaceChildren(shell);
     buildWaveBars(doc);
+    installLiveKeyboard(frame, doc);
 
     const record = doc.getElementById("vexaSttRecord");
     const upload = doc.getElementById("vexaSttUpload");
@@ -683,17 +896,24 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     );
     workspace.setAttribute("aria-hidden", next ? "false" : "true");
     workspace.style.opacity = next ? "1" : "0";
-    workspace.style.transform = next
-      ? "translateX(0) scale(1)"
-      : "translateX(34px) scale(.985)";
     workspace.style.pointerEvents = next ? "auto" : "none";
     setMainContentHidden(next);
 
     if (next) {
+      liveStableHeight = 0;
+      lockLiveWorkspaceGeometry(true);
+      workspace.style.transition = WORKSPACE_TRANSITION;
+      workspace.style.transform = "translateX(0) scale(1)";
       ensureFrame();
       hideTelegramBackButton();
     } else {
+      if (liveKeyboardTextarea) {
+        try { liveKeyboardTextarea.blur(); } catch (error) {}
+      }
+      finishLiveKeyboardClose();
       stopEmbeddedRecorder();
+      workspace.style.transform = "translateX(34px) scale(.985)";
+      resetLiveWorkspaceGeometry();
     }
   }
 
@@ -742,6 +962,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   function initialize() {
     const button = installButton();
     installWorkspace();
+    bindLiveViewportHandlers();
     if (button && requestedSection() === "live") setLiveOpen(true);
   }
 
