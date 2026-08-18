@@ -16,23 +16,6 @@ export const TOMAN_PACKAGES = {
   ultra: { credits: 22000, bonus: 2000, amount: "999,000", label: "👑 Ultra — 22,000 + 2,000 🎁" },
 };
 
-const REFERRAL_MENU_LABELS = Object.freeze({
-  en: "🎁 Invite friends · +300",
-  fa: "🎁 دعوت از دوستا · +300",
-  ru: "🎁 Пригласить друзей · +300",
-  de: "🎁 Freunde einladen · +300",
-  tr: "🎁 Arkadaş davet et · +300",
-  ar: "🎁 ادعُ أصدقاء · +300",
-  zh: "🎁 邀请好友 · +300",
-  ja: "🎁 友達を招待 · +300",
-  es: "🎁 Invitar amigos · +300",
-  hi: "🎁 दोस्तों को बुलाएँ · +300",
-});
-
-export function referralMenuLabel(language = "en") {
-  return REFERRAL_MENU_LABELS[language] || REFERRAL_MENU_LABELS.en;
-}
-
 export function languageText() {
   return ["🌎 <b>Choose your region</b>", "", "Select your region to continue"].join("\n");
 }
