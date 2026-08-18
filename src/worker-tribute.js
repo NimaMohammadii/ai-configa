@@ -8,7 +8,7 @@ import {
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
 
-const TRIBUTE_UI_VERSION = "20260818-6";
+const TRIBUTE_UI_VERSION = "20260818-7";
 const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
 const CONFIGURED_VEXA_PRODUCT_LINKS = new Set([
   "https://web.tribute.tg/p/CcQ",
@@ -174,16 +174,10 @@ function json(value, status = 200) {
 }
 
 function tributeMiniAppIntegrationSource() {
-  const externalOpen =
-    "    if(paymentUrl&&tg&&typeof tg.openLink==='function'){try{tg.openLink(paymentUrl,{try_instant_view:false});return true}catch(error){}}\n" +
-    "    if(paymentUrl){try{window.location.assign(paymentUrl);return true}catch(error){}}";
-  const sameWebViewOpen =
-    "    if(paymentUrl){try{window.location.assign(paymentUrl);return true}catch(error){}}";
-  const patched = TRIBUTE_PAYMENTS_INTEGRATION_JS.replace(externalOpen, sameWebViewOpen);
-  if (patched === TRIBUTE_PAYMENTS_INTEGRATION_JS) {
-    console.warn("Tribute checkout same-webview patch target was not found");
-  }
-  return patched;
+  // Tribute's card checkout owns its Telegram OAuth flow. Let the original
+  // integration use Telegram.WebApp.openLink() so oauth.telegram.org runs in
+  // the external browser context it expects instead of inside our Mini App WebView.
+  return TRIBUTE_PAYMENTS_INTEGRATION_JS;
 }
 
 async function injectTributeIntoMiniAppBundle(response) {
