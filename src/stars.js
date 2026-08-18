@@ -18,6 +18,31 @@ export const MINI_APP_STAR_PACKAGES = Object.freeze({
   mini_30000: createStarPackage("mini_30000", 30000, 6000, 5.3, 360),
 });
 
+// Bank-card catalog. Payment links are intentionally kept separate so package
+// pricing can be finalized before Tribute/card checkout links are attached.
+export const CARD_CREDIT_PACKAGES = Object.freeze({
+  card_6000: createCardCreditPackage("card_6000", 6000, 0, {
+    usd: { amountMinor: 200 },
+    eur: { amountMinor: 199 },
+    rub: { amountMinor: 17000 },
+  }, { usdPer1000: 0.34 }),
+  card_40000: createCardCreditPackage("card_40000", 40000, 0, {
+    usd: { amountMinor: 700, originalAmountMinor: 1000 },
+    eur: { amountMinor: 699, originalAmountMinor: 999 },
+    rub: { amountMinor: 59500, originalAmountMinor: 85000 },
+  }, { discountPercent: 30 }),
+  card_120000: createCardCreditPackage("card_120000", 120000, 10000, {
+    usd: { amountMinor: 1900 },
+    eur: { amountMinor: 1899 },
+    rub: { amountMinor: 161500 },
+  }),
+  card_350000: createCardCreditPackage("card_350000", 350000, 0, {
+    usd: { amountMinor: 4900 },
+    eur: { amountMinor: 4899 },
+    rub: { amountMinor: 416500 },
+  }, { usdPer1000: 0.14 }),
+});
+
 export function getStarPackage(id) {
   return STAR_PACKAGES[id] || MINI_APP_STAR_PACKAGES[id] || null;
 }
@@ -145,6 +170,28 @@ function createStarPackage(id, credits, bonus, usd, starsOverride = null) {
     description: `${formatNumber(totalCredits)} Vexa credits`,
     invoiceLabel: `${formatNumber(totalCredits)} credits`,
   };
+}
+
+function createCardCreditPackage(id, credits, bonus, prices, options = {}) {
+  const totalCredits = Number(credits || 0) + Number(bonus || 0);
+  const cleanPrices = Object.freeze(Object.fromEntries(
+    Object.entries(prices || {}).map(([currency, price]) => [currency, Object.freeze({
+      amountMinor: Math.max(0, Math.floor(Number(price?.amountMinor || 0))),
+      originalAmountMinor: price?.originalAmountMinor == null
+        ? null
+        : Math.max(0, Math.floor(Number(price.originalAmountMinor || 0))),
+    })])
+  ));
+
+  return Object.freeze({
+    id,
+    credits: Number(credits || 0),
+    bonus: Number(bonus || 0),
+    totalCredits,
+    prices: cleanPrices,
+    discountPercent: Math.max(0, Math.floor(Number(options.discountPercent || 0))),
+    usdPer1000: options.usdPer1000 == null ? null : Number(options.usdPer1000),
+  });
 }
 
 function normalizeDiscountPercent(value) {
