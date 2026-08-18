@@ -1,5 +1,7 @@
 export const PURCHASE_UI_CSS = String.raw`
 /* Buy Credits refinements */
+html body .credits-page .credits-page-head>div{display:none!important}
+html body .credits-page .credits-page-head{margin-bottom:32px!important}
 html body .credits-page .credits-page-head p{display:none!important}
 html body .credits-page .tribute-section-copy>div>span{display:none!important}
 html body .credits-page .tribute-section-copy>div>h3{margin-top:0!important}
