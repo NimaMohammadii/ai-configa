@@ -126,7 +126,7 @@ function makeVoiceOrbOnly(source) {
   }
 
   function showTelegramBackButton() {
-    const backButton = telegram()?.BackButton;
+    const backButton = hostWindow()?.Telegram?.WebApp?.BackButton || telegram()?.BackButton;
     if (!backButton) return;
     if (!vexaVoiceBackHandler) {
       vexaVoiceBackHandler = () => {
@@ -141,7 +141,7 @@ function makeVoiceOrbOnly(source) {
   }
 
   function hideTelegramBackButton() {
-    const backButton = telegram()?.BackButton;
+    const backButton = hostWindow()?.Telegram?.WebApp?.BackButton || telegram()?.BackButton;
     if (!backButton) return;
     if (vexaVoiceBackHandler) {
       try { backButton.offClick?.(vexaVoiceBackHandler); } catch (error) {}
