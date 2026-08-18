@@ -20,7 +20,7 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
     var node=document.querySelector('#flow.active .tts-bottom')||document.querySelector('.tts-bottom');
     if(!node)return;
     var rect=node.getBoundingClientRect();
-    if(!Number.isFinite(rect.top)||!Number.isFinite(rect.left)||rect.width<1||rect.height<1)return;
+    if(!Number.isFinite(rect.top)||rect.height<1)return;
 
     locked=true;
     bottomNode=node;
@@ -29,10 +29,6 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
     node.style.setProperty('position','fixed','important');
     node.style.setProperty('top',Math.round(rect.top)+'px','important');
     node.style.setProperty('bottom','auto','important');
-    node.style.setProperty('left',Math.round(rect.left)+'px','important');
-    node.style.setProperty('right','auto','important');
-    node.style.setProperty('width',Math.round(rect.width)+'px','important');
-    node.style.setProperty('transform','none','important');
   }
 
   function release(){
@@ -47,10 +43,6 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
     node.style.removeProperty('position');
     node.style.removeProperty('top');
     node.style.removeProperty('bottom');
-    node.style.removeProperty('left');
-    node.style.removeProperty('right');
-    node.style.removeProperty('width');
-    node.style.removeProperty('transform');
   }
 
   function releaseIfRecovered(){
