@@ -2,6 +2,9 @@ import worker from "./worker-live.js";
 import { getElevenApiSetting } from "./admin.js";
 import { getBalance, spendCredits } from "./credits.js";
 
+const MINI_APP_RUNTIME_PATH = "/mini-app/app.js";
+const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
+const VOICE_RUNTIME_PATH = "/mini-app/live/voice-agent-runtime.js";
 const VOICE_ROOT = "/mini-app/live/api/voice-agent";
 const VOICE_SESSION_PATH = VOICE_ROOT + "/session";
 const VOICE_PROXY_PATH = VOICE_ROOT + "/connect";
@@ -10,7 +13,7 @@ const VOICE_SESSION_TTL_MS = 15 * 60 * 1000;
 const VOICE_MAX_SESSION_MS = 10 * 60 * 1000;
 const VAD_SPEECH_START = 0.55;
 const VAD_SPEECH_RESET = 0.35;
-const BILLING_VERSION = "20260818-6-events";
+const BILLING_VERSION = "20260818-7-balance-sync";
 const REQUIRED_CLIENT_EVENTS = [
   "audio",
   "interruption",
@@ -37,13 +40,105 @@ export default {
         return handleEventBilledVoiceProxy(request, env, ctx);
       }
 
-      return worker.fetch(request, env, ctx);
+      const response = await worker.fetch(request, env, ctx);
+      if (request.method === "GET" && path === MINI_APP_RUNTIME_PATH) {
+        return patchMiniAppBalanceRuntime(response);
+      }
+      if (request.method === "GET" && path === LIVE_INTEGRATION_PATH) {
+        return patchLiveBalanceIntegration(response);
+      }
+      if (request.method === "GET" && path === VOICE_RUNTIME_PATH) {
+        return patchVoiceBalanceRuntime(response);
+      }
+      return response;
     } catch (error) {
       console.error("Vexa Live event billing failed", error?.stack || error);
       return json({ error: publicError(error) }, error?.status || 500);
     }
   },
 };
+
+async function patchMiniAppBalanceRuntime(response) {
+  if (!response?.ok) return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("javascript")) return response;
+
+  let source = await response.text();
+  if (source.includes("vexa:credits-balance")) return cloneTextResponse(response, source);
+
+  const marker = "  startAiChatButtonOrb();";
+  if (!source.includes(marker)) {
+    console.error("Vexa Live balance patch target missing", "mini-app runtime");
+    return cloneTextResponse(response, source);
+  }
+
+  const listener = `  window.addEventListener('vexa:credits-balance',function(event){var detail=event&&event.detail||{};var value=Number(detail.balance);if(!Number.isFinite(value))return;updateCreditsBalanceUi(Math.max(0,value))});\n`;
+  source = source.replace(marker, listener + marker);
+  return cloneTextResponse(response, source);
+}
+
+async function patchLiveBalanceIntegration(response) {
+  if (!response?.ok) return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("javascript")) return response;
+
+  let source = await response.text();
+  if (source.includes("syncVexaLiveBalance(tokenData")) return cloneTextResponse(response, source);
+
+  const helperMarker = "  async function sttApi(path, body) {";
+  if (source.includes(helperMarker)) {
+    source = source.replace(
+      helperMarker,
+      `  function syncVexaLiveBalance(value) {\n    const balance = Number(value);\n    if (!Number.isFinite(balance)) return;\n    try {\n      window.dispatchEvent(new CustomEvent("vexa:credits-balance", { detail: { balance: Math.max(0, balance), source: "vexa_live_stt" } }));\n    } catch (error) {}\n  }\n\n${helperMarker}`
+    );
+  } else {
+    console.error("Vexa Live balance patch target missing", "STT helper");
+  }
+
+  const billedTokenRequest = `      const tokenData = await sttApi("/mini-app/live/api/scribe-token", { mode: "transcribe", durationMs: durationMs });`;
+  if (source.includes(billedTokenRequest)) {
+    source = source.replace(
+      billedTokenRequest,
+      billedTokenRequest + `\n      syncVexaLiveBalance(tokenData && tokenData.balance);`
+    );
+  } else {
+    console.error("Vexa Live balance patch target missing", "STT billed token");
+  }
+
+  return cloneTextResponse(response, source);
+}
+
+async function patchVoiceBalanceRuntime(response) {
+  if (!response?.ok) return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("javascript")) return response;
+
+  let source = await response.text();
+  if (source.includes("source: \"vexa_voice_agent\"")) return cloneTextResponse(response, source);
+
+  const marker = `    if (type === "ping") {`;
+  if (!source.includes(marker)) {
+    console.error("Vexa Live balance patch target missing", "voice runtime");
+    return cloneTextResponse(response, source);
+  }
+
+  const handler = `    if (type === "vexa_billing") {\n      const nextBalance = Number(message?.vexa_billing_event?.balance);\n      if (Number.isFinite(nextBalance)) {\n        try {\n          const target = window.parent && window.parent !== window ? window.parent : window;\n          target.dispatchEvent(new target.CustomEvent("vexa:credits-balance", { detail: { balance: Math.max(0, nextBalance), source: "vexa_voice_agent" } }));\n        } catch (error) {}\n      }\n      return;\n    }\n\n`;
+  source = source.replace(marker, handler + marker);
+  return cloneTextResponse(response, source);
+}
+
+function cloneTextResponse(response, source) {
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  headers.delete("Content-Encoding");
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  headers.set("X-Vexa-Live-Billing", BILLING_VERSION);
+  return new Response(source, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 async function handleVoiceSession(request, env, ctx) {
   const response = await worker.fetch(request, env, ctx);
