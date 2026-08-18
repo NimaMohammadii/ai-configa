@@ -13,8 +13,25 @@ export const TOMAN_PACKAGES = {
   vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: "🧪 Vexa Test — 400 Credit" },
   starter: { credits: 2000, bonus: 100, amount: "160,000", label: "⚡ Starter — 2,000 + 100 🎁" },
   pro: { credits: 8000, bonus: 500, amount: "510,000", label: "🚀 Pro — 8,000 + 500 🎁" },
-  ultra: { credits: 22000, bonus: 2000, amount: "999,000", label: "👑 Ultra — 22,000 + 2,000 🎁" },
+  ultra: { credits: 22000, bonus: 2000, amount: "999,000", label: "👑 Ultra — 22,000 + 2000 🎁" },
 };
+
+const REFERRAL_MENU_LABELS = Object.freeze({
+  en: "🎁 Invite friends · +300",
+  fa: "🎁 دعوت از دوستا · +300",
+  ru: "🎁 Пригласить друзей · +300",
+  de: "🎁 Freunde einladen · +300",
+  tr: "🎁 Arkadaş davet et · +300",
+  ar: "🎁 ادعُ أصدقاء · +300",
+  zh: "🎁 邀请好友 · +300",
+  ja: "🎁 友達を招待 · +300",
+  es: "🎁 Invitar amigos · +300",
+  hi: "🎁 दोस्तों को बुलाएँ · +300",
+});
+
+export function referralMenuLabel(language = "en") {
+  return REFERRAL_MENU_LABELS[language] || REFERRAL_MENU_LABELS.en;
+}
 
 export function languageText() {
   return ["🌎 <b>Choose your region</b>", "", "Select your region to continue"].join("\n");
@@ -64,6 +81,7 @@ export function mainKeyboard(state) {
     { text: t(lang, "balance"), callback_data: "balance" },
     { text: t(lang, "buyCredits"), callback_data: "buy_credits" },
   ]);
+  rows.push([{ text: referralMenuLabel(lang), callback_data: "bot_referral" }]);
   rows.push([{ text: "Open Mini App 🐙", web_app: { url: "https://ai-configa.vexaagent.workers.dev/mini-app" } }]);
   return { inline_keyboard: rows };
 }
