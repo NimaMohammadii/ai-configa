@@ -1,3 +1,6 @@
+import { normalizeLang } from "../i18n.js";
+import { getState } from "../state.js";
+
 export async function authenticateMiniAppPayload(payload, env) {
   const initData = String(payload?.initData || "");
   const userJson = new URLSearchParams(initData).get("user");
@@ -13,6 +16,22 @@ export async function authenticateMiniAppPayload(payload, env) {
     throw httpError("کاربر تلگرام پیدا نشد.", 401);
   }
   if (!user?.id) throw httpError("کاربر تلگرام پیدا نشد.", 401);
+
+  // Vexa Voice sends a language hint from the browser/Telegram client, but the
+  // user's language selected in Vexa is the authoritative source. Mutating the
+  // parsed payload here keeps both the billed wrapper and Speech Engine session
+  // on the same saved language without trusting a WebView locale.
+  if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "language")) {
+    let savedLanguage = "";
+    try {
+      const state = await getState(env, user.id);
+      savedLanguage = String(state?.language || "");
+    } catch (error) {
+      console.error("Mini app saved language lookup failed", error?.message || error);
+    }
+    payload.language = normalizeLang(savedLanguage || user.language_code || payload.language || "en");
+  }
+
   return user;
 }
 
