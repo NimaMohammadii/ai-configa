@@ -33,7 +33,7 @@ html body .credits-page .tribute-stars-promo-title em{display:inline-flex!import
   function replacePromoTitle(card,markup){
     var main=card&&card.querySelector('.tribute-product-main');
     var meta=card&&card.querySelector('.tribute-product-meta');
-    if(!main||!meta)return;
+    if(!main||!meta)return false;
     var rate=rateText(meta);
     var title=document.createElement('span');
     title.className='credits-pack-title tribute-stars-promo-title';
@@ -41,18 +41,19 @@ html body .credits-page .tribute-stars-promo-title em{display:inline-flex!import
     var oldTitle=main.querySelector(':scope > strong, :scope > .tribute-stars-promo-title');
     if(oldTitle)oldTitle.replaceWith(title);else main.insertBefore(title,main.firstChild);
     meta.innerHTML=rate?'<span style="white-space:nowrap">'+rate+'</span>':'';
+    return true;
   }
 
   function decorateCard(card){
-    if(!card)return;
+    if(!card||card.dataset.vexaPromoDecorated==='1')return;
     var id=String(card.getAttribute('data-catalog-id')||'');
+    var done=false;
     if(id==='card_40000'){
-      replacePromoTitle(card,'<strong>40,000</strong><em>30% OFF</em>');
-      return;
+      done=replacePromoTitle(card,'<strong>40,000</strong><em>30% OFF</em>');
+    }else if(id==='card_120000'){
+      done=replacePromoTitle(card,'<strong>120,000 <b>+ 10,000</b></strong><em>10,000 gift</em>');
     }
-    if(id==='card_120000'){
-      replacePromoTitle(card,'<strong>120,000 <b>+ 10,000</b></strong><em>10,000 gift</em>');
-    }
+    if(done)card.dataset.vexaPromoDecorated='1';
   }
 
   function decorate(){
