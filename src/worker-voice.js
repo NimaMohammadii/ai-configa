@@ -6,7 +6,7 @@ import {
 import VEXA_VOICE_AGENT_SOURCE from "./mini-app/vexa-live/voice-agent-runtime.txt";
 import VEXA_VOICE_ORB_SOURCE from "./mini-app/vexa-live/voice-orb-original.txt";
 
-const VEXA_VOICE_AGENT_VERSION = "20260818-2";
+const VEXA_VOICE_AGENT_VERSION = "20260818-3";
 const VOICE_RUNTIME_PATH = "/mini-app/live/voice-agent-runtime.js";
 const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
 
@@ -28,7 +28,7 @@ export default {
     const response = await worker.fetch(request, env, ctx);
 
     if (request.method === "GET" && url.pathname === LIVE_INTEGRATION_PATH) {
-      return fixLiveIntegration(response);
+      return refineLiveIntegration(response);
     }
 
     return response;
@@ -54,97 +54,81 @@ function restoreOriginalOrb(source) {
   );
 }
 
-function polishVoiceUi(source) {
-  let polished = String(source || "");
-
-  polished = polished.replace(
-    "background:#080808;color:#fff;opacity:0;visibility:hidden",
-    "background:#000000;color:#fff;opacity:0;visibility:hidden",
-  );
-
-  polished = polished.replace(
-    ".vexa-voice-close{position:absolute;z-index:4;top:calc(14px + env(safe-area-inset-top));left:14px;width:38px;height:38px;padding:0;display:grid;place-items:center;border:1px solid rgba(255,255,255,.1);border-radius:50%;color:#fff;background:rgba(255,255,255,.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 9px 24px rgba(0,0,0,.3);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:20px;font-weight:300;transition:transform .2s cubic-bezier(.16,1,.3,1),background .2s ease}",
-    ".vexa-voice-close{position:absolute;z-index:4;top:calc(14px + env(safe-area-inset-top));left:14px;width:38px;height:38px;padding:0;display:grid;place-items:center;border:0;border-radius:50%;color:#fff;background:rgba(13,13,13,.66);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),inset 0 -1px 0 rgba(255,255,255,.045),0 10px 26px rgba(0,0,0,.28);backdrop-filter:blur(12px) saturate(1.08);-webkit-backdrop-filter:blur(12px) saturate(1.08);font-size:21px;line-height:1;font-weight:800;letter-spacing:-.04em;transition:transform .2s cubic-bezier(.16,1,.3,1),background .2s ease}",
-  );
-
-  polished = polished.replace(
-    ".vexa-voice-stage{position:relative;width:min(82vw,390px);aspect-ratio:1;display:grid;place-items:center;opacity:0;transform:scale(.74);filter:blur(8px);transition:opacity .48s .06s ease,transform .72s .04s cubic-bezier(.16,1,.3,1),filter .5s .04s ease}",
-    ".vexa-voice-stage{position:relative;width:min(82vw,390px);aspect-ratio:1;display:grid;place-items:center;opacity:0;transform:translateY(-24px) scale(.74);filter:blur(8px);transition:opacity .48s .06s ease,transform .72s .04s cubic-bezier(.16,1,.3,1),filter .5s .04s ease}",
-  );
-
-  polished = polished.replace(
-    ".vexa-voice-overlay.open .vexa-voice-stage{opacity:1;transform:scale(1);filter:blur(0)}",
-    ".vexa-voice-overlay.open .vexa-voice-stage{opacity:1;transform:translateY(-24px) scale(1);filter:blur(0)}",
-  );
-
-  return polished;
-}
-
-function makeVoiceOrbOnly(source) {
+function makeInlineVoice(source) {
   let result = String(source || "");
 
+  // Preserve the exact Orb shader/look; only raise its render-buffer density.
   result = result.replace(
-    "      @media(max-height:650px)",
-    "      .vexa-voice-close,.vexa-voice-copy,.vexa-voice-hint{display:none!important}\n      @media(max-height:650px)",
+    "const dpr = Math.min(1.6, Math.max(1, window.devicePixelRatio || 1));",
+    "const dpr = Math.min(2.75, Math.max(1.5, window.devicePixelRatio || 1));",
   );
 
-  const openMarker = "  async function openVoiceMode() {";
-  if (result.includes(openMarker)) {
-    const helpers = `  let vexaVoiceBackHandler = null;
+  // The status style is installed by the Orb runtime after the base stylesheet,
+  // so remove its old fullscreen-era vertical offset.
+  result = result.replace(
+    ".vexa-voice-copy{display:flex!important;min-height:24px!important;margin-top:-8px!important;transform:translateY(-42px)!important;opacity:1!important}",
+    ".vexa-voice-copy{display:flex!important;min-height:24px!important;margin-top:-2px!important;transform:none!important;opacity:1!important}",
+  );
+  result = result.replace(
+    ".vexa-voice-overlay.open .vexa-voice-copy{display:flex!important;transform:translateY(-42px)!important;opacity:1!important}",
+    ".vexa-voice-overlay.open .vexa-voice-copy{display:flex!important;transform:none!important;opacity:1!important}",
+  );
 
-  function setVoiceHostActive(active) {
-    try {
-      const host = hostWindow();
-      const doc = host?.document;
-      if (!doc || doc === document) return;
-      let style = doc.getElementById("vexaVoiceHostModeStyle");
-      if (!style) {
-        style = doc.createElement("style");
-        style.id = "vexaVoiceHostModeStyle";
-        style.textContent =
-          '.vexa-voice-host-active .tts-head{opacity:0!important;visibility:hidden!important;pointer-events:none!important}' +
-          '.vexa-voice-host-active #vexaLiveWorkspace{top:0!important;z-index:2147483000!important}';
-        doc.head?.appendChild(style);
-      }
-      doc.documentElement?.classList.toggle("vexa-voice-host-active", Boolean(active));
-    } catch (error) {}
-  }
-
-  function showTelegramBackButton() {
-    const backButton = hostWindow()?.Telegram?.WebApp?.BackButton || telegram()?.BackButton;
-    if (!backButton) return;
-    if (!vexaVoiceBackHandler) {
-      vexaVoiceBackHandler = () => {
-        if (!state.active) return;
-        haptic("light");
-        closeVoiceMode();
-      };
-    }
-    try { backButton.offClick?.(vexaVoiceBackHandler); } catch (error) {}
-    try { backButton.onClick?.(vexaVoiceBackHandler); } catch (error) {}
-    try { backButton.show?.(); } catch (error) {}
-  }
-
-  function hideTelegramBackButton() {
-    const backButton = hostWindow()?.Telegram?.WebApp?.BackButton || telegram()?.BackButton;
-    if (!backButton) return;
-    if (vexaVoiceBackHandler) {
-      try { backButton.offClick?.(vexaVoiceBackHandler); } catch (error) {}
-    }
-    try { backButton.hide?.(); } catch (error) {}
-  }
+  // Replace the fullscreen presentation with one compact, in-page voice surface.
+  const cssMarker = "      @keyframes vexaVoiceButtonBreath";
+  if (result.includes(cssMarker)) {
+    const inlineCss = `      .vexa-voice-close,.vexa-voice-hint,.vexa-voice-transcript{display:none!important}
+      .vexa-voice-overlay{position:absolute!important;z-index:9!important;left:50%!important;right:auto!important;top:auto!important;bottom:calc(72px + env(safe-area-inset-bottom))!important;inset:auto auto calc(72px + env(safe-area-inset-bottom)) 50%!important;width:188px!important;height:190px!important;min-height:0!important;padding:0!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:flex-end!important;background:transparent!important;overflow:visible!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important;transform:translate(-50%,30px) scale(.72)!important;transform-origin:50% 100%!important;filter:blur(8px)!important;transition:opacity .28s ease,transform .58s cubic-bezier(.16,1,.3,1),filter .4s ease,visibility 0s linear .58s!important}
+      .vexa-voice-overlay.open{opacity:1!important;visibility:visible!important;pointer-events:auto!important;transform:translate(-50%,0) scale(1)!important;filter:blur(0)!important;transition-delay:0s!important}
+      .vexa-voice-stage{width:150px!important;height:150px!important;flex:0 0 150px!important;aspect-ratio:1!important;opacity:0!important;transform:translateY(20px) scale(.68)!important;filter:blur(7px)!important;transition:opacity .32s .04s ease,transform .62s .02s cubic-bezier(.16,1,.3,1),filter .36s .02s ease!important}
+      .vexa-voice-overlay.open .vexa-voice-stage{opacity:1!important;transform:translateY(0) scale(1)!important;filter:blur(0)!important}
+      .vexa-voice-canvas{width:150px!important;height:150px!important;image-rendering:auto!important}
+      .vexa-voice-copy{width:188px!important;min-height:24px!important;margin:0!important;display:flex!important;align-items:center!important;justify-content:center!important;opacity:0!important;transform:translateY(8px)!important;transition:opacity .28s .16s ease,transform .42s .12s cubic-bezier(.16,1,.3,1)!important}
+      .vexa-voice-overlay.open .vexa-voice-copy{opacity:1!important;transform:none!important}
+      .vexa-voice-status{min-height:22px!important;height:auto!important;max-width:184px!important;color:rgba(255,255,255,.68)!important;font-size:10.5px!important;font-weight:650!important;line-height:1.3!important;letter-spacing:-.01em!important;text-align:center!important;white-space:normal!important}
+      .vexa-stt.voice-active .vexa-stt-record,.vexa-stt.voice-active .vexa-stt-upload{opacity:.2!important;pointer-events:none!important;transform:scale(.94)!important}
+      .vexa-stt.voice-active .vexa-voice-open{opacity:1!important;pointer-events:auto!important;transform:none!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),0 0 0 1px rgba(143,102,255,.22),0 10px 24px rgba(0,0,0,.28)!important}
 `;
-    result = result.replace(openMarker, helpers + "\n" + openMarker);
+    result = result.replace(cssMarker, inlineCss + cssMarker);
   }
 
+  // The same Voice button becomes the close/toggle control; no back button needed.
   result = result.replace(
-    "    state.captureEnabled = false;\n    state.outputSampleRate = DEFAULT_OUTPUT_SAMPLE_RATE;",
-    "    state.captureEnabled = false;\n    state.outputSampleRate = DEFAULT_OUTPUT_SAMPLE_RATE;\n    setVoiceHostActive(true);\n    showTelegramBackButton();",
+    `      button.addEventListener("click", () => {
+        if (shell.classList.contains("recording") || shell.classList.contains("processing")) return;
+        haptic("medium");
+        openVoiceMode().catch((error) => fail(error));
+      });`,
+    `      button.setAttribute("aria-pressed", "false");
+      button.addEventListener("click", () => {
+        if (shell.classList.contains("recording") || shell.classList.contains("processing")) return;
+        haptic("medium");
+        if (state.active) {
+          closeVoiceMode();
+          return;
+        }
+        openVoiceMode().catch((error) => fail(error));
+      });`,
   );
 
   result = result.replace(
-    "    state.active = false;\n    state.captureEnabled = false;\n    closeSpeechEngine();",
-    "    state.active = false;\n    state.captureEnabled = false;\n    hideTelegramBackButton();\n    setVoiceHostActive(false);\n    closeSpeechEngine();",
+    `    state.active = true;
+    state.captureEnabled = false;`,
+    `    state.active = true;
+    state.captureEnabled = false;
+    q("vexaStt")?.classList.add("voice-active");
+    q("vexaVoiceAgentOpen")?.setAttribute("aria-pressed", "true");`,
+  );
+
+  result = result.replace(
+    `    state.active = false;
+    state.captureEnabled = false;
+    closeSpeechEngine();`,
+    `    state.active = false;
+    state.captureEnabled = false;
+    q("vexaStt")?.classList.remove("voice-active");
+    q("vexaVoiceAgentOpen")?.setAttribute("aria-pressed", "false");
+    closeSpeechEngine();`,
   );
 
   return result;
@@ -217,20 +201,13 @@ function diagnoseVoiceFailures(source) {
       }`,
   );
 
-  result = result.replace(
-    ".vexa-voice-status{height:24px!important;color:rgba(255,255,255,.68)!important;font-size:12px!important;font-weight:650!important;letter-spacing:-.015em!important}",
-    ".vexa-voice-status{min-height:24px!important;height:auto!important;max-width:min(88vw,420px)!important;color:rgba(255,255,255,.68)!important;font-size:12px!important;font-weight:650!important;line-height:1.35!important;letter-spacing:-.015em!important;text-align:center!important;white-space:normal!important}",
-  );
-
   return result;
 }
 
 function browserVoiceRuntimeSource() {
   const raw = diagnoseVoiceFailures(
-    makeVoiceOrbOnly(
-      polishVoiceUi(
-        restoreOriginalOrb(VEXA_VOICE_AGENT_SOURCE),
-      ),
+    makeInlineVoice(
+      restoreOriginalOrb(VEXA_VOICE_AGENT_SOURCE),
     ),
   );
   const exportMarker = "\nexport const VEXA_VOICE_AGENT_JS";
@@ -261,13 +238,54 @@ function voiceRuntimeResponse() {
   });
 }
 
-async function fixLiveIntegration(response) {
+async function refineLiveIntegration(response) {
   if (!response || !response.ok) return response;
   const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
   if (!contentType.includes("javascript")) return response;
 
   let source = await response.text();
 
+  // Put the transcript/editor content lower without moving the bottom controls.
+  source = source.replace(
+    "margin-top:-4px;transition:opacity",
+    "margin-top:18px;transition:opacity",
+  );
+
+  // During transcription: no waveform/center line. Only a spinner on the main button.
+  source = source.replace(
+    '".vexa-stt.recording .vexa-stt-wave-stage,.vexa-stt.processing .vexa-stt-wave-stage{opacity:1;transform:translate(-50%,0) scale(1)}",',
+    '".vexa-stt.recording .vexa-stt-wave-stage{opacity:1;transform:translate(-50%,0) scale(1)}",',
+  );
+  source = source.replace(
+    '".vexa-stt-spinner{display:none!important}",',
+    '".vexa-stt-spinner{position:absolute;z-index:2;width:18px;height:18px;border-radius:50%;border:1.8px solid rgba(0,0,0,.16);border-top-color:#050505;opacity:0;animation:vexaSttSpin .7s linear infinite}",\n      ".vexa-stt.processing .vexa-stt-spinner{opacity:1}",',
+  );
+  source = source.replace(
+    /      "\.vexa-stt\.processing \.vexa-stt-record::after\{[^\n]*\}",\n/,
+    '      ".vexa-stt.processing .vexa-stt-record::after{content:none!important}",\n',
+  );
+  source = source.replace(
+    /      "\.vexa-stt\.processing \.vexa-stt-wave-stage\{[^\n]*\}",\n/,
+    '      ".vexa-stt.processing .vexa-stt-wave-stage{display:none!important}",\n',
+  );
+  source = source
+    .split("\n")
+    .filter((line) => {
+      if (line.includes('".vexa-stt.processing .vexa-stt-wave-track')) return false;
+      if (line.includes('".vexa-stt.processing .vexa-stt-wave-caption')) return false;
+      if (line.includes('"@keyframes vexaSttProcessingTravel')) return false;
+      if (line.includes('"@keyframes vexaSttProcessingPulse')) return false;
+      if (line.includes('"@keyframes vexaSttProcessing{')) return false;
+      if (line.includes('"@keyframes vexaSttButtonState')) return false;
+      return true;
+    })
+    .join("\n");
+  source = source.replace(
+    '      "@keyframes vexaSttTextIn{0%{opacity:.08;transform:translateY(9px)}100%{opacity:1;transform:none}}",',
+    '      "@keyframes vexaSttTextIn{0%{opacity:.08;transform:translateY(9px)}100%{opacity:1;transform:none}}",\n      "@keyframes vexaSttSpin{to{transform:rotate(360deg)}}",',
+  );
+
+  // Prime the analyser AudioContext from the tap gesture for iOS/Telegram WebView.
   source = source.replace(
     `    cleanupRecording(false);
     setStatus(doc, "Requesting microphone…", true);`,
