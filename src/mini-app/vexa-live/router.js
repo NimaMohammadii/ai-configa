@@ -8,7 +8,7 @@ import { handleMiniAppRequest } from "../server.js";
 import { getVexaLiveAccessSettings } from "./access.js";
 
 const LIVE_ROOT = "/mini-app/live";
-const INTEGRATION_VERSION = "20260819-1";
+const INTEGRATION_VERSION = "20260818-3";
 const VOICE_RUNTIME_VERSION = "20260818-1";
 const SCRIBE_MODEL = "scribe_v2";
 
@@ -23,7 +23,8 @@ const VEXA_LIVE_SHELL_HTML = `<!doctype html>
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     html,body{margin:0;width:100%;height:100%;min-height:100%;background:#000;color:#fff;overflow:hidden;overscroll-behavior:none}
-    .live-app{position:relative;width:100%;height:100%;min-height:100%;background:#000;overflow:hidden}
+    body{min-height:100dvh}
+    .live-app{position:relative;width:100%;height:100%;min-height:100dvh;background:#000;overflow:hidden}
   </style>
 </head>
 <body>
@@ -55,6 +56,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   let liveKeyboardHeight = 0;
   let liveKeyboardDoc = null;
   let liveKeyboardButton = null;
+  let liveKeyboardReleaseTimer = 0;
   let liveKeyboardViewportBound = false;
 
   function requestedSection() {
@@ -121,7 +123,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   }
 
   function freezeLiveKeyboardLayout(frame, doc) {
-    if (!liveOpen || !frame || !doc || liveKeyboardHeight >= 320) return;
+    if (!liveOpen || !frame || !doc) return;
     const workspace = document.getElementById(WORKSPACE_ID);
     const shell = doc.getElementById("vexaStt");
     if (!workspace || !shell) return;
@@ -131,7 +133,6 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     if (height < 320) return;
 
     liveKeyboardHeight = height;
-    workspace.style.top = "50px";
     workspace.style.height = String(height) + "px";
     workspace.style.bottom = "auto";
     frame.style.height = String(height) + "px";
@@ -148,6 +149,8 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   }
 
   function releaseLiveKeyboardLayout() {
+    if (liveKeyboardReleaseTimer) window.clearTimeout(liveKeyboardReleaseTimer);
+    liveKeyboardReleaseTimer = 0;
     liveKeyboardActive = false;
 
     const workspace = document.getElementById(WORKSPACE_ID);
@@ -196,6 +199,10 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     const shell = liveKeyboardDoc.getElementById("vexaStt");
     if (!workspace || !shell) return;
 
+    const viewport = window.visualViewport;
+    const offsetTop = viewport ? Math.max(0, Number(viewport.offsetTop || 0)) : 0;
+    workspace.style.top = String(50 + offsetTop) + "px";
+
     const rect = workspace.getBoundingClientRect();
     const visibleBottom = visibleKeyboardBottom();
     const relativeBottom = visibleBottom > 0 ? visibleBottom - rect.top : liveKeyboardHeight;
@@ -211,10 +218,14 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       if (!liveKeyboardActive) return;
       syncLiveKeyboardPosition();
     };
+    window.addEventListener("resize", sync, { passive: true });
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", sync, { passive: true });
-    } else {
-      window.addEventListener("resize", sync, { passive: true });
+      window.visualViewport.addEventListener("scroll", sync, { passive: true });
+    }
+    const tg = telegram();
+    if (tg && tg.onEvent) {
+      try { tg.onEvent("viewportChanged", sync); } catch (error) {}
     }
   }
 
@@ -226,11 +237,17 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     textarea.setAttribute("data-vexa-keyboard", "ready");
     liveKeyboardDoc = doc;
     liveKeyboardButton = button;
-    freezeLiveKeyboardLayout(frame, doc);
     bindLiveKeyboardViewport();
+
+    textarea.addEventListener("pointerdown", function () {
+      if (!liveOpen || liveKeyboardActive) return;
+      freezeLiveKeyboardLayout(frame, doc);
+    }, { capture: true });
 
     textarea.addEventListener("focus", function () {
       if (!liveOpen) return;
+      if (liveKeyboardReleaseTimer) window.clearTimeout(liveKeyboardReleaseTimer);
+      liveKeyboardReleaseTimer = 0;
       if (!liveKeyboardHeight) freezeLiveKeyboardLayout(frame, doc);
       liveKeyboardActive = true;
       const shell = doc.getElementById("vexaStt");
@@ -239,12 +256,11 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     });
 
     textarea.addEventListener("blur", function () {
-      liveKeyboardActive = false;
+      if (!liveKeyboardActive) return;
       const shell = doc.getElementById("vexaStt");
-      if (shell) {
-        shell.classList.remove("keyboard-open");
-        shell.style.removeProperty("--vexa-keyboard-top");
-      }
+      if (shell) shell.classList.remove("keyboard-open");
+      if (liveKeyboardReleaseTimer) window.clearTimeout(liveKeyboardReleaseTimer);
+      liveKeyboardReleaseTimer = window.setTimeout(releaseLiveKeyboardLayout, 180);
     });
 
     button.addEventListener("pointerdown", function (event) {
@@ -818,19 +834,12 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     const next = Boolean(open);
     if (next === liveOpen) return;
     if (next) closeImageMode();
-    if (!next && liveKeyboardDoc) {
-      const textarea = liveKeyboardDoc.getElementById("vexaSttText");
-      if (textarea) {
-        try { textarea.blur(); } catch (error) {}
-      }
-    }
 
     const workspace = installWorkspace();
     const button = document.getElementById(BUTTON_ID);
     if (!workspace || !button) return;
 
     liveOpen = next;
-    document.body.classList.toggle("vexa-live-open", next);
     button.setAttribute("aria-pressed", next ? "true" : "false");
     button.setAttribute(
       "aria-label",
@@ -845,8 +854,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     setMainContentHidden(next);
 
     if (next) {
-      const frame = ensureFrame();
-      if (frame && frame.contentDocument) freezeLiveKeyboardLayout(frame, frame.contentDocument);
+      ensureFrame();
       hideTelegramBackButton();
     } else {
       if (liveKeyboardActive || liveKeyboardHeight) releaseLiveKeyboardLayout();

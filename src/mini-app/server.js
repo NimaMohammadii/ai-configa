@@ -224,10 +224,7 @@ async function injectMiniAppUi(response, includeHistoryIdentity) {
   if (!contentType.includes("javascript")) return response;
 
   let source = await response.text();
-  if (includeHistoryIdentity) {
-    source = applyUsagePricedImageUi(source);
-    source = applyVexaLiveViewportOwnership(source);
-  }
+  if (includeHistoryIdentity) source = applyUsagePricedImageUi(source);
   const marker = "(function(){";
   if (!source.includes(marker)) return cloneTextResponse(response, source);
   const injection =
@@ -235,21 +232,6 @@ async function injectMiniAppUi(response, includeHistoryIdentity) {
     (includeHistoryIdentity ? "\n" + VOICE_INTRO_REFERRAL_UI_PATCH + "\n" + HISTORY_FILE_IDENTITY_PATCH : "");
   const patched = source.replace(marker, marker + "\n" + injection);
   return cloneTextResponse(response, patched);
-}
-
-function applyVexaLiveViewportOwnership(source) {
-  const before =
-    "function syncAppViewport(){\n" +
-    "    if(exploreReelsIsOpen())return;";
-  const after =
-    "function syncAppViewport(){\n" +
-    "    if(exploreReelsIsOpen()||(document.body&&document.body.classList.contains('vexa-live-open')))return;";
-
-  if (!source.includes(before)) {
-    console.error("Vexa Live viewport ownership patch target missing");
-    return source;
-  }
-  return source.replace(before, after);
 }
 
 function applyUsagePricedImageUi(source) {
