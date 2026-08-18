@@ -459,9 +459,15 @@ async function patchVoiceRuntime(response) {
     "Voice billing pre-capture gate",
   );
 
-  if (!source.includes("stopVexaVoiceBilling(true);")) {
+  if (!source.includes("function closeVoiceMode() {\n    if (!state.active) return;\n    state.active = false;\n    state.captureEnabled = false;\n    stopVexaVoiceBilling(true);")) {
     source = source.replace(
       /(function closeVoiceMode\(\) \{[\s\S]*?state\.captureEnabled = false;)/,
+      "$1\n    stopVexaVoiceBilling(true);",
+    );
+  }
+  if (!source.includes("function fail(error) {\n    if (!state.active) return;\n    console.error(\"Vexa voice agent\", error);\n    state.captureEnabled = false;\n    stopVexaVoiceBilling(true);")) {
+    source = source.replace(
+      /(function fail\(error\) \{[\s\S]*?state\.captureEnabled = false;)/,
       "$1\n    stopVexaVoiceBilling(true);",
     );
   }
