@@ -8,7 +8,7 @@ import { handleMiniAppRequest } from "../server.js";
 import { getVexaLiveAccessSettings } from "./access.js";
 
 const LIVE_ROOT = "/mini-app/live";
-const INTEGRATION_VERSION = "20260818-2";
+const INTEGRATION_VERSION = "20260818-3";
 const VOICE_RUNTIME_VERSION = "20260818-1";
 const SCRIBE_MODEL = "scribe_v2";
 
@@ -16,7 +16,7 @@ const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover,interactive-widget=overlays-content" />
   <meta name="theme-color" content="#000000" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>Vexa Live</title>
@@ -39,7 +39,6 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   const WORKSPACE_ID = "vexaLiveWorkspace";
   const BATCH_SCRIBE_URL = "https://api.elevenlabs.io/v1/speech-to-text";
   const BATCH_SCRIBE_MODEL = "scribe_v2";
-  const WORKSPACE_TRANSITION = "opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1)";
   let liveOpen = false;
   let liveFrame = null;
   let recorder = null;
@@ -53,13 +52,12 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   let waveFrame = 0;
   let waveData = null;
   let transcribing = false;
-  let liveStableHeight = 0;
   let liveKeyboardActive = false;
+  let liveKeyboardHeight = 0;
   let liveKeyboardDoc = null;
-  let liveKeyboardTextarea = null;
   let liveKeyboardButton = null;
-  let liveKeyboardCloseTimer = 0;
-  let liveViewportHandlersBound = false;
+  let liveKeyboardReleaseTimer = 0;
+  let liveKeyboardViewportBound = false;
 
   function requestedSection() {
     let raw = "";
@@ -104,15 +102,6 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     return tg && tg.initData ? String(tg.initData) : "";
   }
 
-  function currentStableViewportHeight() {
-    const tg = telegram();
-    const telegramStable = Number(tg && tg.viewportStableHeight || 0);
-    if (Number.isFinite(telegramStable) && telegramStable >= 320) return telegramStable;
-    const documentHeight = Number(document.documentElement && document.documentElement.clientHeight || 0);
-    if (Number.isFinite(documentHeight) && documentHeight >= 320) return documentHeight;
-    return Math.max(320, Number(window.innerHeight || 0));
-  }
-
   function installWorkspace() {
     const existing = document.getElementById(WORKSPACE_ID);
     if (existing) return existing;
@@ -124,124 +113,120 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     workspace.id = WORKSPACE_ID;
     workspace.setAttribute("aria-hidden", "true");
     workspace.style.cssText =
-      "position:fixed;z-index:34;left:0;right:0;top:50px;height:calc(100vh - 50px);" +
+      "position:absolute;z-index:34;left:0;right:0;top:50px;bottom:0;" +
       "display:block;overflow:hidden;background:#000;opacity:0;" +
       "transform:translateX(34px) scale(.985);pointer-events:none;" +
-      "transition:" + WORKSPACE_TRANSITION + ";";
+      "transition:opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1);";
 
     page.appendChild(workspace);
     return workspace;
   }
 
-  function lockLiveWorkspaceGeometry(force) {
+  function freezeLiveKeyboardLayout(frame, doc) {
+    if (!liveOpen || !frame || !doc) return;
     const workspace = document.getElementById(WORKSPACE_ID);
-    if (!workspace || !liveOpen) return;
+    const shell = doc.getElementById("vexaStt");
+    if (!workspace || !shell) return;
 
-    if (force || liveStableHeight < 320) {
-      liveStableHeight = Math.max(320, Math.round(currentStableViewportHeight() - 50));
-    }
+    const workspaceRect = workspace.getBoundingClientRect();
+    const height = Math.round(workspaceRect.height || frame.getBoundingClientRect().height || 0);
+    if (height < 320) return;
 
-    workspace.style.position = "fixed";
-    workspace.style.left = "0";
-    workspace.style.right = "0";
-    workspace.style.top = "50px";
+    liveKeyboardHeight = height;
+    workspace.style.height = String(height) + "px";
     workspace.style.bottom = "auto";
-    workspace.style.height = String(liveStableHeight) + "px";
-    if (liveFrame) {
-      liveFrame.style.height = String(liveStableHeight) + "px";
-      liveFrame.style.minHeight = String(liveStableHeight) + "px";
-      liveFrame.style.maxHeight = String(liveStableHeight) + "px";
-    }
+    frame.style.height = String(height) + "px";
+    frame.style.minHeight = String(height) + "px";
+    frame.style.maxHeight = String(height) + "px";
+
+    const nodes = [doc.documentElement, doc.body, doc.querySelector(".live-app"), shell];
+    nodes.forEach(function (node) {
+      if (!node) return;
+      node.style.height = String(height) + "px";
+      node.style.minHeight = String(height) + "px";
+      node.style.maxHeight = String(height) + "px";
+    });
   }
 
-  function resetLiveWorkspaceGeometry() {
+  function releaseLiveKeyboardLayout() {
+    if (liveKeyboardReleaseTimer) window.clearTimeout(liveKeyboardReleaseTimer);
+    liveKeyboardReleaseTimer = 0;
+    liveKeyboardActive = false;
+
     const workspace = document.getElementById(WORKSPACE_ID);
-    liveStableHeight = 0;
-    if (!workspace) return;
-    workspace.style.position = "fixed";
-    workspace.style.left = "0";
-    workspace.style.right = "0";
-    workspace.style.top = "50px";
-    workspace.style.bottom = "auto";
-    workspace.style.height = "calc(100vh - 50px)";
-    workspace.style.transition = WORKSPACE_TRANSITION;
+    if (workspace) {
+      workspace.style.top = "50px";
+      workspace.style.height = "";
+      workspace.style.bottom = "0";
+    }
+
     if (liveFrame) {
       liveFrame.style.height = "100%";
       liveFrame.style.minHeight = "";
       liveFrame.style.maxHeight = "";
     }
+
+    const doc = liveKeyboardDoc;
+    const shell = doc && doc.getElementById("vexaStt");
+    if (shell) {
+      shell.classList.remove("keyboard-open");
+      shell.style.removeProperty("--vexa-keyboard-top");
+    }
+    if (doc) {
+      [doc.documentElement, doc.body, doc.querySelector(".live-app"), shell].forEach(function (node) {
+        if (!node) return;
+        node.style.removeProperty("height");
+        node.style.removeProperty("min-height");
+        node.style.removeProperty("max-height");
+      });
+    }
+    liveKeyboardHeight = 0;
   }
 
-  function liveVisibleBottom() {
-    const workspace = document.getElementById(WORKSPACE_ID);
-    if (!workspace) return Math.max(0, liveStableHeight);
-
-    const rect = workspace.getBoundingClientRect();
-    const candidates = [];
+  function visibleKeyboardBottom() {
     const viewport = window.visualViewport;
     if (viewport) {
-      const visualBottom = Number(viewport.offsetTop || 0) + Number(viewport.height || 0);
-      if (Number.isFinite(visualBottom) && visualBottom > 0) candidates.push(visualBottom);
+      const value = Number(viewport.offsetTop || 0) + Number(viewport.height || 0);
+      if (Number.isFinite(value) && value > 0) return value;
     }
-    const innerHeight = Number(window.innerHeight || 0);
-    if (Number.isFinite(innerHeight) && innerHeight > 0) candidates.push(innerHeight);
-    const tgHeight = Number(telegram() && telegram().viewportHeight || 0);
-    if (Number.isFinite(tgHeight) && tgHeight > 0) candidates.push(tgHeight);
-
-    const visibleBottom = candidates.length ? Math.min.apply(Math, candidates) : rect.bottom;
-    return Math.max(0, Math.min(rect.height, visibleBottom - rect.top));
+    const height = Number(window.innerHeight || 0);
+    return Number.isFinite(height) && height > 0 ? height : 0;
   }
 
-  function syncLiveKeyboardViewport() {
-    if (!liveOpen || !liveKeyboardActive || !liveKeyboardDoc || !liveKeyboardButton) return;
+  function syncLiveKeyboardPosition() {
+    if (!liveKeyboardActive || !liveKeyboardDoc || !liveKeyboardButton) return;
     const workspace = document.getElementById(WORKSPACE_ID);
     const shell = liveKeyboardDoc.getElementById("vexaStt");
     if (!workspace || !shell) return;
 
-    lockLiveWorkspaceGeometry(false);
-    workspace.style.transition = "none";
-    workspace.style.transform = "translate3d(0,0,0) scale(1)";
+    const viewport = window.visualViewport;
+    const offsetTop = viewport ? Math.max(0, Number(viewport.offsetTop || 0)) : 0;
+    workspace.style.top = String(50 + offsetTop) + "px";
 
     const rect = workspace.getBoundingClientRect();
-    const correction = Math.max(-240, Math.min(240, 50 - Number(rect.top || 0)));
-    if (Math.abs(correction) > .5) {
-      workspace.style.transform = "translate3d(0," + correction.toFixed(1) + "px,0) scale(1)";
-    }
-
-    const visibleBottom = liveVisibleBottom();
-    const maximum = Math.max(10, liveStableHeight - 56);
-    const top = Math.max(10, Math.min(maximum, visibleBottom - 56));
+    const visibleBottom = visibleKeyboardBottom();
+    const relativeBottom = visibleBottom > 0 ? visibleBottom - rect.top : liveKeyboardHeight;
+    const maximum = Math.max(10, liveKeyboardHeight - 56);
+    const top = Math.max(10, Math.min(maximum, relativeBottom - 56));
     shell.style.setProperty("--vexa-keyboard-top", Math.round(top) + "px");
   }
 
-  function finishLiveKeyboardClose() {
-    if (liveKeyboardCloseTimer) window.clearTimeout(liveKeyboardCloseTimer);
-    liveKeyboardCloseTimer = 0;
-    liveKeyboardActive = false;
-    const workspace = document.getElementById(WORKSPACE_ID);
-    const shell = liveKeyboardDoc && liveKeyboardDoc.getElementById("vexaStt");
-    if (shell) {
-      shell.classList.remove("keyboard-open", "keyboard-closing");
-      shell.style.removeProperty("--vexa-keyboard-top");
+  function bindLiveKeyboardViewport() {
+    if (liveKeyboardViewportBound) return;
+    liveKeyboardViewportBound = true;
+    const sync = function () {
+      if (!liveKeyboardActive) return;
+      syncLiveKeyboardPosition();
+    };
+    window.addEventListener("resize", sync, { passive: true });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", sync, { passive: true });
+      window.visualViewport.addEventListener("scroll", sync, { passive: true });
     }
-    if (workspace) {
-      workspace.style.transition = WORKSPACE_TRANSITION;
-      workspace.style.transform = liveOpen ? "translateX(0) scale(1)" : "translateX(34px) scale(.985)";
+    const tg = telegram();
+    if (tg && tg.onEvent) {
+      try { tg.onEvent("viewportChanged", sync); } catch (error) {}
     }
-    if (liveOpen) {
-      liveStableHeight = 0;
-      lockLiveWorkspaceGeometry(true);
-    }
-  }
-
-  function beginLiveKeyboardClose() {
-    const shell = liveKeyboardDoc && liveKeyboardDoc.getElementById("vexaStt");
-    if (shell) {
-      shell.classList.remove("keyboard-open");
-      shell.classList.add("keyboard-closing");
-    }
-    if (liveKeyboardCloseTimer) window.clearTimeout(liveKeyboardCloseTimer);
-    liveKeyboardCloseTimer = window.setTimeout(finishLiveKeyboardClose, 320);
   }
 
   function installLiveKeyboard(frame, doc) {
@@ -250,36 +235,32 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     if (!frame || !textarea || !button) return;
     if (textarea.getAttribute("data-vexa-keyboard") === "ready") return;
     textarea.setAttribute("data-vexa-keyboard", "ready");
-
     liveKeyboardDoc = doc;
-    liveKeyboardTextarea = textarea;
     liveKeyboardButton = button;
+    bindLiveKeyboardViewport();
 
     textarea.addEventListener("pointerdown", function () {
-      if (!liveOpen) return;
-      lockLiveWorkspaceGeometry(false);
+      if (!liveOpen || liveKeyboardActive) return;
+      freezeLiveKeyboardLayout(frame, doc);
     }, { capture: true });
 
     textarea.addEventListener("focus", function () {
       if (!liveOpen) return;
-      if (liveKeyboardCloseTimer) window.clearTimeout(liveKeyboardCloseTimer);
-      liveKeyboardCloseTimer = 0;
+      if (liveKeyboardReleaseTimer) window.clearTimeout(liveKeyboardReleaseTimer);
+      liveKeyboardReleaseTimer = 0;
+      if (!liveKeyboardHeight) freezeLiveKeyboardLayout(frame, doc);
       liveKeyboardActive = true;
       const shell = doc.getElementById("vexaStt");
-      if (shell) {
-        shell.classList.remove("keyboard-closing");
-        shell.classList.add("keyboard-open");
-      }
-      lockLiveWorkspaceGeometry(false);
-      syncLiveKeyboardViewport();
-      window.requestAnimationFrame(syncLiveKeyboardViewport);
-      window.setTimeout(syncLiveKeyboardViewport, 80);
-      window.setTimeout(syncLiveKeyboardViewport, 220);
-      window.setTimeout(syncLiveKeyboardViewport, 420);
+      if (shell) shell.classList.add("keyboard-open");
+      syncLiveKeyboardPosition();
     });
 
     textarea.addEventListener("blur", function () {
-      beginLiveKeyboardClose();
+      if (!liveKeyboardActive) return;
+      const shell = doc.getElementById("vexaStt");
+      if (shell) shell.classList.remove("keyboard-open");
+      if (liveKeyboardReleaseTimer) window.clearTimeout(liveKeyboardReleaseTimer);
+      liveKeyboardReleaseTimer = window.setTimeout(releaseLiveKeyboardLayout, 180);
     });
 
     button.addEventListener("pointerdown", function (event) {
@@ -289,34 +270,8 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       event.preventDefault();
       event.stopPropagation();
       haptic("light");
-      beginLiveKeyboardClose();
       try { textarea.blur(); } catch (error) {}
     });
-  }
-
-  function bindLiveViewportHandlers() {
-    if (liveViewportHandlersBound) return;
-    liveViewportHandlersBound = true;
-
-    const handleViewport = function () {
-      if (!liveOpen) return;
-      if (liveKeyboardActive) {
-        syncLiveKeyboardViewport();
-      } else {
-        liveStableHeight = 0;
-        lockLiveWorkspaceGeometry(true);
-      }
-    };
-
-    window.addEventListener("resize", handleViewport, { passive: true });
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", handleViewport, { passive: true });
-      window.visualViewport.addEventListener("scroll", handleViewport, { passive: true });
-    }
-    const tg = telegram();
-    if (tg && tg.onEvent) {
-      try { tg.onEvent("viewportChanged", handleViewport); } catch (error) {}
-    }
   }
 
   function embeddedStyle() {
@@ -369,8 +324,8 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       ".vexa-stt.recording .vexa-stt-upload,.vexa-stt.processing .vexa-stt-upload{opacity:.28;pointer-events:none;transform:scale(.92)}",
       ".vexa-stt-status{position:absolute;z-index:6;left:50%;bottom:calc(65px + env(safe-area-inset-bottom));max-width:calc(100% - 32px);height:24px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.38);font-size:8.7px;font-weight:650;white-space:nowrap;opacity:0;transform:translate(-50%,5px);transition:opacity .2s ease,transform .3s var(--stt-ease)}",
       ".vexa-stt-status.show{opacity:1;transform:translate(-50%,0)}",
-      ".vexa-keyboard-dismiss{position:absolute;z-index:30;right:22px;top:var(--vexa-keyboard-top,calc(100% - 58px));width:42px;height:42px;border:0;border-radius:15px;padding:0;display:grid;place-items:center;color:#fff;background:rgba(13,13,13,.62);opacity:0;transform:translateY(12px) scale(.92);pointer-events:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);transition:opacity .2s ease,transform .22s cubic-bezier(.2,.8,.2,1),background .2s ease,box-shadow .2s ease}",
-      ".vexa-stt.keyboard-open .vexa-keyboard-dismiss,.vexa-stt.keyboard-closing .vexa-keyboard-dismiss{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}",
+      ".vexa-keyboard-dismiss{position:absolute;z-index:30;right:22px;top:var(--vexa-keyboard-top,calc(100% - 58px));width:42px;height:42px;border:0;border-radius:15px;padding:0;display:grid;place-items:center;color:#fff;background:rgba(13,13,13,.62);opacity:0;transform:translateY(12px) scale(.92);pointer-events:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);transition:opacity .18s ease,transform .2s cubic-bezier(.2,.8,.2,1)}",
+      ".vexa-stt.keyboard-open .vexa-keyboard-dismiss{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}",
       ".vexa-stt.keyboard-open .vexa-keyboard-dismiss svg{animation:vexaKeyboardArrow .95s ease-in-out infinite}",
       ".vexa-stt.processing .vexa-stt-record-inner{opacity:0;transform:scale(.98)}",
       ".vexa-stt.processing .vexa-stt-record::after{content:\"Transcribing\";position:absolute;z-index:2;inset:0;display:grid;place-items:center;color:#050505;font-size:12.5px;font-weight:760;letter-spacing:-.015em;animation:vexaSttButtonState .3s cubic-bezier(.16,1,.3,1) both}",
@@ -397,7 +352,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       "@keyframes vexaSttProcessingPulse{0%,100%{transform:scaleY(.65);opacity:.55}50%{transform:scaleY(1.15);opacity:1}}",
       "@keyframes vexaSttButtonState{from{opacity:0;transform:translateY(3px) scale(.98)}to{opacity:1;transform:none}}",
       "@media(max-height:680px){.vexa-stt-wave-stage{bottom:104px;height:104px}.vexa-stt-wave-track{height:76px}.vexa-stt-wave-track i{height:58px}.vexa-stt-controls{bottom:calc(18px + env(safe-area-inset-bottom))}.vexa-stt-status{bottom:calc(73px + env(safe-area-inset-bottom))}}",
-      "@media(prefers-reduced-motion:reduce){.vexa-stt,.vexa-stt-editor,.vexa-stt-wave-stage,.vexa-stt-record,.vexa-stt-upload,.vexa-stt-language,.vexa-stt textarea,.vexa-keyboard-dismiss{transition:none!important;animation:none!important}.vexa-stt.processing .vexa-stt-wave-track i{animation:none!important;left:0!important;opacity:.72!important}.vexa-stt.processing .vexa-stt-wave-track i:nth-child(n+13){display:none!important}}"
+      "@media(prefers-reduced-motion:reduce){.vexa-stt,.vexa-stt-editor,.vexa-stt-wave-stage,.vexa-stt-record,.vexa-stt-upload,.vexa-stt-language,.vexa-stt textarea{transition:none!important;animation:none!important}.vexa-stt.processing .vexa-stt-wave-track i{animation:none!important;left:0!important;opacity:.72!important}.vexa-stt.processing .vexa-stt-wave-track i:nth-child(n+13){display:none!important}}"
     ].join("");
   }
 
@@ -430,11 +385,9 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     frame.style.cssText = "display:block;width:100%;height:100%;border:0;background:#000;";
     frame.addEventListener("load", function () {
       prepareEmbeddedFrame(frame);
-      if (liveOpen) lockLiveWorkspaceGeometry(false);
     });
     workspace.appendChild(frame);
     liveFrame = frame;
-    if (liveOpen) lockLiveWorkspaceGeometry(false);
     return frame;
   }
 
@@ -463,6 +416,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
         '<div class="vexa-stt-wave-caption"><span id="vexaSttWaveLabel">Listening</span><strong id="vexaSttTimer">0:00</strong></div>' +
       '</div>' +
       '<div id="vexaSttStatus" class="vexa-stt-status" role="status" aria-live="polite"></div>' +
+      '<button id="vexaKeyboardDismiss" class="vexa-keyboard-dismiss" type="button" aria-label="Hide keyboard"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
       '<div class="vexa-stt-controls">' +
         '<button id="vexaSttRecord" class="vexa-stt-record" type="button" aria-label="Start recording">' +
           '<span class="vexa-stt-record-inner">' +
@@ -478,10 +432,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
           '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 15V4m0 0L8.4 7.6M12 4l3.6 3.6M5 13.5v3.2A2.3 2.3 0 0 0 7.3 19h9.4a2.3 2.3 0 0 0 2.3-2.3v-3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
         '</button>' +
         '<input id="vexaSttFile" type="file" accept="audio/*,video/*" hidden>' +
-      '</div>' +
-      '<button id="vexaKeyboardDismiss" class="vexa-keyboard-dismiss" type="button" aria-label="Hide keyboard">' +
-        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-      '</button>';
+      '</div>';
 
     root.replaceChildren(shell);
     buildWaveBars(doc);
@@ -896,24 +847,18 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     );
     workspace.setAttribute("aria-hidden", next ? "false" : "true");
     workspace.style.opacity = next ? "1" : "0";
+    workspace.style.transform = next
+      ? "translateX(0) scale(1)"
+      : "translateX(34px) scale(.985)";
     workspace.style.pointerEvents = next ? "auto" : "none";
     setMainContentHidden(next);
 
     if (next) {
-      liveStableHeight = 0;
-      lockLiveWorkspaceGeometry(true);
-      workspace.style.transition = WORKSPACE_TRANSITION;
-      workspace.style.transform = "translateX(0) scale(1)";
       ensureFrame();
       hideTelegramBackButton();
     } else {
-      if (liveKeyboardTextarea) {
-        try { liveKeyboardTextarea.blur(); } catch (error) {}
-      }
-      finishLiveKeyboardClose();
+      if (liveKeyboardActive || liveKeyboardHeight) releaseLiveKeyboardLayout();
       stopEmbeddedRecorder();
-      workspace.style.transform = "translateX(34px) scale(.985)";
-      resetLiveWorkspaceGeometry();
     }
   }
 
@@ -962,7 +907,6 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   function initialize() {
     const button = installButton();
     installWorkspace();
-    bindLiveViewportHandlers();
     if (button && requestedSection() === "live") setLiveOpen(true);
   }
 
