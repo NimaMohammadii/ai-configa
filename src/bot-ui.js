@@ -156,15 +156,22 @@ async function enhanceInsufficientCreditsMenu(message, env) {
   if (!messageId) return;
 
   const language = normalizeLang(state.language || message?.from?.language_code || "en");
-  await tgJson(env, "editMessageReplyMarkup", {
-    chat_id: chatId,
-    message_id: messageId,
-    reply_markup: {
-      inline_keyboard: [[
-        { text: t(language, "buyCredits"), callback_data: "insufficient_buy_credits" },
-        { text: referralMenuLabel(language), callback_data: "bot_referral" },
-      ]],
-    },
+  const balance = await getBalance(env, userId);
+  const cost = Array.from(String(message?.text || "").trim()).length;
+  const copy = botReferralCopy(language);
+  const text = [
+    t(language, "notEnough", { needed: cost, balance }),
+    "",
+    t(language, "creditRule"),
+    "",
+    copy.insufficientOffer,
+  ].join("\n");
+
+  await editMessage(env, chatId, messageId, text, {
+    inline_keyboard: [[
+      { text: t(language, "buyCredits"), callback_data: "insufficient_buy_credits" },
+      { text: copy.share, callback_data: "bot_referral" },
+    ]],
   });
 }
 
@@ -191,17 +198,19 @@ const BOT_REFERRAL_COPY = Object.freeze({
   en: {
     title: "Free credits",
     description: "Invite 3 friends and get <b>300 credits</b>. Every 3 new friends unlock another 300 credits.",
+    insufficientOffer: "Buy credits, or invite <b>3 friends</b> and get <b>300 free credits</b>.",
     progress: "Progress",
     total: "Friends invited",
     earned: "Earned",
     credits: "credits",
-    share: "Share invite",
+    share: "Invite friends",
     refresh: "Refresh progress",
     shareText: "🎙 Try Vexa — turn any text into a natural AI voice in seconds 👇",
   },
   fa: {
     title: "کردیت رایگان",
     description: "3 تا از دوستاتو دعوت کن و <b>300 کردیت</b> بگیر. هر 3 دعوت جدید دوباره 300 کردیت می‌ده.",
+    insufficientOffer: "یا کردیت بخر، یا <b>3 تا از دوستاتو دعوت کن</b> و <b>300 کردیت رایگان</b> بگیر.",
     progress: "پیشرفت",
     total: "دوست‌های دعوت‌شده",
     earned: "کردیت گرفته‌شده",
@@ -213,6 +222,7 @@ const BOT_REFERRAL_COPY = Object.freeze({
   ru: {
     title: "Бесплатные кредиты",
     description: "Пригласи 3 друзей и получи <b>300 кредитов</b>. Каждые следующие 3 друга дают ещё 300.",
+    insufficientOffer: "Купи кредиты или пригласи <b>3 друзей</b> и получи <b>300 бесплатных кредитов</b>.",
     progress: "Прогресс",
     total: "Приглашено друзей",
     earned: "Получено",
@@ -224,6 +234,7 @@ const BOT_REFERRAL_COPY = Object.freeze({
   de: {
     title: "Kostenlose Credits",
     description: "Lade 3 Freunde ein und erhalte <b>300 Credits</b>. Für je 3 weitere Freunde gibt es erneut 300.",
+    insufficientOffer: "Kaufe Credits oder lade <b>3 Freunde</b> ein und erhalte <b>300 kostenlose Credits</b>.",
     progress: "Fortschritt",
     total: "Eingeladene Freunde",
     earned: "Verdient",
@@ -235,6 +246,7 @@ const BOT_REFERRAL_COPY = Object.freeze({
   tr: {
     title: "Ücretsiz kredi",
     description: "3 arkadaşını davet et ve <b>300 kredi</b> kazan. Her yeni 3 davette tekrar 300 kredi alırsın.",
+    insufficientOffer: "Kredi satın al veya <b>3 arkadaşını davet et</b> ve <b>300 ücretsiz kredi</b> kazan.",
     progress: "İlerleme",
     total: "Davet edilen arkadaşlar",
     earned: "Kazanılan",
@@ -246,6 +258,7 @@ const BOT_REFERRAL_COPY = Object.freeze({
   ar: {
     title: "رصيد مجاني",
     description: "ادعُ 3 أصدقاء واحصل على <b>300 رصيد</b>. كل 3 دعوات جديدة تمنحك 300 أخرى.",
+    insufficientOffer: "اشترِ رصيدًا أو ادعُ <b>3 أصدقاء</b> واحصل على <b>300 رصيد مجاني</b>.",
     progress: "التقدم",
     total: "الأصدقاء المدعوون",
     earned: "المكتسب",
@@ -257,6 +270,7 @@ const BOT_REFERRAL_COPY = Object.freeze({
   zh: {
     title: "免费积分",
     description: "邀请 3 位好友即可获得 <b>300 积分</b>。之后每邀请 3 位新好友，再获得 300 积分。",
+    insufficientOffer: "购买积分，或邀请 <b>3 位好友</b>，获得 <b>300 免费积分</b>。",
     progress: "进度",
     total: "已邀请好友",
     earned: "已获得",
@@ -268,6 +282,7 @@ const BOT_REFERRAL_COPY = Object.freeze({
   ja: {
     title: "無料クレジット",
     description: "友達を3人招待すると <b>300クレジット</b>。その後も3人ごとに300クレジット獲得できます。",
+    insufficientOffer: "クレジットを購入するか、<b>友達を3人招待</b>して<b>300無料クレジット</b>を獲得できます。",
     progress: "進捗",
     total: "招待した友達",
     earned: "獲得済み",
@@ -279,6 +294,7 @@ const BOT_REFERRAL_COPY = Object.freeze({
   es: {
     title: "Créditos gratis",
     description: "Invita a 3 amigos y recibe <b>300 créditos</b>. Cada 3 nuevos amigos vuelves a recibir 300.",
+    insufficientOffer: "Compra créditos o invita a <b>3 amigos</b> y recibe <b>300 créditos gratis</b>.",
     progress: "Progreso",
     total: "Amigos invitados",
     earned: "Ganado",
@@ -290,6 +306,7 @@ const BOT_REFERRAL_COPY = Object.freeze({
   hi: {
     title: "Free credits",
     description: "3 दोस्तों को invite करो और <b>300 credits</b> पाओ। हर अगले 3 नए दोस्तों पर फिर 300 credits मिलेंगे।",
+    insufficientOffer: "Credits खरीदो, या <b>3 दोस्तों को invite करो</b> और <b>300 free credits</b> पाओ।",
     progress: "Progress",
     total: "Invited friends",
     earned: "Earned",
