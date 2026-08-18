@@ -6,7 +6,13 @@ html body .credits-page .credits-page-head p{display:none!important}
 html body .credits-page .tribute-section-copy>div>span{display:none!important}
 html body .credits-page .tribute-section-copy>div>h3{margin-top:0!important}
 
-/* Payment-specific heroes reuse the exact Stars header framing and fades. */
+/* Stars hero: keep the original 1440x680 asset, only scale it slightly and move it down. */
+html body .credits-page:not(.toman-payment-active):not(.tribute-payment-active) .credits-page-head{
+  background-size:106% auto!important;
+  background-position:58% calc(50% + 8px)!important
+}
+
+/* Payment-specific heroes reuse the same header framing. */
 html body .credits-page.toman-payment-active .credits-page-head{
   background-color:#000!important;
   background-image:url("/mini-app/payment-hero/toman"),url("/mini-app/assets/toman-checkout-hero-628cea8287db.png")!important;
@@ -17,14 +23,17 @@ html body .credits-page.toman-payment-active .credits-page-head{
 html body .credits-page.tribute-payment-active .credits-page-head{
   background-color:#000!important;
   background-image:url("/mini-app/payment-hero/card")!important;
-  background-position:center center!important;
+  background-position:center calc(50% + 8px)!important;
   background-size:100% auto!important;
   background-repeat:no-repeat!important
 }
-html body .credits-page.toman-payment-active .credits-page-head:before,
-html body .credits-page.tribute-payment-active .credits-page-head:before{
+html body .credits-page.toman-payment-active .credits-page-head:before{
   content:""!important;display:block!important;position:absolute!important;z-index:-1!important;inset:0!important;opacity:1!important;filter:none!important;
   background:linear-gradient(90deg,rgba(0,0,0,.98) 0%,rgba(0,0,0,.78) 31%,rgba(0,0,0,.08) 67%,rgba(0,0,0,.22) 100%)!important
+}
+html body .credits-page.tribute-payment-active .credits-page-head:before{
+  content:""!important;display:block!important;position:absolute!important;z-index:-1!important;inset:0!important;opacity:1!important;filter:none!important;
+  background:transparent!important
 }
 html body .credits-page.toman-payment-active .credits-page-head:after,
 html body .credits-page.tribute-payment-active .credits-page-head:after{
@@ -115,8 +124,8 @@ html body .credits-page .tribute-footnote span{color:#fff!important}
 }
 
 @media(max-width:370px){
-  html body .credits-page.toman-payment-active .credits-page-head,
-  html body .credits-page.tribute-payment-active .credits-page-head{background-position:center center!important;background-size:100% auto!important}
+  html body .credits-page.toman-payment-active .credits-page-head{background-position:center center!important;background-size:100% auto!important}
+  html body .credits-page.tribute-payment-active .credits-page-head{background-position:center calc(50% + 8px)!important;background-size:100% auto!important}
   html body .credits-page .tribute-currency-picker{width:min(82%,260px)!important}
   html body .credits-page .credits-tribute-mode{padding-left:12px!important;padding-right:12px!important}
   html body .credits-page .credits-payment-switch.tribute-switch button{font-size:9px!important;padding:0 5px!important}
