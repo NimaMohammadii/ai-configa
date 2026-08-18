@@ -291,37 +291,72 @@ function vexaVoiceAgentBootstrap() {
 
     const socket = new WebSocket(signedUrl);
     state.socket = socket;
-
-    await new Promise((resolve, reject) => {
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        reject(new Error("V3 voice connection timed out"));
-        try { socket.close(); } catch (error) {}
-      }, 10000);
-
-      socket.addEventListener("open", () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        trySend({ type: "conversation_initiation_client_data" });
-        state.captureEnabled = true;
-        setPhase("listening", "Listening", "");
-        resolve();
-      }, { once: true });
-
-      socket.addEventListener("error", () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        reject(new Error("Could not connect to V3 voice"));
-      }, { once: true });
-    });
+    state.captureEnabled = false;
 
     socket.addEventListener("message", handleSpeechEngineMessage);
     socket.addEventListener("close", () => {
-      if (state.active && state.phase !== "error") fail(new Error("V3 voice connection closed"));
+      if (state.active && state.socket === socket && state.phase !== "error") {
+        fail(new Error("V3 voice connection closed"));
+      }
+    });
+
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      let opened = false;
+      let timer = 0;
+
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        timer = 0;
+        socket.removeEventListener("message", handleInitMessage);
+        socket.removeEventListener("error", handleInitError);
+        socket.removeEventListener("close", handleInitClose);
+      };
+
+      const finishError = (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+
+      const handleInitMessage = (event) => {
+        if (settled) return;
+        let message;
+        try { message = JSON.parse(String(event.data || "{}")); } catch (error) { return; }
+        const type = String(message?.type || "");
+        if (type === "conversation_initiation_metadata") {
+          settled = true;
+          cleanup();
+          resolve();
+          return;
+        }
+        if (type.includes("error")) {
+          finishError(new Error(String(message?.message || message?.error || "V3 voice initialization failed")));
+        }
+      };
+
+      const handleInitError = () => finishError(new Error("Could not connect to V3 voice"));
+      const handleInitClose = () => finishError(new Error("V3 voice connection closed during initialization"));
+
+      socket.addEventListener("message", handleInitMessage);
+      socket.addEventListener("error", handleInitError);
+      socket.addEventListener("close", handleInitClose);
+
+      socket.addEventListener("open", () => {
+        if (settled) return;
+        opened = true;
+        setPhase("connecting", "Preparing voice", "");
+        if (!trySend({ type: "conversation_initiation_client_data" })) {
+          finishError(new Error("Could not initialize V3 voice"));
+        }
+      }, { once: true });
+
+      timer = setTimeout(() => {
+        if (settled) return;
+        finishError(new Error(opened ? "Voice engine did not initialize" : "V3 voice connection timed out"));
+        try { socket.close(); } catch (error) {}
+      }, 12000);
     });
   }
 
