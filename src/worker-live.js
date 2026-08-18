@@ -473,8 +473,8 @@ async function patchLiveIntegration(response) {
 
   source = replaceOrKeep(
     source,
-    "Transcript</span><span id=\"vexaSttLanguage\"",
-    "Transcript <small style=\"margin-left:5px;color:rgba(255,255,255,.28);font-size:8.5px;font-weight:620;letter-spacing:-.01em;text-transform:none\">· 30 credits/min</small></span><span id=\"vexaSttLanguage\"",
+    "Transcript</span><span id=\\\"vexaSttLanguage\\\"",
+    "Transcript <small style=\\\"margin-left:5px;color:rgba(255,255,255,.28);font-size:8.5px;font-weight:620;letter-spacing:-.01em;text-transform:none\\\">· 30 credits/min</small></span><span id=\\\"vexaSttLanguage\\\"",
     "STT rate label",
   );
 
