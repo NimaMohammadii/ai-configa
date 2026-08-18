@@ -68,7 +68,7 @@ html body .credits-page .credits-amount-range::-moz-range-thumb{
 }
 @keyframes creditsMetallicThumbDrag{0%{transform:translateY(0) scale(1.07);background-position:center,28% 28%}100%{transform:translateY(-.4px) scale(1.12);background-position:center,76% 70%}}
 
-/* Bank Card — one UI path, using the same glass tokens as Buy Credits. */
+/* Bank Card uses the exact shared Stars package-card classes. */
 html body .credits-page .credits-payment-switch.tribute-switch{--tribute-count:2;--tribute-shift:0%;display:grid!important;grid-template-columns:repeat(var(--tribute-count),minmax(0,1fr))!important}
 html body .credits-page .credits-payment-switch.tribute-switch:before{left:3px!important;right:auto!important;width:calc((100% - 6px)/var(--tribute-count))!important;transform:translateX(var(--tribute-shift))!important;transition:transform .44s cubic-bezier(.22,1,.36,1),width .32s ease!important}
 html body .credits-page .credits-payment-switch.tribute-switch button{min-width:0!important;white-space:nowrap!important}
@@ -96,53 +96,10 @@ html body .credits-page .tribute-currency-picker button{position:relative!import
 html body .credits-page .tribute-currency-picker button.active{color:#101114!important}
 html body .credits-page .tribute-currency-picker button:active{transform:scale(.97)!important}
 
-html body .credits-page .tribute-product-list{display:grid!important;gap:9px!important}
-html body .credits-page .tribute-product{
-  position:relative!important;isolation:isolate!important;overflow:hidden!important;width:100%!important;min-height:72px!important;padding:13px 15px!important;
-  display:flex!important;align-items:center!important;justify-content:space-between!important;gap:15px!important;border:0!important;border-radius:16px!important;
-  background:var(--ticket-glass-bg,rgba(13,13,13,.62))!important;
-  box-shadow:var(--ticket-glass-shadow,inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22))!important;
-  backdrop-filter:blur(10px) saturate(1.12)!important;-webkit-backdrop-filter:blur(10px) saturate(1.12)!important;
-  color:#fff!important;text-align:left!important;-webkit-tap-highlight-color:transparent!important;opacity:0;transform:translateY(9px) scale(.986)!important;
-  animation:tributePackEnter .48s cubic-bezier(.16,1,.3,1) forwards!important;
-  transition:transform .24s cubic-bezier(.16,1,.3,1),background .22s ease,box-shadow .22s ease,opacity .22s ease!important;will-change:transform,opacity
-}
-html body .credits-page .tribute-product:nth-child(1){animation-delay:.015s!important}
-html body .credits-page .tribute-product:nth-child(2){animation-delay:.05s!important}
-html body .credits-page .tribute-product:nth-child(3){animation-delay:.085s!important}
-html body .credits-page .tribute-product:nth-child(4){animation-delay:.12s!important}
-html body .credits-page .tribute-product:nth-child(5){animation-delay:.155s!important}
-html body .credits-page .tribute-product:nth-child(6){animation-delay:.19s!important}
-html body .credits-page .tribute-product:before{content:""!important;position:absolute!important;pointer-events:none!important;z-index:-1!important;left:12px!important;right:12px!important;top:0!important;height:1px!important;background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent)!important;opacity:.68!important}
-html body .credits-page .tribute-product:hover,
-html body .credits-page .tribute-product:focus-visible{background:rgba(255,255,255,.075)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),inset 0 0 20px rgba(255,255,255,.055),0 12px 26px rgba(0,0,0,.24)!important}
-html body .credits-page .tribute-product:active{transform:scale(.982)!important;background:rgba(255,255,255,.105)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -1px 0 rgba(255,255,255,.07),0 5px 14px rgba(0,0,0,.2)!important}
-html body .credits-page .tribute-product.loading{pointer-events:none!important;opacity:.78!important}
-html body .credits-page .tribute-product.waiting{background:rgba(255,255,255,.07)!important}
-html body .credits-page .tribute-product.success{background:rgba(255,255,255,.09)!important}
-html body .credits-page .tribute-product.failed{background:rgba(255,255,255,.055)!important}
-
-html body .credits-page .tribute-product-main{min-width:0!important;flex:1 1 auto!important}
-html body .credits-page .tribute-product-main strong{display:block!important;font-size:16px!important;line-height:1.06!important;font-weight:720!important;letter-spacing:-.04em!important}
-html body .credits-page .tribute-product-meta{display:flex!important;align-items:center!important;gap:6px!important;margin-top:6px!important;color:rgba(255,255,255,.42)!important;font-size:8.5px!important;line-height:1.25!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
-html body .credits-page .tribute-product-meta>span:last-child{min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important}
-html body .credits-page .tribute-inline-spinner{width:9px!important;height:9px!important;flex:0 0 9px!important;border-radius:50%!important;border:1.3px solid rgba(255,255,255,.24)!important;border-top-color:#fff!important;animation:tributeInlineSpin .7s linear infinite!important}
-html body .credits-page .tribute-inline-dot{width:6px!important;height:6px!important;flex:0 0 6px!important;border-radius:50%!important;background:#fff!important;box-shadow:0 0 0 3px rgba(255,255,255,.08)!important}
-html body .credits-page .tribute-inline-check,
-html body .credits-page .tribute-inline-alert{width:14px!important;height:14px!important;flex:0 0 14px!important;display:grid!important;place-items:center!important;border-radius:50%!important;background:#fff!important;color:#080808!important;font-size:9px!important;font-weight:900!important;line-height:1!important}
-html body .credits-page .tribute-inline-alert{background:rgba(255,255,255,.13)!important;color:#fff!important}
-
-/* Price is intentionally plain text — no chip/card around it. */
-html body .credits-page .tribute-product-price{flex:0 0 auto!important;min-width:58px!important;text-align:right!important}
-html body .credits-page .tribute-product-price strong{display:block!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;color:#fff!important;font-size:15px!important;font-weight:730!important;letter-spacing:-.03em!important;line-height:1.05!important}
-html body .credits-page .tribute-product-price small{display:block!important;margin-top:5px!important;color:rgba(255,255,255,.31)!important;font-size:7px!important;letter-spacing:.035em!important}
-html body .credits-page .tribute-empty{padding:24px 10px!important;text-align:center!important;color:rgba(255,255,255,.4)!important;font-size:9px!important;line-height:1.6!important}
 html body .credits-page .tribute-footnote{margin:13px auto 0!important;text-align:center!important;color:rgba(255,255,255,.3)!important;font-size:8.5px!important;line-height:1.55!important}
 html body .credits-page .tribute-footnote span{color:#fff!important}
 
 @keyframes tributeModeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-@keyframes tributePackEnter{from{opacity:0;transform:translateY(9px) scale(.986)}to{opacity:1;transform:translateY(0) scale(1)}}
-@keyframes tributeInlineSpin{to{transform:rotate(360deg)}}
 
 @media(prefers-reduced-motion:reduce){
   html body .credits-page .credits-amount-range,
@@ -152,10 +109,7 @@ html body .credits-page .tribute-footnote span{color:#fff!important}
   html body .credits-page .credits-amount-range::-moz-range-thumb,
   html body .credits-page .tribute-currency-picker:before,
   html body .credits-page .tribute-currency-picker button,
-  html body .credits-page .credits-tribute-mode,
-  html body .credits-page .tribute-product,
-  html body .credits-page .tribute-inline-spinner{animation:none!important;transition:none!important}
-  html body .credits-page .tribute-product{opacity:1!important;transform:none!important}
+  html body .credits-page .credits-tribute-mode{animation:none!important;transition:none!important}
 }
 
 @media(max-width:370px){
@@ -163,10 +117,6 @@ html body .credits-page .tribute-footnote span{color:#fff!important}
   html body .credits-page.tribute-payment-active .credits-page-head{background-position:center center!important;background-size:100% auto!important}
   html body .credits-page .tribute-currency-picker{width:min(82%,260px)!important}
   html body .credits-page .credits-tribute-mode{padding-left:12px!important;padding-right:12px!important}
-  html body .credits-page .tribute-product{min-height:68px!important;padding:12px 13px!important;gap:10px!important}
-  html body .credits-page .tribute-product-main strong{font-size:15px!important}
-  html body .credits-page .tribute-product-price{min-width:52px!important}
-  html body .credits-page .tribute-product-price strong{font-size:14px!important}
   html body .credits-page .credits-payment-switch.tribute-switch button{font-size:9px!important;padding:0 5px!important}
 }
 `;
