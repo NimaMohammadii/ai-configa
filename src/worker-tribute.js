@@ -7,14 +7,8 @@ import {
   isTributeWebhookRequest,
 } from "./tribute-payments.js";
 import { TRIBUTE_PAYMENTS_INTEGRATION_JS } from "./mini-app/tribute-payments-client.js";
-import { VEXA_CARD_CHECKOUT_CLIENT_JS } from "./mini-app/vexa-card-checkout-client.js";
-import {
-  handleVexaCardCheckoutRequest,
-  isVexaCardCheckoutRequest,
-  vexaCardCheckoutConfigured,
-} from "./vexa-card-checkout.js";
 
-const TRIBUTE_UI_VERSION = "20260818-7";
+const TRIBUTE_UI_VERSION = "20260818-6";
 const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
 const CONFIGURED_VEXA_PRODUCT_LINKS = new Set([
   "https://web.tribute.tg/p/CcQ",
@@ -33,7 +27,6 @@ export default {
         getTributeDigitalProductsState(tributeEnv, { force: true }),
         getTributeProductDiagnostics(tributeEnv),
       ]);
-      const externalCardConfigured = vexaCardCheckoutConfigured(tributeEnv);
       return json({
         ok: true,
         mode: "digital_products",
@@ -43,16 +36,8 @@ export default {
         products: state.products || [],
         error: state.error || null,
         diagnostics,
-        externalCardCheckout: {
-          configured: externalCardConfigured,
-          provider: externalCardConfigured ? "stripe" : null,
-        },
         uiVersion: TRIBUTE_UI_VERSION,
       });
-    }
-
-    if (isVexaCardCheckoutRequest(request)) {
-      return handleVexaCardCheckoutRequest(request, tributeEnv);
     }
 
     if (isTributeWebhookRequest(request)) {
@@ -211,8 +196,6 @@ async function injectTributeIntoMiniAppBundle(response) {
   const integration =
     "\n;/* Vexa Tribute UI " + TRIBUTE_UI_VERSION + " */\n" +
     tributeMiniAppIntegrationSource() +
-    "\n;/* Vexa one-time card checkout " + TRIBUTE_UI_VERSION + " */\n" +
-    VEXA_CARD_CHECKOUT_CLIENT_JS +
     "\n";
 
   const headers = new Headers(response.headers);
