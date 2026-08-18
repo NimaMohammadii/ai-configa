@@ -6,16 +6,32 @@ import {
   adminMiniAppAccessText,
   clearAdminAction,
   getAdminAction,
+  hasTrackedUser,
   isAdmin,
   setAdminAction,
 } from "../../admin.js";
 import { handleCallback as handleBaseCallback } from "../../bot-github-admin.js";
 import { handleMessage as handleSecureMessage } from "../../bot-secure.js";
+import { getBalance } from "../../credits.js";
+import { normalizeLang, t } from "../../i18n.js";
+import {
+  isFaChannelMember,
+  isMandatoryFaMembershipEnabled,
+} from "../../mandatory-channel.js";
+import { getPendingPayment } from "../../payments.js";
+import {
+  buildReferralStartParam,
+  parseReferralStartParam,
+  registerReferralFromStartParam,
+} from "../../referrals.js";
+import { getState } from "../../state.js";
 import {
   answerCallback,
   deleteMessage,
   editMessage,
 } from "../../telegram-actions.js";
+import { tgJson } from "../../telegram-api.js";
+import { isLockedVoice } from "../../voices.js";
 import {
   getVexaLiveAccessSettings,
   setVexaLiveAccessSettings,
@@ -24,6 +40,8 @@ import {
 const SECTION_KEY = "live";
 const SECTION_LABEL = "Vexa Live";
 const LOCK_ACTION = "vexa_live_lock_minutes";
+
+let botUsernameCache = "";
 
 MINI_APP_BROADCAST_SECTIONS[SECTION_KEY] = SECTION_LABEL;
 MINI_APP_TRACKED_SECTIONS[SECTION_KEY] = SECTION_LABEL;
@@ -47,18 +65,198 @@ export async function handleCallback(query, env) {
 }
 
 export async function handleMessage(message, env) {
-  const adminId = message?.from?.id;
-  if (!adminId || !(await isAdmin(env, adminId))) {
-    return handleSecureMessage(message, env);
+  const userId = message?.from?.id;
+  const referralPayload = extractReferralPayload(message?.text);
+
+  if (referralPayload) {
+    await registerBotReferralStart(message, env, referralPayload).catch((error) => {
+      console.error("bot referral registration failed", error?.message || error);
+    });
+    message = { ...message, text: "/start" };
   }
 
-  const action = await getAdminAction(env, adminId);
+  if (!userId || !(await isAdmin(env, userId))) {
+    const referralContext = await getInsufficientReferralContext(message, env).catch(() => null);
+    await handleSecureMessage(message, env);
+    if (referralContext) {
+      await enhanceInsufficientCreditsMenu(env, referralContext).catch((error) => {
+        console.error("bot insufficient-credit referral UI failed", error?.message || error);
+      });
+    }
+    return;
+  }
+
+  const action = await getAdminAction(env, userId);
   if (action?.action !== LOCK_ACTION) {
     return handleSecureMessage(message, env);
   }
 
   return handleVexaLiveLockInput(message, env, action);
 }
+
+function extractReferralPayload(value) {
+  const match = String(value || "").trim().match(/^\/start(?:@\w+)?(?:\s+(.+))?$/i);
+  const payload = String(match?.[1] || "").trim();
+  return parseReferralStartParam(payload) ? payload : "";
+}
+
+async function registerBotReferralStart(message, env, payload) {
+  const userId = message?.from?.id;
+  if (!userId || message?.chat?.type !== "private") return;
+
+  const parsed = parseReferralStartParam(payload);
+  if (!parsed) return;
+
+  const alreadyTracked = await hasTrackedUser(env, userId).catch(() => true);
+  if (alreadyTracked) return;
+
+  const referrerExists = await hasTrackedUser(env, parsed.referrerUserId).catch(() => false);
+  if (!referrerExists) return;
+
+  await registerReferralFromStartParam(env, userId, payload);
+}
+
+async function getInsufficientReferralContext(message, env) {
+  const userId = message?.from?.id;
+  const chatId = message?.chat?.id;
+  const text = String(message?.text || "").trim();
+  if (!userId || !chatId || !text || text.startsWith("/")) return null;
+  if (
+    message?.photo ||
+    message?.audio ||
+    message?.voice ||
+    message?.video ||
+    message?.video_note ||
+    message?.document
+  ) return null;
+
+  const state = await getState(env, userId).catch(() => null);
+  if (!state?.language) return null;
+
+  const adminAction = await getAdminAction(env, userId).catch(() => null);
+  if (adminAction) return null;
+
+  const pending = await getPendingPayment(env, userId).catch(() => null);
+  const pendingId = String(pending?.package_id || "");
+  if (pendingId.startsWith("input") || pendingId.startsWith("custom:")) return null;
+
+  const admin = await isAdmin(env, userId).catch(() => false);
+  if (isLockedVoice(state.voice || "Nora") && !admin) return null;
+
+  if (
+    state.language === "fa" &&
+    !admin &&
+    await isMandatoryFaMembershipEnabled(env).catch(() => false)
+  ) {
+    const member = await isFaChannelMember(env, userId).catch(() => false);
+    if (!member) return null;
+  }
+
+  const cost = Array.from(text).length;
+  const balance = await getBalance(env, userId);
+  if (balance >= cost) return null;
+
+  return {
+    userId,
+    chatId,
+    cost,
+    balance,
+    language: normalizeLang(state.language || message?.from?.language_code || "en"),
+  };
+}
+
+async function enhanceInsufficientCreditsMenu(env, context) {
+  const state = await getState(env, context.userId).catch(() => null);
+  const messageId = Number(state?.menuMessageId || 0);
+  if (!messageId) return;
+
+  const copy = botReferralCopy(context.language);
+  const username = await getBotUsername(env);
+  const startParam = buildReferralStartParam(context.userId, "tts");
+  const inviteUrl = `https://t.me/${username}?start=${encodeURIComponent(startParam)}`;
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(copy.shareText)}`;
+
+  const text = [
+    t(context.language, "notEnough", { needed: context.cost, balance: context.balance }),
+    "",
+    t(context.language, "creditRule"),
+    "",
+    copy.offer,
+  ].join("\n");
+
+  await editMessage(env, context.chatId, messageId, text, {
+    inline_keyboard: [[
+      { text: t(context.language, "buyCredits"), callback_data: "insufficient_buy_credits" },
+      { text: copy.invite, url: shareUrl },
+    ]],
+  });
+}
+
+async function getBotUsername(env) {
+  if (botUsernameCache) return botUsernameCache;
+  const me = await tgJson(env, "getMe");
+  const username = String(me?.username || "").replace(/^@/, "").trim();
+  if (!username) throw new Error("Bot username is unavailable");
+  botUsernameCache = username;
+  return username;
+}
+
+function botReferralCopy(language) {
+  return BOT_REFERRAL_COPY[language] || BOT_REFERRAL_COPY.en;
+}
+
+const BOT_REFERRAL_COPY = Object.freeze({
+  en: {
+    offer: "Buy credits, or invite <b>3 friends</b> and get <b>300 free credits</b>.",
+    invite: "Invite friends",
+    shareText: "🎙 Try Vexa — turn any text into a natural AI voice in seconds 👇",
+  },
+  fa: {
+    offer: "یا کردیت بخر، یا <b>۳ تا از دوستاتو دعوت کن</b> و <b>۳۰۰ کردیت رایگان</b> بگیر.",
+    invite: "دعوت از دوستا",
+    shareText: "🎙 وکسا رو امتحان کن — هر متنی رو تو چند ثانیه به صدای طبیعی AI تبدیل می‌کنه 👇",
+  },
+  ru: {
+    offer: "Купи кредиты или пригласи <b>3 друзей</b> и получи <b>300 бесплатных кредитов</b>.",
+    invite: "Пригласить друзей",
+    shareText: "🎙 Попробуй Vexa — превращай любой текст в естественную AI-озвучку за секунды 👇",
+  },
+  de: {
+    offer: "Kaufe Credits oder lade <b>3 Freunde</b> ein und erhalte <b>300 kostenlose Credits</b>.",
+    invite: "Freunde einladen",
+    shareText: "🎙 Probier Vexa aus — verwandle jeden Text in Sekunden in eine natürliche KI-Stimme 👇",
+  },
+  tr: {
+    offer: "Kredi satın al veya <b>3 arkadaşını davet et</b> ve <b>300 ücretsiz kredi</b> kazan.",
+    invite: "Arkadaş davet et",
+    shareText: "🎙 Vexa'yı dene — istediğin metni saniyeler içinde doğal bir AI sesine dönüştür 👇",
+  },
+  ar: {
+    offer: "اشترِ رصيدًا أو ادعُ <b>3 أصدقاء</b> واحصل على <b>300 رصيد مجاني</b>.",
+    invite: "دعوة أصدقاء",
+    shareText: "🎙 جرّب Vexa — حوّل أي نص إلى صوت AI طبيعي خلال ثوانٍ 👇",
+  },
+  zh: {
+    offer: "购买积分，或邀请 <b>3 位好友</b>，获得 <b>300 免费积分</b>。",
+    invite: "邀请好友",
+    shareText: "🎙 试试 Vexa — 几秒钟把任意文字变成自然的 AI 语音 👇",
+  },
+  ja: {
+    offer: "クレジットを購入するか、<b>友達を3人招待</b>して<b>300無料クレジット</b>を獲得できます。",
+    invite: "友達を招待",
+    shareText: "🎙 Vexaを試してみて — テキストを数秒で自然なAI音声に変換できるよ 👇",
+  },
+  es: {
+    offer: "Compra créditos o invita a <b>3 amigos</b> y recibe <b>300 créditos gratis</b>.",
+    invite: "Invitar amigos",
+    shareText: "🎙 Prueba Vexa — convierte cualquier texto en una voz IA natural en segundos 👇",
+  },
+  hi: {
+    offer: "Credits खरीदो, या <b>3 दोस्तों को invite करो</b> और <b>300 free credits</b> पाओ।",
+    invite: "दोस्तों को invite करें",
+    shareText: "🎙 Vexa try करो — किसी भी text को seconds में natural AI voice में बदलो 👇",
+  },
+});
 
 async function showAccessPanel(query, env) {
   const context = callbackContext(query);
