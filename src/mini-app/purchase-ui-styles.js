@@ -213,6 +213,179 @@ html body .credits-page .tribute-currency-picker button:active{
   transform:scale(.965)!important
 }
 
+/* Bank Card packs: same black glass language as the rest of Buy Credits, kept intentionally quiet. */
+html body .credits-page .credits-tribute-mode{
+  width:100%!important;
+  max-width:540px!important;
+  padding:0 15px calc(env(safe-area-inset-bottom,0px) + 22px)!important
+}
+html body .credits-page .tribute-card-shell{
+  overflow:visible!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important
+}
+html body .credits-page .tribute-card-head{
+  align-items:end!important;
+  margin:0 1px 12px!important;
+  padding:0!important
+}
+html body .credits-page .tribute-card-head span{
+  font-size:8px!important;
+  letter-spacing:.12em!important;
+  color:rgba(255,255,255,.28)!important
+}
+html body .credits-page .tribute-card-head h3{
+  margin-top:5px!important;
+  font-size:19px!important;
+  font-weight:720!important;
+  letter-spacing:-.045em!important
+}
+html body .credits-page .tribute-card-head small{
+  padding-bottom:2px!important;
+  font-size:8px!important;
+  color:rgba(255,255,255,.3)!important
+}
+html body .credits-page .tribute-product-list{
+  display:grid!important;
+  gap:8px!important;
+  perspective:900px
+}
+html body .credits-page .tribute-product{
+  position:relative!important;
+  isolation:isolate!important;
+  overflow:hidden!important;
+  width:100%!important;
+  min-height:68px!important;
+  padding:12px 13px 12px 15px!important;
+  border:1px solid rgba(255,255,255,.075)!important;
+  border-radius:17px!important;
+  background:rgba(255,255,255,.032)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.028),0 8px 24px rgba(0,0,0,.09)!important;
+  -webkit-tap-highlight-color:transparent!important;
+  transform:translateY(8px) scale(.985)!important;
+  opacity:0;
+  animation:tributePackEnter .52s cubic-bezier(.16,1,.3,1) forwards!important;
+  transition:transform .26s cubic-bezier(.16,1,.3,1),background .24s ease,border-color .24s ease,box-shadow .24s ease!important;
+  will-change:transform,opacity
+}
+html body .credits-page .tribute-product:nth-child(1){animation-delay:.02s!important}
+html body .credits-page .tribute-product:nth-child(2){animation-delay:.065s!important}
+html body .credits-page .tribute-product:nth-child(3){animation-delay:.11s!important}
+html body .credits-page .tribute-product:nth-child(4){animation-delay:.155s!important}
+html body .credits-page .tribute-product:nth-child(5){animation-delay:.2s!important}
+html body .credits-page .tribute-product:before{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  inset:-1px;
+  opacity:0;
+  pointer-events:none;
+  background:radial-gradient(120px 56px at 84% 22%,rgba(255,255,255,.075),transparent 72%);
+  transition:opacity .24s ease
+}
+html body .credits-page .tribute-product:after{
+  content:"›";
+  display:grid;
+  place-items:center;
+  width:22px;
+  height:22px;
+  margin-left:1px;
+  flex:0 0 22px;
+  border-radius:50%;
+  color:rgba(255,255,255,.42);
+  background:rgba(255,255,255,.045);
+  font-size:18px;
+  line-height:1;
+  font-weight:420;
+  transition:transform .28s cubic-bezier(.16,1,.3,1),color .22s ease,background .22s ease
+}
+html body .credits-page .tribute-product:hover,
+html body .credits-page .tribute-product:focus-visible{
+  border-color:rgba(255,255,255,.12)!important;
+  background:rgba(255,255,255,.052)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 10px 26px rgba(0,0,0,.13)!important
+}
+html body .credits-page .tribute-product:hover:before,
+html body .credits-page .tribute-product:focus-visible:before{opacity:1}
+html body .credits-page .tribute-product:hover:after,
+html body .credits-page .tribute-product:focus-visible:after{
+  transform:translateX(1.5px);
+  color:rgba(255,255,255,.7);
+  background:rgba(255,255,255,.07)
+}
+html body .credits-page .tribute-product:active{
+  transform:scale(.978)!important;
+  background:rgba(255,255,255,.068)!important;
+  border-color:rgba(255,255,255,.13)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05)!important
+}
+html body .credits-page .tribute-product.loading{
+  opacity:.66!important;
+  transform:scale(.986)!important;
+  pointer-events:none!important
+}
+html body .credits-page .tribute-product-main{
+  min-width:0!important;
+  flex:1 1 auto!important
+}
+html body .credits-page .tribute-product-main strong{
+  font-size:16px!important;
+  line-height:1.05!important;
+  font-weight:735!important;
+  letter-spacing:-.04em!important
+}
+html body .credits-page .tribute-product-main small{
+  margin-top:6px!important;
+  font-size:8.25px!important;
+  line-height:1.2!important;
+  color:rgba(255,255,255,.34)!important
+}
+html body .credits-page .tribute-product-price{
+  min-width:70px!important;
+  margin-left:8px!important;
+  text-align:right!important
+}
+html body .credits-page .tribute-product-price strong{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  min-width:56px!important;
+  height:31px!important;
+  padding:0 10px!important;
+  border:1px solid rgba(255,255,255,.08)!important;
+  border-radius:11px!important;
+  background:rgba(255,255,255,.055)!important;
+  color:#fff!important;
+  font-size:13px!important;
+  font-weight:730!important;
+  letter-spacing:-.025em!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035)!important
+}
+html body .credits-page .tribute-product-price small{
+  margin-top:5px!important;
+  font-size:7px!important;
+  line-height:1!important;
+  letter-spacing:.04em!important;
+  color:rgba(255,255,255,.27)!important
+}
+html body .credits-page .tribute-payment-state{
+  margin-top:10px!important;
+  border:1px solid rgba(255,255,255,.065)!important;
+  background:rgba(255,255,255,.025)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025)!important
+}
+html body .credits-page .tribute-footnote{
+  margin-top:13px!important;
+  color:rgba(255,255,255,.27)!important
+}
+@keyframes tributePackEnter{
+  from{opacity:0;transform:translateY(8px) scale(.985)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+
 @media(prefers-reduced-motion:reduce){
   html body .credits-page .credits-amount-range{transition:none!important}
   html body .credits-page .credits-amount-range::-webkit-slider-runnable-track,
@@ -220,12 +393,20 @@ html body .credits-page .tribute-currency-picker button:active{
   html body .credits-page .credits-amount-range::-moz-range-track,
   html body .credits-page .credits-amount-range::-moz-range-thumb,
   html body .credits-page .tribute-currency-picker:before,
-  html body .credits-page .tribute-currency-picker button{animation:none!important;transition:none!important}
+  html body .credits-page .tribute-currency-picker button,
+  html body .credits-page .tribute-product,
+  html body .credits-page .tribute-product:after{animation:none!important;transition:none!important}
+  html body .credits-page .tribute-product{opacity:1!important;transform:none!important}
 }
 
 @media(max-width:370px){
   html body .credits-page.toman-payment-active .credits-page-head,
   html body .credits-page.tribute-payment-active .credits-page-head{background-position:center center!important;background-size:100% auto!important}
   html body .credits-page .tribute-currency-wrap{width:min(82%,260px)!important}
+  html body .credits-page .credits-tribute-mode{padding-left:12px!important;padding-right:12px!important}
+  html body .credits-page .tribute-product{min-height:64px!important;padding-left:13px!important;padding-right:11px!important}
+  html body .credits-page .tribute-product-main strong{font-size:15px!important}
+  html body .credits-page .tribute-product-price{min-width:64px!important;margin-left:5px!important}
+  html body .credits-page .tribute-product-price strong{min-width:52px!important;padding:0 8px!important}
 }
 `;
