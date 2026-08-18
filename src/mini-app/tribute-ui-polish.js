@@ -16,8 +16,8 @@ html body .credits-page .tribute-product.waiting,html body .credits-page .tribut
 html body .credits-page .tribute-stars-promo-title{display:flex!important;align-items:center!important;gap:7px!important;min-width:0!important}\
 html body .credits-page .tribute-stars-promo-title strong{display:block!important;font-size:16px!important;line-height:1!important;font-weight:770!important;letter-spacing:-.035em!important;white-space:nowrap!important;font-variant-numeric:tabular-nums!important}\
 html body .credits-page .tribute-stars-promo-title strong b{color:rgba(255,255,255,.6)!important;font-weight:700!important}\
-html body .credits-page .tribute-stars-promo-title em{display:inline-flex!important;align-items:center!important;justify-content:center!important;padding:3px 5px!important;border:0!important;border-radius:6px!important;background:#fff!important;box-shadow:0 3px 10px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.72)!important;color:#050505!important;font-size:7px!important;line-height:1!important;font-weight:850!important;font-style:normal!important;letter-spacing:.05em!important;white-space:nowrap!important;-webkit-font-smoothing:antialiased!important}\
-@media(max-width:370px){html body .credits-page .tribute-stars-promo-title strong{font-size:15px!important}html body .credits-page .tribute-stars-promo-title em{font-size:6.5px!important;padding:3px 5px!important}}';
+html body .credits-page .tribute-stars-promo-title em{padding:3px 5px!important;border:0!important;border-radius:6px!important;background:#fff!important;box-shadow:none!important;color:#050505!important;font-size:7px!important;line-height:1!important;font-weight:850!important;font-style:normal!important;letter-spacing:.05em!important;white-space:nowrap!important}\
+@media(max-width:370px){html body .credits-page .tribute-stars-promo-title strong{font-size:15px!important}html body .credits-page .tribute-stars-promo-title em{font-size:7px!important;padding:3px 5px!important}}';
     document.head.appendChild(style);
   }
 
