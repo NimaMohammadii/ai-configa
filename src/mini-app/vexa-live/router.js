@@ -8,7 +8,7 @@ import { handleMiniAppRequest } from "../server.js";
 import { getVexaLiveAccessSettings } from "./access.js";
 
 const LIVE_ROOT = "/mini-app/live";
-const INTEGRATION_VERSION = "20260818-3";
+const INTEGRATION_VERSION = "20260819-2";
 const VOICE_RUNTIME_VERSION = "20260818-1";
 const SCRIBE_MODEL = "scribe_v2";
 
@@ -53,10 +53,12 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   let waveData = null;
   let transcribing = false;
   let liveKeyboardActive = false;
+  let liveKeyboardLocked = false;
   let liveKeyboardHeight = 0;
+  let liveKeyboardViewportHeight = 0;
+  let liveKeyboardRect = null;
   let liveKeyboardDoc = null;
   let liveKeyboardButton = null;
-  let liveKeyboardReleaseTimer = 0;
   let liveKeyboardViewportBound = false;
 
   function requestedSection() {
@@ -122,42 +124,66 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     return workspace;
   }
 
-  function freezeLiveKeyboardLayout(frame, doc) {
-    if (!liveOpen || !frame || !doc) return;
+  function currentLiveViewportHeight() {
+    const viewport = window.visualViewport;
+    const height = Number(viewport && viewport.height || window.innerHeight || 0);
+    return Number.isFinite(height) && height > 0 ? height : 0;
+  }
+
+  function lockLiveKeyboardLayout(frame, doc) {
+    if (!liveOpen || !frame || !doc || liveKeyboardLocked) return;
     const workspace = document.getElementById(WORKSPACE_ID);
     const shell = doc.getElementById("vexaStt");
     if (!workspace || !shell) return;
 
-    const workspaceRect = workspace.getBoundingClientRect();
-    const height = Math.round(workspaceRect.height || frame.getBoundingClientRect().height || 0);
-    if (height < 320) return;
+    const rect = workspace.getBoundingClientRect();
+    const width = Number(rect.width || frame.getBoundingClientRect().width || 0);
+    const height = Number(rect.height || frame.getBoundingClientRect().height || 0);
+    if (!Number.isFinite(width) || width < 1 || !Number.isFinite(height) || height < 320) return;
 
-    liveKeyboardHeight = height;
-    workspace.style.height = String(height) + "px";
+    liveKeyboardLocked = true;
+    liveKeyboardHeight = Math.round(height);
+    liveKeyboardViewportHeight = currentLiveViewportHeight();
+    liveKeyboardRect = {
+      left: Number(rect.left || 0),
+      top: Number(rect.top || 0),
+      width: width,
+      height: height,
+    };
+
+    workspace.style.position = "fixed";
+    workspace.style.left = String(liveKeyboardRect.left) + "px";
+    workspace.style.right = "auto";
+    workspace.style.top = String(liveKeyboardRect.top) + "px";
     workspace.style.bottom = "auto";
-    frame.style.height = String(height) + "px";
-    frame.style.minHeight = String(height) + "px";
-    frame.style.maxHeight = String(height) + "px";
+    workspace.style.width = String(liveKeyboardRect.width) + "px";
+    workspace.style.height = String(liveKeyboardHeight) + "px";
 
-    const nodes = [doc.documentElement, doc.body, doc.querySelector(".live-app"), shell];
-    nodes.forEach(function (node) {
+    frame.style.height = String(liveKeyboardHeight) + "px";
+    frame.style.minHeight = String(liveKeyboardHeight) + "px";
+    frame.style.maxHeight = String(liveKeyboardHeight) + "px";
+
+    [doc.documentElement, doc.body, doc.querySelector(".live-app"), shell].forEach(function (node) {
       if (!node) return;
-      node.style.height = String(height) + "px";
-      node.style.minHeight = String(height) + "px";
-      node.style.maxHeight = String(height) + "px";
+      node.style.height = String(liveKeyboardHeight) + "px";
+      node.style.minHeight = String(liveKeyboardHeight) + "px";
+      node.style.maxHeight = String(liveKeyboardHeight) + "px";
     });
   }
 
   function releaseLiveKeyboardLayout() {
-    if (liveKeyboardReleaseTimer) window.clearTimeout(liveKeyboardReleaseTimer);
-    liveKeyboardReleaseTimer = 0;
     liveKeyboardActive = false;
+    liveKeyboardLocked = false;
 
     const workspace = document.getElementById(WORKSPACE_ID);
     if (workspace) {
+      workspace.style.position = "absolute";
+      workspace.style.left = "0";
+      workspace.style.right = "0";
       workspace.style.top = "50px";
-      workspace.style.height = "";
       workspace.style.bottom = "0";
+      workspace.style.width = "";
+      workspace.style.height = "";
     }
 
     if (liveFrame) {
@@ -180,7 +206,10 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
         node.style.removeProperty("max-height");
       });
     }
+
     liveKeyboardHeight = 0;
+    liveKeyboardViewportHeight = 0;
+    liveKeyboardRect = null;
   }
 
   function visibleKeyboardBottom() {
@@ -194,39 +223,40 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
   }
 
   function syncLiveKeyboardPosition() {
-    if (!liveKeyboardActive || !liveKeyboardDoc || !liveKeyboardButton) return;
-    const workspace = document.getElementById(WORKSPACE_ID);
+    if (!liveKeyboardLocked || !liveKeyboardActive || !liveKeyboardDoc || !liveKeyboardButton) return;
     const shell = liveKeyboardDoc.getElementById("vexaStt");
-    if (!workspace || !shell) return;
+    if (!shell) return;
 
-    const viewport = window.visualViewport;
-    const offsetTop = viewport ? Math.max(0, Number(viewport.offsetTop || 0)) : 0;
-    workspace.style.top = String(50 + offsetTop) + "px";
-
-    const rect = workspace.getBoundingClientRect();
+    const topEdge = liveKeyboardRect ? Number(liveKeyboardRect.top || 0) : 0;
     const visibleBottom = visibleKeyboardBottom();
-    const relativeBottom = visibleBottom > 0 ? visibleBottom - rect.top : liveKeyboardHeight;
+    const relativeBottom = visibleBottom > 0 ? visibleBottom - topEdge : liveKeyboardHeight;
     const maximum = Math.max(10, liveKeyboardHeight - 56);
     const top = Math.max(10, Math.min(maximum, relativeBottom - 56));
     shell.style.setProperty("--vexa-keyboard-top", Math.round(top) + "px");
   }
 
+  function handleLiveKeyboardViewport() {
+    if (!liveKeyboardLocked || !liveKeyboardDoc) return;
+    const textarea = liveKeyboardDoc.getElementById("vexaSttText");
+    const focused = Boolean(textarea && liveKeyboardDoc.activeElement === textarea);
+
+    if (focused) {
+      liveKeyboardActive = true;
+      syncLiveKeyboardPosition();
+      return;
+    }
+
+    liveKeyboardActive = false;
+    const height = currentLiveViewportHeight();
+    const recoveredHeight = Math.max(320, liveKeyboardViewportHeight - 24);
+    if (!liveKeyboardViewportHeight || height >= recoveredHeight) releaseLiveKeyboardLayout();
+  }
+
   function bindLiveKeyboardViewport() {
     if (liveKeyboardViewportBound) return;
     liveKeyboardViewportBound = true;
-    const sync = function () {
-      if (!liveKeyboardActive) return;
-      syncLiveKeyboardPosition();
-    };
-    window.addEventListener("resize", sync, { passive: true });
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", sync, { passive: true });
-      window.visualViewport.addEventListener("scroll", sync, { passive: true });
-    }
-    const tg = telegram();
-    if (tg && tg.onEvent) {
-      try { tg.onEvent("viewportChanged", sync); } catch (error) {}
-    }
+    const viewportSource = window.visualViewport || window;
+    viewportSource.addEventListener("resize", handleLiveKeyboardViewport, { passive: true });
   }
 
   function installLiveKeyboard(frame, doc) {
@@ -240,15 +270,13 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     bindLiveKeyboardViewport();
 
     textarea.addEventListener("pointerdown", function () {
-      if (!liveOpen || liveKeyboardActive) return;
-      freezeLiveKeyboardLayout(frame, doc);
+      if (!liveOpen || liveKeyboardLocked) return;
+      lockLiveKeyboardLayout(frame, doc);
     }, { capture: true });
 
     textarea.addEventListener("focus", function () {
       if (!liveOpen) return;
-      if (liveKeyboardReleaseTimer) window.clearTimeout(liveKeyboardReleaseTimer);
-      liveKeyboardReleaseTimer = 0;
-      if (!liveKeyboardHeight) freezeLiveKeyboardLayout(frame, doc);
+      if (!liveKeyboardLocked) lockLiveKeyboardLayout(frame, doc);
       liveKeyboardActive = true;
       const shell = doc.getElementById("vexaStt");
       if (shell) shell.classList.add("keyboard-open");
@@ -256,11 +284,12 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     });
 
     textarea.addEventListener("blur", function () {
-      if (!liveKeyboardActive) return;
+      liveKeyboardActive = false;
       const shell = doc.getElementById("vexaStt");
-      if (shell) shell.classList.remove("keyboard-open");
-      if (liveKeyboardReleaseTimer) window.clearTimeout(liveKeyboardReleaseTimer);
-      liveKeyboardReleaseTimer = window.setTimeout(releaseLiveKeyboardLayout, 180);
+      if (shell) {
+        shell.classList.remove("keyboard-open");
+        shell.style.removeProperty("--vexa-keyboard-top");
+      }
     });
 
     button.addEventListener("pointerdown", function (event) {
@@ -857,7 +886,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       ensureFrame();
       hideTelegramBackButton();
     } else {
-      if (liveKeyboardActive || liveKeyboardHeight) releaseLiveKeyboardLayout();
+      if (liveKeyboardLocked || liveKeyboardHeight) releaseLiveKeyboardLayout();
       stopEmbeddedRecorder();
     }
   }
