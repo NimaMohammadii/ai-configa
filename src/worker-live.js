@@ -12,7 +12,7 @@ const VOICE_CREDITS_PER_MINUTE = 800;
 const VOICE_SESSION_TTL_MS = 15 * 60 * 1000;
 const VOICE_MAX_SESSION_MS = 10 * 60 * 1000;
 const VOICE_MAX_SETTLE_INTERVAL_MS = 5000;
-const BILLING_VERSION = "20260818-2";
+const BILLING_VERSION = "20260818-3";
 
 let proxyTableReady = null;
 
@@ -258,7 +258,7 @@ function attachVoiceProxy({ server, upstream, env, ctx, sessionId, userId, start
   const closeSocket = (socket, code, reason) => {
     if (!socket) return;
     try {
-      if (socket.readyState === 0 || socket.readyState === 1) socket.close(code, reason);
+      if (socket.readyState !== 3) socket.close(code, reason);
     } catch (error) {}
   };
 
@@ -321,10 +321,12 @@ function attachVoiceProxy({ server, upstream, env, ctx, sessionId, userId, start
     ).bind(chargedCredits, nextStatus, finalize ? 1 : 0, now, sessionId).run().catch(() => null);
 
     if (!finalize && balance <= 0) {
+      await markProxySession(env, sessionId, "insufficient", chargedCredits, true).catch(() => null);
       closeBoth(4002, "Not enough credits");
       return false;
     }
     if (!finalize && elapsedMs >= VOICE_MAX_SESSION_MS) {
+      await markProxySession(env, sessionId, "ended", chargedCredits, true).catch(() => null);
       closeBoth(4000, "Voice session limit reached");
       return false;
     }
@@ -335,9 +337,12 @@ function attachVoiceProxy({ server, upstream, env, ctx, sessionId, userId, start
     settlement = settlement
       .catch(() => false)
       .then(() => settleOnce(finalize, status))
-      .catch((error) => {
+      .catch(async (error) => {
         console.error("Vexa Voice billing settlement failed", error?.stack || error);
-        if (!finalize) closeBoth(1011, "Billing unavailable");
+        if (!finalize) {
+          await markProxySession(env, sessionId, "failed", chargedCredits, true).catch(() => null);
+          closeBoth(1011, "Billing unavailable");
+        }
         return false;
       });
     return settlement;
