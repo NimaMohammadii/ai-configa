@@ -7,6 +7,7 @@ import { getVexaLiveAccessSettings } from "./access.js";
 const ROOT = "/mini-app/live/api/voice-agent";
 const UPSTREAM_PATH = ROOT + "/speech-engine-upstream";
 const SPEECH_ENGINE_NAME = "Vexa Voice V3";
+const SPEECH_ENGINE_AUTH_HEADER = "x-vexa-speech-engine-key";
 const TTS_MODEL = "eleven_v3_conversational";
 const VOICE_NAME = "Laura";
 const VOICE_ID = VOICES[VOICE_NAME];
@@ -94,7 +95,7 @@ function normalizeSpeechLanguage(value) {
   return SPEECH_LANGUAGES.has(base) ? base : "en";
 }
 
-function speechEngineConfig(request, language) {
+function speechEngineConfig(request, language, upstreamAuthToken) {
   const url = new URL(request.url);
   const wsProtocol = url.protocol === "https:" ? "wss:" : "ws:";
   const upstreamUrl = wsProtocol + "//" + url.host + UPSTREAM_PATH;
@@ -103,6 +104,9 @@ function speechEngineConfig(request, language) {
     name: SPEECH_ENGINE_NAME + " " + language,
     speech_engine: {
       ws_url: upstreamUrl,
+      request_headers: {
+        [SPEECH_ENGINE_AUTH_HEADER]: upstreamAuthToken,
+      },
     },
     asr: {
       quality: "high",
@@ -135,8 +139,9 @@ function speechEngineConfig(request, language) {
 }
 
 async function ensureSpeechEngine(request, apiKey, language) {
-  const desired = speechEngineConfig(request, language);
-  const cacheKey = desired.name + "|" + desired.speech_engine.ws_url;
+  const upstreamAuthToken = await speechEngineAuthToken(apiKey);
+  const desired = speechEngineConfig(request, language, upstreamAuthToken);
+  const cacheKey = desired.name + "|" + desired.speech_engine.ws_url + "|" + upstreamAuthToken;
   const cached = SPEECH_ENGINE_CACHE.get(cacheKey);
   if (cached) return cached;
 
@@ -190,6 +195,8 @@ async function ensureSpeechEngine(request, apiKey, language) {
 function speechEngineNeedsUpdate(current, desired) {
   return (
     String(current?.speech_engine?.ws_url || "") !== desired.speech_engine.ws_url ||
+    requestHeaderValue(current?.speech_engine?.request_headers, SPEECH_ENGINE_AUTH_HEADER) !==
+      desired.speech_engine.request_headers[SPEECH_ENGINE_AUTH_HEADER] ||
     String(current?.tts?.model_id || "") !== desired.tts.model_id ||
     String(current?.tts?.voice_id || "") !== desired.tts.voice_id ||
     String(current?.tts?.agent_output_audio_format || "") !== desired.tts.agent_output_audio_format ||
@@ -235,8 +242,18 @@ async function handleSpeechEngineUpstream(request, env) {
 
   const apiKey = await selectedElevenApiKey(env);
   if (!apiKey) return new Response("Unauthorized", { status: 401 });
-  const token = String(request.headers.get("X-ElevenLabs-Speech-Engine-Authorization") || "");
-  if (!(await verifySpeechEngineJwt(token, apiKey))) {
+
+  const sharedToken = String(request.headers.get(SPEECH_ENGINE_AUTH_HEADER) || "").trim();
+  const expectedSharedToken = await speechEngineAuthToken(apiKey);
+  const sharedTokenValid = constantTimeEqual(sharedToken, expectedSharedToken);
+  const jwtToken = String(request.headers.get("X-ElevenLabs-Speech-Engine-Authorization") || "");
+  const jwtValid = sharedTokenValid ? false : await verifySpeechEngineJwt(jwtToken, apiKey);
+
+  if (!sharedTokenValid && !jwtValid) {
+    console.error("Vexa Speech Engine upstream authentication failed", {
+      hasSharedToken: Boolean(sharedToken),
+      hasJwt: Boolean(jwtToken),
+    });
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -495,6 +512,35 @@ function cleanText(value, max) {
   return Array.from(String(value || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim())
     .slice(0, max)
     .join("");
+}
+
+async function speechEngineAuthToken(apiKey) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode("vexa-speech-engine:" + String(apiKey || "")),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function requestHeaderValue(headers, name) {
+  const target = String(name || "").toLowerCase();
+  for (const [key, value] of Object.entries(headers || {})) {
+    if (String(key).toLowerCase() === target) return String(value || "");
+  }
+  return "";
+}
+
+function constantTimeEqual(left, right) {
+  const a = String(left || "");
+  const b = String(right || "");
+  if (a.length !== b.length || !a.length) return false;
+  let difference = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    difference |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return difference === 0;
 }
 
 async function verifySpeechEngineJwt(token, apiKey) {
