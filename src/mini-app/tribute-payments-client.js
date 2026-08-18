@@ -16,6 +16,18 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   var PENDING_KEY='vexa_tribute_pending_v3';
   var SUCCESS_KEY='vexa_tribute_success_v2';
 
+  var CARD_CATALOG=[
+    {id:'card_6000',credits:6000,bonus:0,discountPercent:0,usdPer1000:0.34,prices:{usd:{amountMinor:200},eur:{amountMinor:199},rub:{amountMinor:17000}}},
+    {id:'card_40000',credits:40000,bonus:0,discountPercent:30,prices:{usd:{amountMinor:700,originalAmountMinor:1000},eur:{amountMinor:699,originalAmountMinor:999},rub:{amountMinor:59500,originalAmountMinor:85000}}},
+    {id:'card_120000',credits:120000,bonus:10000,discountPercent:0,prices:{usd:{amountMinor:1900},eur:{amountMinor:1899},rub:{amountMinor:161500}}},
+    {id:'card_350000',credits:350000,bonus:0,discountPercent:0,usdPer1000:0.14,prices:{usd:{amountMinor:4900},eur:{amountMinor:4899},rub:{amountMinor:416500}}}
+  ];
+  var CURRENCIES=[
+    {code:'usd',label:'USD',symbol:'$'},
+    {code:'eur',label:'EUR',symbol:'€'},
+    {code:'rub',label:'RUB',symbol:'₽'}
+  ];
+
   function q(id){return document.getElementById(id)}
   function number(value){return Math.max(0,Math.floor(Number(value)||0)).toLocaleString('en-US')}
   function minutes(credits){return (Math.max(0,Number(credits)||0)/1000).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:1})}
@@ -27,14 +39,43 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   function storageRemove(key){try{sessionStorage.removeItem(key)}catch(error){}}
 
   function currencyInfo(code){
-    var list=config&&Array.isArray(config.currencies)?config.currencies:[];
     var clean=String(code||selectedCurrency||'usd').toLowerCase();
-    return list.find(function(item){return item&&String(item.code||'').toLowerCase()===clean})||list[0]||{code:'usd',label:'USD',symbol:'$'};
+    return CURRENCIES.find(function(item){return item.code===clean})||CURRENCIES[0];
   }
   function money(minor,code){
     var info=currencyInfo(code);var amount=Math.max(0,Number(minor)||0)/100;
-    var formatted=amount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    var digits=String(code||'').toLowerCase()==='rub'?0:2;
+    var formatted=amount.toLocaleString('en-US',{minimumFractionDigits:digits,maximumFractionDigits:digits});
     return String(info.symbol||'')+formatted;
+  }
+  function liveProducts(){return config&&Array.isArray(config.products)?config.products:[]}
+  function liveMatch(pack,currency){
+    var total=Number(pack.credits||0)+Number(pack.bonus||0);
+    var base=Number(pack.credits||0);
+    return liveProducts().find(function(item){
+      if(!item||String(item.currency||'').toLowerCase()!==currency)return false;
+      var credits=Number(item.credits||0);
+      return credits===total||credits===base;
+    })||null;
+  }
+  function catalogProducts(currency){
+    return CARD_CATALOG.map(function(pack){
+      var price=pack.prices&&pack.prices[currency];if(!price)return null;
+      var live=liveMatch(pack,currency);
+      return {
+        catalogId:pack.id,
+        productId:live&&live.productId?live.productId:'',
+        credits:Number(pack.credits||0),
+        bonus:Number(pack.bonus||0),
+        totalCredits:Number(pack.credits||0)+Number(pack.bonus||0),
+        amountMinor:Number(price.amountMinor||0),
+        originalAmountMinor:price.originalAmountMinor==null?null:Number(price.originalAmountMinor||0),
+        currency:currency,
+        discountPercent:Number(pack.discountPercent||0),
+        usdPer1000:pack.usdPer1000==null?null:Number(pack.usdPer1000),
+        checkoutReady:!!(live&&live.productId)
+      };
+    }).filter(Boolean).slice(0,MAX_CARD_PACKS);
   }
 
   function installUi(){
@@ -57,7 +98,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
       mode.id='creditsTributeMode';mode.className='credits-payment-mode credits-tribute-mode';mode.setAttribute('aria-hidden','true');
       mode.innerHTML='<section class="tribute-card-shell">'+
         '<div class="tribute-card-head"><div><span>CARD CHECKOUT</span><h3>Choose a credit pack</h3></div><small>One-time payment</small></div>'+
-        '<div id="tributeCurrencyPicker" class="tribute-currency-picker" hidden></div>'+
+        '<div id="tributeCurrencyPicker" class="tribute-currency-picker"></div>'+
         '<div id="tributeProductList" class="tribute-product-list"></div>'+
       '</section><p class="tribute-footnote"><span>●</span> Secure card checkout</p>';
       starsMode.insertAdjacentElement('afterend',mode);
@@ -76,9 +117,8 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     var card=switcher.querySelector('[data-payment-mode="card"]');
     var toman=switcher.querySelector('[data-payment-mode="toman"]');
     var persian=!!(config&&String(config.language||'').toLowerCase()==='fa');
-    var cardConfigured=!!(config&&config.configured);
     if(stars)stars.hidden=false;
-    if(card){card.hidden=!cardConfigured;card.title=cardConfigured&&!config.available?String(config.error||'Card checkout is not ready yet'):''}
+    if(card){card.hidden=false;card.title=''}
     if(toman)toman.hidden=!persian;
     var visible=paymentButtons().filter(function(button){return !button.hidden});
     var show=visible.length>1;
@@ -91,9 +131,8 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function applyConfig(data){
     config=data||{};
-    selectedCurrency=String(config.defaultCurrency||((config.currencies&&config.currencies[0]&&config.currencies[0].code)||'usd')).toLowerCase();
-    syncPaymentSwitcher();
-    renderCurrencies();renderProducts();
+    selectedCurrency='usd';
+    syncPaymentSwitcher();renderCurrencies();renderProducts();
   }
 
   function syncSwitchIndicator(){
@@ -106,43 +145,64 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   }
 
   function renderCurrencies(){
-    var picker=q('tributeCurrencyPicker');if(!picker||!config)return;var currencies=Array.isArray(config.currencies)?config.currencies:[];
-    picker.hidden=currencies.length<=1;picker.style.setProperty('--tribute-currency-count',String(Math.max(1,currencies.length)));
-    picker.innerHTML=currencies.map(function(item){var code=String(item.code||'').toLowerCase();var active=code===selectedCurrency;return '<button type="button" data-action="set-tribute-currency" data-currency="'+code+'" class="'+(active?'active':'')+'">'+String(item.label||code).toUpperCase()+'</button>'}).join('');
-    var index=Math.max(0,currencies.findIndex(function(item){return String(item.code||'').toLowerCase()===selectedCurrency}));picker.style.setProperty('--tribute-currency-shift',String(index*100)+'%');
+    var picker=q('tributeCurrencyPicker');if(!picker)return;
+    picker.hidden=false;picker.style.setProperty('--tribute-currency-count',String(CURRENCIES.length));
+    picker.innerHTML=CURRENCIES.map(function(item){var active=item.code===selectedCurrency;return '<button type="button" data-action="set-tribute-currency" data-currency="'+item.code+'" class="'+(active?'active':'')+'">'+item.label+'</button>'}).join('');
+    var index=Math.max(0,CURRENCIES.findIndex(function(item){return item.code===selectedCurrency}));picker.style.setProperty('--tribute-currency-shift',String(index*100)+'%');
   }
 
   function setCurrency(code){selectedCurrency=String(code||'usd').toLowerCase();renderCurrencies();renderProducts();haptic('light')}
 
   function stateForProduct(product){
     var productId=String(product&&product.productId||'');
+    if(!productId)return null;
     if(transientState&&String(transientState.productId||'')===productId)return transientState;
     var pending=storageGet(PENDING_KEY);
     if(pending&&String(pending.productId||'')===productId)return{productId:productId,kind:'waiting',copy:'Waiting for payment · tap to reopen'};
     return null;
   }
 
+  function defaultMeta(product){
+    var parts=[];
+    if(Number(product.bonus||0)>0)parts.push('+'+number(product.bonus)+' credits gift');
+    if(Number(product.discountPercent||0)>0)parts.push(number(product.discountPercent)+'% OFF');
+    if(product.usdPer1000!=null)parts.push('$'+Number(product.usdPer1000).toFixed(2)+' / 1K credits');
+    if(!parts.length)parts.push(number(product.totalCredits||product.credits)+' credits total');
+    if(!product.checkoutReady)parts.push('payment link coming soon');
+    return parts.join(' · ');
+  }
+
   function stateMarkup(state,product){
-    if(!state)return '<span>'+minutes(product.credits)+' min voice · added automatically</span>';
+    if(!state)return '<span>'+defaultMeta(product)+'</span>';
     if(state.kind==='loading')return '<span class="tribute-inline-spinner" aria-hidden="true"></span><span>'+String(state.copy||'Preparing checkout')+'</span>';
     if(state.kind==='success')return '<span class="tribute-inline-check" aria-hidden="true">✓</span><span>'+String(state.copy||'Credits added')+'</span>';
     if(state.kind==='failed')return '<span class="tribute-inline-alert" aria-hidden="true">!</span><span>'+String(state.copy||'Payment failed · tap to retry')+'</span>';
     return '<span class="tribute-inline-dot" aria-hidden="true"></span><span>'+String(state.copy||'Waiting for payment · tap to reopen')+'</span>';
   }
 
+  function priceMarkup(product){
+    var current=money(product.amountMinor,product.currency);
+    var old=product.originalAmountMinor!=null?money(product.originalAmountMinor,product.currency):'';
+    return '<strong>'+(old?'<s>'+old+'</s> ':'')+current+'</strong><small>'+String(product.currency||'').toUpperCase()+(product.discountPercent?' · '+number(product.discountPercent)+'% OFF':'')+'</small>';
+  }
+
+  function creditTitle(product){
+    return Number(product.bonus||0)>0
+      ? number(product.credits)+' + '+number(product.bonus)+' 🎁 credits'
+      : number(product.credits)+' credits';
+  }
+
   function renderProducts(){
     var list=q('tributeProductList');if(!list)return;
-    if(!config){list.innerHTML='';return}
-    var products=Array.isArray(config.products)?config.products.filter(function(item){return item&&String(item.currency||'').toLowerCase()===selectedCurrency}).slice(0,MAX_CARD_PACKS):[];
-    if(!products.length){list.innerHTML='<div class="tribute-empty">'+String(config.error||'No card pack is available in this currency yet.')+'</div>';return}
+    var products=catalogProducts(selectedCurrency);
     list.innerHTML=products.map(function(product){
-      var state=stateForProduct(product);var kind=state&&String(state.kind||'');var pending=kind==='waiting';var loading=kind==='loading';var action=pending?'open-tribute-checkout':'buy-tribute-product';
-      return '<button class="tribute-product'+(kind?' '+kind:'')+'" type="button" data-action="'+action+'" data-product-id="'+String(product.productId||'')+'"'+(loading?' disabled':'')+'><span class="tribute-product-main"><strong>'+number(product.credits)+' credits</strong><small class="tribute-product-meta">'+stateMarkup(state,product)+'</small></span><span class="tribute-product-price"><strong>'+money(product.amountMinor,product.currency)+'</strong><small>'+String(product.currency||'').toUpperCase()+' · card</small></span></button>';
+      var state=stateForProduct(product);var kind=state&&String(state.kind||'');var pending=kind==='waiting';var loading=kind==='loading';
+      var action=pending?'open-tribute-checkout':(product.checkoutReady?'buy-tribute-product':'catalog-tribute-product');
+      return '<button class="tribute-product'+(kind?' '+kind:'')+'" type="button" data-action="'+action+'" data-product-id="'+String(product.productId||'')+'" data-catalog-id="'+String(product.catalogId||'')+'"'+(loading?' disabled':'')+'><span class="tribute-product-main"><strong>'+creditTitle(product)+'</strong><small class="tribute-product-meta">'+stateMarkup(state,product)+'</small></span><span class="tribute-product-price">'+priceMarkup(product)+'</span></button>';
     }).join('');
   }
 
   function activateCardMode(){
-    if(!config||!config.configured)return toast('Card payment is temporarily unavailable');
     cardModeActive=true;
     var page=q('creditsPage'),stars=q('creditsStarsMode'),toman=q('creditsTomanMode'),tribute=q('creditsTributeMode'),switcher=q('creditsPaymentSwitch');
     if(page){page.classList.remove('toman-payment-active');page.classList.add('tribute-payment-active')}if(stars)stars.classList.remove('active');if(toman){toman.classList.remove('active');toman.setAttribute('aria-hidden','true')}if(tribute){tribute.classList.add('active');tribute.setAttribute('aria-hidden','false')}if(switcher)switcher.setAttribute('data-mode','card');
@@ -167,6 +227,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   }
 
   async function startCardPayment(productId){
+    if(!productId)return toast('Payment link coming soon');
     if(cardBusy)return;cardBusy=true;transientState={productId:productId,kind:'loading',copy:'Preparing checkout'};renderProducts();
     try{
       var data=await api('/mini-app/api/tribute-order',{productId:productId});
@@ -203,6 +264,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     if(action==='set-credit-payment'&&mode==='card'){event.preventDefault();event.stopImmediatePropagation();activateCardMode();return}
     if(action==='set-credit-payment'&&(mode==='stars'||mode==='toman')){deactivateCardMode(mode);return}
     if(action==='set-tribute-currency'){event.preventDefault();event.stopImmediatePropagation();setCurrency(button.getAttribute('data-currency')||'usd');return}
+    if(action==='catalog-tribute-product'){event.preventDefault();event.stopImmediatePropagation();haptic('light');toast('Payment link coming soon');return}
     if(action==='buy-tribute-product'){event.preventDefault();event.stopImmediatePropagation();startCardPayment(button.getAttribute('data-product-id')||'');return}
     if(action==='open-tribute-checkout'){event.preventDefault();event.stopImmediatePropagation();openPendingCheckout();return}
   },true);
@@ -212,12 +274,9 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   function boot(attempt){
     if(!installUi()){if(attempt<30)setTimeout(function(){boot(attempt+1)},80);return}
     api('/mini-app/api/tribute-config',{}).then(function(data){
-      applyConfig(data);
-      setTimeout(syncPaymentSwitcher,850);
-      restoreSuccessAfterReload();
-      if(storageGet(PENDING_KEY))setTimeout(function(){checkPending(false)},1100)
+      applyConfig(data);setTimeout(syncPaymentSwitcher,850);restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(function(){checkPending(false)},1100)
     }).catch(function(){
-      var card=q('creditsCardTab');if(card)card.hidden=true;
+      applyConfig({configured:false,available:false,products:[],currencies:CURRENCIES});setTimeout(syncPaymentSwitcher,250)
     })
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){boot(0)},{once:true});else boot(0);
