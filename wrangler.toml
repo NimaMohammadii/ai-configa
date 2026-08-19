@@ -35,7 +35,7 @@ class_name = "AiCodingWorkflow"
 # directly through yt-dlp without storing the full media on disk.
 [[containers]]
 class_name = "VexaMediaContainerV3"
-image = "./containers/vexa-media/Dockerfile"
+image = "docker.io/denoland/deno:debian-2.9.4"
 max_instances = 3
 instance_type = "lite"
 
