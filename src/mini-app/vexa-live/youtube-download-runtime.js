@@ -35,7 +35,7 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
     const status = panel && panel.querySelector(".vexa-youtube-status");
     if (button) {
       button.disabled = Boolean(busy);
-      button.textContent = busy ? "Checking…" : "Download";
+      button.textContent = busy ? "Sending…" : "Send";
     }
     if (input) input.disabled = Boolean(busy);
     if (status) {
@@ -45,34 +45,7 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
     }
   }
 
-  function fallbackDownload(doc, absoluteUrl, fileName) {
-    const link = doc.createElement("a");
-    link.href = absoluteUrl;
-    link.download = fileName || "Vexa-YouTube-video.mp4";
-    link.rel = "noopener";
-    link.style.display = "none";
-    doc.body.appendChild(link);
-    link.click();
-    window.setTimeout(function () { link.remove(); }, 3000);
-  }
-
-  function requestDownload(doc, downloadUrl, fileName) {
-    const absoluteUrl = new URL(String(downloadUrl), window.location.origin).href;
-    const safeName = String(fileName || "Vexa-YouTube-video.mp4");
-    const tg = telegram();
-    if (tg && typeof tg.downloadFile === "function") {
-      try {
-        tg.downloadFile({
-          url: absoluteUrl,
-          file_name: safeName,
-        }, function () {});
-        return;
-      } catch (error) {}
-    }
-    fallbackDownload(doc, absoluteUrl, safeName);
-  }
-
-  async function beginDownload(panel) {
+  async function beginSend(panel) {
     if (!panel || panel.dataset.busy === "1") return;
     const input = panel.querySelector("input");
     const value = String(input && input.value || "").trim();
@@ -82,7 +55,7 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
     }
 
     panel.dataset.busy = "1";
-    setPanelState(panel, true, "Checking video stream…", false);
+    setPanelState(panel, true, "Preparing video for your chat…", false);
     try {
       const response = await fetch(PREPARE_URL, {
         method: "POST",
@@ -91,15 +64,14 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
         body: JSON.stringify({ initData: telegramInitData(), url: value }),
       });
       const data = await response.json().catch(function () { return {}; });
-      if (!response.ok || !data.downloadUrl) {
-        throw new Error(String(data.error || "Could not prepare this video"));
+      if (!response.ok || !data.sent) {
+        throw new Error(String(data.error || "Could not send this video"));
       }
 
-      setPanelState(panel, false, "MP4 ready", false);
-      requestDownload(panel.ownerDocument, data.downloadUrl, data.fileName);
+      setPanelState(panel, false, "Sent to your bot chat", false);
       try { telegram()?.HapticFeedback?.notificationOccurred?.("success"); } catch (error) {}
     } catch (error) {
-      setPanelState(panel, false, String(error && error.message || "Download failed"), true);
+      setPanelState(panel, false, String(error && error.message || "Could not send this video"), true);
       try { telegram()?.HapticFeedback?.notificationOccurred?.("error"); } catch (ignore) {}
     } finally {
       panel.dataset.busy = "0";
@@ -122,7 +94,7 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
         ".vexa-youtube-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center}" +
         ".vexa-youtube-input{width:100%;height:40px;border:1px solid rgba(255,255,255,.08);border-radius:11px;outline:0;background:#0c0c0d;color:#fff;padding:0 11px;font:500 12px/1.2 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;caret-color:#fff}" +
         ".vexa-youtube-input::placeholder{color:rgba(255,255,255,.26)}" +
-        ".vexa-youtube-button{height:40px;min-width:86px;border:0;border-radius:11px;padding:0 13px;background:#fff;color:#050505;font:760 11.5px/1 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;transition:transform .16s ease,opacity .16s ease}" +
+        ".vexa-youtube-button{height:40px;min-width:76px;border:0;border-radius:11px;padding:0 13px;background:#fff;color:#050505;font:760 11.5px/1 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;transition:transform .16s ease,opacity .16s ease}" +
         ".vexa-youtube-button:active{transform:scale(.96)}.vexa-youtube-button:disabled{opacity:.5}" +
         ".vexa-youtube-status{height:0;margin:0 3px;color:rgba(255,255,255,.42);font:600 8.5px/1.2 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;opacity:0;overflow:hidden;transition:height .18s ease,margin .18s ease,opacity .18s ease}" +
         ".vexa-youtube-status.show{height:12px;margin-top:6px;opacity:1}.vexa-youtube-status.error{color:rgba(255,180,190,.74)}";
@@ -136,7 +108,7 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
     panel.innerHTML =
       '<div class="vexa-youtube-row">' +
         '<input class="vexa-youtube-input" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste YouTube link" aria-label="YouTube link">' +
-        '<button class="vexa-youtube-button" type="button">Download</button>' +
+        '<button class="vexa-youtube-button" type="button">Send</button>' +
       '</div>' +
       '<div class="vexa-youtube-status" role="status" aria-live="polite"></div>';
 
@@ -146,11 +118,11 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
 
     const input = panel.querySelector("input");
     const button = panel.querySelector("button");
-    button?.addEventListener("click", function () { beginDownload(panel); });
+    button?.addEventListener("click", function () { beginSend(panel); });
     input?.addEventListener("keydown", function (event) {
       if (event.key !== "Enter") return;
       event.preventDefault();
-      beginDownload(panel);
+      beginSend(panel);
     });
     return true;
   }
