@@ -144,6 +144,18 @@ export const VOICE_INTRO_REFERRAL_UI_PATCH = String.raw`
       applyVoiceCopy(sheet,card);
     }
 
+    function syncRewardWheelPlacement(){
+      var wheel=document.getElementById('wheelOpenButton');
+      var liveButton=document.getElementById('vexaLiveOpen');
+      var creditsHead=document.querySelector('#creditsPage .credits-page-head');
+      if(!wheel||!liveButton||!creditsHead||wheel.parentElement===creditsHead)return;
+      creditsHead.appendChild(wheel);
+      wheel.style.position='absolute';
+      wheel.style.right='18px';
+      wheel.style.bottom='18px';
+      wheel.style.zIndex='3';
+    }
+
     function installLiveFramePolish(){
       var frame=document.getElementById('vexaLiveInlineFrame');
       if(!frame)return;
@@ -172,9 +184,10 @@ export const VOICE_INTRO_REFERRAL_UI_PATCH = String.raw`
 
     installVoiceReferralCardStyles();
     if(document.body){
-      new MutationObserver(function(){syncVoiceReferralCard();installLiveFramePolish()}).observe(document.body,{childList:true,subtree:true});
+      new MutationObserver(function(){syncVoiceReferralCard();installLiveFramePolish();syncRewardWheelPlacement()}).observe(document.body,{childList:true,subtree:true});
       syncVoiceReferralCard();
       installLiveFramePolish();
+      syncRewardWheelPlacement();
     }
   })();
 `;
