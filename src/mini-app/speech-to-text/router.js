@@ -59,11 +59,13 @@ async function relabelSpeechToTextResponse(response) {
   } else {
     source = source
       .replace('const BUTTON_ID = "vexaLiveOpen";', 'const BUTTON_ID = "speechToTextOpen";')
+      .replace('const WORKSPACE_ID = "vexaLiveWorkspace";', 'const WORKSPACE_ID = "speechToTextWorkspace";')
       .replaceAll("Open Vexa Live speech to text", "Open Speech to Text")
       .replace(
         'if (button && requestedSection() === "live") setLiveOpen(true);',
         'if (button && (requestedSection() === "stt" || requestedSection() === "speech-to-text")) setLiveOpen(true);'
       )
+      .replace('frame.src = "/mini-app/live";', 'frame.src = "/mini-app/speech-to-text";')
       .replace('frame.title = "Vexa Live";', 'frame.title = "Speech to Text";')
       .replace('frame.setAttribute("aria-label", "Vexa Live speech to text");', 'frame.setAttribute("aria-label", "Speech to Text");');
   }
