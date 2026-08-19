@@ -32,12 +32,12 @@ binding = "AI_CODING_WORKFLOW"
 class_name = "AiCodingWorkflow"
 
 # Vexa media container. Pinned image includes yt-dlp 2026.07.04, Deno and FFmpeg.
-# The MVP streams the best single-file video with audio and does not persist media.
+# Basic is used for headroom during YouTube JS challenge solving; idle instances sleep quickly.
 [[containers]]
 class_name = "VexaMediaContainerV3"
 image = "docker.io/friedrichrehren/yt-dlp:2026.07.04"
 max_instances = 3
-instance_type = "lite"
+instance_type = "basic"
 
 [[durable_objects.bindings]]
 name = "VEXA_MEDIA"
