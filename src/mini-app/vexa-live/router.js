@@ -1,7 +1,7 @@
 import { handleMiniAppRequest } from "../server.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
-const INTEGRATION_VERSION = "20260819-1";
+const INTEGRATION_VERSION = "20260819-2";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -38,10 +38,14 @@ const VEXA_LIVE_SHELL_HTML = `<!doctype html>
     .vexa-live-video{display:block;width:100%;height:100%;max-height:100%;object-fit:contain;background:#000}
     .vexa-live-meta{flex:0 0 auto;min-height:42px;padding:9px 11px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.025)}
     .vexa-live-video-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,.68);font-size:10.5px;font-weight:680}
-    .vexa-live-ai-badge{flex:0 0 auto;height:22px;padding:0 8px;border-radius:999px;display:flex;align-items:center;color:rgba(255,255,255,.48);background:rgba(255,255,255,.055);font-size:8.5px;font-weight:720;white-space:nowrap}
+    .vexa-live-actions{flex:0 0 auto;display:flex;align-items:center;gap:6px}
+    .vexa-live-ai-badge{height:22px;padding:0 8px;border-radius:999px;display:flex;align-items:center;color:rgba(255,255,255,.48);background:rgba(255,255,255,.055);font-size:8.5px;font-weight:720;white-space:nowrap}
+    .vexa-live-download{height:26px;padding:0 9px;border:0;border-radius:9px;display:none;align-items:center;justify-content:center;text-decoration:none;color:#050505;background:#fff;font-size:9px;font-weight:820;white-space:nowrap;box-shadow:inset 0 -1px 0 rgba(0,0,0,.18)}
+    .vexa-live-download.show{display:flex}
+    .vexa-live-download:active{transform:scale(.96)}
     .vexa-live-empty{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:rgba(255,255,255,.22);font-size:11px;font-weight:620;line-height:1.5;pointer-events:none}
     @media(max-height:680px){.vexa-live-head{display:none}.vexa-live-media{padding-top:8px;gap:9px}}
-    @media(prefers-reduced-motion:reduce){.vexa-live-stage,.vexa-live-load,.vexa-live-status{transition:none!important}}
+    @media(prefers-reduced-motion:reduce){.vexa-live-stage,.vexa-live-load,.vexa-live-status,.vexa-live-download{transition:none!important}}
   </style>
 </head>
 <body>
@@ -60,12 +64,15 @@ const VEXA_LIVE_SHELL_HTML = `<!doctype html>
     </section>
     <section id="vexaLiveStage" class="vexa-live-stage" aria-label="Video player">
       <div class="vexa-live-video-wrap">
-        <video id="vexaLiveVideo" class="vexa-live-video" controls playsinline preload="metadata"></video>
+        <video id="vexaLiveVideo" class="vexa-live-video" controls playsinline preload="auto"></video>
         <div id="vexaLiveEmpty" class="vexa-live-empty">Your video will appear here.</div>
       </div>
       <div class="vexa-live-meta">
         <div id="vexaLiveVideoTitle" class="vexa-live-video-title">YouTube video</div>
-        <div class="vexa-live-ai-badge">AI subtitles · next</div>
+        <div class="vexa-live-actions">
+          <div class="vexa-live-ai-badge">AI subtitles · next</div>
+          <a id="vexaLiveDownload" class="vexa-live-download" href="#" download>Download</a>
+        </div>
       </div>
     </section>
   </main>
@@ -81,7 +88,6 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   const PREPARE_URL = "/mini-app/live/api/youtube-download/prepare";
   let mediaOpen = false;
   let mediaFrame = null;
-  let mediaObjectUrl = "";
   let speechButtonBound = false;
 
   function telegram() {
@@ -186,6 +192,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     doc.documentElement.dataset.vexaLiveBound = "1";
     const input = doc.getElementById("vexaLiveYoutubeUrl");
     const button = doc.getElementById("vexaLiveLoad");
+    const download = doc.getElementById("vexaLiveDownload");
     if (!input || !button) return;
     button.addEventListener("click", function () { openYoutubeVideo(doc); });
     input.addEventListener("keydown", function (event) {
@@ -193,6 +200,11 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       event.preventDefault();
       openYoutubeVideo(doc);
     });
+    if (download) {
+      download.addEventListener("click", function () {
+        haptic("medium");
+      });
+    }
   }
 
   function validYoutubeUrl(value) {
@@ -224,6 +236,31 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     }
   }
 
+  function playbackUrl(downloadUrl) {
+    const url = new URL(String(downloadUrl || ""), window.location.origin);
+    url.searchParams.set("inline", "1");
+    return url.href;
+  }
+
+  function bindVideoState(doc, video) {
+    video.addEventListener("canplay", function () {
+      setFrameState(doc, false, "Ready", false);
+    }, { once: true });
+    video.addEventListener("playing", function () {
+      setFrameState(doc, false, "", false);
+    });
+    video.addEventListener("waiting", function () {
+      setFrameState(doc, false, "Buffering…", false);
+    });
+    video.addEventListener("error", function () {
+      const mediaError = video.error;
+      const message = mediaError && mediaError.code
+        ? "Could not play this YouTube stream"
+        : "Video playback failed";
+      setFrameState(doc, false, message, true);
+    }, { once: true });
+  }
+
   async function openYoutubeVideo(doc) {
     const input = doc && doc.getElementById("vexaLiveYoutubeUrl");
     const value = String(input && input.value || "").trim();
@@ -232,7 +269,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       return;
     }
 
-    setFrameState(doc, true, "Preparing YouTube video…", false);
+    setFrameState(doc, true, "Preparing video…", false);
     haptic("light");
     try {
       const preparedResponse = await fetch(PREPARE_URL, {
@@ -246,37 +283,31 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
         throw new Error(String(prepared.error || "Could not prepare this video"));
       }
 
-      setFrameState(doc, true, "Loading video into Vexa…", false);
-      const mediaResponse = await fetch(new URL(String(prepared.downloadUrl), window.location.origin).href, {
-        method: "GET",
-        headers: { "accept": "video/mp4" },
-        cache: "no-store",
-      });
-      if (!mediaResponse.ok) {
-        const problem = await mediaResponse.json().catch(function () { return {}; });
-        throw new Error(String(problem.error || "Could not load this video"));
-      }
-      const type = String(mediaResponse.headers.get("content-type") || "").toLowerCase();
-      if (!type.startsWith("video/mp4")) throw new Error("YouTube did not return an MP4 video");
-
-      const blob = await mediaResponse.blob();
-      if (!blob.size) throw new Error("YouTube returned an empty video");
-      if (mediaObjectUrl) {
-        try { URL.revokeObjectURL(mediaObjectUrl); } catch (error) {}
-      }
-      mediaObjectUrl = URL.createObjectURL(blob);
-
       const video = doc.getElementById("vexaLiveVideo");
       const stage = doc.getElementById("vexaLiveStage");
       const empty = doc.getElementById("vexaLiveEmpty");
       const title = doc.getElementById("vexaLiveVideoTitle");
+      const download = doc.getElementById("vexaLiveDownload");
       if (!video || !stage) throw new Error("Vexa video player is unavailable");
-      video.src = mediaObjectUrl;
+
+      try { video.pause(); } catch (error) {}
+      video.removeAttribute("src");
       video.load();
+      bindVideoState(doc, video);
+
+      const downloadHref = new URL(String(prepared.downloadUrl), window.location.origin).href;
+      video.src = playbackUrl(prepared.downloadUrl);
       stage.classList.add("show");
       if (empty) empty.style.display = "none";
       if (title) title.textContent = String(prepared.title || "YouTube video");
-      setFrameState(doc, false, "Ready", false);
+      if (download) {
+        download.href = downloadHref;
+        download.setAttribute("download", String(prepared.fileName || "Vexa-YouTube-video.mp4"));
+        download.classList.add("show");
+      }
+
+      setFrameState(doc, false, "Buffering…", false);
+      video.load();
       try { await video.play(); } catch (error) {}
       haptic("medium");
     } catch (error) {
