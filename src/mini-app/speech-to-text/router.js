@@ -35,8 +35,7 @@ export async function handleSpeechToTextRequest(request, env) {
 }
 
 export async function handleMiniAppWithSpeechToText(request, env) {
-  const response = await handleLegacyMiniAppWithSpeechToText(request, env);
-  return response;
+  return handleLegacyMiniAppWithSpeechToText(request, env);
 }
 
 function rewriteSpeechRequestToLegacy(request) {
@@ -59,6 +58,7 @@ async function relabelSpeechToTextResponse(response) {
       .replace('aria-label="Vexa Live speech to text"', 'aria-label="Speech to Text"');
   } else {
     source = source
+      .replace('const BUTTON_ID = "vexaLiveOpen";', 'const BUTTON_ID = "speechToTextOpen";')
       .replaceAll("Open Vexa Live speech to text", "Open Speech to Text")
       .replace(
         'if (button && requestedSection() === "live") setLiveOpen(true);',
