@@ -56,23 +56,17 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
     window.setTimeout(function () { link.remove(); }, 3000);
   }
 
-  function requestNativeDownload(doc, downloadUrl) {
+  function requestDownload(doc, downloadUrl) {
     const absoluteUrl = new URL(String(downloadUrl), window.location.origin).href;
     const tg = telegram();
     if (tg && typeof tg.downloadFile === "function") {
-      let callbackCalled = false;
       try {
         tg.downloadFile({
           url: absoluteUrl,
           file_name: "Vexa YouTube video",
-        }, function (accepted) {
-          callbackCalled = true;
-          if (!accepted) fallbackDownload(doc, absoluteUrl);
-        });
+        }, function () {});
         return;
-      } catch (error) {
-        if (callbackCalled) return;
-      }
+      } catch (error) {}
     }
     fallbackDownload(doc, absoluteUrl);
   }
@@ -101,7 +95,7 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
       }
 
       setPanelState(panel, false, "Download ready", false);
-      requestNativeDownload(panel.ownerDocument, data.downloadUrl);
+      requestDownload(panel.ownerDocument, data.downloadUrl);
       try { telegram()?.HapticFeedback?.notificationOccurred?.("success"); } catch (error) {}
     } catch (error) {
       setPanelState(panel, false, String(error && error.message || "Download failed"), true);
