@@ -1,12 +1,17 @@
 import { getAdminAction, isAdmin } from "./admin.js";
 import { handleCallback, handleMessage } from "./mini-app/vexa-live/bot-bridge.js";
-import { handleChatGptAppRequest, isChatGptAppRequest } from "./chatgpt-app/router.js";
-import { isMiniAppRequest } from "./mini-app/server.js";
 import {
-  handleMiniAppWithVexaLive,
+  handleMiniAppWithSpeechToText,
+  handleSpeechToTextRequest,
+  isSpeechToTextRequest,
+} from "./mini-app/speech-to-text/router.js";
+import {
+  handleMiniAppWithVexaSections,
   handleVexaLiveRequest,
   isVexaLiveRequest,
 } from "./mini-app/vexa-live/router.js";
+import { handleChatGptAppRequest, isChatGptAppRequest } from "./chatgpt-app/router.js";
+import { isMiniAppRequest } from "./mini-app/server.js";
 import { handleGitHubRequest, isGitHubRequest } from "./github-app.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { processPendingImageJobs } from "./image-jobs.js";
@@ -46,8 +51,16 @@ export default {
       return handleVexaLiveRequest(request, env);
     }
 
+    if (isSpeechToTextRequest(request)) {
+      return handleSpeechToTextRequest(request, env);
+    }
+
     if (isMiniAppRequest(request)) {
-      return handleMiniAppWithVexaLive(request, env);
+      return handleMiniAppWithVexaSections(
+        request,
+        env,
+        handleMiniAppWithSpeechToText,
+      );
     }
 
     if (request.method === "GET") return new Response("ai-configa worker is running");
