@@ -10,7 +10,9 @@ const PREPARE_PATH = "/mini-app/live/api/youtube-download/prepare";
 const DOWNLOAD_PATH = "/mini-app/live/api/youtube-download";
 const TOKEN_TTL_SECONDS = 10 * 60;
 const METADATA_TIMEOUT_MS = 35_000;
-const FORMAT_SELECTOR = "b[ext=mp4][vcodec!=none][acodec!=none]/b[vcodec!=none][acodec!=none]";
+const STREAM_START_TIMEOUT_MS = 25_000;
+const DOWNLOAD_FILE_NAME = "Vexa-YouTube-video.mp4";
+const FORMAT_SELECTOR = "b[ext=mp4][protocol^=http][vcodec!=none][acodec!=none]";
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
@@ -60,17 +62,60 @@ export class VexaMediaContainerV3 extends Container {
         throw publicContainerError(detail);
       }
 
-      try {
-        const data = JSON.parse(decoder.decode(output.stdout));
-        return {
-          title: String(data?.title || "YouTube video"),
-          ext: String(data?.ext || "mp4").toLowerCase(),
-        };
-      } catch (error) {
-        throw new Error("YouTube metadata was invalid");
+      const data = JSON.parse(decoder.decode(output.stdout));
+      const ext = String(data?.ext || "").toLowerCase();
+      const protocol = String(data?.protocol || "").toLowerCase();
+      if (ext !== "mp4" || !protocol.startsWith("http")) {
+        throw new Error("YouTube did not return a direct MP4 stream");
       }
+      return {
+        title: String(data?.title || "YouTube video"),
+        ext,
+        protocol,
+        formatId: String(data?.format_id || ""),
+      };
+    } catch (error) {
+      if (error?.message === "YouTube did not return a direct MP4 stream") throw error;
+      if (error?.message?.startsWith("This YouTube") || error?.message === "YouTube could not prepare this video") throw error;
+      throw new Error("YouTube metadata was invalid");
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  async probeVideo(url) {
+    const process = await this.execYtDlp([
+      ...YTDLP_COMMON_ARGS,
+      "--quiet",
+      "--no-warnings",
+      "-f",
+      FORMAT_SELECTOR,
+      "-o",
+      "-",
+      url,
+    ], { stderr: "ignore" });
+
+    if (!process.stdout) throw new Error("Could not start the YouTube download");
+    const reader = process.stdout.getReader();
+    let timer = 0;
+    try {
+      const first = await Promise.race([
+        reader.read(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("YouTube stream did not start in time")), STREAM_START_TIMEOUT_MS);
+        }),
+      ]);
+      if (first.done || !first.value?.byteLength) {
+        throw new Error("YouTube returned an empty video stream");
+      }
+      if (!looksLikeMp4(first.value)) {
+        throw new Error("YouTube returned an invalid MP4 stream");
+      }
+      return true;
+    } finally {
+      if (timer) clearTimeout(timer);
+      try { await reader.cancel(); } catch (error) {}
+      try { process.kill(); } catch (error) {}
     }
   }
 
@@ -86,10 +131,65 @@ export class VexaMediaContainerV3 extends Container {
       url,
     ], { stderr: "ignore" });
 
-    if (!process.stdout) {
-      throw new Error("Could not start the YouTube download");
+    if (!process.stdout) throw new Error("Could not start the YouTube download");
+    const reader = process.stdout.getReader();
+    let timer = 0;
+    let first;
+    try {
+      first = await Promise.race([
+        reader.read(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("YouTube stream did not start in time")), STREAM_START_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (error) {
+      try { await reader.cancel(); } catch (ignore) {}
+      try { process.kill(); } catch (ignore) {}
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    return process.stdout;
+
+    if (first.done || !first.value?.byteLength) {
+      try { await reader.cancel(); } catch (error) {}
+      try { process.kill(); } catch (error) {}
+      throw new Error("YouTube returned an empty video stream");
+    }
+    if (!looksLikeMp4(first.value)) {
+      try { await reader.cancel(); } catch (error) {}
+      try { process.kill(); } catch (error) {}
+      throw new Error("YouTube returned an invalid MP4 stream");
+    }
+
+    let sentFirst = false;
+    return new ReadableStream({
+      async pull(controller) {
+        if (!sentFirst) {
+          sentFirst = true;
+          controller.enqueue(first.value);
+          return;
+        }
+        try {
+          const next = await reader.read();
+          if (next.done) {
+            const exitCode = await process.exitCode;
+            if (exitCode !== 0) {
+              controller.error(new Error("YouTube download ended unexpectedly"));
+              return;
+            }
+            controller.close();
+            return;
+          }
+          if (next.value?.byteLength) controller.enqueue(next.value);
+        } catch (error) {
+          controller.error(error);
+        }
+      },
+      async cancel(reason) {
+        try { await reader.cancel(reason); } catch (error) {}
+        try { process.kill(); } catch (error) {}
+      },
+    });
   }
 
   async execYtDlp(args, options) {
@@ -127,6 +227,16 @@ async function prepareDownload(request, env, ctx) {
   const sourceUrl = normalizeYouTubeUrl(payload.url);
   if (!sourceUrl) return json({ error: "Enter a valid YouTube link" }, 400);
 
+  const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(user.id));
+  let metadata;
+  try {
+    metadata = await container.getVideoMetadata(sourceUrl);
+    await container.probeVideo(sourceUrl);
+  } catch (error) {
+    console.error("Vexa YouTube prepare failed", error?.stack || error);
+    return json({ error: publicMediaError(error) }, 502);
+  }
+
   await ensureTokenTable(env);
   const now = Math.floor(Date.now() / 1000);
   const token = randomToken();
@@ -144,6 +254,9 @@ async function prepareDownload(request, env, ctx) {
   return json({
     ok: true,
     downloadUrl: DOWNLOAD_PATH + "?token=" + encodeURIComponent(token),
+    fileName: DOWNLOAD_FILE_NAME,
+    title: metadata?.title || "YouTube video",
+    format: "mp4",
     expiresIn: TOKEN_TTL_SECONDS,
   });
 }
@@ -153,7 +266,7 @@ async function inspectDownload(request, env) {
   if (checked.response) return checked.response;
   return new Response(null, {
     status: 200,
-    headers: downloadHeaders("Vexa YouTube video", "mp4"),
+    headers: downloadHeaders(),
   });
 }
 
@@ -167,13 +280,10 @@ async function streamDownload(request, env) {
 
   try {
     const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(row.user_id));
-    const metadata = await container.getVideoMetadata(sourceUrl);
     const body = await container.streamVideo(sourceUrl);
-    const filename = safeFileName(metadata?.title, metadata?.ext);
-
     return new Response(body, {
       status: 200,
-      headers: downloadHeaders(filename, metadata?.ext),
+      headers: downloadHeaders(),
     });
   } catch (error) {
     console.error("Vexa YouTube media container failed", error?.stack || error);
@@ -234,35 +344,15 @@ function safeContainerKey(value) {
   return (raw || "anonymous").slice(0, 80);
 }
 
-function safeFileName(title, extension) {
-  const cleanTitle = String(title || "YouTube video")
-    .replace(/[\u0000-\u001f\u007f/\\:*?"<>|]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[. ]+$/g, "")
-    .slice(0, 140) || "YouTube video";
-  const ext = safeExtension(extension);
-  return cleanTitle + "." + ext;
+function looksLikeMp4(chunk) {
+  if (!(chunk instanceof Uint8Array) || chunk.byteLength < 12) return false;
+  return chunk[4] === 0x66 && chunk[5] === 0x74 && chunk[6] === 0x79 && chunk[7] === 0x70;
 }
 
-function safeExtension(extension) {
-  return String(extension || "mp4").replace(/[^A-Za-z0-9]/g, "").toLowerCase() || "mp4";
-}
-
-function mediaContentType(extension) {
-  const ext = safeExtension(extension);
-  if (ext === "mp4" || ext === "m4v") return "video/mp4";
-  if (ext === "webm") return "video/webm";
-  return "application/octet-stream";
-}
-
-function downloadHeaders(filename, extension) {
-  const ext = safeExtension(extension);
-  const fallback = "Vexa-YouTube-video." + ext;
+function downloadHeaders() {
   return {
-    "Content-Type": mediaContentType(ext),
-    "Content-Disposition":
-      "attachment; filename=\"" + fallback + "\"; filename*=UTF-8''" + encodeURIComponent(filename),
+    "Content-Type": "video/mp4",
+    "Content-Disposition": 'attachment; filename="' + DOWNLOAD_FILE_NAME + '"',
     "Cache-Control": "private, no-store",
     "X-Content-Type-Options": "nosniff",
     "Access-Control-Allow-Origin": "https://web.telegram.org",
@@ -304,17 +394,30 @@ function publicContainerError(detail) {
   if (/unavailable|not available|video unavailable/i.test(raw)) {
     return new Error("This YouTube video is unavailable");
   }
+  if (/requested format is not available/i.test(raw)) {
+    return new Error("This video does not expose a direct MP4 download format");
+  }
+  if (/403|forbidden|po token/i.test(raw)) {
+    return new Error("YouTube blocked this download request");
+  }
   return new Error("YouTube could not prepare this video");
 }
 
 function publicMediaError(error) {
   const message = String(error?.message || "");
-  if (
-    message === "This YouTube video is unavailable" ||
-    message === "This YouTube video cannot be downloaded without additional access" ||
-    message === "YouTube could not prepare this video"
-  ) return message;
-  return "YouTube download is temporarily unavailable";
+  const allowed = new Set([
+    "This YouTube video is unavailable",
+    "This YouTube video cannot be downloaded without additional access",
+    "This video does not expose a direct MP4 download format",
+    "YouTube blocked this download request",
+    "YouTube could not prepare this video",
+    "YouTube did not return a direct MP4 stream",
+    "YouTube returned an empty video stream",
+    "YouTube returned an invalid MP4 stream",
+    "YouTube stream did not start in time",
+    "YouTube download ended unexpectedly",
+  ]);
+  return allowed.has(message) ? message : "YouTube download is temporarily unavailable";
 }
 
 function json(value, status = 200) {
