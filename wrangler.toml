@@ -31,11 +31,11 @@ name = "vexa-ai-coding-tasks"
 binding = "AI_CODING_WORKFLOW"
 class_name = "AiCodingWorkflow"
 
-# Vexa media container. The current MVP streams a single-file YouTube video
-# directly through yt-dlp without storing the full media on disk.
+# Vexa media container. Pinned image includes yt-dlp 2026.07.04, Deno and FFmpeg.
+# The MVP streams the best single-file video with audio and does not persist media.
 [[containers]]
 class_name = "VexaMediaContainerV3"
-image = "docker.io/denoland/deno:debian-2.9.4"
+image = "docker.io/friedrichrehren/yt-dlp:2026.07.04"
 max_instances = 3
 instance_type = "lite"
 
