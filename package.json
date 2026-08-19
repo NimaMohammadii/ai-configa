@@ -8,6 +8,9 @@
     "deploy": "wrangler deploy",
     "set:webhook": "node scripts/set-webhook.js"
   },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.0"
+  },
   "devDependencies": {
     "@cloudflare/puppeteer": "1.1.0",
     "wrangler": "^4.0.0"
