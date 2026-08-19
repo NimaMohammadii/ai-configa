@@ -5,10 +5,10 @@ import {
 } from "./mini-app/vexa-live/youtube-download-exec.js";
 import {
   VexaMediaContainerV3,
-  handlePlaybackRequest,
-  injectPlaybackRuntime,
-  isPlaybackRequest,
-} from "./mini-app/vexa-live/youtube-playback-v2.js";
+  appendPlaybackRuntime,
+  handleYouTubePlaybackRequest,
+  isYouTubePlaybackRequest,
+} from "./mini-app/vexa-live/youtube-range-playback.js";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export { VexaMediaContainerV3 };
@@ -17,14 +17,14 @@ export default {
   ...worker,
   async fetch(request, env, ctx) {
     try {
-      if (isPlaybackRequest(request)) {
-        return await handlePlaybackRequest(request, env, ctx);
+      if (isYouTubePlaybackRequest(request)) {
+        return await handleYouTubePlaybackRequest(request, env, ctx);
       }
       if (isYouTubeDownloadRequest(request)) {
         return await handleYouTubeDownloadRequest(request, env, ctx);
       }
       const response = await worker.fetch(request, env, ctx);
-      return await injectPlaybackRuntime(request, response);
+      return await appendPlaybackRuntime(request, response);
     } catch (error) {
       console.error("Vexa YouTube request failed", error?.stack || error);
       return json({ error: publicError(error) }, error?.status || 500);
