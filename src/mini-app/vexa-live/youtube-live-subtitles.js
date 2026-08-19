@@ -9,12 +9,12 @@ import { getVexaLiveAccessSettings } from "./access.js";
 
 const SOCKET_PATH = "/mini-app/live/api/youtube-subtitles/realtime";
 const RUNTIME_PATH = "/mini-app/vexa-live/live-subtitles.js";
-const RUNTIME_VERSION = "20260819-4";
+const RUNTIME_VERSION = "20260819-5";
 const TRANSLATION_MODEL = "gpt-5.6-luna";
 const TRANSLATE_TIMEOUT_MS = 18_000;
 const PCM_SAMPLE_RATE = 16_000;
 const PCM_BYTES_PER_SECOND = PCM_SAMPLE_RATE * 2;
-const PCM_FRAME_BYTES = 3_200; // 100 ms PCM16 mono @ 16 kHz
+const PCM_FRAME_BYTES = 3_200;
 const ORIGINAL_AHEAD_SECONDS = 2.6;
 const TRANSLATED_AHEAD_SECONDS = 6.0;
 const FAST_CATCHUP_UNTIL_SECONDS = 3.0;
@@ -84,7 +84,6 @@ export class VexaSubtitleContainer extends Container {
 
   async streamAudioPcm(mediaUrl, startSeconds, streamId) {
     if (!this.ctx.container.running) await this.start();
-
     const id = cleanStreamId(streamId);
     if (!id) throw new Error("Subtitle audio stream id is invalid");
 
@@ -125,11 +124,8 @@ export class VexaSubtitleContainer extends Container {
     process.exitCode
       .catch(() => -1)
       .finally(() => {
-        if (this.activeAudioProcesses.get(id) === process) {
-          this.activeAudioProcesses.delete(id);
-        }
+        if (this.activeAudioProcesses.get(id) === process) this.activeAudioProcesses.delete(id);
       });
-
     return process.stdout;
   }
 
@@ -151,7 +147,6 @@ export function isVexaLiveSubtitlesRequest(request) {
 
 export async function handleVexaLiveSubtitlesRequest(request, env, ctx) {
   const path = new URL(request.url).pathname;
-
   if (request.method === "GET" && path === RUNTIME_PATH) {
     return new Response(LIVE_SUBTITLES_RUNTIME_JS, {
       headers: {
@@ -161,14 +156,12 @@ export async function handleVexaLiveSubtitlesRequest(request, env, ctx) {
       },
     });
   }
-
   if (request.method === "GET" && path === SOCKET_PATH) {
     if (String(request.headers.get("Upgrade") || "").toLowerCase() !== "websocket") {
       return new Response("WebSocket Required", { status: 426 });
     }
     return createRealtimeSubtitleSocket(request, env, ctx);
   }
-
   return json({ error: "Method Not Allowed" }, 405);
 }
 
@@ -210,19 +203,13 @@ function createRealtimeSubtitleSocket(request, env) {
     if (server.readyState !== WebSocket.OPEN) return;
     try { server.send(JSON.stringify(value)); } catch (error) {}
   };
-
   const abort = () => {
     if (!abortController.signal.aborted) abortController.abort();
   };
-
   const fail = (error) => {
     if (abortController.signal.aborted) return;
     console.error("Vexa realtime subtitle session failed", error?.stack || error);
-    send({
-      type: "error",
-      error: publicError(error),
-      retryable: isRetryableSessionError(error),
-    });
+    send({ type: "error", error: publicError(error), retryable: isRetryableSessionError(error) });
     abort();
     try { server.close(1011, "subtitle session failed"); } catch (closeError) {}
   };
@@ -231,13 +218,10 @@ function createRealtimeSubtitleSocket(request, env) {
     let message;
     try { message = JSON.parse(String(event.data || "{}")); } catch (error) { return; }
     const type = String(message?.type || "");
-
     if (type === "start") {
       if (started) return;
       started = true;
-      control = {
-        playbackTime: finiteNumber(message.currentTime, 0, 24 * 60 * 60) ?? 0,
-      };
+      control = { playbackTime: finiteNumber(message.currentTime, 0, 24 * 60 * 60) ?? 0 };
       runRealtimeSubtitleSession({
         request,
         env,
@@ -250,13 +234,11 @@ function createRealtimeSubtitleSocket(request, env) {
       }).catch(fail);
       return;
     }
-
     if (type === "sync" && control) {
       const currentTime = finiteNumber(message.currentTime, 0, 24 * 60 * 60);
       if (currentTime !== null) control.playbackTime = currentTime;
       return;
     }
-
     if (type === "stop") {
       abort();
       try { server.close(1000, "stopped"); } catch (error) {}
@@ -265,31 +247,17 @@ function createRealtimeSubtitleSocket(request, env) {
 
   server.addEventListener("close", abort);
   server.addEventListener("error", abort);
-
   return new Response(null, { status: 101, webSocket: client });
 }
 
-async function runRealtimeSubtitleSession({
-  request,
-  env,
-  server,
-  payload,
-  control,
-  signal,
-  send,
-  abort,
-}) {
+async function runRealtimeSubtitleSession({ request, env, server, payload, control, signal, send, abort }) {
   const user = await authenticateMiniAppPayload(payload, env);
   await assertLiveAccess(env, user.id);
 
   const token = cleanToken(payload.playbackToken);
   if (!token) throw httpError("Video session is invalid", 400);
-
   const targetLanguage = normalizeTargetLanguage(payload.targetLanguage);
-  if (!targetLanguage || targetLanguage === "off") {
-    throw httpError("Subtitle language is invalid", 400);
-  }
-
+  if (!targetLanguage || targetLanguage === "off") throw httpError("Subtitle language is invalid", 400);
   const start = finiteNumber(payload.currentTime, 0, 24 * 60 * 60);
   if (start === null) throw httpError("Subtitle start time is invalid", 400);
   control.playbackTime = start;
@@ -298,12 +266,8 @@ async function runRealtimeSubtitleSession({
     "SELECT user_id, expires_at FROM vexa_youtube_playback_tokens WHERE token = ?"
   ).bind(token).first();
   const now = Math.floor(Date.now() / 1000);
-  if (!row || Number(row.expires_at || 0) <= now) {
-    throw httpError("Video session expired. Open the video again.", 410);
-  }
-  if (String(row.user_id) !== String(user.id)) {
-    throw httpError("Video session does not belong to this user", 403);
-  }
+  if (!row || Number(row.expires_at || 0) <= now) throw httpError("Video session expired. Open the video again.", 410);
+  if (String(row.user_id) !== String(user.id)) throw httpError("Video session does not belong to this user", 403);
   if (!env.VEXA_SUBTITLES) throw httpError("Live subtitles are unavailable", 503);
 
   const apiKey = await selectedElevenApiKey(env);
@@ -321,10 +285,7 @@ async function runRealtimeSubtitleSession({
   scribeUrl.searchParams.set("include_language_detection", "true");
 
   const upstreamResponse = await fetch(scribeUrl, {
-    headers: {
-      Upgrade: "websocket",
-      "xi-api-key": apiKey,
-    },
+    headers: { Upgrade: "websocket", "xi-api-key": apiKey },
   });
   const upstream = upstreamResponse.webSocket;
   if (!upstream || upstreamResponse.status !== 101) {
@@ -338,9 +299,7 @@ async function runRealtimeSubtitleSession({
     request.url,
   ).href;
   const container = getContainer(env.VEXA_SUBTITLES, "subtitle-" + safeContainerKey(user.id));
-  const maxAheadSeconds = targetLanguage === "original"
-    ? ORIGINAL_AHEAD_SECONDS
-    : TRANSLATED_AHEAD_SECONDS;
+  const maxAheadSeconds = targetLanguage === "original" ? ORIGINAL_AHEAD_SECONDS : TRANSLATED_AHEAD_SECONDS;
 
   let audioStream = null;
   let audioSecondsSent = 0;
@@ -356,26 +315,6 @@ async function runRealtimeSubtitleSession({
   };
   signal.addEventListener("abort", closeUpstream, { once: true });
 
-  const enqueueCommitted = (message) => {
-    const fingerprint = transcriptFingerprint(message);
-    if (!fingerprint || seen.has(fingerprint)) return;
-    seen.add(fingerprint);
-    if (seen.size > 160) seen.delete(seen.values().next().value);
-
-    pendingCommits.push(message);
-    if (pendingCommits.length > MAX_PENDING_COMMITS) {
-      pendingCommits.splice(0, pendingCommits.length - MAX_PENDING_COMMITS);
-    }
-    drainCommitted().catch((error) => {
-      if (signal.aborted) return;
-      const retryable = isRetryableSessionError(error);
-      console.error("Vexa realtime subtitle translation failed", error?.stack || error);
-      send({ type: "error", error: publicError(error), retryable });
-      abort();
-      try { server.close(1011, "translation failed"); } catch (closeError) {}
-    });
-  };
-
   const drainCommitted = () => {
     if (drainPromise) return drainPromise;
     drainPromise = (async () => {
@@ -383,7 +322,6 @@ async function runRealtimeSubtitleSession({
         const batch = pendingCommits.splice(0, Math.min(3, pendingCommits.length));
         let sourceLanguage = "";
         let cues = [];
-
         for (const message of batch) {
           sourceLanguage = sourceLanguage || normalizeLanguageCode(message?.language_code);
           cues.push(...buildRealtimeCues(message, start, audioSecondsSent));
@@ -413,14 +351,30 @@ async function runRealtimeSubtitleSession({
 
         const freshTime = Number(control.playbackTime || 0);
         cues = cues.filter((cue) => cue.end >= freshTime - 0.35);
-        if (!cues.length) continue;
-
-        send({ type: "cues", cues, sourceLanguage, targetLanguage });
+        if (cues.length) send({ type: "cues", cues, sourceLanguage, targetLanguage });
       }
-    })().finally(() => {
-      drainPromise = null;
-    });
+    })().finally(() => { drainPromise = null; });
     return drainPromise;
+  };
+
+  const enqueueCommitted = (message) => {
+    const fingerprint = transcriptFingerprint(message);
+    if (!fingerprint || seen.has(fingerprint)) return;
+    seen.add(fingerprint);
+    if (seen.size > 160) seen.delete(seen.values().next().value);
+
+    pendingCommits.push(message);
+    if (pendingCommits.length > MAX_PENDING_COMMITS) {
+      pendingCommits.splice(0, pendingCommits.length - MAX_PENDING_COMMITS);
+    }
+    drainCommitted().catch((error) => {
+      if (signal.aborted) return;
+      const retryable = isRetryableSessionError(error);
+      console.error("Vexa realtime subtitle translation failed", error?.stack || error);
+      send({ type: "error", error: publicError(error), retryable });
+      abort();
+      try { server.close(1011, "translation failed"); } catch (closeError) {}
+    });
   };
 
   upstream.addEventListener("message", (event) => {
@@ -428,21 +382,15 @@ async function runRealtimeSubtitleSession({
     let message;
     try { message = JSON.parse(String(event.data || "{}")); } catch (error) { return; }
     const type = String(message?.message_type || "");
-
     if (type === "session_started") {
       send({ type: "ready", model: "scribe_v2_realtime" });
       return;
     }
-
-    if (type === "partial_transcript" || type === "committed_transcript" || type === "final_transcript") {
-      return;
-    }
-
+    if (type === "partial_transcript" || type === "committed_transcript" || type === "final_transcript") return;
     if (type === "committed_transcript_with_timestamps" || type === "final_transcript_with_timestamps") {
       enqueueCommitted(message);
       return;
     }
-
     if (FATAL_SCRIBE_ERRORS.has(type) || RETRYABLE_SCRIBE_ERRORS.has(type) || type === "error") {
       const detail = String(message?.error || message?.message || "Realtime transcription failed");
       const retryable = !FATAL_SCRIBE_ERRORS.has(type);
@@ -459,7 +407,6 @@ async function runRealtimeSubtitleSession({
     abort();
     try { server.close(1011, "scribe connection failed"); } catch (error) {}
   });
-
   upstream.addEventListener("close", () => {
     if (signal.aborted || upstreamEndedNormally) return;
     send({ type: "error", error: "Realtime transcription connection closed", retryable: true });
@@ -470,7 +417,6 @@ async function runRealtimeSubtitleSession({
   try {
     audioStream = await container.streamAudioPcm(playbackUrl, start, streamId);
     if (!audioStream) throw httpError("Could not start realtime subtitle audio", 502);
-
     audioSecondsSent = await streamPcmToScribe({
       audioStream,
       upstream,
@@ -506,22 +452,11 @@ async function runRealtimeSubtitleSession({
   }
 }
 
-async function streamPcmToScribe({
-  audioStream,
-  upstream,
-  control,
-  baseStart,
-  maxAheadSeconds,
-  signal,
-  onProgress,
-}) {
+async function streamPcmToScribe({ audioStream, upstream, control, baseStart, maxAheadSeconds, signal, onProgress }) {
   const reader = audioStream.getReader();
   let pending = new Uint8Array(0);
   let bytesSent = 0;
-
-  const abortReader = () => {
-    try { reader.cancel(); } catch (error) {}
-  };
+  const abortReader = () => { try { reader.cancel(); } catch (error) {} };
   signal.addEventListener("abort", abortReader, { once: true });
 
   try {
@@ -530,11 +465,9 @@ async function streamPcmToScribe({
       if (next.done) break;
       if (!next.value?.byteLength) continue;
       pending = concatBytes(pending, next.value);
-
       while (pending.byteLength >= PCM_FRAME_BYTES && !signal.aborted) {
         const frame = pending.slice(0, PCM_FRAME_BYTES);
         pending = pending.slice(PCM_FRAME_BYTES);
-
         await waitForSubtitleLead({
           control,
           absoluteAudioTime: baseStart + bytesSent / PCM_BYTES_PER_SECOND,
@@ -542,12 +475,8 @@ async function streamPcmToScribe({
           maxAheadSeconds,
           signal,
         });
-
         if (signal.aborted) return bytesSent / PCM_BYTES_PER_SECOND;
-        if (upstream.readyState !== WebSocket.OPEN) {
-          throw httpError("Realtime transcription connection closed", 502);
-        }
-
+        if (upstream.readyState !== WebSocket.OPEN) throw httpError("Realtime transcription connection closed", 502);
         upstream.send(JSON.stringify({
           message_type: "input_audio_chunk",
           audio_base_64: bytesToBase64(frame),
@@ -559,9 +488,7 @@ async function streamPcmToScribe({
     }
 
     if (pending.byteLength && !signal.aborted) {
-      if (upstream.readyState !== WebSocket.OPEN) {
-        throw httpError("Realtime transcription connection closed", 502);
-      }
+      if (upstream.readyState !== WebSocket.OPEN) throw httpError("Realtime transcription connection closed", 502);
       upstream.send(JSON.stringify({
         message_type: "input_audio_chunk",
         audio_base_64: bytesToBase64(pending),
@@ -577,13 +504,7 @@ async function streamPcmToScribe({
   }
 }
 
-async function waitForSubtitleLead({
-  control,
-  absoluteAudioTime,
-  frameSeconds,
-  maxAheadSeconds,
-  signal,
-}) {
+async function waitForSubtitleLead({ control, absoluteAudioTime, frameSeconds, maxAheadSeconds, signal }) {
   while (!signal.aborted) {
     const playbackTime = Number(control.playbackTime || 0);
     const ahead = absoluteAudioTime - playbackTime;
@@ -634,7 +555,6 @@ function buildRealtimeCues(message, absoluteStart, audioSecondsSent) {
   let cueEnd = null;
   let wordCount = 0;
   let previousEnd = null;
-
   const flush = () => {
     const text = cleanSubtitleText(parts.join(""));
     if (text && cueStart !== null && cueEnd !== null && wordCount > 0) {
@@ -656,12 +576,10 @@ function buildRealtimeCues(message, absoluteStart, audioSecondsSent) {
     if (parts.length && gap > 0.75) flush();
     if (cueStart === null && item.type === "word") cueStart = item.start;
     if (cueStart === null) continue;
-
     cueEnd = item.end;
     parts.push(item.text);
     if (item.type === "word") wordCount += 1;
     previousEnd = item.end;
-
     const punctuation = item.type === "word" && /[.!?…؛؟]$/.test(item.text.trim());
     if ((punctuation && wordCount >= 3) || wordCount >= 10) flush();
   }
@@ -681,17 +599,9 @@ function dedupeCues(cues) {
   return result;
 }
 
-async function translateRealtimeCues(
-  env,
-  texts,
-  targetLanguage,
-  sourceLanguage,
-  previousSource,
-  previousTranslation,
-) {
+async function translateRealtimeCues(env, texts, targetLanguage, sourceLanguage, previousSource, previousTranslation) {
   if (!env.GPT_API) throw httpError("AI translation is unavailable", 503);
   const languageName = TARGET_LANGUAGES[targetLanguage];
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TRANSLATE_TIMEOUT_MS);
   let response;
@@ -757,14 +667,9 @@ async function translateRealtimeCues(
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    console.error(
-      "Vexa Luna subtitle translation failed",
-      response.status,
-      JSON.stringify(data).slice(0, 1200),
-    );
+    console.error("Vexa Luna subtitle translation failed", response.status, JSON.stringify(data).slice(0, 1200));
     throw httpError("AI translation is temporarily unavailable", 502);
   }
-
   const raw = extractResponseText(data).trim();
   let parsed;
   try { parsed = JSON.parse(raw); } catch (error) { parsed = null; }
@@ -783,9 +688,7 @@ function extractResponseText(data) {
   const chunks = [];
   for (const item of Array.isArray(data?.output) ? data.output : []) {
     for (const part of Array.isArray(item?.content) ? item.content : []) {
-      if (part?.type === "output_text" && typeof part?.text === "string") {
-        chunks.push(part.text);
-      }
+      if (part?.type === "output_text" && typeof part?.text === "string") chunks.push(part.text);
     }
   }
   return chunks.join("");
@@ -802,58 +705,44 @@ async function assertLiveAccess(env, userId) {
     getMiniAppAccessSettings(env),
     getVexaLiveAccessSettings(env),
   ]);
-  if (globalAccess.adminOnly || liveAccess.adminOnly) {
-    throw httpError("Vexa Live is updating", 423);
-  }
+  if (globalAccess.adminOnly || liveAccess.adminOnly) throw httpError("Vexa Live is updating", 423);
 }
 
 function normalizeTargetLanguage(value) {
   const key = String(value || "original").trim().toLowerCase();
   return Object.prototype.hasOwnProperty.call(TARGET_LANGUAGES, key) ? key : "";
 }
-
 function normalizeLanguageCode(value) {
   const code = String(value || "").trim().toLowerCase().replace(/_/g, "-").split("-")[0];
   return LANGUAGE_ALIASES[code] || code;
 }
-
 function sameLanguage(sourceLanguage, targetLanguage) {
   if (!sourceLanguage || !targetLanguage) return false;
   return normalizeLanguageCode(sourceLanguage) === normalizeLanguageCode(targetLanguage);
 }
-
 function cleanToken(value) {
   const token = String(value || "").trim();
   return /^[A-Za-z0-9_-]{40,160}$/.test(token) ? token : "";
 }
-
 function cleanStreamId(value) {
   const id = String(value || "").trim();
   return /^[A-Za-z0-9_-]{8,80}$/.test(id) ? id : "";
 }
-
 function safeContainerKey(value) {
   const raw = String(value || "anonymous").replace(/[^A-Za-z0-9_-]/g, "");
   return (raw || "anonymous").slice(0, 80);
 }
-
 function finiteNumber(value, min, max) {
   const number = Number(value);
   if (!Number.isFinite(number) || number < min || number > max) return null;
   return number;
 }
-
 function roundTime(value) {
   return Math.round(Number(value || 0) * 1000) / 1000;
 }
-
 function cleanSubtitleText(value) {
-  return String(value || "")
-    .replace(/\s+([,.;:!?،؛؟])/g, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
+  return String(value || "").replace(/\s+([,.;:!?،؛؟])/g, "$1").replace(/\s+/g, " ").trim();
 }
-
 function cleanTranslatedSubtitle(value) {
   return cleanSubtitleText(value)
     .replace(/([!?؟])\1+/g, "$1")
@@ -861,12 +750,9 @@ function cleanTranslatedSubtitle(value) {
     .replace(/\s*[;؛]+\s*$/u, "")
     .trim();
 }
-
 function appendContext(current, next) {
-  const value = cleanSubtitleText((String(current || "") + " " + String(next || "")).trim());
-  return value.slice(-CONTEXT_CHAR_LIMIT);
+  return cleanSubtitleText((String(current || "") + " " + String(next || "")).trim()).slice(-CONTEXT_CHAR_LIMIT);
 }
-
 function publicScribeError(type, detail) {
   if (type === "quota_exceeded") return "Speech-to-text quota is unavailable";
   if (type === "rate_limited") return "Live subtitles are temporarily rate limited";
@@ -880,14 +766,12 @@ function publicScribeError(type, detail) {
   console.error("Vexa Scribe realtime error", type, String(detail || "").slice(0, 700));
   return "Realtime transcription is temporarily unavailable";
 }
-
 function isRetryableSessionError(error) {
   const message = String(error?.message || "");
   if (message === "AI translation is unavailable" || message === "Speech-to-text is unavailable") return false;
   const status = Number(error?.status || 500);
   return status >= 500 || status === 429;
 }
-
 function bytesToBase64(bytes) {
   let binary = "";
   const step = 0x8000;
@@ -897,7 +781,6 @@ function bytesToBase64(bytes) {
   }
   return btoa(binary);
 }
-
 function concatBytes(left, right) {
   if (!left.byteLength) return right.slice();
   const merged = new Uint8Array(left.byteLength + right.byteLength);
@@ -905,7 +788,6 @@ function concatBytes(left, right) {
   merged.set(right, left.byteLength);
   return merged;
 }
-
 function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new Error("aborted"));
@@ -924,13 +806,11 @@ function sleep(ms, signal) {
     signal?.addEventListener?.("abort", onAbort, { once: true });
   });
 }
-
 function httpError(message, status) {
   const error = new Error(message);
   error.status = status;
   return error;
 }
-
 function publicError(error) {
   const status = Number(error?.status || 500);
   if (status >= 400 && status < 500) return String(error?.message || "Request failed");
@@ -939,14 +819,10 @@ function publicError(error) {
   if (/transcription|speech-to-text/i.test(message)) return message;
   return "Live subtitles are temporarily unavailable";
 }
-
 function json(value, status = 200) {
   return new Response(JSON.stringify(value), {
     status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
+    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
   });
 }
 
@@ -995,9 +871,7 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
     return window.Telegram?.WebApp || host.Telegram?.WebApp || null;
   }
   function initData() { return String(telegram()?.initData || ""); }
-  function haptic(style) {
-    try { telegram()?.HapticFeedback?.impactOccurred?.(style || "light"); } catch (error) {}
-  }
+  function haptic(style) { try { telegram()?.HapticFeedback?.impactOccurred?.(style || "light"); } catch (error) {} }
   function playbackToken(video) {
     const src = String(video?.currentSrc || video?.src || "");
     try {
@@ -1144,9 +1018,7 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
     if (!active) return;
     active.__vexaIntentionalClose = Boolean(intentional);
     try {
-      if (active.readyState === WebSocket.OPEN) {
-        active.send(JSON.stringify({ type: "stop" }));
-      }
+      if (active.readyState === WebSocket.OPEN) active.send(JSON.stringify({ type: "stop" }));
     } catch (error) {}
     try { active.close(1000, "restart"); } catch (error) {}
   }
@@ -1158,9 +1030,7 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
     const delay = Math.min(5000, 500 * Math.pow(2, Math.min(3, reconnectAttempt)));
     reconnectAttempt += 1;
     showCaption(player, "Reconnecting subtitles…", false);
-    reconnectTimer = setTimeout(function () {
-      connectRealtime(player, gen);
-    }, delay);
+    reconnectTimer = setTimeout(function () { connectRealtime(player, gen); }, delay);
   }
   function connectRealtime(player, gen) {
     if (!enabled || gen !== socketGeneration) return;
@@ -1171,7 +1041,6 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
 
     closeSocket(true);
     cues = cues.filter(function (cue) { return cue.end >= Number(video.currentTime || 0) - 1; });
-
     const ws = new WebSocket(websocketUrl());
     socket = ws;
 
@@ -1191,10 +1060,7 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
       syncTimer = setInterval(function () {
         if (socket !== ws || ws.readyState !== WebSocket.OPEN) return;
         try {
-          ws.send(JSON.stringify({
-            type: "sync",
-            currentTime: Math.max(0, Number(video.currentTime || 0)),
-          }));
+          ws.send(JSON.stringify({ type: "sync", currentTime: Math.max(0, Number(video.currentTime || 0)) }));
         } catch (error) {}
       }, 350);
     });
@@ -1204,22 +1070,22 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
       let data;
       try { data = JSON.parse(String(event.data || "{}")); } catch (error) { return; }
       const type = String(data?.type || "");
-
       if (type === "ready") {
-        reconnectAttempt = 0;
         if (!cues.length) showCaption(player, "Listening…", false);
         return;
       }
-
       if (type === "cues") {
         const incoming = Array.isArray(data?.cues) ? data.cues : [];
+        let accepted = false;
         for (const cue of incoming) {
           const start = Number(cue?.start);
           const end = Number(cue?.end);
           const text = String(cue?.text || "").trim();
           if (!Number.isFinite(start) || !Number.isFinite(end) || !text) continue;
           cues.push({ start, end: Math.max(end, start + 0.22), text });
+          accepted = true;
         }
+        if (accepted) reconnectAttempt = 0;
         cues.sort(function (a, b) { return a.start - b.start; });
         const current = Number(video.currentTime || 0);
         const unique = [];
@@ -1233,13 +1099,11 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
         cues = unique.slice(-100);
         return;
       }
-
       if (type === "error") {
         const retryable = data?.retryable !== false;
         const message = String(data?.error || "Live subtitles unavailable");
         if (retryable) {
           showCaption(player, "Reconnecting subtitles…", false);
-          ws.__vexaRetryableClose = true;
           try { ws.close(); } catch (error) {}
         } else {
           enabled = false;
@@ -1249,10 +1113,7 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
         }
         return;
       }
-
-      if (type === "ended") {
-        closeSocket(true);
-      }
+      if (type === "ended") closeSocket(true);
     });
 
     ws.addEventListener("close", function () {
@@ -1267,7 +1128,6 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
         !video.ended;
       if (shouldReconnect) scheduleReconnect(player, gen);
     });
-
     ws.addEventListener("error", function () {
       if (socket !== ws) return;
       try { ws.close(); } catch (error) {}
@@ -1293,10 +1153,7 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
     let active = null;
     for (let index = cues.length - 1; index >= 0; index -= 1) {
       const cue = cues[index];
-      if (cue.start <= now + 0.08 && cue.end >= now - 0.08) {
-        active = cue;
-        break;
-      }
+      if (cue.start <= now + 0.08 && cue.end >= now - 0.08) { active = cue; break; }
       if (cue.end < now - 2) break;
     }
     if (active) showCaption(player, active.text, false);
@@ -1321,7 +1178,6 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
     installUI(player);
     const video = player.querySelector("video");
     if (!video) return;
-
     video.addEventListener("play", function () {
       if (!enabled) return;
       socketGeneration += 1;
@@ -1333,12 +1189,8 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
       closeSocket(true);
       renderCaption(player);
     });
-    video.addEventListener("seeked", function () {
-      restartFromCurrentTime(player);
-    });
-    video.addEventListener("loadedmetadata", function () {
-      if (enabled) restartFromCurrentTime(player);
-    });
+    video.addEventListener("seeked", function () { restartFromCurrentTime(player); });
+    video.addEventListener("loadedmetadata", function () { if (enabled) restartFromCurrentTime(player); });
     video.addEventListener("emptied", function () {
       if (!enabled) return;
       closeSocket(true);
@@ -1348,7 +1200,6 @@ export const LIVE_SUBTITLES_RUNTIME_JS = String.raw`
       if (!enabled) return;
       closeSocket(true);
     });
-
     if (renderTimer) clearInterval(renderTimer);
     renderTimer = setInterval(function () { renderCaption(player); }, 80);
   }
