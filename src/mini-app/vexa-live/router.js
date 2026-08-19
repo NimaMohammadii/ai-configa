@@ -1,7 +1,7 @@
 import { handleMiniAppRequest } from "../server.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
-const INTEGRATION_VERSION = "20260819-2";
+const INTEGRATION_VERSION = "20260819-3";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -35,14 +35,15 @@ const VEXA_LIVE_SHELL_HTML = `<!doctype html>
     .vexa-live-stage{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;border-radius:18px;background:#050505;border:1px solid rgba(255,255,255,.07);opacity:0;transform:translateY(10px) scale(.992);pointer-events:none;transition:opacity .24s ease,transform .38s cubic-bezier(.16,1,.3,1)}
     .vexa-live-stage.show{opacity:1;transform:none;pointer-events:auto}
     .vexa-live-video-wrap{position:relative;flex:1;min-height:0;display:grid;place-items:center;background:#000;overflow:hidden}
-    .vexa-live-video{display:block;width:100%;height:100%;max-height:100%;object-fit:contain;background:#000}
+    .vexa-live-video{display:block;width:100%;height:100%;min-height:100%;border:0;background:#000}
     .vexa-live-meta{flex:0 0 auto;min-height:42px;padding:9px 11px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.025)}
     .vexa-live-video-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,.68);font-size:10.5px;font-weight:680}
     .vexa-live-actions{flex:0 0 auto;display:flex;align-items:center;gap:6px}
     .vexa-live-ai-badge{height:22px;padding:0 8px;border-radius:999px;display:flex;align-items:center;color:rgba(255,255,255,.48);background:rgba(255,255,255,.055);font-size:8.5px;font-weight:720;white-space:nowrap}
-    .vexa-live-download{height:26px;padding:0 9px;border:0;border-radius:9px;display:none;align-items:center;justify-content:center;text-decoration:none;color:#050505;background:#fff;font-size:9px;font-weight:820;white-space:nowrap;box-shadow:inset 0 -1px 0 rgba(0,0,0,.18)}
+    .vexa-live-download{height:26px;padding:0 9px;border:0;border-radius:9px;display:none;align-items:center;justify-content:center;color:#050505;background:#fff;font-size:9px;font-weight:820;white-space:nowrap;box-shadow:inset 0 -1px 0 rgba(0,0,0,.18)}
     .vexa-live-download.show{display:flex}
     .vexa-live-download:active{transform:scale(.96)}
+    .vexa-live-download:disabled{opacity:.5}
     .vexa-live-empty{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:rgba(255,255,255,.22);font-size:11px;font-weight:620;line-height:1.5;pointer-events:none}
     @media(max-height:680px){.vexa-live-head{display:none}.vexa-live-media{padding-top:8px;gap:9px}}
     @media(prefers-reduced-motion:reduce){.vexa-live-stage,.vexa-live-load,.vexa-live-status,.vexa-live-download{transition:none!important}}
@@ -64,14 +65,14 @@ const VEXA_LIVE_SHELL_HTML = `<!doctype html>
     </section>
     <section id="vexaLiveStage" class="vexa-live-stage" aria-label="Video player">
       <div class="vexa-live-video-wrap">
-        <video id="vexaLiveVideo" class="vexa-live-video" controls playsinline preload="auto"></video>
+        <iframe id="vexaLiveVideo" class="vexa-live-video" title="YouTube video" src="about:blank" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
         <div id="vexaLiveEmpty" class="vexa-live-empty">Your video will appear here.</div>
       </div>
       <div class="vexa-live-meta">
         <div id="vexaLiveVideoTitle" class="vexa-live-video-title">YouTube video</div>
         <div class="vexa-live-actions">
           <div class="vexa-live-ai-badge">AI subtitles · next</div>
-          <a id="vexaLiveDownload" class="vexa-live-download" href="#" download>Download</a>
+          <button id="vexaLiveDownload" class="vexa-live-download" type="button">Download</button>
         </div>
       </div>
     </section>
@@ -89,21 +90,13 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   let mediaOpen = false;
   let mediaFrame = null;
   let speechButtonBound = false;
+  let currentYoutubeUrl = "";
+  let currentVideoId = "";
+  let downloadBusy = false;
 
-  function telegram() {
-    return window.Telegram && window.Telegram.WebApp;
-  }
-
-  function initData() {
-    const tg = telegram();
-    return tg && tg.initData ? String(tg.initData) : "";
-  }
-
-  function haptic(style) {
-    const tg = telegram();
-    if (!tg || !tg.HapticFeedback || !tg.HapticFeedback.impactOccurred) return;
-    try { tg.HapticFeedback.impactOccurred(style || "light"); } catch (error) {}
-  }
+  function telegram() { return window.Telegram && window.Telegram.WebApp; }
+  function initData() { const tg = telegram(); return tg && tg.initData ? String(tg.initData) : ""; }
+  function haptic(style) { const tg = telegram(); if (!tg || !tg.HapticFeedback || !tg.HapticFeedback.impactOccurred) return; try { tg.HapticFeedback.impactOccurred(style || "light"); } catch (error) {} }
 
   function requestedSection() {
     let raw = "";
@@ -139,10 +132,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const workspace = document.createElement("section");
     workspace.id = WORKSPACE_ID;
     workspace.setAttribute("aria-hidden", "true");
-    workspace.style.cssText =
-      "position:absolute;z-index:35;left:0;right:0;top:50px;bottom:0;display:block;overflow:hidden;background:#000;" +
-      "opacity:0;transform:translateX(34px) scale(.985);pointer-events:none;" +
-      "transition:opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1);";
+    workspace.style.cssText = "position:absolute;z-index:35;left:0;right:0;top:50px;bottom:0;display:block;overflow:hidden;background:#000;opacity:0;transform:translateX(34px) scale(.985);pointer-events:none;transition:opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1);";
     page.appendChild(workspace);
     return workspace;
   }
@@ -150,16 +140,8 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   function setMainContentHidden(hidden) {
     const area = document.querySelector(".tts-area");
     const bottom = document.querySelector(".tts-bottom");
-    if (area) {
-      area.style.opacity = hidden ? "0" : "";
-      area.style.transform = hidden ? "translateX(-36px)" : "";
-      area.style.pointerEvents = hidden ? "none" : "";
-    }
-    if (bottom) {
-      bottom.style.opacity = hidden ? "0" : "";
-      bottom.style.transform = hidden ? "translateX(-36px)" : "";
-      bottom.style.pointerEvents = hidden ? "none" : "";
-    }
+    if (area) { area.style.opacity = hidden ? "0" : ""; area.style.transform = hidden ? "translateX(-36px)" : ""; area.style.pointerEvents = hidden ? "none" : ""; }
+    if (bottom) { bottom.style.opacity = hidden ? "0" : ""; bottom.style.transform = hidden ? "translateX(-36px)" : ""; bottom.style.pointerEvents = hidden ? "none" : ""; }
   }
 
   function closeImageMode() {
@@ -195,124 +177,114 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const download = doc.getElementById("vexaLiveDownload");
     if (!input || !button) return;
     button.addEventListener("click", function () { openYoutubeVideo(doc); });
-    input.addEventListener("keydown", function (event) {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      openYoutubeVideo(doc);
-    });
+    input.addEventListener("keydown", function (event) { if (event.key !== "Enter") return; event.preventDefault(); openYoutubeVideo(doc); });
     if (download) {
       download.addEventListener("click", function () {
-        haptic("medium");
+        downloadYoutubeVideo(doc).catch(function (error) {
+          setFrameState(doc, false, String(error && error.message || "Could not prepare download"), true);
+        });
       });
     }
   }
 
-  function validYoutubeUrl(value) {
-    try {
-      const url = new URL(String(value || "").trim());
-      const host = url.hostname.toLowerCase();
-      return url.protocol === "https:" && (
-        host === "youtube.com" || host === "www.youtube.com" || host === "m.youtube.com" ||
-        host === "music.youtube.com" || host === "youtu.be"
-      );
-    } catch (error) {
-      return false;
+  function parseYoutubeVideoId(value) {
+    let url;
+    try { url = new URL(String(value || "").trim()); } catch (error) { return ""; }
+    if (url.protocol !== "https:") return "";
+    const host = url.hostname.toLowerCase();
+    let candidate = "";
+    if (host === "youtu.be") {
+      candidate = url.pathname.split("/").filter(Boolean)[0] || "";
+    } else if (host === "youtube.com" || host === "www.youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
+      if (url.pathname === "/watch") candidate = url.searchParams.get("v") || "";
+      else {
+        const parts = url.pathname.split("/").filter(Boolean);
+        if (["shorts", "embed", "live"].includes(parts[0])) candidate = parts[1] || "";
+      }
     }
+    candidate = String(candidate || "").trim();
+    return /^[A-Za-z0-9_-]{11}$/.test(candidate) ? candidate : "";
+  }
+
+  function youtubeEmbedUrl(videoId) {
+    const url = new URL("https://www.youtube.com/embed/" + encodeURIComponent(videoId));
+    url.searchParams.set("playsinline", "1");
+    url.searchParams.set("rel", "0");
+    url.searchParams.set("enablejsapi", "1");
+    url.searchParams.set("origin", window.location.origin);
+    return url.href;
   }
 
   function setFrameState(doc, busy, message, error) {
     const button = doc && doc.getElementById("vexaLiveLoad");
     const input = doc && doc.getElementById("vexaLiveYoutubeUrl");
     const status = doc && doc.getElementById("vexaLiveStatus");
-    if (button) {
-      button.disabled = Boolean(busy);
-      button.textContent = busy ? "Loading…" : "Open";
-    }
+    if (button) { button.disabled = Boolean(busy); button.textContent = busy ? "Opening…" : "Open"; }
     if (input) input.disabled = Boolean(busy);
-    if (status) {
-      status.textContent = String(message || "");
-      status.classList.toggle("show", Boolean(message));
-      status.classList.toggle("error", Boolean(error));
-    }
+    if (status) { status.textContent = String(message || ""); status.classList.toggle("show", Boolean(message)); status.classList.toggle("error", Boolean(error)); }
   }
 
-  function playbackUrl(downloadUrl) {
-    const url = new URL(String(downloadUrl || ""), window.location.origin);
-    url.searchParams.set("inline", "1");
-    return url.href;
-  }
-
-  function bindVideoState(doc, video) {
-    video.addEventListener("canplay", function () {
-      setFrameState(doc, false, "Ready", false);
-    }, { once: true });
-    video.addEventListener("playing", function () {
-      setFrameState(doc, false, "", false);
-    });
-    video.addEventListener("waiting", function () {
-      setFrameState(doc, false, "Buffering…", false);
-    });
-    video.addEventListener("error", function () {
-      const mediaError = video.error;
-      const message = mediaError && mediaError.code
-        ? "Could not play this YouTube stream"
-        : "Video playback failed";
-      setFrameState(doc, false, message, true);
-    }, { once: true });
-  }
-
-  async function openYoutubeVideo(doc) {
+  function openYoutubeVideo(doc) {
     const input = doc && doc.getElementById("vexaLiveYoutubeUrl");
     const value = String(input && input.value || "").trim();
-    if (!validYoutubeUrl(value)) {
-      setFrameState(doc, false, "Paste a valid YouTube link", true);
-      return;
-    }
+    const videoId = parseYoutubeVideoId(value);
+    if (!videoId) { setFrameState(doc, false, "Paste a valid YouTube link", true); return; }
 
-    setFrameState(doc, true, "Preparing video…", false);
+    const player = doc.getElementById("vexaLiveVideo");
+    const stage = doc.getElementById("vexaLiveStage");
+    const empty = doc.getElementById("vexaLiveEmpty");
+    const title = doc.getElementById("vexaLiveVideoTitle");
+    const download = doc.getElementById("vexaLiveDownload");
+    if (!player || !stage) { setFrameState(doc, false, "Vexa video player is unavailable", true); return; }
+
+    currentYoutubeUrl = value;
+    currentVideoId = videoId;
+    player.src = youtubeEmbedUrl(videoId);
+    player.title = "YouTube video";
+    stage.classList.add("show");
+    if (empty) empty.style.display = "none";
+    if (title) title.textContent = "YouTube video";
+    if (download) { download.disabled = false; download.textContent = "Download"; download.classList.add("show"); }
+    setFrameState(doc, false, "", false);
+    haptic("medium");
+  }
+
+  async function downloadYoutubeVideo(doc) {
+    if (downloadBusy) return;
+    if (!currentYoutubeUrl || !currentVideoId) throw new Error("Open a YouTube video first");
+    const download = doc && doc.getElementById("vexaLiveDownload");
+    downloadBusy = true;
+    if (download) { download.disabled = true; download.textContent = "Preparing…"; }
+    setFrameState(doc, false, "Preparing download…", false);
     haptic("light");
     try {
-      const preparedResponse = await fetch(PREPARE_URL, {
+      const response = await fetch(PREPARE_URL, {
         method: "POST",
         headers: { "content-type": "application/json", "accept": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({ initData: initData(), url: value }),
+        body: JSON.stringify({ initData: initData(), url: currentYoutubeUrl }),
       });
-      const prepared = await preparedResponse.json().catch(function () { return {}; });
-      if (!preparedResponse.ok || !prepared.downloadUrl) {
-        throw new Error(String(prepared.error || "Could not prepare this video"));
+      const data = await response.json().catch(function () { return {}; });
+      if (!response.ok || !data.downloadUrl) throw new Error(String(data.error || "Could not prepare this video"));
+      const absolute = new URL(String(data.downloadUrl), window.location.origin).href;
+      const tg = telegram();
+      if (tg && typeof tg.downloadFile === "function") {
+        tg.downloadFile({ url: absolute, file_name: String(data.fileName || "Vexa-YouTube-video.mp4") });
+      } else {
+        const link = document.createElement("a");
+        link.href = absolute;
+        link.download = String(data.fileName || "Vexa-YouTube-video.mp4");
+        link.rel = "noopener";
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
       }
-
-      const video = doc.getElementById("vexaLiveVideo");
-      const stage = doc.getElementById("vexaLiveStage");
-      const empty = doc.getElementById("vexaLiveEmpty");
-      const title = doc.getElementById("vexaLiveVideoTitle");
-      const download = doc.getElementById("vexaLiveDownload");
-      if (!video || !stage) throw new Error("Vexa video player is unavailable");
-
-      try { video.pause(); } catch (error) {}
-      video.removeAttribute("src");
-      video.load();
-      bindVideoState(doc, video);
-
-      const downloadHref = new URL(String(prepared.downloadUrl), window.location.origin).href;
-      video.src = playbackUrl(prepared.downloadUrl);
-      stage.classList.add("show");
-      if (empty) empty.style.display = "none";
-      if (title) title.textContent = String(prepared.title || "YouTube video");
-      if (download) {
-        download.href = downloadHref;
-        download.setAttribute("download", String(prepared.fileName || "Vexa-YouTube-video.mp4"));
-        download.classList.add("show");
-      }
-
-      setFrameState(doc, false, "Buffering…", false);
-      video.load();
-      try { await video.play(); } catch (error) {}
+      setFrameState(doc, false, "Download started", false);
       haptic("medium");
-    } catch (error) {
-      setFrameState(doc, false, String(error && error.message || "Could not open this video"), true);
-      haptic("light");
+    } finally {
+      downloadBusy = false;
+      if (download) { download.disabled = false; download.textContent = "Download"; }
     }
   }
 
@@ -324,7 +296,6 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       const speechButton = document.getElementById(SPEECH_BUTTON_ID);
       if (speechButton && speechButton.getAttribute("aria-pressed") === "true") speechButton.click();
     }
-
     const workspace = installWorkspace();
     const button = document.getElementById(BUTTON_ID);
     if (!workspace || !button) return;
@@ -344,9 +315,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const speechButton = document.getElementById(SPEECH_BUTTON_ID);
     if (!speechButton) return false;
     speechButtonBound = true;
-    speechButton.addEventListener("click", function () {
-      if (mediaOpen) setMediaOpen(false);
-    }, { capture: true });
+    speechButton.addEventListener("click", function () { if (mediaOpen) setMediaOpen(false); }, { capture: true });
     return true;
   }
 
@@ -362,17 +331,8 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     button.className = "mode-toggle vexa-live-media-toggle";
     button.setAttribute("aria-label", "Open Vexa Live");
     button.setAttribute("aria-pressed", "false");
-    button.innerHTML =
-      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
-        '<g class="vexa-media-play"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><path d="M10 8.7 15.6 12 10 15.3V8.7Z" fill="currentColor"/></g>' +
-        '<g class="vexa-media-stop"><path d="M7 7 17 17M17 7 7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>' +
-      '</svg>';
-    button.addEventListener("click", function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      haptic("light");
-      setMediaOpen(!mediaOpen);
-    });
+    button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><g class="vexa-media-play"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><path d="M10 8.7 15.6 12 10 15.3V8.7Z" fill="currentColor"/></g><g class="vexa-media-stop"><path d="M7 7 17 17M17 7 7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g></svg>';
+    button.addEventListener("click", function (event) { event.preventDefault(); event.stopPropagation(); haptic("light"); setMediaOpen(!mediaOpen); });
     wheel.insertAdjacentElement("afterend", button);
     return button;
   }
@@ -382,20 +342,15 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     installWorkspace();
     bindSpeechButton();
     if (!speechButtonBound) {
-      const observer = new MutationObserver(function () {
-        if (bindSpeechButton()) observer.disconnect();
-      });
+      const observer = new MutationObserver(function () { if (bindSpeechButton()) observer.disconnect(); });
       observer.observe(document.documentElement, { childList: true, subtree: true });
     }
     const section = requestedSection();
     if (button && (section === "live" || section === "vexa-live")) setMediaOpen(true);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initialize, { once: true });
-  } else {
-    initialize();
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize, { once: true });
+  else initialize();
 })();
 `;
 
@@ -407,12 +362,8 @@ export function isVexaLiveRequest(request) {
 export async function handleVexaLiveRequest(request) {
   const url = new URL(request.url);
   const path = url.pathname;
-  if (request.method === "GET" && (path === LIVE_ROOT || path === LIVE_ROOT + "/")) {
-    return textResponse(VEXA_LIVE_SHELL_HTML, "text/html;charset=utf-8");
-  }
-  if (request.method === "GET" && path === LIVE_ROOT + "/integration.js") {
-    return textResponse(VEXA_LIVE_INTEGRATION_JS, "application/javascript;charset=utf-8");
-  }
+  if (request.method === "GET" && (path === LIVE_ROOT || path === LIVE_ROOT + "/")) return textResponse(VEXA_LIVE_SHELL_HTML, "text/html;charset=utf-8");
+  if (request.method === "GET" && path === LIVE_ROOT + "/integration.js") return textResponse(VEXA_LIVE_INTEGRATION_JS, "application/javascript;charset=utf-8");
   return jsonResponse({ error: "Not Found" }, 404);
 }
 
@@ -422,45 +373,23 @@ export async function appendVexaLiveToMiniApp(response) {
   if (!contentType.includes("text/html")) return response;
   const source = await response.text();
   const script = '<script src="/mini-app/vexa-live/integration.js?v=' + INTEGRATION_VERSION + '"></script>';
-  const html = source.includes("/mini-app/vexa-live/integration.js")
-    ? source
-    : source.includes("</body>")
-      ? source.replace("</body>", script + "\n</body>")
-      : source + script;
+  const html = source.includes("/mini-app/vexa-live/integration.js") ? source : source.includes("</body>") ? source.replace("</body>", script + "\n</body>") : source + script;
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
   headers.delete("Content-Encoding");
   headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
-  return new Response(html, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  return new Response(html, { status: response.status, statusText: response.statusText, headers });
 }
 
 export async function handleMiniAppWithVexaSections(request, env, speechHandler) {
-  const base = speechHandler
-    ? await speechHandler(request, env)
-    : await handleMiniAppRequest(request, env);
+  const base = speechHandler ? await speechHandler(request, env) : await handleMiniAppRequest(request, env);
   return appendVexaLiveToMiniApp(base);
 }
 
 function textResponse(body, contentType) {
-  return new Response(body, {
-    headers: {
-      "Content-Type": contentType,
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
+  return new Response(body, { headers: { "Content-Type": contentType, "Cache-Control": "no-cache, no-store, must-revalidate", "X-Content-Type-Options": "nosniff" } });
 }
 
 function jsonResponse(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json;charset=utf-8",
-      "Cache-Control": "no-store",
-    },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json;charset=utf-8", "Cache-Control": "no-store" } });
 }
