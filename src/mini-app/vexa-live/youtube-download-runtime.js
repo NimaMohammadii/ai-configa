@@ -35,7 +35,7 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
     const status = panel && panel.querySelector(".vexa-youtube-status");
     if (button) {
       button.disabled = Boolean(busy);
-      button.textContent = busy ? "Preparing…" : "Download";
+      button.textContent = busy ? "Checking…" : "Download";
     }
     if (input) input.disabled = Boolean(busy);
     if (status) {
@@ -45,10 +45,10 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
     }
   }
 
-  function fallbackDownload(doc, absoluteUrl) {
+  function fallbackDownload(doc, absoluteUrl, fileName) {
     const link = doc.createElement("a");
     link.href = absoluteUrl;
-    link.download = "";
+    link.download = fileName || "Vexa-YouTube-video.mp4";
     link.rel = "noopener";
     link.style.display = "none";
     doc.body.appendChild(link);
@@ -56,19 +56,20 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
     window.setTimeout(function () { link.remove(); }, 3000);
   }
 
-  function requestDownload(doc, downloadUrl) {
+  function requestDownload(doc, downloadUrl, fileName) {
     const absoluteUrl = new URL(String(downloadUrl), window.location.origin).href;
+    const safeName = String(fileName || "Vexa-YouTube-video.mp4");
     const tg = telegram();
     if (tg && typeof tg.downloadFile === "function") {
       try {
         tg.downloadFile({
           url: absoluteUrl,
-          file_name: "Vexa YouTube video",
+          file_name: safeName,
         }, function () {});
         return;
       } catch (error) {}
     }
-    fallbackDownload(doc, absoluteUrl);
+    fallbackDownload(doc, absoluteUrl, safeName);
   }
 
   async function beginDownload(panel) {
@@ -81,7 +82,7 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
     }
 
     panel.dataset.busy = "1";
-    setPanelState(panel, true, "Creating download…", false);
+    setPanelState(panel, true, "Checking video stream…", false);
     try {
       const response = await fetch(PREPARE_URL, {
         method: "POST",
@@ -94,8 +95,8 @@ export const YOUTUBE_DOWNLOAD_RUNTIME = String.raw`
         throw new Error(String(data.error || "Could not prepare this video"));
       }
 
-      setPanelState(panel, false, "Download ready", false);
-      requestDownload(panel.ownerDocument, data.downloadUrl);
+      setPanelState(panel, false, "MP4 ready", false);
+      requestDownload(panel.ownerDocument, data.downloadUrl, data.fileName);
       try { telegram()?.HapticFeedback?.notificationOccurred?.("success"); } catch (error) {}
     } catch (error) {
       setPanelState(panel, false, String(error && error.message || "Download failed"), true);
