@@ -1,5 +1,5 @@
 name = "ai-configa"
-main = "src/worker-live-events.js"
+main = "src/worker-youtube.js"
 compatibility_date = "2026-05-28"
 compatibility_flags = ["enable_request_signal", "request_signal_passthrough", "nodejs_compat"]
 workers_dev = true
@@ -31,8 +31,20 @@ name = "vexa-ai-coding-tasks"
 binding = "AI_CODING_WORKFLOW"
 class_name = "AiCodingWorkflow"
 
+# Vexa media container. The current MVP streams a single-file YouTube video
+# directly through yt-dlp without storing the full media on disk.
+[[containers]]
+class_name = "VexaMediaContainerV3"
+image = "./containers/vexa-media/Dockerfile"
+max_instances = 3
+instance_type = "lite"
+
+[[durable_objects.bindings]]
+name = "VEXA_MEDIA"
+class_name = "VexaMediaContainerV3"
+
 # Preserve the complete Durable Object migration history that Cloudflare has
-# already applied to the published Worker. Containers remain disabled.
+# already applied to the published Worker.
 [[migrations]]
 tag = "vexa-media-container-v1"
 new_sqlite_classes = ["VexaMediaContainer"]
@@ -42,16 +54,19 @@ tag = "vexa-media-container-disabled-v2"
 deleted_classes = ["VexaMediaContainer"]
 
 # This migration was previously published when the paid media container was
-# briefly re-enabled. It must remain in history even though the runtime is off.
+# briefly re-enabled. It must remain in history even though that runtime was retired.
 [[migrations]]
 tag = "vexa-media-container-v3"
 new_sqlite_classes = ["VexaMediaContainerV2"]
 
-# Retire the V2 Durable Object namespace so free-plan deployments no longer
-# need to export VexaMediaContainerV2 or configure a Containers binding.
 [[migrations]]
 tag = "vexa-media-container-disabled-v4"
 deleted_classes = ["VexaMediaContainerV2"]
+
+# Use a new class name after the prior container namespaces were deleted.
+[[migrations]]
+tag = "vexa-media-container-v5"
+new_sqlite_classes = ["VexaMediaContainerV3"]
 
 [triggers]
 crons = ["* * * * *"]
