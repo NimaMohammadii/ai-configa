@@ -4,10 +4,10 @@ import {
   handleYouTubeDownloadRequest,
   isYouTubeDownloadRequest,
 } from "./mini-app/vexa-live/youtube-download-exec.js";
-import { YOUTUBE_DOWNLOAD_RUNTIME } from "./mini-app/vexa-live/youtube-download.js";
+import { YOUTUBE_DOWNLOAD_RUNTIME } from "./mini-app/vexa-live/youtube-download-runtime.js";
 
 const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
-const YOUTUBE_RUNTIME_VERSION = "20260819-2";
+const YOUTUBE_RUNTIME_VERSION = "20260819-3";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export { VexaMediaContainerV3 };
