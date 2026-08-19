@@ -149,7 +149,7 @@ async function prepareDownload(request, env, ctx) {
 }
 
 async function inspectDownload(request, env) {
-  const checked = await readDownloadToken(request, env, false);
+  const checked = await readDownloadToken(request, env);
   if (checked.response) return checked.response;
   return new Response(null, {
     status: 200,
@@ -158,7 +158,7 @@ async function inspectDownload(request, env) {
 }
 
 async function streamDownload(request, env) {
-  const checked = await readDownloadToken(request, env, true);
+  const checked = await readDownloadToken(request, env);
   if (checked.response) return checked.response;
 
   const row = checked.row;
@@ -181,7 +181,7 @@ async function streamDownload(request, env) {
   }
 }
 
-async function readDownloadToken(request, env, claim) {
+async function readDownloadToken(request, env) {
   const requestUrl = new URL(request.url);
   const token = String(requestUrl.searchParams.get("token") || "").trim();
   if (!/^[A-Za-z0-9_-]{40,160}$/.test(token)) {
@@ -191,23 +191,11 @@ async function readDownloadToken(request, env, claim) {
   await ensureTokenTable(env);
   const now = Math.floor(Date.now() / 1000);
   const row = await env.DB.prepare(
-    "SELECT user_id, source_url, expires_at, used_at FROM vexa_youtube_download_tokens WHERE token = ?"
+    "SELECT user_id, source_url, expires_at FROM vexa_youtube_download_tokens WHERE token = ?"
   ).bind(token).first();
 
   if (!row || Number(row.expires_at || 0) <= now) {
     return { response: json({ error: "Download link expired" }, 410) };
-  }
-  if (row.used_at) {
-    return { response: json({ error: "Download link was already used" }, 409) };
-  }
-  if (!claim) return { row };
-
-  const claimed = await env.DB.prepare(
-    "UPDATE vexa_youtube_download_tokens SET used_at = ? " +
-    "WHERE token = ? AND used_at IS NULL AND expires_at > ?"
-  ).bind(now, token, now).run();
-  if (changedRows(claimed) <= 0) {
-    return { response: json({ error: "Download link is unavailable" }, 409) };
   }
   return { row };
 }
@@ -306,10 +294,6 @@ async function ensureTokenTable(env) {
     });
   }
   await tokenTableReady;
-}
-
-function changedRows(result) {
-  return Number(result?.meta?.changes || result?.changes || 0);
 }
 
 function publicContainerError(detail) {
