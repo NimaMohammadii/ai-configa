@@ -14,6 +14,11 @@ import {
   handleTrackedYouTubeDownloadRequest,
   isTrackedYouTubeDownloadRequest,
 } from "./mini-app/vexa-live/youtube-download-progress.js";
+import {
+  appendVexaCustomPlayerRuntime,
+  handleVexaCustomPlayerRequest,
+  isVexaCustomPlayerRequest,
+} from "./mini-app/vexa-live/youtube-custom-player.js";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export { VexaMediaContainerV3 };
@@ -22,6 +27,9 @@ export default {
   ...worker,
   async fetch(request, env, ctx) {
     try {
+      if (isVexaCustomPlayerRequest(request)) {
+        return handleVexaCustomPlayerRequest(request);
+      }
       if (isTrackedYouTubeDownloadRequest(request)) {
         return await handleTrackedYouTubeDownloadRequest(request, env, ctx);
       }
@@ -33,7 +41,8 @@ export default {
       }
       let response = await worker.fetch(request, env, ctx);
       response = await appendPlaybackRuntime(request, response);
-      return await appendDownloadProgressRuntime(request, response);
+      response = await appendDownloadProgressRuntime(request, response);
+      return await appendVexaCustomPlayerRuntime(request, response);
     } catch (error) {
       console.error("Vexa YouTube request failed", error?.stack || error);
       return json({ error: publicError(error) }, error?.status || 500);
