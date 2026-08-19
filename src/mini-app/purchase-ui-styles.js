@@ -99,7 +99,7 @@ html body .credits-page .tribute-currency-picker{
   backdrop-filter:blur(10px) saturate(1.12)!important;-webkit-backdrop-filter:blur(10px) saturate(1.12)!important
 }
 html body .credits-page .tribute-currency-picker[hidden]{display:none!important}
-html body .credits-page .tribute-currency-picker:before{content:""!important;position:absolute!important;z-index:0!important;left:3px!important;top:3px!important;bottom:3px!important;width:calc((100% - 6px)/var(--tribute-currency-count))!important;border-radius:13px!important;background:rgba(255,255,255,.92)!important;box-shadow:0 2px 9px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.88)!important;transform:translateX(var(--tribute-currency-shift))!important;transition:transform .42s cubic-bezier(.16,1,.3,1)!important}
+html body .credits-page .tribute-currency-picker:before{content:""!important;position:absolute!important;z-index:0!important;left:3px!important;top:3px!important;bottom:3px!important;width:calc((100% - 6px)/var(--tribute-currency-count))!important;border-radius:13px!important;background:rgba(255,255,255,.92)!important;box-shadow:0 2px 9px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.88)!important;transform:translateX(var(--tribute-shift))!important;transition:transform .42s cubic-bezier(.16,1,.3,1)!important}
 html body .credits-page .tribute-currency-picker button{position:relative!important;z-index:1!important;height:34px!important;padding:0 8px!important;border:0!important;border-radius:13px!important;background:transparent!important;color:rgba(255,255,255,.48)!important;font-size:9.5px!important;font-weight:760!important;transition:color .24s ease,transform .2s cubic-bezier(.16,1,.3,1)!important}
 html body .credits-page .tribute-currency-picker button.active{color:#101114!important}
 html body .credits-page .tribute-currency-picker button:active{transform:scale(.97)!important}
@@ -126,5 +126,17 @@ html body .credits-page .tribute-footnote span{color:#fff!important}
   html body .credits-page .tribute-currency-picker{width:min(82%,260px)!important}
   html body .credits-page .credits-tribute-mode{padding-left:12px!important;padding-right:12px!important}
   html body .credits-page .credits-payment-switch.tribute-switch button{font-size:9px!important;padding:0 5px!important}
+}
+
+/* Reward wheel: keep the Buy Credits DOM and controls untouched. */
+html body #wheelOpenButton{display:none!important}
+html body:has(#creditsPage.show) .tts-head{position:static!important;z-index:auto!important}
+html body:has(#creditsPage.show) #wheelOpenButton{
+  display:grid!important;
+  position:fixed!important;
+  z-index:106!important;
+  top:calc(22px + env(safe-area-inset-top))!important;
+  right:18px!important;
+  margin:0!important
 }
 `;
