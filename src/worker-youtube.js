@@ -10,14 +10,14 @@ import {
   isYouTubePlaybackRequest,
 } from "./mini-app/vexa-live/youtube-range-playback.js";
 import {
-  VexaYouTubeDownloadWorkflow,
   appendBackgroundDownloadRuntime,
   handleBackgroundYouTubeDownloadRequest,
   isBackgroundYouTubeDownloadRequest,
 } from "./mini-app/vexa-live/youtube-background-download.js";
+import { VexaYouTubeDownloadWorkflowV2 } from "./mini-app/vexa-live/youtube-background-workflow-v2.js";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
-export { VexaMediaContainerV3, VexaYouTubeDownloadWorkflow };
+export { VexaMediaContainerV3, VexaYouTubeDownloadWorkflowV2 };
 
 export default {
   ...worker,
