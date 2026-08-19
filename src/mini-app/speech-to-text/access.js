@@ -1,10 +1,10 @@
 import { requireDb } from "../../state.js";
 
-const ADMIN_ONLY_KEY = "vexa_live_admin_only";
-const LOCKED_FROM_KEY = "vexa_live_locked_from";
-const LOCKED_UNTIL_KEY = "vexa_live_locked_until";
+const ADMIN_ONLY_KEY = "speech_to_text_admin_only";
+const LOCKED_FROM_KEY = "speech_to_text_locked_from";
+const LOCKED_UNTIL_KEY = "speech_to_text_locked_until";
 
-export async function getVexaLiveAccessSettings(env) {
+export async function getSpeechToTextAccessSettings(env) {
   requireDb(env);
   await ensureAppSettingsTable(env);
 
@@ -26,7 +26,7 @@ export async function getVexaLiveAccessSettings(env) {
   const timedLockActive = lockedUntil > now;
 
   if (values[ADMIN_ONLY_KEY] === "1" && lockedUntil > 0 && !timedLockActive) {
-    await setVexaLiveAccessSettings(env, false, 0, 0);
+    await setSpeechToTextAccessSettings(env, false, 0, 0);
     return {
       adminOnly: false,
       lockedFrom: 0,
@@ -43,7 +43,7 @@ export async function getVexaLiveAccessSettings(env) {
   };
 }
 
-export async function setVexaLiveAccessSettings(
+export async function setSpeechToTextAccessSettings(
   env,
   adminOnly,
   lockedUntil = 0,
@@ -58,6 +58,11 @@ export async function setVexaLiveAccessSettings(
     setSetting(env, LOCKED_UNTIL_KEY, String(positiveInteger(lockedUntil))),
   ]);
 }
+
+// Compatibility exports used by the moved legacy STT/voice code. The storage
+// underneath is now Speech-to-Text specific and no longer shares Vexa Live's lock.
+export const getVexaLiveAccessSettings = getSpeechToTextAccessSettings;
+export const setVexaLiveAccessSettings = setSpeechToTextAccessSettings;
 
 async function setSetting(env, key, value) {
   await env.DB.prepare(
