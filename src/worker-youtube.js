@@ -13,7 +13,8 @@ export default {
   async fetch(request, env, ctx) {
     try {
       if (isYouTubeDownloadRequest(request)) {
-        return await handleYouTubeDownloadRequest(request, env, ctx);
+        const response = await handleYouTubeDownloadRequest(request, env, ctx);
+        return inlinePlaybackResponse(request, response);
       }
       return await worker.fetch(request, env, ctx);
     } catch (error) {
@@ -22,6 +23,23 @@ export default {
     }
   },
 };
+
+function inlinePlaybackResponse(request, response) {
+  if (!response || !response.ok || request.method !== "GET") return response;
+  const url = new URL(request.url);
+  if (url.searchParams.get("inline") !== "1") return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.startsWith("video/mp4")) return response;
+
+  const headers = new Headers(response.headers);
+  headers.set("Content-Disposition", "inline");
+  headers.set("Cache-Control", "private, no-store");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 function publicError(error) {
   const message = String(error?.message || "Request failed");
