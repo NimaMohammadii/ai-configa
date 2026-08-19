@@ -51,6 +51,21 @@ export class VexaMediaContainerV3 extends Container {
   enableInternet = true;
   entrypoint = ["sh", "-c", "trap 'exit 0' TERM INT; while :; do sleep 3600; done"];
 
+  async prepareVideo(url) {
+    let lastError = null;
+    for (const strategy of CLIENT_STRATEGIES) {
+      try {
+        const metadata = await this.getVideoMetadataForStrategy(url, strategy);
+        await this.probeVideo(url, metadata.strategyId, metadata.formatId);
+        return metadata;
+      } catch (error) {
+        lastError = error;
+        console.warn("Vexa YouTube strategy probe failed", strategy.id, error?.message || error);
+      }
+    }
+    throw lastError || new Error("YouTube could not prepare this video");
+  }
+
   async getVideoMetadata(url) {
     let lastError = null;
     for (const strategy of CLIENT_STRATEGIES) {
@@ -277,8 +292,7 @@ async function prepareDownload(request, env, ctx) {
   const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(user.id));
   let metadata;
   try {
-    metadata = await container.getVideoMetadata(sourceUrl);
-    await container.probeVideo(sourceUrl, metadata.strategyId, metadata.formatId);
+    metadata = await container.prepareVideo(sourceUrl);
   } catch (error) {
     console.error("Vexa YouTube prepare failed", error?.stack || error);
     return json({ error: publicMediaError(error) }, 502);
@@ -327,7 +341,7 @@ async function streamDownload(request, env) {
 
   try {
     const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(row.user_id));
-    const metadata = await container.getVideoMetadata(sourceUrl);
+    const metadata = await container.prepareVideo(sourceUrl);
     const body = await container.streamVideo(sourceUrl, metadata.strategyId, metadata.formatId);
     return new Response(body, {
       status: 200,
