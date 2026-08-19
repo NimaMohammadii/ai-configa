@@ -9,6 +9,7 @@ import { getVexaLiveAccessSettings } from "./access.js";
 const PREPARE_PATH = "/mini-app/live/api/youtube-download/prepare";
 const DOWNLOAD_PATH = "/mini-app/live/api/youtube-download";
 const TOKEN_TTL_SECONDS = 10 * 60;
+const METADATA_TIMEOUT_MS = 35_000;
 const FORMAT_SELECTOR = "b[ext=mp4][vcodec!=none][acodec!=none]/b[vcodec!=none][acodec!=none]";
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
@@ -17,25 +18,29 @@ const YOUTUBE_HOSTS = new Set([
   "music.youtube.com",
   "youtu.be",
 ]);
+const YTDLP_COMMON_ARGS = Object.freeze([
+  "--ignore-config",
+  "--no-playlist",
+  "--js-runtimes",
+  "deno",
+  "--socket-timeout",
+  "15",
+  "--retries",
+  "2",
+  "--fragment-retries",
+  "2",
+]);
 
 let tokenTableReady = null;
 
 export class VexaMediaContainerV3 extends Container {
-  sleepAfter = "5m";
+  sleepAfter = "2m";
   enableInternet = true;
   entrypoint = ["sh", "-c", "trap 'exit 0' TERM INT; while :; do sleep 3600; done"];
 
   async getVideoMetadata(url) {
     const process = await this.execYtDlp([
-      "--no-playlist",
-      "--js-runtimes",
-      "deno",
-      "--socket-timeout",
-      "15",
-      "--retries",
-      "2",
-      "--fragment-retries",
-      "2",
+      ...YTDLP_COMMON_ARGS,
       "--dump-single-json",
       "--skip-download",
       "--no-warnings",
@@ -43,35 +48,35 @@ export class VexaMediaContainerV3 extends Container {
       FORMAT_SELECTOR,
       url,
     ]);
-    const output = await process.output();
-    const decoder = new TextDecoder();
-    if (output.exitCode !== 0) {
-      const detail = decoder.decode(output.stderr).trim().split("\n").filter(Boolean).pop();
-      throw publicContainerError(detail);
-    }
+    const timer = setTimeout(() => {
+      try { process.kill(); } catch (error) {}
+    }, METADATA_TIMEOUT_MS);
 
     try {
-      const data = JSON.parse(decoder.decode(output.stdout));
-      return {
-        title: String(data?.title || "YouTube video"),
-        ext: String(data?.ext || "mp4").toLowerCase(),
-      };
-    } catch (error) {
-      throw new Error("YouTube metadata was invalid");
+      const output = await process.output();
+      const decoder = new TextDecoder();
+      if (output.exitCode !== 0) {
+        const detail = decoder.decode(output.stderr).trim().split("\n").filter(Boolean).pop();
+        throw publicContainerError(detail);
+      }
+
+      try {
+        const data = JSON.parse(decoder.decode(output.stdout));
+        return {
+          title: String(data?.title || "YouTube video"),
+          ext: String(data?.ext || "mp4").toLowerCase(),
+        };
+      } catch (error) {
+        throw new Error("YouTube metadata was invalid");
+      }
+    } finally {
+      clearTimeout(timer);
     }
   }
 
   async streamVideo(url) {
     const process = await this.execYtDlp([
-      "--no-playlist",
-      "--js-runtimes",
-      "deno",
-      "--socket-timeout",
-      "15",
-      "--retries",
-      "2",
-      "--fragment-retries",
-      "2",
+      ...YTDLP_COMMON_ARGS,
       "--quiet",
       "--no-warnings",
       "-f",
@@ -104,6 +109,9 @@ export async function handleYouTubeDownloadRequest(request, env, ctx) {
   const url = new URL(request.url);
   if (request.method === "POST" && url.pathname === PREPARE_PATH) {
     return prepareDownload(request, env, ctx);
+  }
+  if (request.method === "HEAD" && url.pathname === DOWNLOAD_PATH) {
+    return inspectDownload(request, env);
   }
   if (request.method === "GET" && url.pathname === DOWNLOAD_PATH) {
     return streamDownload(request, env);
@@ -140,34 +148,20 @@ async function prepareDownload(request, env, ctx) {
   });
 }
 
+async function inspectDownload(request, env) {
+  const checked = await readDownloadToken(request, env, false);
+  if (checked.response) return checked.response;
+  return new Response(null, {
+    status: 200,
+    headers: downloadHeaders("Vexa YouTube video", "mp4"),
+  });
+}
+
 async function streamDownload(request, env) {
-  const requestUrl = new URL(request.url);
-  const token = String(requestUrl.searchParams.get("token") || "").trim();
-  if (!/^[A-Za-z0-9_-]{40,160}$/.test(token)) {
-    return json({ error: "Download link is invalid" }, 400);
-  }
+  const checked = await readDownloadToken(request, env, true);
+  if (checked.response) return checked.response;
 
-  await ensureTokenTable(env);
-  const now = Math.floor(Date.now() / 1000);
-  const row = await env.DB.prepare(
-    "SELECT user_id, source_url, expires_at, used_at FROM vexa_youtube_download_tokens WHERE token = ?"
-  ).bind(token).first();
-
-  if (!row || Number(row.expires_at || 0) <= now) {
-    return json({ error: "Download link expired" }, 410);
-  }
-  if (row.used_at) {
-    return json({ error: "Download link was already used" }, 409);
-  }
-
-  const claimed = await env.DB.prepare(
-    "UPDATE vexa_youtube_download_tokens SET used_at = ? " +
-    "WHERE token = ? AND used_at IS NULL AND expires_at > ?"
-  ).bind(now, token, now).run();
-  if (changedRows(claimed) <= 0) {
-    return json({ error: "Download link is unavailable" }, 409);
-  }
-
+  const row = checked.row;
   const sourceUrl = normalizeYouTubeUrl(row.source_url);
   if (!sourceUrl) return json({ error: "Download source is invalid" }, 400);
 
@@ -179,17 +173,43 @@ async function streamDownload(request, env) {
 
     return new Response(body, {
       status: 200,
-      headers: {
-        "Content-Type": mediaContentType(metadata?.ext),
-        "Content-Disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(filename),
-        "Cache-Control": "private, no-store",
-        "X-Content-Type-Options": "nosniff",
-      },
+      headers: downloadHeaders(filename, metadata?.ext),
     });
   } catch (error) {
     console.error("Vexa YouTube media container failed", error?.stack || error);
     return json({ error: publicMediaError(error) }, 502);
   }
+}
+
+async function readDownloadToken(request, env, claim) {
+  const requestUrl = new URL(request.url);
+  const token = String(requestUrl.searchParams.get("token") || "").trim();
+  if (!/^[A-Za-z0-9_-]{40,160}$/.test(token)) {
+    return { response: json({ error: "Download link is invalid" }, 400) };
+  }
+
+  await ensureTokenTable(env);
+  const now = Math.floor(Date.now() / 1000);
+  const row = await env.DB.prepare(
+    "SELECT user_id, source_url, expires_at, used_at FROM vexa_youtube_download_tokens WHERE token = ?"
+  ).bind(token).first();
+
+  if (!row || Number(row.expires_at || 0) <= now) {
+    return { response: json({ error: "Download link expired" }, 410) };
+  }
+  if (row.used_at) {
+    return { response: json({ error: "Download link was already used" }, 409) };
+  }
+  if (!claim) return { row };
+
+  const claimed = await env.DB.prepare(
+    "UPDATE vexa_youtube_download_tokens SET used_at = ? " +
+    "WHERE token = ? AND used_at IS NULL AND expires_at > ?"
+  ).bind(now, token, now).run();
+  if (changedRows(claimed) <= 0) {
+    return { response: json({ error: "Download link is unavailable" }, 409) };
+  }
+  return { row };
 }
 
 async function assertLiveAccess(env, userId) {
@@ -233,15 +253,33 @@ function safeFileName(title, extension) {
     .trim()
     .replace(/[. ]+$/g, "")
     .slice(0, 140) || "YouTube video";
-  const ext = String(extension || "mp4").replace(/[^A-Za-z0-9]/g, "").toLowerCase() || "mp4";
+  const ext = safeExtension(extension);
   return cleanTitle + "." + ext;
 }
 
+function safeExtension(extension) {
+  return String(extension || "mp4").replace(/[^A-Za-z0-9]/g, "").toLowerCase() || "mp4";
+}
+
 function mediaContentType(extension) {
-  const ext = String(extension || "").toLowerCase();
+  const ext = safeExtension(extension);
   if (ext === "mp4" || ext === "m4v") return "video/mp4";
   if (ext === "webm") return "video/webm";
   return "application/octet-stream";
+}
+
+function downloadHeaders(filename, extension) {
+  const ext = safeExtension(extension);
+  const fallback = "Vexa-YouTube-video." + ext;
+  return {
+    "Content-Type": mediaContentType(ext),
+    "Content-Disposition":
+      "attachment; filename=\"" + fallback + "\"; filename*=UTF-8''" + encodeURIComponent(filename),
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Access-Control-Allow-Origin": "https://web.telegram.org",
+    "Access-Control-Expose-Headers": "Content-Disposition, Content-Type",
+  };
 }
 
 function randomToken() {
