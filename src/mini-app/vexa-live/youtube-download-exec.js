@@ -20,9 +20,20 @@ const YOUTUBE_HOSTS = new Set([
   "music.youtube.com",
   "youtu.be",
 ]);
+const CLIENT_STRATEGIES = Object.freeze([
+  Object.freeze({
+    id: "web_embedded",
+    args: Object.freeze(["--extractor-args", "youtube:player_client=web_embedded"]),
+  }),
+  Object.freeze({
+    id: "android_vr",
+    args: Object.freeze(["--extractor-args", "youtube:player_client=android_vr"]),
+  }),
+]);
 const YTDLP_COMMON_ARGS = Object.freeze([
   "--ignore-config",
   "--no-playlist",
+  "--force-ipv4",
   "--js-runtimes",
   "deno",
   "--socket-timeout",
@@ -41,8 +52,22 @@ export class VexaMediaContainerV3 extends Container {
   entrypoint = ["sh", "-c", "trap 'exit 0' TERM INT; while :; do sleep 3600; done"];
 
   async getVideoMetadata(url) {
+    let lastError = null;
+    for (const strategy of CLIENT_STRATEGIES) {
+      try {
+        return await this.getVideoMetadataForStrategy(url, strategy);
+      } catch (error) {
+        lastError = error;
+        console.warn("Vexa YouTube client strategy failed", strategy.id, error?.message || error);
+      }
+    }
+    throw lastError || new Error("YouTube could not prepare this video");
+  }
+
+  async getVideoMetadataForStrategy(url, strategy) {
     const process = await this.execYtDlp([
       ...YTDLP_COMMON_ARGS,
+      ...strategy.args,
       "--dump-single-json",
       "--skip-download",
       "--no-warnings",
@@ -58,80 +83,76 @@ export class VexaMediaContainerV3 extends Container {
       const output = await process.output();
       const decoder = new TextDecoder();
       if (output.exitCode !== 0) {
-        const detail = decoder.decode(output.stderr).trim().split("\n").filter(Boolean).pop();
+        const detail = decoder.decode(output.stderr).trim();
         throw publicContainerError(detail);
       }
 
       const data = JSON.parse(decoder.decode(output.stdout));
       const ext = String(data?.ext || "").toLowerCase();
       const protocol = String(data?.protocol || "").toLowerCase();
-      if (ext !== "mp4" || !protocol.startsWith("http")) {
+      const formatId = String(data?.format_id || "").trim();
+      if (ext !== "mp4" || !protocol.startsWith("http") || !formatId) {
         throw new Error("YouTube did not return a direct MP4 stream");
       }
       return {
         title: String(data?.title || "YouTube video"),
         ext,
         protocol,
-        formatId: String(data?.format_id || ""),
+        formatId,
+        strategyId: strategy.id,
       };
     } catch (error) {
+      if (isPublicMediaError(error)) throw error;
       if (error?.message === "YouTube did not return a direct MP4 stream") throw error;
-      if (error?.message?.startsWith("This YouTube") || error?.message === "YouTube could not prepare this video") throw error;
       throw new Error("YouTube metadata was invalid");
     } finally {
       clearTimeout(timer);
     }
   }
 
-  async probeVideo(url) {
-    const process = await this.execYtDlp([
-      ...YTDLP_COMMON_ARGS,
-      "--quiet",
-      "--no-warnings",
-      "-f",
-      FORMAT_SELECTOR,
-      "-o",
-      "-",
-      url,
-    ], { stderr: "ignore" });
-
+  async probeVideo(url, strategyId, formatId) {
+    const process = await this.startVideoProcess(url, strategyId, formatId);
     if (!process.stdout) throw new Error("Could not start the YouTube download");
+
+    const stderrPromise = collectText(process.stderr, 16_384);
     const reader = process.stdout.getReader();
     let timer = 0;
     try {
       const first = await Promise.race([
         reader.read(),
         new Promise((_, reject) => {
-          timer = setTimeout(() => reject(new Error("YouTube stream did not start in time")), STREAM_START_TIMEOUT_MS);
+          timer = setTimeout(
+            () => reject(new Error("YouTube stream did not start in time")),
+            STREAM_START_TIMEOUT_MS
+          );
         }),
       ]);
       if (first.done || !first.value?.byteLength) {
-        throw new Error("YouTube returned an empty video stream");
+        const detail = await processFailureDetail(process, stderrPromise);
+        throw publicContainerError(detail || "empty stream");
       }
       if (!looksLikeMp4(first.value)) {
         throw new Error("YouTube returned an invalid MP4 stream");
       }
       return true;
+    } catch (error) {
+      if (error?.message === "YouTube stream did not start in time") {
+        console.warn("Vexa YouTube probe timeout", strategyId, formatId);
+      }
+      throw error;
     } finally {
       if (timer) clearTimeout(timer);
       try { await reader.cancel(); } catch (error) {}
       try { process.kill(); } catch (error) {}
+      stderrPromise.catch(() => "");
     }
   }
 
-  async streamVideo(url) {
-    const process = await this.execYtDlp([
-      ...YTDLP_COMMON_ARGS,
-      "--quiet",
-      "--no-warnings",
-      "-f",
-      FORMAT_SELECTOR,
-      "-o",
-      "-",
-      url,
-    ], { stderr: "ignore" });
-
+  async streamVideo(url, strategyId, formatId) {
+    const process = await this.startVideoProcess(url, strategyId, formatId);
     if (!process.stdout) throw new Error("Could not start the YouTube download");
+
+    const stderrPromise = collectText(process.stderr, 16_384);
     const reader = process.stdout.getReader();
     let timer = 0;
     let first;
@@ -139,21 +160,27 @@ export class VexaMediaContainerV3 extends Container {
       first = await Promise.race([
         reader.read(),
         new Promise((_, reject) => {
-          timer = setTimeout(() => reject(new Error("YouTube stream did not start in time")), STREAM_START_TIMEOUT_MS);
+          timer = setTimeout(
+            () => reject(new Error("YouTube stream did not start in time")),
+            STREAM_START_TIMEOUT_MS
+          );
         }),
       ]);
     } catch (error) {
       try { await reader.cancel(); } catch (ignore) {}
       try { process.kill(); } catch (ignore) {}
+      const detail = await stderrPromise.catch(() => "");
+      if (detail) console.error("yt-dlp stream start failed", detail.slice(-2000));
       throw error;
     } finally {
       if (timer) clearTimeout(timer);
     }
 
     if (first.done || !first.value?.byteLength) {
+      const detail = await processFailureDetail(process, stderrPromise);
       try { await reader.cancel(); } catch (error) {}
       try { process.kill(); } catch (error) {}
-      throw new Error("YouTube returned an empty video stream");
+      throw publicContainerError(detail || "empty stream");
     }
     if (!looksLikeMp4(first.value)) {
       try { await reader.cancel(); } catch (error) {}
@@ -173,8 +200,10 @@ export class VexaMediaContainerV3 extends Container {
           const next = await reader.read();
           if (next.done) {
             const exitCode = await process.exitCode;
+            const detail = await stderrPromise.catch(() => "");
             if (exitCode !== 0) {
-              controller.error(new Error("YouTube download ended unexpectedly"));
+              if (detail) console.error("yt-dlp download failed", detail.slice(-4000));
+              controller.error(publicContainerError(detail || "download failed"));
               return;
             }
             controller.close();
@@ -188,8 +217,26 @@ export class VexaMediaContainerV3 extends Container {
       async cancel(reason) {
         try { await reader.cancel(reason); } catch (error) {}
         try { process.kill(); } catch (error) {}
+        stderrPromise.catch(() => "");
       },
     });
+  }
+
+  async startVideoProcess(url, strategyId, formatId) {
+    const strategy = clientStrategy(strategyId);
+    if (!strategy) throw new Error("YouTube client strategy is invalid");
+    const selectedFormat = String(formatId || "").trim() || FORMAT_SELECTOR;
+    return this.execYtDlp([
+      ...YTDLP_COMMON_ARGS,
+      ...strategy.args,
+      "--quiet",
+      "--no-warnings",
+      "-f",
+      selectedFormat,
+      "-o",
+      "-",
+      url,
+    ]);
   }
 
   async execYtDlp(args, options) {
@@ -231,7 +278,7 @@ async function prepareDownload(request, env, ctx) {
   let metadata;
   try {
     metadata = await container.getVideoMetadata(sourceUrl);
-    await container.probeVideo(sourceUrl);
+    await container.probeVideo(sourceUrl, metadata.strategyId, metadata.formatId);
   } catch (error) {
     console.error("Vexa YouTube prepare failed", error?.stack || error);
     return json({ error: publicMediaError(error) }, 502);
@@ -280,7 +327,8 @@ async function streamDownload(request, env) {
 
   try {
     const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(row.user_id));
-    const body = await container.streamVideo(sourceUrl);
+    const metadata = await container.getVideoMetadata(sourceUrl);
+    const body = await container.streamVideo(sourceUrl, metadata.strategyId, metadata.formatId);
     return new Response(body, {
       status: 200,
       headers: downloadHeaders(),
@@ -322,6 +370,43 @@ async function assertLiveAccess(env, userId) {
     error.status = 423;
     throw error;
   }
+}
+
+function clientStrategy(strategyId) {
+  const id = String(strategyId || "");
+  return CLIENT_STRATEGIES.find((strategy) => strategy.id === id) || null;
+}
+
+async function collectText(stream, maxBytes) {
+  if (!stream) return "";
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let total = 0;
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      if (!next.value?.byteLength) continue;
+      total += next.value.byteLength;
+      if (total <= maxBytes) {
+        text += decoder.decode(next.value, { stream: true });
+      }
+    }
+    text += decoder.decode();
+    return text.trim();
+  } catch (error) {
+    return text.trim();
+  }
+}
+
+async function processFailureDetail(process, stderrPromise) {
+  const [exitCode, stderr] = await Promise.all([
+    process.exitCode.catch(() => -1),
+    stderrPromise.catch(() => ""),
+  ]);
+  const detail = String(stderr || "").trim();
+  return detail || "yt-dlp exited with code " + String(exitCode);
 }
 
 function normalizeYouTubeUrl(value) {
@@ -388,36 +473,50 @@ async function ensureTokenTable(env) {
 
 function publicContainerError(detail) {
   const raw = String(detail || "");
-  if (/private|sign in|members-only|age-restricted/i.test(raw)) {
-    return new Error("This YouTube video cannot be downloaded without additional access");
+  if (/403|forbidden/i.test(raw)) {
+    return new Error("YouTube blocked the Cloudflare download request (403)");
+  }
+  if (/po token|proof.of.origin|missing_pot/i.test(raw)) {
+    return new Error("YouTube requires a PO Token for this download");
+  }
+  if (/sign in|not a bot|private|members-only|age-restricted/i.test(raw)) {
+    return new Error("YouTube blocked this Cloudflare server");
   }
   if (/unavailable|not available|video unavailable/i.test(raw)) {
     return new Error("This YouTube video is unavailable");
   }
-  if (/requested format is not available/i.test(raw)) {
+  if (/requested format is not available|no video formats found/i.test(raw)) {
     return new Error("This video does not expose a direct MP4 download format");
   }
-  if (/403|forbidden|po token/i.test(raw)) {
-    return new Error("YouTube blocked this download request");
+  if (/empty stream/i.test(raw)) {
+    return new Error("YouTube returned an empty video stream");
   }
+  console.error("Unclassified yt-dlp error", raw.slice(-4000));
   return new Error("YouTube could not prepare this video");
 }
 
+function isPublicMediaError(error) {
+  return PUBLIC_MEDIA_ERRORS.has(String(error?.message || ""));
+}
+
+const PUBLIC_MEDIA_ERRORS = new Set([
+  "This YouTube video is unavailable",
+  "This YouTube video cannot be downloaded without additional access",
+  "This video does not expose a direct MP4 download format",
+  "YouTube blocked the Cloudflare download request (403)",
+  "YouTube requires a PO Token for this download",
+  "YouTube blocked this Cloudflare server",
+  "YouTube could not prepare this video",
+  "YouTube did not return a direct MP4 stream",
+  "YouTube returned an empty video stream",
+  "YouTube returned an invalid MP4 stream",
+  "YouTube stream did not start in time",
+  "YouTube download ended unexpectedly",
+]);
+
 function publicMediaError(error) {
   const message = String(error?.message || "");
-  const allowed = new Set([
-    "This YouTube video is unavailable",
-    "This YouTube video cannot be downloaded without additional access",
-    "This video does not expose a direct MP4 download format",
-    "YouTube blocked this download request",
-    "YouTube could not prepare this video",
-    "YouTube did not return a direct MP4 stream",
-    "YouTube returned an empty video stream",
-    "YouTube returned an invalid MP4 stream",
-    "YouTube stream did not start in time",
-    "YouTube download ended unexpectedly",
-  ]);
-  return allowed.has(message) ? message : "YouTube download is temporarily unavailable";
+  return PUBLIC_MEDIA_ERRORS.has(message) ? message : "YouTube download is temporarily unavailable";
 }
 
 function json(value, status = 200) {
