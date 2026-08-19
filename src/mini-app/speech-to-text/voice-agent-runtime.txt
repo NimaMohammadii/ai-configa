@@ -1,0 +1,733 @@
+function vexaVoiceAgentBootstrap() {
+  const API = "/mini-app/live/api/voice-agent";
+  const TARGET_SAMPLE_RATE = 16000;
+  const DEFAULT_OUTPUT_SAMPLE_RATE = 16000;
+
+  const state = {
+    installed: false,
+    active: false,
+    phase: "idle",
+    session: null,
+    socket: null,
+    mediaStream: null,
+    audioContext: null,
+    micSource: null,
+    micProcessor: null,
+    silentGain: null,
+    playbackGain: null,
+    playbackAnalyser: null,
+    playbackData: null,
+    playbackSources: new Set(),
+    nextPlaybackTime: 0,
+    outputSampleRate: DEFAULT_OUTPUT_SAMPLE_RATE,
+    captureEnabled: false,
+    micEnergy: 0,
+    orb: null,
+    workspaceObserver: null,
+    installObserver: null,
+    playbackTimer: 0,
+  };
+
+  const q = (id) => document.getElementById(id);
+
+  function hostWindow() {
+    try {
+      if (window.parent && window.parent !== window && window.parent.location.origin === window.location.origin) {
+        return window.parent;
+      }
+    } catch (error) {}
+    return window;
+  }
+
+  function telegram() {
+    const host = hostWindow();
+    return window.Telegram?.WebApp || host.Telegram?.WebApp || null;
+  }
+
+  function initData() {
+    return String(telegram()?.initData || "");
+  }
+
+  function preferredLanguage() {
+    const tg = telegram();
+    const fromTelegram = String(tg?.initDataUnsafe?.user?.language_code || "");
+    const fromBrowser = String(navigator.language || "");
+    return fromTelegram || fromBrowser || "en";
+  }
+
+  function haptic(kind) {
+    const tg = telegram();
+    try {
+      if (kind === "success") tg?.HapticFeedback?.notificationOccurred?.("success");
+      else if (kind === "error") tg?.HapticFeedback?.notificationOccurred?.("error");
+      else tg?.HapticFeedback?.impactOccurred?.(kind || "light");
+    } catch (error) {}
+  }
+
+  async function api(path, body) {
+    const response = await fetch(API + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify(Object.assign({ initData: initData(), vexaVoice: true }, body || {})),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(String(data?.error || "Voice connection failed"));
+    return data;
+  }
+
+  function installStyles() {
+    if (q("vexaVoiceAgentStyles")) return;
+    const style = document.createElement("style");
+    style.id = "vexaVoiceAgentStyles";
+    style.textContent = `
+      body.vexa-stt-embedded .vexa-stt-controls{grid-template-columns:minmax(0,1fr) 42px 42px!important}
+      .vexa-voice-open{position:relative;width:42px;height:42px;padding:0;display:grid;place-items:center;border:0;border-radius:13px;color:#fff;background:rgba(13,13,13,.62);box-shadow:inset 0 1px 0 rgba(255,255,255,.105),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 18px rgba(255,255,255,.05),0 10px 22px rgba(0,0,0,.22);backdrop-filter:blur(10px) saturate(1.12);-webkit-backdrop-filter:blur(10px) saturate(1.12);overflow:hidden;transition:transform .28s cubic-bezier(.16,1,.3,1),opacity .2s ease,background .2s ease}
+      .vexa-voice-open:active{transform:scale(.88)}
+      .vexa-voice-open-orb{width:17px;height:17px;border-radius:50%;background:radial-gradient(circle at 50% 50%,#08080a 0 54%,rgba(54,22,118,.62) 67%,#8352ff 80%,#ffc7ea 97%);box-shadow:0 0 10px rgba(134,82,255,.34),0 0 3px rgba(255,208,240,.38);animation:vexaVoiceButtonBreath 2.8s ease-in-out infinite}
+      body.vexa-stt-embedded .vexa-stt.recording .vexa-voice-open,body.vexa-stt-embedded .vexa-stt.processing .vexa-voice-open{opacity:.25;pointer-events:none;transform:scale(.92)}
+      .vexa-voice-overlay{position:fixed;z-index:40;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:calc(18px + env(safe-area-inset-top)) 18px calc(20px + env(safe-area-inset-bottom));background:#080808;color:#fff;opacity:0;visibility:hidden;pointer-events:none;transform:scale(1.018);transition:opacity .34s ease,transform .5s cubic-bezier(.16,.86,.22,1),visibility 0s linear .5s;overflow:hidden}
+      .vexa-voice-overlay.open{opacity:1;visibility:visible;pointer-events:auto;transform:scale(1);transition-delay:0s}
+      .vexa-voice-close{position:absolute;z-index:4;top:calc(14px + env(safe-area-inset-top));left:14px;width:38px;height:38px;padding:0;display:grid;place-items:center;border:1px solid rgba(255,255,255,.1);border-radius:50%;color:#fff;background:rgba(255,255,255,.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 9px 24px rgba(0,0,0,.3);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:20px;font-weight:300;transition:transform .2s cubic-bezier(.16,1,.3,1),background .2s ease}
+      .vexa-voice-close:active{transform:scale(.9);background:rgba(255,255,255,.08)}
+      .vexa-voice-stage{position:relative;width:min(82vw,390px);aspect-ratio:1;display:grid;place-items:center;opacity:0;transform:scale(.74);filter:blur(8px);transition:opacity .48s .06s ease,transform .72s .04s cubic-bezier(.16,1,.3,1),filter .5s .04s ease}
+      .vexa-voice-overlay.open .vexa-voice-stage{opacity:1;transform:scale(1);filter:blur(0)}
+      .vexa-voice-canvas{display:block;width:100%;height:100%;touch-action:manipulation;cursor:pointer}
+      .vexa-voice-copy{width:min(88vw,420px);min-height:70px;margin-top:-8px;display:flex;flex-direction:column;align-items:center;text-align:center;opacity:0;transform:translateY(10px);transition:opacity .34s .23s ease,transform .48s .2s cubic-bezier(.16,1,.3,1)}
+      .vexa-voice-overlay.open .vexa-voice-copy{opacity:1;transform:none}
+      .vexa-voice-status{height:22px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.72);font-size:12px;font-weight:650;letter-spacing:-.015em}
+      .vexa-voice-transcript{max-width:100%;min-height:36px;margin-top:3px;color:rgba(255,255,255,.34);font-size:10.5px;font-weight:480;line-height:1.45;letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;transition:opacity .18s ease}
+      .vexa-voice-hint{position:absolute;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);color:rgba(255,255,255,.22);font-size:8.5px;font-weight:560;white-space:nowrap;opacity:0;transition:opacity .2s ease}
+      .vexa-voice-overlay.speaking .vexa-voice-hint,.vexa-voice-overlay.thinking .vexa-voice-hint{opacity:1}
+      .vexa-voice-overlay.error .vexa-voice-status{color:rgba(255,210,220,.72)}
+      @keyframes vexaVoiceButtonBreath{0%,100%{transform:scale(.92);filter:brightness(.88)}50%{transform:scale(1.06);filter:brightness(1.14)}}
+      @media(max-height:650px){.vexa-voice-stage{width:min(62vh,330px)}.vexa-voice-copy{margin-top:-18px}}
+      @media(prefers-reduced-motion:reduce){.vexa-voice-open-orb{animation:none}.vexa-voice-overlay,.vexa-voice-stage,.vexa-voice-copy,.vexa-voice-open{transition:none!important}}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function ensureUi() {
+    const shell = q("vexaStt");
+    const controls = shell?.querySelector(".vexa-stt-controls");
+    const upload = q("vexaSttUpload");
+    if (!shell || !controls || !upload) return false;
+    installStyles();
+
+    if (!q("vexaVoiceAgentOpen")) {
+      const button = document.createElement("button");
+      button.id = "vexaVoiceAgentOpen";
+      button.className = "vexa-voice-open";
+      button.type = "button";
+      button.setAttribute("aria-label", "Talk to Vexa");
+      button.innerHTML = '<span class="vexa-voice-open-orb" aria-hidden="true"></span>';
+      controls.insertBefore(button, upload);
+      button.addEventListener("click", () => {
+        if (shell.classList.contains("recording") || shell.classList.contains("processing")) return;
+        haptic("medium");
+        openVoiceMode().catch((error) => fail(error));
+      });
+    }
+
+    if (!q("vexaVoiceAgent")) {
+      const overlay = document.createElement("section");
+      overlay.id = "vexaVoiceAgent";
+      overlay.className = "vexa-voice-overlay";
+      overlay.setAttribute("aria-hidden", "true");
+      overlay.innerHTML =
+        '<button id="vexaVoiceAgentClose" class="vexa-voice-close" type="button" aria-label="Close voice conversation">×</button>' +
+        '<div class="vexa-voice-stage"><canvas id="vexaVoiceOrb" class="vexa-voice-canvas" aria-label="Voice activity orb"></canvas></div>' +
+        '<div class="vexa-voice-copy"><div id="vexaVoiceStatus" class="vexa-voice-status">Ready</div><div id="vexaVoiceTranscript" class="vexa-voice-transcript"></div></div>' +
+        '<div class="vexa-voice-hint">Speak anytime to interrupt</div>';
+      shell.appendChild(overlay);
+      q("vexaVoiceAgentClose")?.addEventListener("click", () => {
+        haptic("light");
+        closeVoiceMode();
+      });
+      q("vexaVoiceOrb")?.addEventListener("click", () => {
+        if (!state.active) return;
+        if (state.phase === "speaking" || state.phase === "thinking") {
+          haptic("light");
+          stopPlayback();
+          setPhase("listening", "Listening", "");
+          trySend({ type: "user_activity" });
+        }
+      });
+    }
+
+    bindWorkspaceVisibility();
+    state.installed = true;
+    return true;
+  }
+
+  function bindWorkspaceVisibility() {
+    if (state.workspaceObserver) return;
+    try {
+      const host = hostWindow();
+      const workspace = host.document?.getElementById?.("vexaLiveWorkspace");
+      if (!workspace) return;
+      state.workspaceObserver = new MutationObserver(() => {
+        if (workspace.getAttribute("aria-hidden") === "true" && state.active) closeVoiceMode();
+      });
+      state.workspaceObserver.observe(workspace, { attributes: true, attributeFilter: ["aria-hidden"] });
+    } catch (error) {}
+  }
+
+  function setPhase(phase, status, transcript) {
+    state.phase = phase;
+    const overlay = q("vexaVoiceAgent");
+    if (overlay) {
+      overlay.classList.remove("connecting", "listening", "thinking", "speaking", "error");
+      if (phase && phase !== "idle") overlay.classList.add(phase);
+    }
+    const statusNode = q("vexaVoiceStatus");
+    const transcriptNode = q("vexaVoiceTranscript");
+    if (statusNode) statusNode.textContent = String(status || phaseLabel(phase));
+    if (transcriptNode && transcript !== undefined) transcriptNode.textContent = String(transcript || "");
+  }
+
+  function phaseLabel(phase) {
+    if (phase === "connecting") return "Connecting";
+    if (phase === "listening") return "Listening";
+    if (phase === "thinking") return "Thinking";
+    if (phase === "speaking") return "Laura · V3";
+    if (phase === "error") return "Connection issue";
+    return "Ready";
+  }
+
+  async function openVoiceMode() {
+    if (state.active) return;
+    if (!ensureUi()) throw new Error("Voice mode is unavailable");
+    state.active = true;
+    state.captureEnabled = false;
+    state.outputSampleRate = DEFAULT_OUTPUT_SAMPLE_RATE;
+    const overlay = q("vexaVoiceAgent");
+    overlay?.classList.add("open");
+    overlay?.setAttribute("aria-hidden", "false");
+    setPhase("connecting", "Connecting to Laura V3", "");
+    startOrb();
+
+    try {
+      const audioPromise = ensureAudioContext();
+      const micPromise = audioPromise.then(() => startMicrophone());
+      const sessionPromise = api("/session", { language: preferredLanguage() });
+      const [session] = await Promise.all([sessionPromise, audioPromise]);
+      if (!state.active) return;
+      state.session = session;
+      await Promise.all([connectSpeechEngine(), micPromise]);
+    } catch (error) {
+      if (!state.active) return;
+      fail(error);
+      throw error;
+    }
+  }
+
+  async function ensureAudioContext() {
+    if (state.audioContext && state.audioContext.state !== "closed") {
+      if (state.audioContext.state === "suspended") await state.audioContext.resume();
+      return state.audioContext;
+    }
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("Live voice is not supported on this device");
+    const context = new AudioContextClass();
+    state.audioContext = context;
+    if (context.state === "suspended") await context.resume();
+
+    state.playbackGain = context.createGain();
+    state.playbackAnalyser = context.createAnalyser();
+    state.playbackAnalyser.fftSize = 256;
+    state.playbackAnalyser.smoothingTimeConstant = .62;
+    state.playbackData = new Uint8Array(state.playbackAnalyser.fftSize);
+    state.playbackGain.connect(state.playbackAnalyser);
+    state.playbackAnalyser.connect(context.destination);
+    return context;
+  }
+
+  async function startMicrophone() {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone is not available on this device");
+    if (state.mediaStream) return;
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    if (!state.active) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    const context = await ensureAudioContext();
+    const source = context.createMediaStreamSource(stream);
+    const processor = context.createScriptProcessor(2048, 1, 1);
+    const silent = context.createGain();
+    silent.gain.value = 0;
+    source.connect(processor);
+    processor.connect(silent);
+    silent.connect(context.destination);
+
+    state.mediaStream = stream;
+    state.micSource = source;
+    state.micProcessor = processor;
+    state.silentGain = silent;
+
+    processor.onaudioprocess = (event) => {
+      if (!state.active) return;
+      const input = event.inputBuffer.getChannelData(0);
+      state.micEnergy = rmsFloat(input);
+      if (!state.captureEnabled || state.socket?.readyState !== WebSocket.OPEN) return;
+      const pcm = downsampleToPcm16(input, context.sampleRate, TARGET_SAMPLE_RATE);
+      if (!pcm.length) return;
+      trySend({ user_audio_chunk: bytesToBase64(new Uint8Array(pcm.buffer)) });
+    };
+  }
+
+  async function connectSpeechEngine() {
+    const signedUrl = String(state.session?.signedUrl || "");
+    if (!signedUrl.startsWith("wss://")) throw new Error("V3 voice session is unavailable");
+    closeSpeechEngine();
+
+    const socket = new WebSocket(signedUrl);
+    state.socket = socket;
+    state.captureEnabled = false;
+
+    socket.addEventListener("message", handleSpeechEngineMessage);
+    socket.addEventListener("close", () => {
+      if (state.active && state.socket === socket && state.phase !== "error") {
+        fail(new Error("V3 voice connection closed"));
+      }
+    });
+
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      let opened = false;
+      let timer = 0;
+
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        timer = 0;
+        socket.removeEventListener("message", handleInitMessage);
+        socket.removeEventListener("error", handleInitError);
+        socket.removeEventListener("close", handleInitClose);
+      };
+
+      const finishError = (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+
+      const handleInitMessage = (event) => {
+        if (settled) return;
+        let message;
+        try { message = JSON.parse(String(event.data || "{}")); } catch (error) { return; }
+        const type = String(message?.type || "");
+        if (type === "conversation_initiation_metadata") {
+          settled = true;
+          cleanup();
+          resolve();
+          return;
+        }
+        if (type.includes("error")) {
+          finishError(new Error(String(message?.message || message?.error || "V3 voice initialization failed")));
+        }
+      };
+
+      const handleInitError = () => finishError(new Error("Could not connect to V3 voice"));
+      const handleInitClose = () => finishError(new Error("V3 voice connection closed during initialization"));
+
+      socket.addEventListener("message", handleInitMessage);
+      socket.addEventListener("error", handleInitError);
+      socket.addEventListener("close", handleInitClose);
+
+      socket.addEventListener("open", () => {
+        if (settled) return;
+        opened = true;
+        setPhase("connecting", "Preparing voice", "");
+        if (!trySend({ type: "conversation_initiation_client_data" })) {
+          finishError(new Error("Could not initialize V3 voice"));
+        }
+      }, { once: true });
+
+      timer = setTimeout(() => {
+        if (settled) return;
+        finishError(new Error(opened ? "Voice engine did not initialize" : "V3 voice connection timed out"));
+        try { socket.close(); } catch (error) {}
+      }, 12000);
+    });
+  }
+
+  function handleSpeechEngineMessage(event) {
+    if (!state.active) return;
+    let message;
+    try { message = JSON.parse(String(event.data || "{}")); } catch (error) { return; }
+    const type = String(message?.type || "");
+
+    if (type === "ping") {
+      const pingMs = Math.max(0, Number(message?.ping_event?.ping_ms || 0));
+      const eventId = message?.ping_event?.event_id;
+      setTimeout(() => trySend({ type: "pong", event_id: eventId }), pingMs);
+      return;
+    }
+
+    if (type === "conversation_initiation_metadata") {
+      const format = String(message?.conversation_initiation_metadata_event?.agent_output_audio_format || "");
+      state.outputSampleRate = parsePcmRate(format) || DEFAULT_OUTPUT_SAMPLE_RATE;
+      state.captureEnabled = true;
+      setPhase("listening", "Listening", "");
+      return;
+    }
+
+    if (type === "user_transcript") {
+      const text = String(message?.user_transcription_event?.user_transcript || "").trim();
+      stopPlayback();
+      setPhase("thinking", "Thinking", text);
+      return;
+    }
+
+    if (type === "agent_response") {
+      const text = cleanPreview(message?.agent_response_event?.agent_response || "");
+      setPhase(state.phase === "speaking" ? "speaking" : "thinking", state.phase === "speaking" ? "Laura · V3" : "Thinking", text);
+      return;
+    }
+
+    if (type === "agent_response_correction") {
+      const text = cleanPreview(message?.agent_response_correction_event?.corrected_agent_response || "");
+      if (text) setPhase(state.phase, phaseLabel(state.phase), text);
+      return;
+    }
+
+    if (type === "audio") {
+      const audio = String(message?.audio_event?.audio_base_64 || "");
+      if (!audio) return;
+      schedulePcmAudio(audio, state.outputSampleRate);
+      setPhase("speaking", "Laura · V3", q("vexaVoiceTranscript")?.textContent || "");
+      scheduleListeningAfterPlayback();
+      return;
+    }
+
+    if (type === "interruption") {
+      stopPlayback();
+      state.captureEnabled = true;
+      setPhase("listening", "Listening", "");
+      return;
+    }
+
+    if (type === "agent_response_complete") {
+      scheduleListeningAfterPlayback();
+      return;
+    }
+
+    if (type.includes("error")) {
+      fail(new Error(String(message?.message || message?.error || "V3 voice was interrupted")));
+    }
+  }
+
+  function trySend(value) {
+    const socket = state.socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    try {
+      socket.send(JSON.stringify(value));
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function parsePcmRate(format) {
+    const match = /^pcm_(\d+)$/.exec(String(format || ""));
+    return match ? Number(match[1]) : 0;
+  }
+
+  function schedulePcmAudio(base64, sampleRate) {
+    const context = state.audioContext;
+    const output = state.playbackGain;
+    if (!context || !output) return;
+    const bytes = base64ToBytes(base64);
+    if (bytes.byteLength < 2) return;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const count = Math.floor(bytes.byteLength / 2);
+    const samples = new Float32Array(count);
+    for (let i = 0; i < count; i += 1) samples[i] = view.getInt16(i * 2, true) / 32768;
+    const audioBuffer = context.createBuffer(1, count, sampleRate || DEFAULT_OUTPUT_SAMPLE_RATE);
+    audioBuffer.copyToChannel(samples, 0);
+    const source = context.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(output);
+    const now = context.currentTime;
+    if (!state.nextPlaybackTime || state.nextPlaybackTime < now + .018) state.nextPlaybackTime = now + .018;
+    source.start(state.nextPlaybackTime);
+    state.nextPlaybackTime += audioBuffer.duration;
+    state.playbackSources.add(source);
+    source.addEventListener("ended", () => state.playbackSources.delete(source), { once: true });
+  }
+
+  function scheduleListeningAfterPlayback() {
+    clearTimeout(state.playbackTimer);
+    const context = state.audioContext;
+    if (!context) return;
+    const delay = Math.max(80, (state.nextPlaybackTime - context.currentTime) * 1000 + 90);
+    state.playbackTimer = setTimeout(() => {
+      state.playbackTimer = 0;
+      if (state.active && state.phase === "speaking") setPhase("listening", "Listening", "");
+    }, Math.min(delay, 60000));
+  }
+
+  function stopPlayback() {
+    clearTimeout(state.playbackTimer);
+    state.playbackTimer = 0;
+    for (const source of Array.from(state.playbackSources)) {
+      try { source.stop(); } catch (error) {}
+      try { source.disconnect(); } catch (error) {}
+    }
+    state.playbackSources.clear();
+    state.nextPlaybackTime = state.audioContext?.currentTime || 0;
+  }
+
+  function closeSpeechEngine() {
+    state.captureEnabled = false;
+    const socket = state.socket;
+    state.socket = null;
+    if (socket) {
+      try { socket.close(1000, "closed"); } catch (error) {}
+    }
+  }
+
+  function stopMicrophone() {
+    if (state.micProcessor) {
+      state.micProcessor.onaudioprocess = null;
+      try { state.micProcessor.disconnect(); } catch (error) {}
+    }
+    if (state.micSource) {
+      try { state.micSource.disconnect(); } catch (error) {}
+    }
+    if (state.silentGain) {
+      try { state.silentGain.disconnect(); } catch (error) {}
+    }
+    state.micProcessor = null;
+    state.micSource = null;
+    state.silentGain = null;
+    if (state.mediaStream) {
+      state.mediaStream.getTracks().forEach((track) => {
+        try { track.stop(); } catch (error) {}
+      });
+    }
+    state.mediaStream = null;
+    state.micEnergy = 0;
+  }
+
+  function closeVoiceMode() {
+    if (!state.active) return;
+    state.active = false;
+    state.captureEnabled = false;
+    closeSpeechEngine();
+    stopPlayback();
+    stopMicrophone();
+    stopOrb();
+    const overlay = q("vexaVoiceAgent");
+    overlay?.classList.remove("open", "connecting", "listening", "thinking", "speaking", "error");
+    overlay?.setAttribute("aria-hidden", "true");
+    setPhase("idle", "Ready", "");
+  }
+
+  function fail(error) {
+    if (!state.active) return;
+    console.error("Vexa voice agent", error);
+    state.captureEnabled = false;
+    setPhase("error", "Connection issue", cleanError(error));
+    haptic("error");
+    window.setTimeout(() => {
+      if (state.active && state.phase === "error") closeVoiceMode();
+    }, 3200);
+  }
+
+  function cleanError(error) {
+    const raw = String(error?.message || "Voice connection failed").replace(/\s+/g, " ").trim();
+    if (/permission|notallowed/i.test(raw)) return "Microphone permission is required";
+    return Array.from(raw).slice(0, 140).join("");
+  }
+
+  function cleanPreview(value) {
+    return Array.from(String(value || "").replace(/\[[^\]]{1,28}\]/g, "").replace(/\s+/g, " ").trim()).slice(-170).join("");
+  }
+
+  function rmsFloat(values) {
+    if (!values?.length) return 0;
+    let sum = 0;
+    for (let i = 0; i < values.length; i += 1) sum += values[i] * values[i];
+    return Math.min(1, Math.sqrt(sum / values.length) * 4.2);
+  }
+
+  function playbackEnergy() {
+    if (state.phase !== "speaking" || !state.playbackAnalyser || !state.playbackData) return 0;
+    state.playbackAnalyser.getByteTimeDomainData(state.playbackData);
+    let sum = 0;
+    for (let i = 0; i < state.playbackData.length; i += 1) {
+      const value = (state.playbackData[i] - 128) / 128;
+      sum += value * value;
+    }
+    return Math.min(1, Math.sqrt(sum / state.playbackData.length) * 3.6);
+  }
+
+  function downsampleToPcm16(input, inputRate, outputRate) {
+    if (!input?.length || !inputRate || inputRate < outputRate) return new Int16Array(0);
+    const ratio = inputRate / outputRate;
+    const length = Math.max(1, Math.floor(input.length / ratio));
+    const output = new Int16Array(length);
+    for (let i = 0; i < length; i += 1) {
+      const start = Math.floor(i * ratio);
+      const end = Math.min(input.length, Math.max(start + 1, Math.floor((i + 1) * ratio)));
+      let sum = 0;
+      for (let j = start; j < end; j += 1) sum += input[j];
+      const sample = Math.max(-1, Math.min(1, sum / Math.max(1, end - start)));
+      output[i] = sample < 0 ? Math.round(sample * 32768) : Math.round(sample * 32767);
+    }
+    return output;
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(bytes.length, i + chunk)));
+    }
+    return btoa(binary);
+  }
+
+  function base64ToBytes(value) {
+    const binary = atob(String(value || ""));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  function startOrb() {
+    const canvas = q("vexaVoiceOrb");
+    if (!canvas) return;
+    stopOrb();
+    state.orb = createOrbRenderer(canvas);
+    state.orb.start();
+  }
+
+  function stopOrb() {
+    state.orb?.stop?.();
+    state.orb = null;
+  }
+
+  function createOrbRenderer(canvas) {
+    const ctx = canvas.getContext("2d", { alpha: false });
+    if (!ctx) return { start() {}, stop() {} };
+    let raf = 0;
+    let running = false;
+    let smoothEnergy = 0;
+    let startAt = performance.now();
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(1.6, Math.max(1, window.devicePixelRatio || 1));
+      const width = Math.max(2, Math.round(rect.width * dpr));
+      const height = Math.max(2, Math.round(rect.height * dpr));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      return { width, height, dpr };
+    }
+
+    function frame(now) {
+      if (!running || !state.active) return;
+      const size = resize();
+      const w = size.width;
+      const h = size.height;
+      const cx = w * .5;
+      const cy = h * .5;
+      const radius = Math.min(w, h) * .345;
+      const target = state.phase === "speaking" ? playbackEnergy() : state.phase === "listening" ? state.micEnergy : .04;
+      smoothEnergy += (target - smoothEnergy) * .12;
+      const time = (now - startAt) / 1000;
+      const pulse = 1 + Math.sin(time * 1.55) * .025 + smoothEnergy * .11;
+      const r = radius * pulse;
+
+      ctx.fillStyle = "#080808";
+      ctx.fillRect(0, 0, w, h);
+
+      const halo = ctx.createRadialGradient(cx, cy, r * .35, cx, cy, r * 1.38);
+      halo.addColorStop(0, "rgba(20,8,38,.35)");
+      halo.addColorStop(.56, "rgba(85,42,190,.24)");
+      halo.addColorStop(.82, "rgba(255,112,82,.12)");
+      halo.addColorStop(1, "rgba(8,8,8,0)");
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 1.45, 0, Math.PI * 2);
+      ctx.fill();
+
+      const gradient = ctx.createRadialGradient(
+        cx - r * (.11 + Math.sin(time * .53) * .05),
+        cy - r * .08,
+        r * .04,
+        cx,
+        cy,
+        r,
+      );
+      gradient.addColorStop(0, "#08080b");
+      gradient.addColorStop(.48, "#09080d");
+      gradient.addColorStop(.64, "#26104e");
+      gradient.addColorStop(.78, "#5d37d7");
+      gradient.addColorStop(.89, "#ef6c55");
+      gradient.addColorStop(.965, "#f4c2e7");
+      gradient.addColorStop(1, "rgba(8,8,8,.08)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      const sheen = ctx.createRadialGradient(cx - r * .23, cy - r * .28, 0, cx - r * .18, cy - r * .2, r * .62);
+      sheen.addColorStop(0, `rgba(125,92,255,${.13 + smoothEnergy * .12})`);
+      sheen.addColorStop(1, "rgba(125,92,255,0)");
+      ctx.fillStyle = sheen;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * .9, 0, Math.PI * 2);
+      ctx.fill();
+
+      raf = requestAnimationFrame(frame);
+    }
+
+    return {
+      start() {
+        if (running) return;
+        running = true;
+        startAt = performance.now();
+        raf = requestAnimationFrame(frame);
+      },
+      stop() {
+        running = false;
+        if (raf) cancelAnimationFrame(raf);
+        raf = 0;
+      },
+    };
+  }
+
+  function initialize() {
+    if (ensureUi()) return;
+    if (state.installObserver) return;
+    state.installObserver = new MutationObserver(() => {
+      if (ensureUi()) {
+        state.installObserver?.disconnect();
+        state.installObserver = null;
+      }
+    });
+    state.installObserver.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && state.active) closeVoiceMode();
+  });
+  window.addEventListener("pagehide", () => closeVoiceMode());
+  window.addEventListener("beforeunload", () => closeVoiceMode());
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize, { once: true });
+  else initialize();
+}
