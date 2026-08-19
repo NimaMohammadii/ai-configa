@@ -2,6 +2,7 @@ import { handleMiniAppRequest as baseHandleMiniAppRequest, isMiniAppRequest } fr
 import { authenticateMiniAppPayload } from "./auth.js";
 import { getMiniAppAccessSettings, hasTrackedUser, isAdmin } from "../admin.js";
 import { getBalance } from "../credits.js";
+import { regenerateSmartTtsSelection } from "../tts-smart-editing.js";
 import { buildPreparedReferralShare, getReferralLanguage, getReferralStatus, parseReferralStartParam, registerReferralFromStartParam } from "../referrals.js";
 import { MINI_APP_STAR_PACKAGES, createCustomStarPackage, applyStarPackageDiscount, starInvoicePayload } from "../stars.js";
 import { getActiveWheelPurchaseDiscount } from "../reward-wheel.js";
@@ -13,6 +14,7 @@ import { REFERRAL_UI_PATCH } from "./referral-ui.js";
 import { VOICE_INTRO_REFERRAL_UI_PATCH } from "./voice-intro-referral-ui.js";
 import { HISTORY_FILE_IDENTITY_PATCH } from "./history-file-identity.js";
 import { TTS_KEYBOARD_LOCK_PATCH } from "./tts-keyboard-lock.js";
+import { TTS_EDIT_PERFORMANCE_PATCH } from "./tts-edit-performance.js";
 
 export { isMiniAppRequest };
 
@@ -52,6 +54,10 @@ export async function handleMiniAppRequest(request, env) {
 
   if (request.method === "POST" && url.pathname === "/mini-app/api/history-send-to-bot") {
     return handleHistorySendToBot(request, env);
+  }
+
+  if (request.method === "POST" && url.pathname === "/mini-app/api/tts-regenerate") {
+    return handleSmartTtsRegenerate(request, env);
   }
 
   if (request.method === "POST" && url.pathname === "/mini-app/api/referral-status") {
@@ -135,6 +141,31 @@ export async function handleMiniAppRequest(request, env) {
     });
   } catch (error) {
     return json({ error: error?.message || "Mini app error" }, error?.status || 500);
+  }
+}
+
+async function handleSmartTtsRegenerate(request, env) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const user = await authenticateMiniAppPayload(body, env);
+    const access = await getMiniAppAccessSettings(env);
+    if (access.adminOnly && !(await isAdmin(env, user.id))) {
+      return json({ error: "Mini app is updating." }, 423);
+    }
+
+    const result = await regenerateSmartTtsSelection(env, {
+      userId: user.id,
+      historyId: String(body.historyId || ""),
+      revision: Number(body.revision || 0),
+      voiceId: String(body.voice || ""),
+      start: body.start,
+      end: body.end,
+      replacement: String(body.replacement || ""),
+      performanceProfile: body.performanceProfile,
+    });
+    return json(result);
+  } catch (error) {
+    return json({ error: error?.message || "Could not regenerate this voice section." }, error?.status || 500);
   }
 }
 
@@ -230,7 +261,9 @@ async function injectMiniAppUi(response, includeHistoryIdentity) {
   if (!source.includes(marker)) return cloneTextResponse(response, source);
   const injection =
     REFERRAL_UI_PATCH +
-    (includeHistoryIdentity ? "\n" + TTS_KEYBOARD_LOCK_PATCH + "\n" + VOICE_INTRO_REFERRAL_UI_PATCH + "\n" + HISTORY_FILE_IDENTITY_PATCH : "");
+    (includeHistoryIdentity
+      ? "\n" + TTS_KEYBOARD_LOCK_PATCH + "\n" + TTS_EDIT_PERFORMANCE_PATCH + "\n" + VOICE_INTRO_REFERRAL_UI_PATCH + "\n" + HISTORY_FILE_IDENTITY_PATCH
+      : "");
   const patched = source.replace(marker, marker + "\n" + injection);
   return cloneTextResponse(response, patched);
 }
