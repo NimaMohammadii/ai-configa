@@ -39,9 +39,20 @@ image = "docker.io/friedrichrehren/yt-dlp:2026.07.04"
 max_instances = 3
 instance_type = "basic"
 
+# Dedicated FFmpeg worker for short near-live subtitle audio windows.
+[[containers]]
+class_name = "VexaSubtitleContainer"
+image = "docker.io/friedrichrehren/yt-dlp:2026.07.04"
+max_instances = 3
+instance_type = "basic"
+
 [[durable_objects.bindings]]
 name = "VEXA_MEDIA"
 class_name = "VexaMediaContainerV3"
+
+[[durable_objects.bindings]]
+name = "VEXA_SUBTITLES"
+class_name = "VexaSubtitleContainer"
 
 # Preserve the complete Durable Object migration history that Cloudflare has
 # already applied to the published Worker.
@@ -67,6 +78,10 @@ deleted_classes = ["VexaMediaContainerV2"]
 [[migrations]]
 tag = "vexa-media-container-v5"
 new_sqlite_classes = ["VexaMediaContainerV3"]
+
+[[migrations]]
+tag = "vexa-subtitle-container-v1"
+new_sqlite_classes = ["VexaSubtitleContainer"]
 
 [triggers]
 crons = ["* * * * *"]
