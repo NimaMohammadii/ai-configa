@@ -34,7 +34,7 @@ class_name = "AiCodingWorkflow"
 [[workflows]]
 name = "vexa-youtube-downloads"
 binding = "VEXA_YOUTUBE_DOWNLOAD_WORKFLOW"
-class_name = "VexaYouTubeDownloadWorkflow"
+class_name = "VexaYouTubeDownloadWorkflowV2"
 
 # Vexa media container. Pinned image includes yt-dlp 2026.07.04, Deno and FFmpeg.
 # Basic is used for headroom during YouTube JS challenge solving; idle instances sleep quickly.
