@@ -74,8 +74,8 @@ const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 
 const VEXA_LIVE_INTEGRATION_JS = String.raw`
 (function () {
-  const BUTTON_ID = "vexaMediaOpen";
-  const SPEECH_BUTTON_ID = "vexaLiveOpen";
+  const BUTTON_ID = "vexaLiveOpen";
+  const SPEECH_BUTTON_ID = "speechToTextOpen";
   const WORKSPACE_ID = "vexaMediaWorkspace";
   const FRAME_ID = "vexaMediaInlineFrame";
   const PREPARE_URL = "/mini-app/live/api/youtube-download/prepare";
