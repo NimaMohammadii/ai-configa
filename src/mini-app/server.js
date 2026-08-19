@@ -41,6 +41,10 @@ export async function handleMiniAppRequest(request, env) {
     return appendPurchaseStyles(await baseHandleMiniAppRequest(request, env));
   }
 
+  if (request.method === "GET" && url.pathname === "/mini-app/chat/styles.css") {
+    return appendResponsiveStyles(await baseHandleMiniAppRequest(request, env), AI_CHAT_RESPONSIVE_CSS);
+  }
+
   if (request.method === "GET" && (url.pathname === "/mini-app" || url.pathname === "/mini-app/")) {
     return stripCreditsHeaderCopy(await baseHandleMiniAppRequest(request, env));
   }
@@ -322,14 +326,15 @@ async function appendPurchaseStyles(response) {
   if (!contentType.includes("text/css")) return response;
 
   const source = stripLegacyTtsKeyboardGeometry(await response.text());
-  const headers = new Headers(response.headers);
-  headers.delete("Content-Length");
-  headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
-  return new Response(source + "\n" + PURCHASE_UI_CSS, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  return cloneTextResponse(response, source + "\n" + PURCHASE_UI_CSS + "\n" + MINI_APP_RESPONSIVE_CSS);
+}
+
+async function appendResponsiveStyles(response, responsiveCss) {
+  if (!response?.ok) return response;
+  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("text/css")) return response;
+  const source = await response.text();
+  return cloneTextResponse(response, source + "\n" + responsiveCss);
 }
 
 async function stripCreditsHeaderCopy(response) {
@@ -359,6 +364,107 @@ function cloneTextResponse(response, text) {
     headers,
   });
 }
+
+const MINI_APP_RESPONSIVE_CSS = String.raw`
+/* Adaptive layout: mobile portrait keeps the existing UI unchanged. */
+@media (min-width:700px){
+  .app{width:min(100%,960px);padding-top:calc(24px + env(safe-area-inset-top))}
+  .tts-head,.tts-area{width:min(calc(100% - 56px),760px);margin-left:auto!important;margin-right:auto!important}
+  .tts-head:before,.tts-head:after{left:-28px;right:-28px}
+  .tts-bottom{width:min(calc(100vw - 64px),720px);max-width:720px}
+  .image-workspace{max-width:820px;margin-left:auto;margin-right:auto;padding-left:28px;padding-right:28px}
+  .image-explore{margin-left:-28px;margin-right:-28px}
+  .image-explore-head{padding-left:30px;padding-right:30px}
+  .image-explore-grid{padding-left:30px;padding-right:30px}
+  .image-history-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .history-card{width:min(calc(100% - 48px),760px);max-height:min(68dvh,620px);padding-left:20px;padding-right:20px}
+  .history-list{max-height:min(58dvh,550px)}
+  .explore-page{padding-left:24px;padding-right:24px}
+  .explore-page-head,.explore-search,.explore-page-grid{width:100%;max-width:900px;margin-left:auto;margin-right:auto}
+  .explore-page-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  .voices-page{padding-left:24px;padding-right:24px}
+  .voices-page-head,.saved-voices-strip,.voice-library-search,.voice-library-grid{width:100%;max-width:820px;margin-left:auto;margin-right:auto}
+  .credits-page-scroll{padding-left:28px;padding-right:28px}
+  .credits-page-head,.credits-custom,.credits-packs-section,.credits-footnote{max-width:760px}
+  .credits-payment-switch{width:min(calc(100% - 32px),760px);margin-left:auto;margin-right:auto}
+  .credits-pack-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .wheel-panel{width:min(calc(100% - 40px),620px)}
+  .limit-card{max-width:520px}
+  .explore-reels-page{width:min(100%,620px);left:50%;right:auto;transform:translateX(-50%)}
+}
+
+@media (min-width:1100px){
+  .app{width:min(100%,1180px);padding-top:calc(28px + env(safe-area-inset-top))}
+  .tts-head,.tts-area{width:min(calc(100% - 96px),900px)}
+  .tts-bottom{width:min(calc(100vw - 96px),840px);max-width:840px}
+  .image-workspace{max-width:980px;padding-left:40px;padding-right:40px}
+  .image-explore{margin-left:-40px;margin-right:-40px}
+  .image-explore-head{padding-left:42px;padding-right:42px}
+  .image-explore-grid{padding-left:42px;padding-right:42px}
+  .explore-page{padding-left:32px;padding-right:32px}
+  .explore-page-head,.explore-search,.explore-page-grid{max-width:1180px}
+  .explore-page-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+  .voices-page{padding-left:32px;padding-right:32px}
+  .voices-page-head,.saved-voices-strip,.voice-library-search,.voice-library-grid{max-width:980px}
+  .voice-library-grid{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px}
+  .credits-page-head,.credits-custom,.credits-packs-section,.credits-footnote{max-width:920px}
+  .credits-payment-switch{width:min(calc(100% - 64px),920px)}
+  .credits-pack-list{gap:12px}
+  .history-card{width:min(calc(100% - 80px),900px);max-height:min(72dvh,680px)}
+  .history-list{max-height:min(62dvh,610px)}
+  .wheel-panel{width:min(calc(100% - 64px),680px)}
+  .explore-reels-page{width:min(100%,680px)}
+}
+
+/* Phone landscape: compact vertical geometry without turning the phone into desktop UI. */
+@media (orientation:landscape) and (min-width:560px) and (max-width:960px) and (max-height:600px){
+  .app{padding-top:calc(10px + env(safe-area-inset-top))}
+  body:not(.keyboard-open) .tts-page{padding-bottom:126px}
+  body:not(.keyboard-open) .tts-head{height:34px;min-height:34px;max-height:34px;margin-bottom:8px!important}
+  body:not(.keyboard-open) .tts-head:before{top:calc(-10px - env(safe-area-inset-top))}
+  body:not(.keyboard-open) .tts-head:after{height:20px}
+  body:not(.keyboard-open) .tts-bottom{bottom:calc(8px + env(safe-area-inset-bottom,0px));gap:7px!important}
+  body:not(.keyboard-open) .wave-player{height:46px}
+  body:not(.keyboard-open) .tts-generate{height:38px!important;min-height:38px!important}
+  .image-workspace{top:42px;gap:8px;padding-bottom:8px}
+  .image-intro{padding-top:0}
+  .image-intro p{display:none}
+  .image-composer textarea{height:72px}
+  .history-card{max-height:min(84dvh,420px)}
+  .history-list{max-height:min(72dvh,350px)}
+  .wheel-panel{max-height:calc(var(--app-viewport-height,100vh) - env(safe-area-inset-top,0px) - 6px);padding-top:12px}
+  .wheel-stage{width:min(44vh,220px);margin-top:8px;margin-bottom:7px}
+  .explore-page-head,.voices-page-head{padding-top:calc(env(safe-area-inset-top,0px) + 10px)}
+}
+`;
+
+const AI_CHAT_RESPONSIVE_CSS = String.raw`
+/* Adaptive AI chat: compact mobile remains unchanged below 700px. */
+@media (min-width:700px){
+  .ai-chat-head{left:50%;right:auto;width:min(calc(100% - 56px),760px);transform:translateX(-50%)}
+  .ai-chat-messages{padding-left:max(28px,calc((100vw - 760px)/2));padding-right:max(28px,calc((100vw - 760px)/2))}
+  .ai-chat-message-content{max-width:min(78%,620px)}
+  .ai-chat-image-card{width:min(56vw,430px)}
+  .ai-chat-page .ai-chat-composer{left:50%;right:auto;width:min(calc(100% - 64px),720px);transform:translateX(-50%)}
+  .ai-chat-menu-panel{width:min(52vw,380px)}
+}
+
+@media (min-width:1100px){
+  .ai-chat-head{width:min(calc(100% - 96px),900px)}
+  .ai-chat-messages{padding-left:max(48px,calc((100vw - 900px)/2));padding-right:max(48px,calc((100vw - 900px)/2))}
+  .ai-chat-message-content{max-width:min(74%,720px)}
+  .ai-chat-image-card{width:min(44vw,520px)}
+  .ai-chat-page .ai-chat-composer{width:min(calc(100% - 96px),820px)}
+  .ai-chat-menu-panel{width:min(38vw,410px)}
+}
+
+@media (orientation:landscape) and (min-width:560px) and (max-width:960px) and (max-height:600px){
+  .ai-chat-head{top:calc(8px + env(safe-area-inset-top))}
+  .ai-chat-messages{padding-top:calc(60px + env(safe-area-inset-top));padding-bottom:max(74px,calc(var(--ai-chat-page-height) - 112px))}
+  .ai-chat-page .ai-chat-composer{bottom:calc(max(7px,env(safe-area-inset-bottom)) + var(--ai-chat-keyboard-offset,0px))}
+  .ai-chat-menu-panel{width:min(58vw,344px);padding-top:calc(10px + env(safe-area-inset-top));padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+}
+`;
 
 function json(value, status = 200) {
   return new Response(JSON.stringify(value), {
