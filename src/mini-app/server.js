@@ -381,7 +381,7 @@ const MINI_APP_RESPONSIVE_CSS = String.raw`
   .history-list{max-height:min(58dvh,550px)}
   .explore-page{padding-left:24px;padding-right:24px}
   .explore-page-head,.explore-search,.explore-page-grid{width:100%;max-width:900px;margin-left:auto;margin-right:auto}
-  .explore-page-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  .explore-page-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
   .voices-page{padding-left:24px;padding-right:24px}
   .voices-page-head,.saved-voices-strip,.voice-library-search,.voice-library-grid{width:100%;max-width:820px;margin-left:auto;margin-right:auto}
   .credits-page-scroll{padding-left:28px;padding-right:28px}
@@ -403,7 +403,7 @@ const MINI_APP_RESPONSIVE_CSS = String.raw`
   .image-explore-grid{padding-left:42px;padding-right:42px}
   .explore-page{padding-left:32px;padding-right:32px}
   .explore-page-head,.explore-search,.explore-page-grid{max-width:1180px}
-  .explore-page-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+  .explore-page-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
   .voices-page{padding-left:32px;padding-right:32px}
   .voices-page-head,.saved-voices-strip,.voice-library-search,.voice-library-grid{max-width:980px}
   .voice-library-grid{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px}
