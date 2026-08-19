@@ -59,7 +59,6 @@ async function relabelSpeechToTextResponse(response) {
   } else {
     source = source
       .replace('const BUTTON_ID = "vexaLiveOpen";', 'const BUTTON_ID = "speechToTextOpen";')
-      .replace('const WORKSPACE_ID = "vexaLiveWorkspace";', 'const WORKSPACE_ID = "speechToTextWorkspace";')
       .replaceAll("Open Vexa Live speech to text", "Open Speech to Text")
       .replace(
         'if (button && requestedSection() === "live") setLiveOpen(true);',
