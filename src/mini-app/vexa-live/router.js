@@ -881,8 +881,8 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
     const existing = document.getElementById(BUTTON_ID);
     if (existing) return existing;
 
-    const wheel = document.getElementById("wheelOpenButton");
-    if (!wheel || !wheel.parentElement) return null;
+    const anchor = document.getElementById("creditPill");
+    if (!anchor || !anchor.parentElement) return null;
 
     const button = document.createElement("button");
     button.id = BUTTON_ID;
@@ -907,7 +907,7 @@ const VEXA_LIVE_INLINE_INTEGRATION_JS = String.raw`
       setLiveOpen(!liveOpen);
     });
 
-    wheel.insertAdjacentElement("afterend", button);
+    anchor.insertAdjacentElement("afterend", button);
 
     const imageToggle = document.getElementById("modeToggle");
     if (imageToggle) {
