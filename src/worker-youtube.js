@@ -1,13 +1,13 @@
 import worker from "./worker-live-events.js";
 import {
   VexaMediaContainerV3,
-  YOUTUBE_DOWNLOAD_RUNTIME,
   handleYouTubeDownloadRequest,
   isYouTubeDownloadRequest,
-} from "./mini-app/vexa-live/youtube-download.js";
+} from "./mini-app/vexa-live/youtube-download-exec.js";
+import { YOUTUBE_DOWNLOAD_RUNTIME } from "./mini-app/vexa-live/youtube-download.js";
 
 const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
-const YOUTUBE_RUNTIME_VERSION = "20260819-1";
+const YOUTUBE_RUNTIME_VERSION = "20260819-2";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export { VexaMediaContainerV3 };
