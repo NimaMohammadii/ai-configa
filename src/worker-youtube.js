@@ -10,8 +10,10 @@ import { botMethodUrl } from "./telegram-api.js";
 
 const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
 const YOUTUBE_PREPARE_PATH = "/mini-app/live/api/youtube-download/prepare";
-const YOUTUBE_RUNTIME_VERSION = "20260819-6";
-const TELEGRAM_VIDEO_TIMEOUT_MS = 120000;
+const YOUTUBE_RUNTIME_VERSION = "20260819-7";
+const TELEGRAM_VIDEO_TIMEOUT_MS = 240000;
+const TELEGRAM_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
+const TELEGRAM_VIDEO_FILENAME = "Vexa-YouTube-video.mp4";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export { VexaMediaContainerV3 };
@@ -57,9 +59,35 @@ async function prepareAndSendYouTubeVideo(request, env, ctx) {
     return json({ error: "Could not prepare this video" }, 502);
   }
 
-  const videoUrl = new URL(String(data.downloadUrl), request.url).href;
+  const internalVideoUrl = new URL(String(data.downloadUrl), request.url).href;
+  let videoResponse;
   try {
-    const message = await sendTelegramVideoFromUrl(env, user.id, videoUrl);
+    videoResponse = await handleYouTubeDownloadRequest(
+      new Request(internalVideoUrl, {
+        method: "GET",
+        headers: { "Accept": "video/mp4" },
+      }),
+      env,
+      ctx
+    );
+  } catch (error) {
+    console.error("Vexa YouTube internal stream failed", error?.stack || error);
+    return json({ error: publicStreamError(error) }, 502);
+  }
+
+  if (!videoResponse?.ok || !videoResponse.body) {
+    const detail = await readErrorResponse(videoResponse);
+    return json({ error: detail || "Could not open this video stream" }, 502);
+  }
+
+  const contentType = String(videoResponse.headers.get("Content-Type") || "").toLowerCase();
+  if (!contentType.startsWith("video/mp4")) {
+    try { await videoResponse.body.cancel("invalid_content_type"); } catch (error) {}
+    return json({ error: "YouTube did not return a valid MP4 video" }, 502);
+  }
+
+  try {
+    const message = await sendTelegramVideoStream(env, user.id, videoResponse.body);
     return json({
       ok: true,
       sent: true,
@@ -68,26 +96,32 @@ async function prepareAndSendYouTubeVideo(request, env, ctx) {
     });
   } catch (error) {
     console.error(
-      "Vexa YouTube sendVideo failed",
+      "Vexa YouTube sendVideo upload failed",
       error?.telegramDescription || error?.stack || error
     );
     return json({ error: publicTelegramVideoError(error) }, 502);
   }
 }
 
-async function sendTelegramVideoFromUrl(env, chatId, videoUrl) {
+async function sendTelegramVideoStream(env, chatId, videoStream) {
+  if (!videoStream || typeof videoStream.getReader !== "function") {
+    throw new Error("Video stream is unavailable");
+  }
+
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort("youtube_send_video_timeout"), TELEGRAM_VIDEO_TIMEOUT_MS);
+  const timer = setTimeout(
+    () => controller.abort("youtube_send_video_timeout"),
+    TELEGRAM_VIDEO_TIMEOUT_MS
+  );
+  const multipart = createTelegramVideoMultipart(videoStream, chatId);
 
   try {
     const response = await fetch(botMethodUrl(env, "sendVideo"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: String(chatId),
-        video: videoUrl,
-        supports_streaming: true,
-      }),
+      headers: {
+        "Content-Type": "multipart/form-data; boundary=" + multipart.boundary,
+      },
+      body: multipart.body,
       signal: controller.signal,
     });
     const data = await response.json().catch(() => null);
@@ -99,6 +133,14 @@ async function sendTelegramVideoFromUrl(env, chatId, videoUrl) {
     }
     return data.result;
   } catch (error) {
+    if (multipart.state.tooLarge) {
+      const sizeError = new Error("Telegram video upload exceeds 50 MB");
+      sizeError.code = "telegram_video_too_large";
+      throw sizeError;
+    }
+    if (multipart.state.sourceError) {
+      throw multipart.state.sourceError;
+    }
     if (
       error?.name === "AbortError" ||
       String(error).includes("youtube_send_video_timeout")
@@ -111,6 +153,91 @@ async function sendTelegramVideoFromUrl(env, chatId, videoUrl) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function createTelegramVideoMultipart(videoStream, chatId) {
+  const boundary = "----VexaVideo" + crypto.randomUUID().replace(/-/g, "");
+  const encoder = new TextEncoder();
+  const prefix = encoder.encode(
+    "--" + boundary + "\r\n" +
+    'Content-Disposition: form-data; name="chat_id"\r\n\r\n' +
+    String(chatId) + "\r\n" +
+    "--" + boundary + "\r\n" +
+    'Content-Disposition: form-data; name="supports_streaming"\r\n\r\n' +
+    "true\r\n" +
+    "--" + boundary + "\r\n" +
+    'Content-Disposition: form-data; name="video"; filename="' + TELEGRAM_VIDEO_FILENAME + '"\r\n' +
+    "Content-Type: video/mp4\r\n\r\n"
+  );
+  const suffix = encoder.encode("\r\n--" + boundary + "--\r\n");
+  const reader = videoStream.getReader();
+  const state = {
+    tooLarge: false,
+    sourceError: null,
+    videoBytes: 0,
+  };
+  let phase = 0;
+
+  const body = new ReadableStream({
+    async pull(streamController) {
+      if (phase === 0) {
+        phase = 1;
+        streamController.enqueue(prefix);
+        return;
+      }
+
+      if (phase === 1) {
+        try {
+          const next = await reader.read();
+          if (!next.done) {
+            if (next.value?.byteLength) {
+              state.videoBytes += next.value.byteLength;
+              if (state.videoBytes > TELEGRAM_VIDEO_MAX_BYTES) {
+                state.tooLarge = true;
+                try { await reader.cancel("telegram_video_too_large"); } catch (error) {}
+                streamController.error(new Error("Telegram video upload exceeds 50 MB"));
+                return;
+              }
+              streamController.enqueue(next.value);
+            }
+            return;
+          }
+          phase = 2;
+        } catch (error) {
+          state.sourceError = error;
+          streamController.error(error);
+          return;
+        }
+      }
+
+      if (phase === 2) {
+        phase = 3;
+        streamController.enqueue(suffix);
+        streamController.close();
+      }
+    },
+    async cancel(reason) {
+      try { await reader.cancel(reason); } catch (error) {}
+    },
+  });
+
+  return { boundary, body, state };
+}
+
+async function readErrorResponse(response) {
+  if (!response) return "";
+  try {
+    const data = await response.json();
+    return String(data?.error || "");
+  } catch (error) {
+    return "";
+  }
+}
+
+function publicStreamError(error) {
+  const message = String(error?.message || "");
+  if (/youtube/i.test(message) || /video/i.test(message)) return message;
+  return "Could not open this video stream";
 }
 
 async function appendYouTubeRuntime(response) {
@@ -136,19 +263,21 @@ async function appendYouTubeRuntime(response) {
 
 function publicTelegramVideoError(error) {
   const description = String(error?.telegramDescription || "").toLowerCase();
+  const message = String(error?.message || "");
+  if (error?.code === "telegram_video_too_large") {
+    return "This video is larger than Telegram's 50 MB bot limit";
+  }
   if (error?.code === "telegram_video_timeout") {
     return "Telegram took too long to receive this video";
   }
   if (/file is too big|file too large|request entity too large/.test(description)) {
-    return "This video is too large to send to Telegram right now";
-  }
-  if (/failed to get http url content|wrong file identifier|webpage_curl_failed|wrong type/.test(description)) {
-    return "Telegram could not fetch this video stream";
+    return "This video is larger than Telegram's 50 MB bot limit";
   }
   if (/chat not found|bot was blocked|user is deactivated/.test(description)) {
     return "Open the bot chat and press Start, then try again";
   }
-  return "Telegram could not send this video";
+  if (/youtube/i.test(message)) return message;
+  return "Telegram could not receive this video";
 }
 
 function publicError(error) {
