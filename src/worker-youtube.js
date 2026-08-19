@@ -25,6 +25,11 @@ import {
   handleVexaLiveSubtitlesRequest,
   isVexaLiveSubtitlesRequest,
 } from "./mini-app/vexa-live/youtube-live-subtitles.js";
+import {
+  appendVexaLivePersistenceRuntime,
+  handleVexaLivePersistenceRequest,
+  isVexaLivePersistenceRequest,
+} from "./mini-app/vexa-live/youtube-live-persistence.js";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export { VexaMediaContainerV3, VexaSubtitleContainer };
@@ -33,6 +38,9 @@ export default {
   ...worker,
   async fetch(request, env, ctx) {
     try {
+      if (isVexaLivePersistenceRequest(request)) {
+        return handleVexaLivePersistenceRequest(request);
+      }
       if (isVexaLiveSubtitlesRequest(request)) {
         return await handleVexaLiveSubtitlesRequest(request, env, ctx);
       }
@@ -52,7 +60,8 @@ export default {
       response = await appendPlaybackRuntime(request, response);
       response = await appendDownloadProgressRuntime(request, response);
       response = await appendVexaCustomPlayerRuntime(request, response);
-      return await appendVexaLiveSubtitlesRuntime(request, response);
+      response = await appendVexaLiveSubtitlesRuntime(request, response);
+      return await appendVexaLivePersistenceRuntime(request, response);
     } catch (error) {
       console.error("Vexa YouTube request failed", error?.stack || error);
       return json({ error: publicError(error) }, error?.status || 500);
