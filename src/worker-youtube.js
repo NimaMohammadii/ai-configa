@@ -24,6 +24,12 @@ export default {
   async fetch(request, env, ctx) {
     try {
       if (isBackgroundYouTubeDownloadRequest(request)) {
+        const url = new URL(request.url);
+        if (request.method === "POST" && url.pathname.endsWith("/session")) {
+          await env.DB?.prepare(
+            "DELETE FROM vexa_youtube_download_progress WHERE status = 'ready' AND downloaded_bytes = 0"
+          ).run().catch(() => null);
+        }
         return await handleBackgroundYouTubeDownloadRequest(request, env, ctx);
       }
       if (isYouTubePlaybackRequest(request)) {
