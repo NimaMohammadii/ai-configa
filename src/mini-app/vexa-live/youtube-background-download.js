@@ -234,12 +234,12 @@ async function createSession(request, env) {
   ).bind(playbackToken, String(user.id), now).first();
 
   if (reusable?.session && cleanToken(reusable.session)) {
-    return sessionPayload(
+    return json(sessionPayload(
       cleanToken(reusable.session),
       positiveInteger(reusable.total_bytes) || totalBytes,
       String(reusable.status || "queued"),
       String(playback.title || "YouTube video"),
-    );
+    ));
   }
 
   const session = randomToken();
@@ -268,7 +268,7 @@ async function createSession(request, env) {
       },
       retention: { successRetention: "1 day", errorRetention: "1 day" },
     });
-    return {
+    return json({
       ...sessionPayload(
         session,
         totalBytes,
@@ -276,7 +276,7 @@ async function createSession(request, env) {
         String(playback.title || "YouTube video"),
       ),
       workflowId: String(instance?.id || ("yt-" + session)),
-    };
+    });
   } catch (error) {
     const message = "Could not start background video download";
     await writeProgress(env, session, 0, "failed", message).catch(() => null);
