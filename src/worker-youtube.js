@@ -7,7 +7,7 @@ import {
 import { YOUTUBE_DOWNLOAD_RUNTIME } from "./mini-app/vexa-live/youtube-download-runtime.js";
 
 const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
-const YOUTUBE_RUNTIME_VERSION = "20260819-4";
+const YOUTUBE_RUNTIME_VERSION = "20260819-5";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export { VexaMediaContainerV3 };
