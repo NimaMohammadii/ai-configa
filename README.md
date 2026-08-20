@@ -18,6 +18,10 @@ Telegram text-to-speech bot built for Cloudflare Workers, D1, and ElevenLabs.
 - Per-user numbered output file names: `Vexa 0001.mp3`, `Vexa 0002.mp3`, and so on
 - No caption/text on audio files
 
+## Test note
+
+README update test.
+
 ## Required secrets
 
 Use exactly these environment secret names:
