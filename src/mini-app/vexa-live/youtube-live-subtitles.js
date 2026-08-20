@@ -5,11 +5,11 @@ import { getVexaLiveAccessSettings } from "./access.js";
 
 const SOCKET_PATH="/mini-app/live/api/youtube-subtitles/realtime";
 const RUNTIME_PATH="/mini-app/vexa-live/live-subtitles.js";
-const RUNTIME_VERSION="20260820-1";
+const RUNTIME_VERSION="20260820-2";
 const TRANSLATION_MODEL="gpt-5.6-luna";
 const TRANSLATE_TIMEOUT_MS=12000;
 const PCM_SAMPLE_RATE=16000, PCM_BYTES_PER_SECOND=32000, PCM_FRAME_BYTES=3200;
-const CONTEXT_CHAR_LIMIT=1200, LIVE_SOURCE_LIMIT=180;
+const CONTEXT_CHAR_LIMIT=1200, LIVE_SOURCE_LIMIT=180, INITIAL_AUDIO_BURST_SECONDS=2.2;
 const VAD_SILENCE_SECONDS=.45, VAD_THRESHOLD=.4, VAD_MIN_SPEECH_MS=100, VAD_MIN_SILENCE_MS=100;
 
 const TARGET_LANGUAGES=Object.freeze({original:"Original",en:"English",fa:"Persian",ru:"Russian",de:"German",tr:"Turkish",es:"Spanish",ar:"Arabic",fr:"French",pt:"Portuguese",it:"Italian",hi:"Hindi",zh:"Chinese",ja:"Japanese",ko:"Korean"});
@@ -22,15 +22,17 @@ export class VexaSubtitleContainer extends Container {
   entrypoint=["sh","-c","trap 'exit 0' TERM INT; while :; do sleep 3600; done"];
   activeAudioProcesses=new Map();
 
-  async streamAudioPcm(mediaUrl,startSeconds,streamId){
+  async streamAudioPcm(mediaUrl,startSeconds,streamId,playbackRate=1){
     if(!this.ctx.container.running) await this.start();
     const id=cleanStreamId(streamId);
     if(!id) throw new Error("Subtitle audio stream id is invalid");
     const prior=this.activeAudioProcesses.get(id);
     if(prior){try{prior.kill();}catch{} this.activeAudioProcesses.delete(id);}
+    const rate=Math.max(.25,Math.min(4,Number(playbackRate)||1));
     const process=await this.ctx.container.exec([
       "ffmpeg","-nostdin","-hide_banner","-loglevel","error",
-      "-re","-ss",Number(startSeconds||0).toFixed(3),"-i",String(mediaUrl),
+      "-readrate",rate.toFixed(3),"-readrate_initial_burst",String(INITIAL_AUDIO_BURST_SECONDS),
+      "-ss",Number(startSeconds||0).toFixed(3),"-i",String(mediaUrl),
       "-vn","-ac","1","-ar",String(PCM_SAMPLE_RATE),"-c:a","pcm_s16le","-f","s16le","pipe:1"
     ]);
     if(!process.stdout){try{process.kill();}catch{} throw new Error("Could not start realtime subtitle audio");}
@@ -106,6 +108,7 @@ async function runRealtimeSubtitleSession({request,env,server,payload,signal,sen
   if(!targetLanguage||targetLanguage==="off")throw httpError("Subtitle language is invalid",400);
   const start=finiteNumber(payload.currentTime,0,86400);
   if(start===null)throw httpError("Subtitle start time is invalid",400);
+  const playbackRate=finiteNumber(payload.playbackRate,.25,4)??1;
 
   const row=await env.DB.prepare("SELECT user_id, expires_at FROM vexa_youtube_playback_tokens WHERE token = ?").bind(token).first();
   const now=Math.floor(Date.now()/1000);
@@ -124,6 +127,8 @@ async function runRealtimeSubtitleSession({request,env,server,payload,signal,sen
   scribeUrl.searchParams.set("vad_threshold",String(VAD_THRESHOLD));
   scribeUrl.searchParams.set("min_speech_duration_ms",String(VAD_MIN_SPEECH_MS));
   scribeUrl.searchParams.set("min_silence_duration_ms",String(VAD_MIN_SILENCE_MS));
+  scribeUrl.searchParams.set("include_timestamps","true");
+  scribeUrl.searchParams.set("include_language_detection","true");
 
   const upstreamResponse=await fetch(scribeUrl,{headers:{Upgrade:"websocket","xi-api-key":apiKey}});
   const upstream=upstreamResponse.webSocket;
@@ -134,36 +139,40 @@ async function runRealtimeSubtitleSession({request,env,server,payload,signal,sen
   const playbackUrl=new URL("/mini-app/live/api/youtube-playback?token="+encodeURIComponent(token),request.url).href;
   const container=getContainer(env.VEXA_SUBTITLES,"subtitle-"+safeContainerKey(user.id));
 
-  let audioStream=null,sourceContext="",upstreamEndedNormally=false,sentActivity=false;
-  let translationRevision=0,translationController=null,lastTranslationSource="";
+  let audioStream=null,audioSecondsSent=0,sourceContext="",upstreamEndedNormally=false,sentActivity=false,segmentIndex=0,revision=0;
+  let latestTranslationJob=null,translationLoopPromise=null,lastQueuedSource="";
+  const timestampState={offset:0,lastEnd:0};
 
   const closeUpstream=()=>{try{upstream.close(1000,"done");}catch{}};
   signal.addEventListener("abort",closeUpstream,{once:true});
 
-  const startLiveTranslation=(rawText,{final=false,force=false}={})=>{
+  const queueLiveTranslation=(rawText,{final=false,force=false,timing=null}={})=>{
     const text=cleanSubtitleText(rawText).slice(-LIVE_SOURCE_LIMIT);
     if(!text)return;
-    if(!force&&!shouldTranslatePartial(text,lastTranslationSource))return;
-    lastTranslationSource=text;
-    const revision=++translationRevision;
-    if(translationController)translationController.abort();
-    const controller=new AbortController();translationController=controller;
-    const abortFromSession=()=>controller.abort();
-    signal.addEventListener("abort",abortFromSession,{once:true});
-    streamLiveSubtitleTranslation({
-      env,sourceText:text,context:sourceContext,targetLanguage,signal:controller.signal,
-      onText:translated=>{if(revision!==translationRevision||signal.aborted||!translated)return;send({type:"preview",text:translated,complete:false});}
-    }).then(translated=>{
-      if(revision!==translationRevision||signal.aborted||!translated)return;
-      send({type:"preview",text:translated,complete:final});
-    }).catch(e=>{
-      if(controller.signal.aborted||signal.aborted)return;
-      console.error("Vexa live subtitle translation failed",e?.stack||e);
-      send({type:"error",error:publicError(e),retryable:isRetryableSessionError(e)});
-    }).finally(()=>{
-      signal.removeEventListener("abort",abortFromSession);
-      if(translationController===controller)translationController=null;
-    });
+    if(!force&&!shouldTranslatePartial(text,lastQueuedSource))return;
+    lastQueuedSource=text;
+    latestTranslationJob={text,final,timing:timing||estimateLiveTiming(start,audioSecondsSent,text),context:sourceContext,slot:String(segmentIndex),revision:++revision};
+    if(!translationLoopPromise)translationLoopPromise=runTranslationLoop();
+  };
+
+  const runTranslationLoop=()=>{
+    translationLoopPromise=(async()=>{
+      while(latestTranslationJob&&!signal.aborted&&server.readyState===WebSocket.OPEN){
+        const job=latestTranslationJob;latestTranslationJob=null;
+        try{
+          const translated=await streamLiveSubtitleTranslation({
+            env,sourceText:job.text,context:job.context,targetLanguage,signal,
+            onText:text=>{if(!signal.aborted&&text)send({type:"preview",slot:job.slot,revision:job.revision,start:job.timing.start,end:job.timing.end,text,complete:false});}
+          });
+          if(!signal.aborted&&translated)send({type:"preview",slot:job.slot,revision:job.revision,start:job.timing.start,end:job.timing.end,text:translated,complete:job.final});
+        }catch(e){
+          if(signal.aborted)return;
+          console.error("Vexa live subtitle translation failed",e?.stack||e);
+          send({type:"translation_error",error:publicError(e)});
+        }
+      }
+    })().finally(()=>{translationLoopPromise=null;if(latestTranslationJob&&!signal.aborted)runTranslationLoop();});
+    return translationLoopPromise;
   };
 
   upstream.addEventListener("message",event=>{
@@ -175,20 +184,28 @@ async function runRealtimeSubtitleSession({request,env,server,payload,signal,sen
     if(type==="partial_transcript"||type==="final_transcript"){
       const text=cleanSubtitleText(m?.text);if(!text)return;
       if(!sentActivity){sentActivity=true;send({type:"activity"});}
-      if(targetLanguage==="original")send({type:"preview",text,complete:type==="final_transcript"});
-      else startLiveTranslation(text,{force:type==="final_transcript"});
+      const timing=estimateLiveTiming(start,audioSecondsSent,text);
+      if(targetLanguage==="original")send({type:"preview",slot:String(segmentIndex),revision:++revision,start:timing.start,end:timing.end,text,complete:type==="final_transcript"});
+      else queueLiveTranslation(text,{force:type==="final_transcript",final:type==="final_transcript",timing});
+      return;
+    }
+
+    if(type==="final_transcript_with_timestamps"){
+      const text=cleanSubtitleText(m?.text);if(!text)return;
+      const timing=timingFromScribeWords(m,start,timestampState)||estimateLiveTiming(start,audioSecondsSent,text);
+      if(targetLanguage==="original")send({type:"preview",slot:String(segmentIndex),revision:++revision,start:timing.start,end:timing.end,text,complete:true,exact:true});
+      else queueLiveTranslation(text,{force:true,final:true,timing});
       return;
     }
 
     if(type==="committed_transcript"){
       const text=cleanSubtitleText(m?.text);
-      if(text){
-        if(targetLanguage==="original")send({type:"preview",text,complete:true});
-        else startLiveTranslation(text,{final:true,force:true});
-        sourceContext=appendContext(sourceContext,text);
-      }
+      if(text)sourceContext=appendContext(sourceContext,text);
+      segmentIndex+=1;lastQueuedSource="";
       return;
     }
+
+    if(type==="committed_transcript_with_timestamps")return;
 
     if(FATAL_SCRIBE_ERRORS.has(type)||RETRYABLE_SCRIBE_ERRORS.has(type)||type==="error"){
       const detail=String(m?.error||m?.message||"Realtime transcription failed"), retryable=!FATAL_SCRIBE_ERRORS.has(type);
@@ -200,26 +217,26 @@ async function runRealtimeSubtitleSession({request,env,server,payload,signal,sen
   upstream.addEventListener("close",()=>{if(signal.aborted||upstreamEndedNormally)return;send({type:"error",error:"Realtime transcription connection closed",retryable:true});abort();try{server.close(1011,"scribe connection closed");}catch{}});
 
   try{
-    audioStream=await container.streamAudioPcm(playbackUrl,start,streamId);
+    audioStream=await container.streamAudioPcm(playbackUrl,start,streamId,playbackRate);
     if(!audioStream)throw httpError("Could not start realtime subtitle audio",502);
-    await streamPcmToScribe({audioStream,upstream,signal});
+    await streamPcmToScribe({audioStream,upstream,signal,onProgress:s=>{audioSecondsSent=s;}});
     if(!signal.aborted&&upstream.readyState===WebSocket.OPEN){
       const silence=new Uint8Array(PCM_FRAME_BYTES);
       upstream.send(JSON.stringify({message_type:"input_audio_chunk",audio_base_64:bytesToBase64(silence),sample_rate:PCM_SAMPLE_RATE,commit:true}));
       await sleep(700,signal).catch(()=>null);
+      if(translationLoopPromise)await translationLoopPromise.catch(()=>null);
       upstreamEndedNormally=true;
       if(!signal.aborted)send({type:"ended"});
     }
   }finally{
     signal.removeEventListener("abort",closeUpstream);
-    if(translationController)translationController.abort();
     if(audioStream)try{await audioStream.cancel();}catch{}
     try{await container.stopAudioStream(streamId);}catch{}
     closeUpstream();
   }
 }
 
-async function streamPcmToScribe({audioStream,upstream,signal}){
+async function streamPcmToScribe({audioStream,upstream,signal,onProgress}){
   const reader=audioStream.getReader();let pending=new Uint8Array(0),bytesSent=0;
   const abortReader=()=>{try{reader.cancel();}catch{}};
   signal.addEventListener("abort",abortReader,{once:true});
@@ -231,12 +248,12 @@ async function streamPcmToScribe({audioStream,upstream,signal}){
         const frame=pending.slice(0,PCM_FRAME_BYTES);pending=pending.slice(PCM_FRAME_BYTES);
         if(upstream.readyState!==WebSocket.OPEN)throw httpError("Realtime transcription connection closed",502);
         upstream.send(JSON.stringify({message_type:"input_audio_chunk",audio_base_64:bytesToBase64(frame),sample_rate:PCM_SAMPLE_RATE}));
-        bytesSent+=frame.byteLength;
+        bytesSent+=frame.byteLength;onProgress?.(bytesSent/PCM_BYTES_PER_SECOND);
       }
     }
     if(pending.byteLength&&!signal.aborted&&upstream.readyState===WebSocket.OPEN){
       upstream.send(JSON.stringify({message_type:"input_audio_chunk",audio_base_64:bytesToBase64(pending),sample_rate:PCM_SAMPLE_RATE}));
-      bytesSent+=pending.byteLength;
+      bytesSent+=pending.byteLength;onProgress?.(bytesSent/PCM_BYTES_PER_SECOND);
     }
     return bytesSent/PCM_BYTES_PER_SECOND;
   }finally{signal.removeEventListener("abort",abortReader);try{await reader.cancel();}catch{}}
@@ -252,6 +269,23 @@ function shouldTranslatePartial(text,last){
   if(/[.!?…؟]$/u.test(current))return true;
   if(currentWords>=previousWords+2)return true;
   return !current.startsWith(previous)&&Math.abs(current.length-previous.length)>=6;
+}
+
+function estimateLiveTiming(baseStart,audioSecondsSent,text){
+  const words=cleanSubtitleText(text).split(/\s+/u).filter(Boolean).length;
+  const duration=Math.min(4.2,Math.max(.9,words*.34+.4));
+  const end=Number(baseStart||0)+Math.max(0,Number(audioSecondsSent||0))+.3;
+  return{start:roundTime(Math.max(Number(baseStart||0),end-duration)),end:roundTime(Math.max(Number(baseStart||0)+.35,end))};
+}
+
+function timingFromScribeWords(message,baseStart,state){
+  const words=(Array.isArray(message?.words)?message.words:[]).filter(w=>Number.isFinite(Number(w?.start))&&Number.isFinite(Number(w?.end)));
+  if(!words.length)return null;
+  const first=Number(words[0].start),last=Number(words[words.length-1].end);
+  if(first+state.offset<state.lastEnd-.25)state.offset=Math.max(0,state.lastEnd+.08-first);
+  const relativeStart=Math.max(0,state.offset+first),relativeEnd=Math.max(relativeStart+.25,state.offset+last);
+  state.lastEnd=Math.max(state.lastEnd,relativeEnd);
+  return{start:roundTime(Number(baseStart||0)+relativeStart),end:roundTime(Number(baseStart||0)+relativeEnd+.22)};
 }
 
 async function streamLiveSubtitleTranslation({env,sourceText,context,targetLanguage,signal,onText}){
@@ -302,6 +336,7 @@ function cleanToken(v){const t=String(v||"").trim();return/^[A-Za-z0-9_-]{40,160
 function cleanStreamId(v){const t=String(v||"").trim();return/^[A-Za-z0-9_-]{8,80}$/.test(t)?t:"";}
 function safeContainerKey(v){const r=String(v||"anonymous").replace(/[^A-Za-z0-9_-]/g,"");return(r||"anonymous").slice(0,80);}
 function finiteNumber(v,min,max){const n=Number(v);return Number.isFinite(n)&&n>=min&&n<=max?n:null;}
+function roundTime(v){return Math.round(Number(v||0)*1000)/1000;}
 function cleanSubtitleText(v){return String(v||"").replace(/\s+([,.;:!?،؛؟])/g,"$1").replace(/\s+/g," ").trim();}
 function cleanLiveTranslatedSubtitle(v){return cleanSubtitleText(v).replace(/^["“”'‘’]+/u,"").replace(/["“”'‘’]+$/u,"").replace(/([!?؟])\1+/g,"$1").replace(/\s*[.。\u06D4]+$/u,"").trim();}
 function cleanTranslatedSubtitle(v){return cleanLiveTranslatedSubtitle(v).replace(/\s*[;؛]+\s*$/u,"").trim();}
@@ -327,7 +362,7 @@ export const LIVE_SUBTITLES_RUNTIME_JS=String.raw`
 (function(){
 const SOCKET_PATH="/mini-app/live/api/youtube-subtitles/realtime",PLAYER_ID="vexaCustomPlayer",STYLE_ID="vexaLiveSubtitlesStyle";
 const LANGUAGES=[["off","Off",""],["original","Original audio","Auto"],["en","English","EN"],["fa","فارسی","FA"],["ru","Русский","RU"],["de","Deutsch","DE"],["tr","Türkçe","TR"],["es","Español","ES"],["ar","العربية","AR"],["fr","Français","FR"],["pt","Português","PT"],["it","Italiano","IT"],["hi","हिन्दी","HI"],["zh","中文","ZH"],["ja","日本語","JA"],["ko","한국어","KO"]];
-let enabled=false,targetLanguage="original",socket=null,socketGeneration=0,reconnectTimer=0,reconnectAttempt=0,hideTimer=0;
+let enabled=false,targetLanguage="original",socket=null,socketGeneration=0,reconnectTimer=0,reconnectAttempt=0,slots=new Map();
 
 function hostWindow(){try{if(window.parent&&window.parent!==window&&window.parent.location.origin===window.location.origin)return window.parent;}catch{}return window;}
 function telegram(){const h=hostWindow();return window.Telegram?.WebApp||h.Telegram?.WebApp||null;}
@@ -359,43 +394,53 @@ function openDrawer(p){updateLanguageSelection(p);p.querySelector("[data-subtitl
 function closeDrawer(p){p.querySelector("[data-subtitle-backdrop]")?.classList.remove("show");p.querySelector("[data-subtitle-drawer]")?.classList.remove("show");}
 function updateLanguageSelection(p){const s=enabled?targetLanguage:"off";p.querySelectorAll("[data-language]").forEach(n=>n.classList.toggle("is-selected",String(n.dataset.language)===s));p.querySelector("[data-vexa-subtitles]")?.classList.toggle("is-active",enabled);}
 function chooseLanguage(p,l){closeDrawer(p);l==="off"?stopSubtitles(p):startSubtitles(p,l);updateLanguageSelection(p);haptic("medium");}
-function stopSubtitles(p){enabled=false;targetLanguage="original";socketGeneration++;reconnectAttempt=0;clearTimeout(reconnectTimer);reconnectTimer=0;clearTimeout(hideTimer);hideTimer=0;closeSocket(true);hideCaption(p);}
-function startSubtitles(p,l){const v=p.querySelector("video");if(!v||!playbackToken(v))return;enabled=true;targetLanguage=l;reconnectAttempt=0;socketGeneration++;clearTimeout(hideTimer);hideTimer=0;showCaption(p,v.paused?"Live subtitles ready":"Starting live subtitles…",false);if(!v.paused&&!v.ended)connectRealtime(p,socketGeneration);}
+function stopSubtitles(p){enabled=false;targetLanguage="original";socketGeneration++;reconnectAttempt=0;slots.clear();clearTimeout(reconnectTimer);reconnectTimer=0;closeSocket(true);hideCaption(p);}
+function startSubtitles(p,l){const v=p.querySelector("video");if(!v||!playbackToken(v))return;enabled=true;targetLanguage=l;reconnectAttempt=0;slots.clear();socketGeneration++;showCaption(p,v.paused?"Live subtitles ready":"Starting live subtitles…",false);if(!v.paused&&!v.ended)connectRealtime(p,socketGeneration);}
 function closeSocket(intentional){const a=socket;socket=null;if(!a)return;a.__vexaIntentionalClose=Boolean(intentional);try{if(a.readyState===WebSocket.OPEN)a.send(JSON.stringify({type:"stop"}));}catch{}try{a.close(1000,"restart");}catch{}}
 function scheduleReconnect(p,g){if(!enabled||g!==socketGeneration)return;const v=p.querySelector("video");if(!v||v.paused||v.ended)return;clearTimeout(reconnectTimer);const d=Math.min(5000,500*Math.pow(2,Math.min(3,reconnectAttempt++)));showCaption(p,"Reconnecting subtitles…",false);reconnectTimer=setTimeout(()=>connectRealtime(p,g),d);}
 function connectRealtime(p,g){
  if(!enabled||g!==socketGeneration)return;const v=p.querySelector("video");if(!v||v.paused||v.ended)return;const token=playbackToken(v);if(!token)return;
- closeSocket(true);clearTimeout(hideTimer);hideTimer=0;
+ closeSocket(true);slots.clear();
  const ws=new WebSocket(websocketUrl());socket=ws;
- ws.addEventListener("open",()=>{if(!enabled||g!==socketGeneration||socket!==ws){try{ws.close();}catch{}return;}ws.send(JSON.stringify({type:"start",initData:initData(),playbackToken:token,currentTime:Math.max(0,Number(v.currentTime||0)),targetLanguage}));});
+ ws.addEventListener("open",()=>{if(!enabled||g!==socketGeneration||socket!==ws){try{ws.close();}catch{}return;}ws.send(JSON.stringify({type:"start",initData:initData(),playbackToken:token,currentTime:Math.max(0,Number(v.currentTime||0)),playbackRate:Math.max(.25,Math.min(4,Number(v.playbackRate||1))),targetLanguage}));});
  ws.addEventListener("message",e=>{
    if(!enabled||g!==socketGeneration||socket!==ws)return;let d;try{d=JSON.parse(String(e.data||"{}"));}catch{return;}
    if(d.type==="ready"){showCaption(p,"Listening…",false);return;}
    if(d.type==="activity"){showCaption(p,"Transcribing…",false);return;}
    if(d.type==="preview"){
-     const t=String(d.text||"").trim();if(!t)return;reconnectAttempt=0;clearTimeout(hideTimer);hideTimer=0;showCaption(p,t,false);
-     if(d.complete===true)hideTimer=setTimeout(()=>{if(enabled&&socket===ws)hideCaption(p);},2200);
-     return;
+     const text=String(d.text||"").trim(),start=Number(d.start),end=Number(d.end),revision=Number(d.revision||0),slot=String(d.slot||"live");if(!text||!Number.isFinite(start)||!Number.isFinite(end))return;
+     const prior=slots.get(slot);if(prior&&Number(prior.revision||0)>revision)return;
+     slots.set(slot,{text,start,end:Math.max(end,start+.25),revision,complete:Boolean(d.complete)});reconnectAttempt=0;renderCaption(p,v);return;
    }
+   if(d.type==="translation_error"){showCaption(p,String(d.error||"Translation temporarily unavailable"),true);return;}
    if(d.type==="error"){if(d.retryable!==false){showCaption(p,"Reconnecting subtitles…",false);try{ws.close();}catch{}}else{enabled=false;updateLanguageSelection(p);showCaption(p,String(d.error||"Live subtitles unavailable"),true);closeSocket(true);}return;}
    if(d.type==="ended")closeSocket(true);
  });
  ws.addEventListener("close",()=>{if(socket===ws)socket=null;if(enabled&&g===socketGeneration&&!ws.__vexaIntentionalClose&&!v.paused&&!v.ended)scheduleReconnect(p,g);});
  ws.addEventListener("error",()=>{if(socket===ws)try{ws.close();}catch{}});
 }
-function restartFromCurrentTime(p){if(!enabled)return;const v=p.querySelector("video");if(!v)return;socketGeneration++;const g=socketGeneration;reconnectAttempt=0;clearTimeout(hideTimer);hideTimer=0;closeSocket(true);showCaption(p,"Syncing subtitles…",false);if(!v.paused&&!v.ended)connectRealtime(p,g);}
+function restartFromCurrentTime(p){if(!enabled)return;const v=p.querySelector("video");if(!v)return;socketGeneration++;const g=socketGeneration;reconnectAttempt=0;slots.clear();closeSocket(true);showCaption(p,"Syncing subtitles…",false);if(!v.paused&&!v.ended)connectRealtime(p,g);}
+function renderCaption(p,v){
+ if(!enabled||!v)return;const now=Number(v.currentTime||0);let active=null;
+ for(const [key,c] of slots){if(c.end<now-1.5){slots.delete(key);continue;}if(c.start<=now+.12&&c.end>=now-.08&&(!active||c.start>=active.start))active=c;}
+ active?showCaption(p,active.text,false):hideCaption(p);
+}
 function showCaption(p,text,error){const n=p.querySelector("[data-subtitle-text]");if(!n)return;n.textContent=String(text||"");n.style.color=error?"#ffb1bd":"#fff";n.dir=targetLanguage==="fa"||targetLanguage==="ar"?"rtl":"auto";n.classList.toggle("show",Boolean(text));}
 function hideCaption(p){p.querySelector("[data-subtitle-text]")?.classList.remove("show");}
 function bindPlayer(p){
- if(p.dataset.vexaLiveSubtitles==="5")return;p.dataset.vexaLiveSubtitles="5";installStyle();installUI(p);const v=p.querySelector("video");if(!v)return;
+ if(p.dataset.vexaLiveSubtitles==="6")return;p.dataset.vexaLiveSubtitles="6";installStyle();installUI(p);const v=p.querySelector("video");if(!v)return;
  v.addEventListener("play",()=>{if(enabled){socketGeneration++;reconnectAttempt=0;connectRealtime(p,socketGeneration);}});
- v.addEventListener("pause",()=>{if(enabled)closeSocket(true);});
- v.addEventListener("seeking",()=>{if(enabled)closeSocket(true);});
+ v.addEventListener("playing",()=>{if(enabled&&!socket){socketGeneration++;reconnectAttempt=0;connectRealtime(p,socketGeneration);}renderCaption(p,v);});
+ v.addEventListener("timeupdate",()=>renderCaption(p,v));
+ v.addEventListener("pause",()=>{if(enabled)closeSocket(true);renderCaption(p,v);});
+ v.addEventListener("waiting",()=>{if(enabled)closeSocket(true);});
+ v.addEventListener("stalled",()=>{if(enabled)closeSocket(true);});
+ v.addEventListener("seeking",()=>{if(enabled)closeSocket(true);slots.clear();hideCaption(p);});
  v.addEventListener("seeked",()=>restartFromCurrentTime(p));
  v.addEventListener("ratechange",()=>restartFromCurrentTime(p));
  v.addEventListener("loadedmetadata",()=>{if(enabled)restartFromCurrentTime(p);});
- v.addEventListener("emptied",()=>{if(enabled){closeSocket(true);clearTimeout(hideTimer);hideTimer=0;hideCaption(p);}});
- v.addEventListener("ended",()=>{if(enabled)closeSocket(true);});
+ v.addEventListener("emptied",()=>{if(enabled){closeSocket(true);slots.clear();hideCaption(p);}});
+ v.addEventListener("ended",()=>{if(enabled){closeSocket(true);slots.clear();hideCaption(p);}});
 }
 function install(){const p=document.getElementById(PLAYER_ID);if(!p||!p.querySelector("video"))return false;bindPlayer(p);return true;}
 if(!install()){const o=new MutationObserver(()=>{if(install())o.disconnect();});o.observe(document.documentElement,{childList:true,subtree:true});}
