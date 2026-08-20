@@ -5,10 +5,11 @@ import { getVexaLiveAccessSettings } from "./access.js";
 
 const SOCKET_PATH="/mini-app/live/api/youtube-subtitles/realtime";
 const RUNTIME_PATH="/mini-app/vexa-live/live-subtitles.js";
-const RUNTIME_VERSION="20260820-11";
+const RUNTIME_VERSION="20260820-12";
 const TRANSLATION_MODEL="gpt-5.6-terra";
 const TRANSLATE_TIMEOUT_MS=20000;
 const PCM_SAMPLE_RATE=16000,PCM_FRAME_BYTES=3200;
+const LIVE_SOURCE_MAX_WORDS=14,LIVE_SOURCE_MAX_CHARS=160;
 const TARGET_LANGUAGES=Object.freeze({original:"Original",en:"English",fa:"Persian",ru:"Russian",de:"German",tr:"Turkish",es:"Spanish",ar:"Arabic",fr:"French",pt:"Portuguese",it:"Italian",hi:"Hindi",zh:"Chinese",ja:"Japanese",ko:"Korean"});
 const SCRIBE_ERROR_TYPES=new Set(["error","auth_error","quota_exceeded","transcriber_error","input_error","invalid_request","unaccepted_terms","commit_throttled","rate_limited","queue_overflow","resource_exhausted","session_time_limit_exceeded","chunk_size_exceeded","insufficient_audio_activity"]);
 
@@ -150,10 +151,9 @@ async function runRealtimeSubtitleSession({request,env,server,payload,playbackSt
         pendingPartial="";
         try{
           if(targetLanguage==="original")send({type:"caption",text:sourceText,translated:false});
-          else{
-            const text=await translateLiveSubtitle({env,sourceText,targetLanguage,signal});
+          else await translateLiveSubtitle({env,sourceText,targetLanguage,signal,onText:text=>{
             if(!signal.aborted&&server.readyState===WebSocket.OPEN)send({type:"caption",text,translated:true});
-          }
+          }});
         }catch(error){
           if(signal.aborted)return;
           console.error("Vexa live partial translation failed",error?.stack||error);
@@ -167,7 +167,7 @@ async function runRealtimeSubtitleSession({request,env,server,payload,playbackSt
     return translationLoopPromise;
   };
   const queuePartial=value=>{
-    const sourceText=cleanSubtitleText(value);
+    const sourceText=liveSubtitleWindow(value);
     if(!sourceText||sourceText===lastPartial)return;
     lastPartial=sourceText;
     pendingPartial=sourceText;
@@ -257,28 +257,36 @@ async function streamPcmToScribe(audioStream,upstream,signal){
   }
 }
 
-async function translateLiveSubtitle({env,sourceText,targetLanguage,signal}){
+async function translateLiveSubtitle({env,sourceText,targetLanguage,signal,onText}){
   if(!env.GPT_API)throw httpError("AI translation is unavailable",503);
   const languageName=TARGET_LANGUAGES[targetLanguage];
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),TRANSLATE_TIMEOUT_MS);
   const abortFromSession=()=>controller.abort();
   signal.addEventListener("abort",abortFromSession,{once:true});
-  let response;
   try{
-    response=await fetch("https://api.openai.com/v1/responses",{
+    const response=await fetch("https://api.openai.com/v1/responses",{
       method:"POST",
       headers:{Authorization:"Bearer "+env.GPT_API,"Content-Type":"application/json"},
       signal:controller.signal,
       body:JSON.stringify({
         model:TRANSLATION_MODEL,
-        instructions:"Translate the current live partial subtitle into "+languageName+". The text may be incomplete. Translate only the text present; do not invent missing words. Preserve names, numbers and tone. Return only the translation with no label, explanation, quotes or markdown.",
+        instructions:"Translate this rolling live subtitle window into "+languageName+". It may begin or end mid-sentence. Translate only the text present; do not invent missing context. Keep the result short enough for two subtitle lines. Preserve names, numbers and tone. Return only the translation with no label, explanation, quotes or markdown.",
         input:sourceText,
         reasoning:{effort:"none"},
         text:{verbosity:"low"},
-        max_output_tokens:400,
+        max_output_tokens:120,
+        stream:true,
         store:false
       })
     });
+    if(!response.ok){
+      const data=await response.json().catch(()=>({}));
+      console.error("Vexa subtitle translation failed",response.status,JSON.stringify(data).slice(0,900));
+      throw httpError("AI translation is temporarily unavailable",502);
+    }
+    const text=await readTranslationStream(response,onText,signal);
+    if(!text)throw httpError("AI translation returned an empty result",502);
+    return text;
   }catch(error){
     if(controller.signal.aborted&&!signal.aborted)throw httpError("Subtitle translation timed out",504);
     throw error;
@@ -286,25 +294,41 @@ async function translateLiveSubtitle({env,sourceText,targetLanguage,signal}){
     clearTimeout(timer);
     signal.removeEventListener("abort",abortFromSession);
   }
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok){
-    console.error("Vexa subtitle translation failed",response.status,JSON.stringify(data).slice(0,900));
-    throw httpError("AI translation is temporarily unavailable",502);
-  }
-  const text=cleanTranslatedText(extractResponseText(data));
-  if(!text)throw httpError("AI translation returned an empty result",502);
-  return text;
 }
 
-function extractResponseText(data){
-  if(typeof data?.output_text==="string")return data.output_text;
-  const chunks=[];
-  for(const item of Array.isArray(data?.output)?data.output:[]){
-    for(const part of Array.isArray(item?.content)?item.content:[]){
-      if(part?.type==="output_text"&&typeof part.text==="string")chunks.push(part.text);
+async function readTranslationStream(response,onText,signal){
+  if(!response.body)throw httpError("AI translation stream is unavailable",502);
+  const reader=response.body.getReader(),decoder=new TextDecoder();
+  let buffer="",output="";
+  const consume=frame=>{
+    const data=frame.split(/\r?\n/u).filter(line=>line.startsWith("data:")).map(line=>line.slice(5).trimStart()).join("\n");
+    if(!data||data==="[DONE]")return;
+    let event;try{event=JSON.parse(data);}catch{return;}
+    if(event?.type==="response.output_text.delta"&&typeof event.delta==="string"){
+      output+=event.delta;
+      const text=cleanTranslatedText(output);
+      if(text&&!signal.aborted)onText(text);
+      return;
     }
+    if(event?.type==="error"||event?.type==="response.failed")throw httpError("AI translation is temporarily unavailable",502);
+  };
+  try{
+    while(!signal.aborted){
+      const next=await reader.read();
+      buffer+=decoder.decode(next.value||new Uint8Array(),{stream:!next.done});
+      let match;
+      while((match=/\r?\n\r?\n/u.exec(buffer))){
+        const frame=buffer.slice(0,match.index);
+        buffer=buffer.slice(match.index+match[0].length);
+        consume(frame);
+      }
+      if(next.done)break;
+    }
+    if(buffer.trim())consume(buffer);
+  }finally{
+    try{reader.releaseLock();}catch{}
   }
-  return chunks.join("");
+  return cleanTranslatedText(output);
 }
 
 async function selectedElevenApiKey(env){const name=await getElevenApiSetting(env);return String(env[name]||"").trim();}
@@ -315,6 +339,15 @@ function cleanStreamId(value){const id=String(value||"").trim();return/^[A-Za-z0
 function safeContainerKey(value){const raw=String(value||"anonymous").replace(/[^A-Za-z0-9_-]/g,"");return(raw||"anonymous").slice(0,80);}
 function finiteNumber(value,min,max){const number=Number(value);return Number.isFinite(number)&&number>=min&&number<=max?number:null;}
 function cleanSubtitleText(value){return String(value||"").replace(/\s+([,.;:!?،؛؟])/g,"$1").replace(/\s+/g," ").trim();}
+function liveSubtitleWindow(value){
+  const text=cleanSubtitleText(value);
+  if(!text)return"";
+  const words=text.split(/\s+/u),wordWindow=words.length>LIVE_SOURCE_MAX_WORDS?words.slice(-LIVE_SOURCE_MAX_WORDS).join(" "):text;
+  const characters=Array.from(wordWindow);
+  if(characters.length<=LIVE_SOURCE_MAX_CHARS)return wordWindow;
+  const tail=characters.slice(-LIVE_SOURCE_MAX_CHARS).join("");
+  return tail.replace(/^\S+\s+/u,"").trim()||tail.trim();
+}
 function cleanTranslatedText(value){return cleanSubtitleText(value).replace(/^["“”'‘’]+/u,"").replace(/["“”'‘’]+$/u,"").trim();}
 function publicScribeError(type,message){
   if(type==="quota_exceeded")return"Speech-to-text quota is unavailable";
@@ -347,7 +380,7 @@ function websocketUrl(){const u=new URL(SOCKET_PATH,window.location.href);u.prot
 function installStyle(){
  if(document.getElementById(STYLE_ID))return;
  const s=document.createElement("style");s.id=STYLE_ID;
- s.textContent="#vexaCustomPlayer .vexa-subtitle-toggle.is-active{background:rgba(255,255,255,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}#vexaCustomPlayer .vexa-subtitle-layer{position:absolute;left:7%;right:7%;bottom:70px;z-index:8;display:flex;justify-content:center;pointer-events:none;transition:bottom .2s ease}#vexaCustomPlayer.is-controls-hidden .vexa-subtitle-layer{bottom:28px}#vexaCustomPlayer .vexa-subtitle-text{max-width:min(780px,92%);padding:7px 11px;border-radius:10px;color:#fff;background:rgba(0,0,0,.66);box-shadow:0 7px 28px rgba(0,0,0,.3);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);font-size:clamp(15px,3.8vw,22px);line-height:1.32;font-weight:760;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.75);opacity:0;transform:translateY(4px);transition:opacity .14s ease,transform .14s ease}#vexaCustomPlayer .vexa-subtitle-text.show{opacity:1;transform:none}#vexaCustomPlayer .vexa-subtitle-drawer-backdrop{position:absolute;inset:0;z-index:30;background:rgba(0,0,0,.46);opacity:0;pointer-events:none;transition:opacity .2s ease}#vexaCustomPlayer .vexa-subtitle-drawer-backdrop.show{opacity:1;pointer-events:auto}#vexaCustomPlayer .vexa-subtitle-drawer{position:absolute;z-index:31;left:10px;right:10px;bottom:10px;max-height:min(70%,520px);display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.12);border-radius:20px;background:rgba(15,15,17,.96);box-shadow:0 22px 60px rgba(0,0,0,.52);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);transform:translateY(calc(100% + 18px));transition:transform .32s cubic-bezier(.16,1,.3,1);overflow:hidden}#vexaCustomPlayer .vexa-subtitle-drawer.show{transform:none}#vexaCustomPlayer .vexa-subtitle-drawer-head{padding:14px 15px 11px;border-bottom:1px solid rgba(255,255,255,.08)}#vexaCustomPlayer .vexa-subtitle-drawer-title{font-size:15px;font-weight:820}#vexaCustomPlayer .vexa-subtitle-drawer-sub{margin-top:3px;color:rgba(255,255,255,.46);font-size:10px;font-weight:650}#vexaCustomPlayer .vexa-subtitle-language-list{overflow:auto;-webkit-overflow-scrolling:touch;padding:7px}#vexaCustomPlayer .vexa-subtitle-language{width:100%;height:43px;padding:0 10px;border:0;border-radius:12px;display:flex;align-items:center;gap:10px;color:#fff;background:transparent;text-align:left}#vexaCustomPlayer .vexa-subtitle-language:active,#vexaCustomPlayer .vexa-subtitle-language.is-selected{background:rgba(255,255,255,.09)}#vexaCustomPlayer .vexa-subtitle-lang-code{width:34px;height:24px;border-radius:8px;display:grid;place-items:center;background:rgba(255,255,255,.08);color:rgba(255,255,255,.62);font-size:8px;font-weight:820}#vexaCustomPlayer .vexa-subtitle-lang-name{flex:1;font-size:12px;font-weight:720}#vexaCustomPlayer .vexa-subtitle-check{opacity:0;font-size:15px}.vexa-subtitle-language.is-selected .vexa-subtitle-check{opacity:1}#vexaCustomPlayer.is-fullscreen .vexa-subtitle-drawer{bottom:calc(10px + env(safe-area-inset-bottom))}";
+ s.textContent="#vexaCustomPlayer .vexa-subtitle-toggle.is-active{background:rgba(255,255,255,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}#vexaCustomPlayer .vexa-subtitle-layer{position:absolute;left:7%;right:7%;bottom:70px;z-index:8;display:flex;justify-content:center;pointer-events:none;transition:bottom .2s ease}#vexaCustomPlayer.is-controls-hidden .vexa-subtitle-layer{bottom:28px}#vexaCustomPlayer .vexa-subtitle-text{max-width:min(780px,92%);padding:7px 11px;border-radius:10px;color:#fff;background:rgba(0,0,0,.66);box-shadow:0 7px 28px rgba(0,0,0,.3);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;font-size:clamp(15px,3.8vw,22px);line-height:1.32;font-weight:760;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.75);opacity:0;transform:translateY(4px);transition:opacity .14s ease,transform .14s ease}#vexaCustomPlayer .vexa-subtitle-text.show{opacity:1;transform:none}#vexaCustomPlayer .vexa-subtitle-drawer-backdrop{position:absolute;inset:0;z-index:30;background:rgba(0,0,0,.46);opacity:0;pointer-events:none;transition:opacity .2s ease}#vexaCustomPlayer .vexa-subtitle-drawer-backdrop.show{opacity:1;pointer-events:auto}#vexaCustomPlayer .vexa-subtitle-drawer{position:absolute;z-index:31;left:10px;right:10px;bottom:10px;max-height:min(70%,520px);display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.12);border-radius:20px;background:rgba(15,15,17,.96);box-shadow:0 22px 60px rgba(0,0,0,.52);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);transform:translateY(calc(100% + 18px));transition:transform .32s cubic-bezier(.16,1,.3,1);overflow:hidden}#vexaCustomPlayer .vexa-subtitle-drawer.show{transform:none}#vexaCustomPlayer .vexa-subtitle-drawer-head{padding:14px 15px 11px;border-bottom:1px solid rgba(255,255,255,.08)}#vexaCustomPlayer .vexa-subtitle-drawer-title{font-size:15px;font-weight:820}#vexaCustomPlayer .vexa-subtitle-drawer-sub{margin-top:3px;color:rgba(255,255,255,.46);font-size:10px;font-weight:650}#vexaCustomPlayer .vexa-subtitle-language-list{overflow:auto;-webkit-overflow-scrolling:touch;padding:7px}#vexaCustomPlayer .vexa-subtitle-language{width:100%;height:43px;padding:0 10px;border:0;border-radius:12px;display:flex;align-items:center;gap:10px;color:#fff;background:transparent;text-align:left}#vexaCustomPlayer .vexa-subtitle-language:active,#vexaCustomPlayer .vexa-subtitle-language.is-selected{background:rgba(255,255,255,.09)}#vexaCustomPlayer .vexa-subtitle-lang-code{width:34px;height:24px;border-radius:8px;display:grid;place-items:center;background:rgba(255,255,255,.08);color:rgba(255,255,255,.62);font-size:8px;font-weight:820}#vexaCustomPlayer .vexa-subtitle-lang-name{flex:1;font-size:12px;font-weight:720}#vexaCustomPlayer .vexa-subtitle-check{opacity:0;font-size:15px}.vexa-subtitle-language.is-selected .vexa-subtitle-check{opacity:1}#vexaCustomPlayer.is-fullscreen .vexa-subtitle-drawer{bottom:calc(10px + env(safe-area-inset-bottom))}";
  document.head.appendChild(s);
 }
 
