@@ -172,7 +172,7 @@ export function adminMainKeyboard() {
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }, { text: "📂 Section Opens", callback_data: "admin_section_opens" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
-      [{ text: "🤖 AI Chat Users", callback_data: "admin_ai_chat_users:0" }, { text: "🎥 Vexa Live Downloads", callback_data: "admin_vexa_live_downloads:0" }],
+      [{ text: "🤖 AI Chat Users", callback_data: "admin_ai_chat_users:0" }, { text: "🎪 Vexa Live", callback_data: "admin_vexa_live_downloads:0" }],
       [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }],
       [{ text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
       [{ text: "💸 Image Pricing", callback_data: "admin_image_pricing" }, { text: "🐙 Explore Prompts", callback_data: "admin_image_explore" }],
@@ -990,6 +990,20 @@ export async function ensureVexaLiveDownloadTokenTable(env) {
     ")"
   ).run();
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_vexa_youtube_download_tokens_user_created ON vexa_youtube_download_tokens (user_id, created_at DESC)").run();
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS vexa_youtube_playback_tokens (" +
+      "token TEXT PRIMARY KEY, " +
+      "user_id TEXT NOT NULL, " +
+      "source_url TEXT NOT NULL, " +
+      "media_url TEXT NOT NULL, " +
+      "media_headers TEXT, " +
+      "media_size INTEGER, " +
+      "title TEXT, " +
+      "created_at INTEGER NOT NULL, " +
+      "expires_at INTEGER NOT NULL" +
+    ")"
+  ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_vexa_youtube_playback_tokens_user_created ON vexa_youtube_playback_tokens (user_id, created_at DESC)").run();
 }
 
 export async function getAdminVexaLiveDownloadUsersPage(env, page = 0, limit = 8) {
@@ -998,36 +1012,52 @@ export async function getAdminVexaLiveDownloadUsersPage(env, page = 0, limit = 8
   const safePage = Math.max(0, Number(page) || 0);
   const safeLimit = Math.max(1, Number(limit) || 8);
   const offset = safePage * safeLimit;
-  const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM (SELECT user_id FROM vexa_youtube_download_tokens WHERE used_at IS NOT NULL GROUP BY user_id)").first();
+  const countRow = await env.DB.prepare(
+    "SELECT COUNT(*) AS total FROM (" +
+    "SELECT user_id FROM vexa_youtube_playback_tokens GROUP BY user_id " +
+    "UNION SELECT user_id FROM vexa_youtube_download_tokens WHERE used_at IS NOT NULL GROUP BY user_id)"
+  ).first();
   const rows = await env.DB.prepare(
-    "SELECT d.user_id, b.username, b.first_name, b.last_name, COUNT(d.token) AS download_count, " +
-    "COUNT(DISTINCT d.source_url) AS unique_video_count, MAX(COALESCE(d.used_at, d.created_at)) AS last_download_at " +
-    "FROM vexa_youtube_download_tokens d LEFT JOIN bot_users b ON b.user_id = d.user_id " +
-    "WHERE d.used_at IS NOT NULL " +
-    "GROUP BY d.user_id, b.username, b.first_name, b.last_name " +
-    "ORDER BY MAX(COALESCE(d.used_at, d.created_at)) DESC LIMIT ? OFFSET ?"
+    "WITH playback AS (" +
+      "SELECT user_id, COUNT(token) AS preview_count, COUNT(DISTINCT source_url) AS unique_preview_count, MAX(created_at) AS last_preview_at " +
+      "FROM vexa_youtube_playback_tokens GROUP BY user_id" +
+    "), downloads AS (" +
+      "SELECT user_id, COUNT(token) AS download_count, COUNT(DISTINCT source_url) AS unique_download_count, MAX(COALESCE(used_at, created_at)) AS last_download_at " +
+      "FROM vexa_youtube_download_tokens WHERE used_at IS NOT NULL GROUP BY user_id" +
+    "), users AS (" +
+      "SELECT user_id FROM playback UNION SELECT user_id FROM downloads" +
+    ") " +
+    "SELECT users.user_id, b.username, b.first_name, b.last_name, " +
+    "COALESCE(playback.preview_count, 0) AS preview_count, COALESCE(playback.unique_preview_count, 0) AS unique_preview_count, " +
+    "COALESCE(downloads.download_count, 0) AS download_count, COALESCE(downloads.unique_download_count, 0) AS unique_download_count, " +
+    "MAX(COALESCE(playback.last_preview_at, 0), COALESCE(downloads.last_download_at, 0)) AS last_activity_at " +
+    "FROM users LEFT JOIN playback ON playback.user_id = users.user_id LEFT JOIN downloads ON downloads.user_id = users.user_id " +
+    "LEFT JOIN bot_users b ON b.user_id = users.user_id " +
+    "ORDER BY last_activity_at DESC LIMIT ? OFFSET ?"
   ).bind(safeLimit, offset).all();
   return { total: Number(countRow?.total || 0), page: safePage, limit: safeLimit, users: rows.results || [] };
 }
 
 export async function adminVexaLiveDownloadsText(env, page = 0) {
   const data = await getAdminVexaLiveDownloadUsersPage(env, page);
+  const pagePreviews = data.users.reduce((sum, user) => sum + Number(user.preview_count || 0), 0);
   const pageDownloads = data.users.reduce((sum, user) => sum + Number(user.download_count || 0), 0);
   return [
-    "🎥 <b>Vexa Live Downloads</b>",
+    "🎪 <b>Vexa Live Activity</b>",
     "",
-    "Users with downloads: <b>" + formatNumber(data.total) + "</b>",
+    "Users with link entries or downloads: <b>" + formatNumber(data.total) + "</b>",
+    "This page link entries: <b>" + formatNumber(pagePreviews) + "</b>",
     "This page downloads: <b>" + formatNumber(pageDownloads) + "</b>",
     "Page: <b>" + (data.page + 1) + "</b>",
     "",
-    data.users.length ? "Select a user to see all video links they downloaded:" : "No Vexa Live downloads have been recorded yet."
+    data.users.length ? "Select a user to see link entries and completed downloads separately:" : "No Vexa Live activity has been recorded yet."
   ].join("\n");
 }
 
 export async function adminVexaLiveDownloadsKeyboard(env, page = 0) {
   const data = await getAdminVexaLiveDownloadUsersPage(env, page);
   const rows = data.users.map((user) => [{
-    text: userLabel(user) + " • 🎥 " + formatNumber(user.download_count || 0) + " • 🔗 " + formatNumber(user.unique_video_count || 0),
+    text: userLabel(user) + " • 🔗 " + formatNumber(user.preview_count || 0) + " • ⬇️ " + formatNumber(user.download_count || 0),
     callback_data: "admin_vexa_live_download_user:" + user.user_id + ":" + data.page,
   }]);
   const nav = [];
@@ -1040,18 +1070,31 @@ export async function adminVexaLiveDownloadsKeyboard(env, page = 0) {
 
 export async function adminVexaLiveDownloadUserText(env, userId) {
   const rows = await getVexaLiveDownloadRows(env, userId, 100);
+  const linkEntries = rows.filter((row) => row.activity_type === "link_entry");
+  const downloads = rows.filter((row) => row.activity_type === "download");
   const lines = [
-    "🎥 <b>Vexa Live Download Links</b>",
+    "🎪 <b>Vexa Live Activity Links</b>",
     "",
     "User ID: <code>" + escapeHtml(userId) + "</code>",
-    "Recorded downloads: <b>" + formatNumber(rows.length) + "</b>",
+    "Link entries / video shown: <b>" + formatNumber(linkEntries.length) + "</b>",
+    "Completed downloads: <b>" + formatNumber(downloads.length) + "</b>",
     "",
-    rows.length ? "Downloaded video links:" : "No Vexa Live download links for this user."
+    rows.length ? "Activities are separated by type below:" : "No Vexa Live activity links for this user."
   ];
-  rows.forEach((row, index) => {
-    lines.push("", (index + 1) + ". <b>" + escapeHtml(formatUnixTehranTime(row.used_at || row.created_at)) + "</b>");
-    lines.push("<code>" + escapeHtml(row.source_url) + "</code>");
-  });
+  if (linkEntries.length) {
+    lines.push("", "🔗 <b>Link entries / video shown</b>");
+    linkEntries.forEach((row, index) => {
+      lines.push("", (index + 1) + ". <b>" + escapeHtml(formatUnixTehranTime(row.activity_at)) + "</b>");
+      lines.push("<code>" + escapeHtml(row.source_url) + "</code>");
+    });
+  }
+  if (downloads.length) {
+    lines.push("", "⬇️ <b>Completed downloads</b>");
+    downloads.forEach((row, index) => {
+      lines.push("", (index + 1) + ". <b>" + escapeHtml(formatUnixTehranTime(row.activity_at)) + "</b>");
+      lines.push("<code>" + escapeHtml(row.source_url) + "</code>");
+    });
+  }
   return lines.join("\n");
 }
 
@@ -1066,17 +1109,29 @@ export async function getVexaLiveDownloadRows(env, userId, limit = 500) {
   requireDb(env);
   await ensureVexaLiveDownloadTokenTable(env);
   const rows = await env.DB.prepare(
-    "SELECT source_url, created_at, used_at FROM vexa_youtube_download_tokens WHERE user_id = ? AND used_at IS NOT NULL ORDER BY COALESCE(used_at, created_at) DESC LIMIT ?"
-  ).bind(String(userId), Math.max(1, Number(limit) || 500)).all();
+    "SELECT source_url, created_at AS activity_at, NULL AS used_at, 'link_entry' AS activity_type " +
+    "FROM vexa_youtube_playback_tokens WHERE user_id = ? " +
+    "UNION ALL " +
+    "SELECT source_url, COALESCE(used_at, created_at) AS activity_at, used_at, 'download' AS activity_type " +
+    "FROM vexa_youtube_download_tokens WHERE user_id = ? AND used_at IS NOT NULL " +
+    "ORDER BY activity_at DESC LIMIT ?"
+  ).bind(String(userId), String(userId), Math.max(1, Number(limit) || 500)).all();
   return rows.results || [];
 }
 
 export function buildVexaLiveDownloadLinksFile(userId, rows = []) {
-  const lines = ["Vexa Live downloaded video links", "User ID: " + userId, "Total: " + rows.length, ""];
-  rows.forEach((row, index) => {
-    lines.push(String(index + 1) + ". " + formatUnixTehranTime(row.used_at || row.created_at));
-    lines.push(String(row.source_url || ""));
-    lines.push("");
+  const linkEntries = rows.filter((row) => row.activity_type === "link_entry");
+  const downloads = rows.filter((row) => row.activity_type === "download");
+  const lines = ["Vexa Live activity links", "User ID: " + userId, "Link entries / video shown: " + linkEntries.length, "Completed downloads: " + downloads.length, ""];
+  [["Link entries / video shown", linkEntries], ["Completed downloads", downloads]].forEach(([title, items]) => {
+    lines.push(title);
+    lines.push("-".repeat(title.length));
+    items.forEach((row, index) => {
+      lines.push(String(index + 1) + ". " + formatUnixTehranTime(row.activity_at));
+      lines.push(String(row.source_url || ""));
+      lines.push("");
+    });
+    if (!items.length) lines.push("None", "");
   });
   return lines.join("\n");
 }
