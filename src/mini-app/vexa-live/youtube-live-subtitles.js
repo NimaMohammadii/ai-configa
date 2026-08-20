@@ -5,11 +5,11 @@ import { getVexaLiveAccessSettings } from "./access.js";
 
 const SOCKET_PATH="/mini-app/live/api/youtube-subtitles/realtime";
 const RUNTIME_PATH="/mini-app/vexa-live/live-subtitles.js";
-const RUNTIME_VERSION="20260820-3";
+const RUNTIME_VERSION="20260820-4";
 const TRANSLATION_MODEL="gpt-5.6-luna";
 const TRANSLATE_TIMEOUT_MS=12000;
 const PCM_SAMPLE_RATE=16000, PCM_BYTES_PER_SECOND=32000, PCM_FRAME_BYTES=3200;
-const CONTEXT_CHAR_LIMIT=1200, LIVE_SOURCE_LIMIT=180, INITIAL_AUDIO_BURST_SECONDS=2.2;
+const CONTEXT_CHAR_LIMIT=1200, LIVE_SOURCE_LIMIT=180, INITIAL_AUDIO_BURST_SECONDS=5.5;
 const VAD_SILENCE_SECONDS=.45, VAD_THRESHOLD=.4, VAD_MIN_SPEECH_MS=100, VAD_MIN_SILENCE_MS=100;
 
 const TARGET_LANGUAGES=Object.freeze({original:"Original",en:"English",fa:"Persian",ru:"Russian",de:"German",tr:"Turkish",es:"Spanish",ar:"Arabic",fr:"French",pt:"Portuguese",it:"Italian",hi:"Hindi",zh:"Chinese",ja:"Japanese",ko:"Korean"});
@@ -366,7 +366,7 @@ export const LIVE_SUBTITLES_RUNTIME_JS=String.raw`
 (function(){
 const SOCKET_PATH="/mini-app/live/api/youtube-subtitles/realtime",PLAYER_ID="vexaCustomPlayer",STYLE_ID="vexaLiveSubtitlesStyle";
 const LANGUAGES=[["off","Off",""],["original","Original audio","Auto"],["en","English","EN"],["fa","فارسی","FA"],["ru","Русский","RU"],["de","Deutsch","DE"],["tr","Türkçe","TR"],["es","Español","ES"],["ar","العربية","AR"],["fr","Français","FR"],["pt","Português","PT"],["it","Italiano","IT"],["hi","हिन्दी","HI"],["zh","中文","ZH"],["ja","日本語","JA"],["ko","한국어","KO"]];
-let enabled=false,targetLanguage="original",socket=null,socketGeneration=0,reconnectTimer=0,reconnectAttempt=0,slots=new Map(),exactTimings=new Map();
+let enabled=false,targetLanguage="original",socket=null,socketGeneration=0,reconnectTimer=0,reconnectAttempt=0,bufferCloseTimer=0,slots=new Map(),exactTimings=new Map();
 
 function hostWindow(){try{if(window.parent&&window.parent!==window&&window.parent.location.origin===window.location.origin)return window.parent;}catch{}return window;}
 function telegram(){const h=hostWindow();return window.Telegram?.WebApp||h.Telegram?.WebApp||null;}
@@ -398,13 +398,18 @@ function openDrawer(p){updateLanguageSelection(p);p.querySelector("[data-subtitl
 function closeDrawer(p){p.querySelector("[data-subtitle-backdrop]")?.classList.remove("show");p.querySelector("[data-subtitle-drawer]")?.classList.remove("show");}
 function updateLanguageSelection(p){const s=enabled?targetLanguage:"off";p.querySelectorAll("[data-language]").forEach(n=>n.classList.toggle("is-selected",String(n.dataset.language)===s));p.querySelector("[data-vexa-subtitles]")?.classList.toggle("is-active",enabled);}
 function chooseLanguage(p,l){closeDrawer(p);l==="off"?stopSubtitles(p):startSubtitles(p,l);updateLanguageSelection(p);haptic("medium");}
-function stopSubtitles(p){enabled=false;targetLanguage="original";socketGeneration++;reconnectAttempt=0;slots.clear();exactTimings.clear();clearTimeout(reconnectTimer);reconnectTimer=0;closeSocket(true);hideCaption(p);}
-function startSubtitles(p,l){const v=p.querySelector("video");if(!v||!playbackToken(v))return;enabled=true;targetLanguage=l;reconnectAttempt=0;slots.clear();exactTimings.clear();socketGeneration++;showCaption(p,v.paused?"Live subtitles ready":"Starting live subtitles…",false);if(!v.paused&&!v.ended)connectRealtime(p,socketGeneration);}
+function clearBufferClose(){clearTimeout(bufferCloseTimer);bufferCloseTimer=0;}
+function stopSubtitles(p){enabled=false;targetLanguage="original";socketGeneration++;reconnectAttempt=0;slots.clear();exactTimings.clear();clearTimeout(reconnectTimer);reconnectTimer=0;clearBufferClose();closeSocket(true);hideCaption(p);}
+function startSubtitles(p,l){const v=p.querySelector("video");if(!v||!playbackToken(v))return;enabled=true;targetLanguage=l;reconnectAttempt=0;slots.clear();exactTimings.clear();socketGeneration++;clearBufferClose();showCaption(p,v.paused?"Live subtitles ready":"Starting live subtitles…",false);if(!v.paused&&!v.ended)connectRealtime(p,socketGeneration);}
 function closeSocket(intentional){const a=socket;socket=null;if(!a)return;a.__vexaIntentionalClose=Boolean(intentional);try{if(a.readyState===WebSocket.OPEN)a.send(JSON.stringify({type:"stop"}));}catch{}try{a.close(1000,"restart");}catch{}}
 function scheduleReconnect(p,g){if(!enabled||g!==socketGeneration)return;const v=p.querySelector("video");if(!v||v.paused||v.ended)return;clearTimeout(reconnectTimer);const d=Math.min(5000,500*Math.pow(2,Math.min(3,reconnectAttempt++)));showCaption(p,"Reconnecting subtitles…",false);reconnectTimer=setTimeout(()=>connectRealtime(p,g),d);}
+function scheduleBufferClose(p){
+ if(!enabled)return;clearBufferClose();const g=socketGeneration;
+ bufferCloseTimer=setTimeout(()=>{if(!enabled||g!==socketGeneration)return;const v=p.querySelector("video");if(v&&!v.paused&&!v.ended&&v.readyState<3)closeSocket(true);},3000);
+}
 function connectRealtime(p,g){
  if(!enabled||g!==socketGeneration)return;const v=p.querySelector("video");if(!v||v.paused||v.ended)return;const token=playbackToken(v);if(!token)return;
- closeSocket(true);slots.clear();exactTimings.clear();
+ clearBufferClose();closeSocket(true);slots.clear();exactTimings.clear();
  const ws=new WebSocket(websocketUrl());socket=ws;
  ws.addEventListener("open",()=>{if(!enabled||g!==socketGeneration||socket!==ws){try{ws.close();}catch{}return;}ws.send(JSON.stringify({type:"start",initData:initData(),playbackToken:token,currentTime:Math.max(0,Number(v.currentTime||0)),playbackRate:Math.max(.25,Math.min(4,Number(v.playbackRate||1))),targetLanguage}));});
  ws.addEventListener("message",e=>{
@@ -413,13 +418,15 @@ function connectRealtime(p,g){
    if(d.type==="activity"){showCaption(p,"Transcribing…",false);return;}
    if(d.type==="timing"){
      const slot=String(d.slot||"live"),start=Number(d.start),end=Number(d.end);if(!Number.isFinite(start)||!Number.isFinite(end))return;
-     const timing={start,end:Math.max(end,start+.25)};exactTimings.set(slot,timing);
-     const prior=slots.get(slot);if(prior){slots.set(slot,{...prior,...timing});renderCaption(p,v);}return;
+     const timing={start,end:Math.max(end,start+.25)},now=Number(v.currentTime||0);exactTimings.set(slot,timing);
+     const prior=slots.get(slot);if(prior&&timing.end>=now-.08){slots.set(slot,{...prior,...timing});renderCaption(p,v);}return;
    }
    if(d.type==="preview"){
      const text=String(d.text||"").trim(),start=Number(d.start),end=Number(d.end),revision=Number(d.revision||0),slot=String(d.slot||"live");if(!text||!Number.isFinite(start)||!Number.isFinite(end))return;
      const prior=slots.get(slot);if(prior&&Number(prior.revision||0)>revision)return;
-     const exact=exactTimings.get(slot);slots.set(slot,{text,start:exact?.start??start,end:Math.max(exact?.end??end,(exact?.start??start)+.25),revision,complete:Boolean(d.complete)});reconnectAttempt=0;renderCaption(p,v);return;
+     const exact=exactTimings.get(slot),now=Number(v.currentTime||0);let cueStart=exact?.start??start,cueEnd=Math.max(exact?.end??end,(exact?.start??start)+.25);
+     if(targetLanguage!=="original"&&cueEnd<now+.12){const words=text.split(/\s+/u).filter(Boolean).length,hold=Math.min(4.2,Math.max(1.6,words*.28+.9));cueStart=Math.max(0,now-.05);cueEnd=now+hold;}
+     slots.set(slot,{text,start:cueStart,end:cueEnd,revision,complete:Boolean(d.complete)});reconnectAttempt=0;renderCaption(p,v);return;
    }
    if(d.type==="translation_error"){showCaption(p,String(d.error||"Translation temporarily unavailable"),true);return;}
    if(d.type==="error"){if(d.retryable!==false){showCaption(p,"Reconnecting subtitles…",false);try{ws.close();}catch{}}else{enabled=false;updateLanguageSelection(p);showCaption(p,String(d.error||"Live subtitles unavailable"),true);closeSocket(true);}return;}
@@ -428,7 +435,7 @@ function connectRealtime(p,g){
  ws.addEventListener("close",()=>{if(socket===ws)socket=null;if(enabled&&g===socketGeneration&&!ws.__vexaIntentionalClose&&!v.paused&&!v.ended)scheduleReconnect(p,g);});
  ws.addEventListener("error",()=>{if(socket===ws)try{ws.close();}catch{}});
 }
-function restartFromCurrentTime(p){if(!enabled)return;const v=p.querySelector("video");if(!v)return;socketGeneration++;const g=socketGeneration;reconnectAttempt=0;slots.clear();exactTimings.clear();closeSocket(true);showCaption(p,"Syncing subtitles…",false);if(!v.paused&&!v.ended)connectRealtime(p,g);}
+function restartFromCurrentTime(p){if(!enabled)return;const v=p.querySelector("video");if(!v)return;socketGeneration++;const g=socketGeneration;reconnectAttempt=0;slots.clear();exactTimings.clear();clearBufferClose();closeSocket(true);showCaption(p,"Syncing subtitles…",false);if(!v.paused&&!v.ended)connectRealtime(p,g);}
 function renderCaption(p,v){
  if(!enabled||!v)return;const now=Number(v.currentTime||0);let active=null;
  for(const [key,c] of slots){if(c.end<now-1.5){slots.delete(key);exactTimings.delete(key);continue;}if(c.start<=now+.12&&c.end>=now-.08&&(!active||c.start>=active.start))active=c;}
@@ -437,19 +444,19 @@ function renderCaption(p,v){
 function showCaption(p,text,error){const n=p.querySelector("[data-subtitle-text]");if(!n)return;n.textContent=String(text||"");n.style.color=error?"#ffb1bd":"#fff";n.dir=targetLanguage==="fa"||targetLanguage==="ar"?"rtl":"auto";n.classList.toggle("show",Boolean(text));}
 function hideCaption(p){p.querySelector("[data-subtitle-text]")?.classList.remove("show");}
 function bindPlayer(p){
- if(p.dataset.vexaLiveSubtitles==="7")return;p.dataset.vexaLiveSubtitles="7";installStyle();installUI(p);const v=p.querySelector("video");if(!v)return;
+ if(p.dataset.vexaLiveSubtitles==="8")return;p.dataset.vexaLiveSubtitles="8";installStyle();installUI(p);const v=p.querySelector("video");if(!v)return;
  v.addEventListener("play",()=>{if(enabled){socketGeneration++;reconnectAttempt=0;connectRealtime(p,socketGeneration);}});
- v.addEventListener("playing",()=>{if(enabled&&!socket){socketGeneration++;reconnectAttempt=0;connectRealtime(p,socketGeneration);}renderCaption(p,v);});
+ v.addEventListener("playing",()=>{clearBufferClose();if(enabled&&!socket){socketGeneration++;reconnectAttempt=0;connectRealtime(p,socketGeneration);}renderCaption(p,v);});
  v.addEventListener("timeupdate",()=>renderCaption(p,v));
- v.addEventListener("pause",()=>{if(enabled)closeSocket(true);renderCaption(p,v);});
- v.addEventListener("waiting",()=>{if(enabled)closeSocket(true);});
- v.addEventListener("stalled",()=>{if(enabled)closeSocket(true);});
- v.addEventListener("seeking",()=>{if(enabled)closeSocket(true);slots.clear();exactTimings.clear();hideCaption(p);});
+ v.addEventListener("pause",()=>{clearBufferClose();if(enabled)closeSocket(true);renderCaption(p,v);});
+ v.addEventListener("waiting",()=>scheduleBufferClose(p));
+ v.addEventListener("stalled",()=>scheduleBufferClose(p));
+ v.addEventListener("seeking",()=>{clearBufferClose();if(enabled)closeSocket(true);slots.clear();exactTimings.clear();hideCaption(p);});
  v.addEventListener("seeked",()=>restartFromCurrentTime(p));
  v.addEventListener("ratechange",()=>restartFromCurrentTime(p));
  v.addEventListener("loadedmetadata",()=>{if(enabled)restartFromCurrentTime(p);});
- v.addEventListener("emptied",()=>{if(enabled){closeSocket(true);slots.clear();exactTimings.clear();hideCaption(p);}});
- v.addEventListener("ended",()=>{if(enabled){closeSocket(true);slots.clear();exactTimings.clear();hideCaption(p);}});
+ v.addEventListener("emptied",()=>{clearBufferClose();if(enabled){closeSocket(true);slots.clear();exactTimings.clear();hideCaption(p);}});
+ v.addEventListener("ended",()=>{clearBufferClose();if(enabled){closeSocket(true);slots.clear();exactTimings.clear();hideCaption(p);}});
 }
 function install(){const p=document.getElementById(PLAYER_ID);if(!p||!p.querySelector("video"))return false;bindPlayer(p);return true;}
 if(!install()){const o=new MutationObserver(()=>{if(install())o.disconnect();});o.observe(document.documentElement,{childList:true,subtree:true});}
