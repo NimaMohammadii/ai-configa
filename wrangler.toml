@@ -54,6 +54,10 @@ class_name = "VexaMediaContainerV3"
 name = "VEXA_SUBTITLES"
 class_name = "VexaSubtitleContainer"
 
+[[durable_objects.bindings]]
+name = "VEXA_DOWNLOAD_PROGRESS"
+class_name = "VexaDownloadProgressHub"
+
 # Preserve the complete Durable Object migration history that Cloudflare has
 # already applied to the published Worker.
 [[migrations]]
@@ -82,6 +86,10 @@ new_sqlite_classes = ["VexaMediaContainerV3"]
 [[migrations]]
 tag = "vexa-subtitle-container-v1"
 new_sqlite_classes = ["VexaSubtitleContainer"]
+
+[[migrations]]
+tag = "vexa-download-progress-hub-v1"
+new_sqlite_classes = ["VexaDownloadProgressHub"]
 
 [triggers]
 crons = ["* * * * *"]

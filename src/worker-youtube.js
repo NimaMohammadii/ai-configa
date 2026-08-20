@@ -10,6 +10,7 @@ import {
   isYouTubePlaybackRequest,
 } from "./mini-app/vexa-live/youtube-range-playback.js";
 import {
+  VexaDownloadProgressHub,
   appendDownloadProgressRuntime,
   handleTrackedYouTubeDownloadRequest,
   isTrackedYouTubeDownloadRequest,
@@ -34,7 +35,7 @@ import {
 } from "./mini-app/vexa-live/youtube-live-persistence-patched.js";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
-export { VexaMediaContainerV3, VexaSubtitleContainer };
+export { VexaMediaContainerV3, VexaSubtitleContainer, VexaDownloadProgressHub };
 
 export default {
   ...worker,
