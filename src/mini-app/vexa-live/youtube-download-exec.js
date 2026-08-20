@@ -336,6 +336,7 @@ async function streamDownload(request, env) {
   if (checked.response) return checked.response;
 
   const row = checked.row;
+  await markDownloadTokenUsed(env, checked.token).catch(() => null);
   const sourceUrl = normalizeYouTubeUrl(row.source_url);
   if (!sourceUrl) return json({ error: "Download source is invalid" }, 400);
 
@@ -369,7 +370,11 @@ async function readDownloadToken(request, env) {
   if (!row || Number(row.expires_at || 0) <= now) {
     return { response: json({ error: "Download link expired" }, 410) };
   }
-  return { row };
+  return { row, token };
+}
+
+async function markDownloadTokenUsed(env, token) {
+  await env.DB.prepare("UPDATE vexa_youtube_download_tokens SET used_at = COALESCE(used_at, ?) WHERE token = ?").bind(Math.floor(Date.now() / 1000), token).run();
 }
 
 async function assertLiveAccess(env, userId) {

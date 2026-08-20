@@ -57,6 +57,10 @@ import {
   adminMiniAppIconPromptText,
   adminMiniAppUsersKeyboard,
   adminMiniAppUsersText,
+  adminVexaLiveDownloadUserKeyboard,
+  adminVexaLiveDownloadUserText,
+  adminVexaLiveDownloadsKeyboard,
+  adminVexaLiveDownloadsText,
   adminAiChatUsersKeyboard,
   adminAiChatUsersText,
   adminAiChatUserKeyboard,
@@ -107,6 +111,8 @@ import {
   setMiniAppButtonIcon,
   getImagePricingSettings,
   getImageExploreItems,
+  getVexaLiveDownloadRows,
+  buildVexaLiveDownloadLinksFile,
   setImageCreditCost,
   setImageDiscountOffer,
   setImageDiscountEnabled,
@@ -535,6 +541,37 @@ export async function handleCallback(query, env) {
     const page = Number(data.split(":")[1] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppUsersText(env, page), await adminMiniAppUsersKeyboard(env, page));
+    return;
+  }
+
+
+  if (data.startsWith("admin_vexa_live_downloads:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const page = Number(data.split(":")[1] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminVexaLiveDownloadsText(env, page), await adminVexaLiveDownloadsKeyboard(env, page));
+    return;
+  }
+
+  if (data.startsWith("admin_vexa_live_download_user:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const parts = data.split(":");
+    const targetUserId = parts[1];
+    const page = Number(parts[2] || 0);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminVexaLiveDownloadUserText(env, targetUserId), adminVexaLiveDownloadUserKeyboard(targetUserId, page));
+    return;
+  }
+
+  if (data.startsWith("admin_vexa_live_download_links:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const targetUserId = data.slice("admin_vexa_live_download_links:".length);
+    const rows = await getVexaLiveDownloadRows(env, targetUserId, 500);
+    const filename = "vexa-live-downloads-" + String(targetUserId).replace(/[^a-zA-Z0-9_-]/g, "_") + ".txt";
+    await answerCallback(env, query.id, rows.length ? "Sending Vexa Live links..." : "Sending empty link list...", false);
+    await sendTextDocument(env, chatId, buildVexaLiveDownloadLinksFile(targetUserId, rows), filename, "🎥 Vexa Live download links for <code>" + targetUserId + "</code>");
     return;
   }
 
