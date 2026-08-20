@@ -172,7 +172,8 @@ export function adminMainKeyboard() {
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }, { text: "📂 Section Opens", callback_data: "admin_section_opens" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
-      [{ text: "🤖 AI Chat Users", callback_data: "admin_ai_chat_users:0" }, { text: "🎨 Image Users", callback_data: "admin_image_users:0" }],
+      [{ text: "🤖 AI Chat Users", callback_data: "admin_ai_chat_users:0" }, { text: "🎥 Vexa Live Downloads", callback_data: "admin_vexa_live_downloads:0" }],
+      [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }],
       [{ text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
       [{ text: "💸 Image Pricing", callback_data: "admin_image_pricing" }, { text: "🐙 Explore Prompts", callback_data: "admin_image_explore" }],
       [{ text: "🔒 Mandatory Membership", callback_data: "admin_mandatory_membership" }],
@@ -974,6 +975,112 @@ export async function adminMiniAppUsersKeyboard(env, page = 0) {
 function miniAppUserLabel(user) {
   return userLabel(user) + " • 📱 " + formatNumber(user.mini_app_open_count || 0);
 }
+
+
+export async function ensureVexaLiveDownloadTokenTable(env) {
+  requireDb(env);
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS vexa_youtube_download_tokens (" +
+      "token TEXT PRIMARY KEY, " +
+      "user_id TEXT NOT NULL, " +
+      "source_url TEXT NOT NULL, " +
+      "created_at INTEGER NOT NULL, " +
+      "expires_at INTEGER NOT NULL, " +
+      "used_at INTEGER" +
+    ")"
+  ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_vexa_youtube_download_tokens_user_created ON vexa_youtube_download_tokens (user_id, created_at DESC)").run();
+}
+
+export async function getAdminVexaLiveDownloadUsersPage(env, page = 0, limit = 8) {
+  requireDb(env);
+  await ensureVexaLiveDownloadTokenTable(env);
+  const safePage = Math.max(0, Number(page) || 0);
+  const safeLimit = Math.max(1, Number(limit) || 8);
+  const offset = safePage * safeLimit;
+  const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM (SELECT user_id FROM vexa_youtube_download_tokens WHERE used_at IS NOT NULL GROUP BY user_id)").first();
+  const rows = await env.DB.prepare(
+    "SELECT d.user_id, b.username, b.first_name, b.last_name, COUNT(d.token) AS download_count, " +
+    "COUNT(DISTINCT d.source_url) AS unique_video_count, MAX(COALESCE(d.used_at, d.created_at)) AS last_download_at " +
+    "FROM vexa_youtube_download_tokens d LEFT JOIN bot_users b ON b.user_id = d.user_id " +
+    "WHERE d.used_at IS NOT NULL " +
+    "GROUP BY d.user_id, b.username, b.first_name, b.last_name " +
+    "ORDER BY MAX(COALESCE(d.used_at, d.created_at)) DESC LIMIT ? OFFSET ?"
+  ).bind(safeLimit, offset).all();
+  return { total: Number(countRow?.total || 0), page: safePage, limit: safeLimit, users: rows.results || [] };
+}
+
+export async function adminVexaLiveDownloadsText(env, page = 0) {
+  const data = await getAdminVexaLiveDownloadUsersPage(env, page);
+  const pageDownloads = data.users.reduce((sum, user) => sum + Number(user.download_count || 0), 0);
+  return [
+    "🎥 <b>Vexa Live Downloads</b>",
+    "",
+    "Users with downloads: <b>" + formatNumber(data.total) + "</b>",
+    "This page downloads: <b>" + formatNumber(pageDownloads) + "</b>",
+    "Page: <b>" + (data.page + 1) + "</b>",
+    "",
+    data.users.length ? "Select a user to see all video links they downloaded:" : "No Vexa Live downloads have been recorded yet."
+  ].join("\n");
+}
+
+export async function adminVexaLiveDownloadsKeyboard(env, page = 0) {
+  const data = await getAdminVexaLiveDownloadUsersPage(env, page);
+  const rows = data.users.map((user) => [{
+    text: userLabel(user) + " • 🎥 " + formatNumber(user.download_count || 0) + " • 🔗 " + formatNumber(user.unique_video_count || 0),
+    callback_data: "admin_vexa_live_download_user:" + user.user_id + ":" + data.page,
+  }]);
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_vexa_live_downloads:" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_vexa_live_downloads:" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
+export async function adminVexaLiveDownloadUserText(env, userId) {
+  const rows = await getVexaLiveDownloadRows(env, userId, 100);
+  const lines = [
+    "🎥 <b>Vexa Live Download Links</b>",
+    "",
+    "User ID: <code>" + escapeHtml(userId) + "</code>",
+    "Recorded downloads: <b>" + formatNumber(rows.length) + "</b>",
+    "",
+    rows.length ? "Downloaded video links:" : "No Vexa Live download links for this user."
+  ];
+  rows.forEach((row, index) => {
+    lines.push("", (index + 1) + ". <b>" + escapeHtml(formatUnixTehranTime(row.used_at || row.created_at)) + "</b>");
+    lines.push("<code>" + escapeHtml(row.source_url) + "</code>");
+  });
+  return lines.join("\n");
+}
+
+export function adminVexaLiveDownloadUserKeyboard(userId, page = 0) {
+  return { inline_keyboard: [
+    [{ text: "⬇️ Download Links TXT", callback_data: "admin_vexa_live_download_links:" + userId }],
+    [{ text: "← Download Users", callback_data: "admin_vexa_live_downloads:" + page }, { text: "← Back", callback_data: "admin_main" }],
+  ] };
+}
+
+export async function getVexaLiveDownloadRows(env, userId, limit = 500) {
+  requireDb(env);
+  await ensureVexaLiveDownloadTokenTable(env);
+  const rows = await env.DB.prepare(
+    "SELECT source_url, created_at, used_at FROM vexa_youtube_download_tokens WHERE user_id = ? AND used_at IS NOT NULL ORDER BY COALESCE(used_at, created_at) DESC LIMIT ?"
+  ).bind(String(userId), Math.max(1, Number(limit) || 500)).all();
+  return rows.results || [];
+}
+
+export function buildVexaLiveDownloadLinksFile(userId, rows = []) {
+  const lines = ["Vexa Live downloaded video links", "User ID: " + userId, "Total: " + rows.length, ""];
+  rows.forEach((row, index) => {
+    lines.push(String(index + 1) + ". " + formatUnixTehranTime(row.used_at || row.created_at));
+    lines.push(String(row.source_url || ""));
+    lines.push("");
+  });
+  return lines.join("\n");
+}
+
 
 export async function getAdminAiChatUsersPage(env, page = 0, limit = 8) {
   requireDb(env);
