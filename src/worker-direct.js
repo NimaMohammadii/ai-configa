@@ -102,8 +102,6 @@ export default {
         ctx.waitUntil(handleStarsCallback(update.callback_query, env).catch(logError));
       } else if (isPaymentHeroAdminCallback(update.callback_query.data)) {
         ctx.waitUntil(handlePaymentHeroAdminCallback(update.callback_query, env).catch(logError));
-      } else if (String(update.callback_query.data || "").startsWith("ytdl:")) {
-        await handleCallbackAndPin(update.callback_query, env).catch(logError);
       } else {
         ctx.waitUntil(handleCallbackAndPin(update.callback_query, env).catch(logError));
       }
