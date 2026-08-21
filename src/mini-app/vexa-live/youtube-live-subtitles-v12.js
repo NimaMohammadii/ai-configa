@@ -563,7 +563,7 @@ function patchClientRuntime(source){
     'playing event');
   runtime=replaceRequired(runtime,
     'v.addEventListener("pause",()=>{if(enabled)closeSocket();hideCaption(p);});',
-    'v.addEventListener("pause",()=>{if(enabled){v.__vexaSubtitlePlaying=false;if(warmupActive)return;sendPlaybackState(v,false);hideCaption(p);}});',
+    'v.addEventListener("pause",()=>{if(enabled){v.__vexaSubtitlePlaying=false;if(warmupActive)return;sendPlaybackState(v,false);closeSocket();hideCaption(p);}});',
     'pause event');
   runtime=replaceRequired(runtime,
     'v.addEventListener("waiting",()=>{if(enabled)closeSocket();hideCaption(p);});',
