@@ -1,7 +1,7 @@
 import { handleMiniAppRequest } from "../server.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
-const INTEGRATION_VERSION = "20260821-7";
+const INTEGRATION_VERSION = "20260821-8";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -64,11 +64,12 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const style = document.createElement("style");
     style.id = "vexaMediaParentStyle";
     style.textContent =
-      "#" + BUTTON_ID + " svg{display:block!important;width:19px!important;height:19px!important}" +
-      "#" + BUTTON_ID + "[aria-pressed=\"true\"] .vexa-media-play{opacity:.28;transform:scale(.82)}" +
-      "#" + BUTTON_ID + "[aria-pressed=\"true\"] .vexa-media-stop{opacity:1;transform:scale(1)}" +
-      ".vexa-media-play,.vexa-media-stop{transform-origin:center;transition:opacity .18s ease,transform .28s cubic-bezier(.16,1,.3,1)}" +
-      ".vexa-media-stop{opacity:0;transform:scale(.62)}" +
+      "#" + BUTTON_ID + "{display:grid!important;place-items:center!important}" +
+      "#" + BUTTON_ID + " svg{display:block!important;position:static!important;inset:auto!important;width:19px!important;height:19px!important;transform:none!important;transition:none!important;overflow:visible!important}" +
+      "#" + BUTTON_ID + "[aria-pressed=\"true\"] .vexa-media-play{opacity:0}" +
+      "#" + BUTTON_ID + "[aria-pressed=\"true\"] .vexa-media-mic{opacity:1}" +
+      ".vexa-media-play,.vexa-media-mic{transform:none!important;transform-origin:center;transition:opacity .18s ease}" +
+      ".vexa-media-mic{opacity:0}" +
       "body.vexa-live-open{background:transparent!important}" +
       "body.vexa-live-open .app{position:relative!important;z-index:40!important;background:transparent!important;pointer-events:none!important}" +
       "body.vexa-live-open .tts-head{position:sticky!important;z-index:41!important;background:transparent!important;opacity:1!important;visibility:visible!important;pointer-events:auto!important}" +
@@ -194,7 +195,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     button.className = "mode-toggle vexa-live-media-toggle";
     button.setAttribute("aria-label", "Open Vexa Live");
     button.setAttribute("aria-pressed", "false");
-    button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><g class="vexa-media-play"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><path d="M10 8.7 15.6 12 10 15.3V8.7Z" fill="currentColor"/></g><g class="vexa-media-stop"><path d="M7 7 17 17M17 7 7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g></svg>';
+    button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><g class="vexa-media-play"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><path d="M10 8.7 15.6 12 10 15.3V8.7Z" fill="currentColor"/></g><g class="vexa-media-mic"><rect x="8.75" y="3.75" width="6.5" height="11.5" rx="3.25" stroke="currentColor" stroke-width="2.1"/><path d="M6.5 11.5v.45A5.5 5.5 0 0 0 12 17.45a5.5 5.5 0 0 0 5.5-5.5v-.45M12 17.45v2.8M9.2 20.25h5.6" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></g></svg>';
     button.addEventListener("click", function (event) {
       event.preventDefault();
       event.stopPropagation();
