@@ -6,7 +6,7 @@ import {
 import VEXA_VOICE_AGENT_SOURCE from "./mini-app/vexa-live/voice-agent-runtime.txt";
 import VEXA_VOICE_ORB_SOURCE from "./mini-app/vexa-live/voice-orb-original.txt";
 
-const VEXA_VOICE_AGENT_VERSION = "20260818-5";
+const VEXA_VOICE_AGENT_VERSION = "20260821-energy-1";
 const VOICE_RUNTIME_PATH = "/mini-app/live/voice-agent-runtime.js";
 const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
 
@@ -57,10 +57,10 @@ function restoreOriginalOrb(source) {
 function makeInlineVoice(source) {
   let result = String(source || "");
 
-  // Preserve the exact Orb shader/look; only raise its render-buffer density.
+  // Keep the original bounded render density on mobile instead of forcing a 2.75 DPR buffer.
   result = result.replace(
     "const dpr = Math.min(1.6, Math.max(1, window.devicePixelRatio || 1));",
-    "const dpr = Math.min(2.75, Math.max(1.5, window.devicePixelRatio || 1));",
+    "const dpr = Math.min(1.6, Math.max(1, window.devicePixelRatio || 1));",
   );
 
   // The status style is installed by the Orb runtime after the base stylesheet,
@@ -97,9 +97,7 @@ function makeInlineVoice(source) {
       .vexa-voice-button-bar-a{height:8px;transform:translate(-7px,-50%)}
       .vexa-voice-button-bar-b{height:15px;transform:translate(-50%,-50%)}
       .vexa-voice-button-bar-c{height:10px;transform:translate(4.2px,-50%)}
-      .vexa-voice-open:not([aria-pressed="true"]) .vexa-voice-button-bar-a{animation:vexaVoiceBarA 1.08s ease-in-out infinite}
-      .vexa-voice-open:not([aria-pressed="true"]) .vexa-voice-button-bar-b{animation:vexaVoiceBarB .92s ease-in-out -.16s infinite}
-      .vexa-voice-open:not([aria-pressed="true"]) .vexa-voice-button-bar-c{animation:vexaVoiceBarC 1.16s ease-in-out -.34s infinite}
+      .vexa-voice-open:not([aria-pressed="true"]) .vexa-voice-button-bar-a,.vexa-voice-open:not([aria-pressed="true"]) .vexa-voice-button-bar-b,.vexa-voice-open:not([aria-pressed="true"]) .vexa-voice-button-bar-c{animation:none!important}
       .vexa-voice-open[aria-pressed="true"] .vexa-voice-button-bar-a{left:50%;height:18px;width:3.2px;transform:translate(-50%,-50%) rotate(45deg)}
       .vexa-voice-open[aria-pressed="true"] .vexa-voice-button-bar-b{height:3px;opacity:0;transform:translate(-50%,-50%) scale(.35)}
       .vexa-voice-open[aria-pressed="true"] .vexa-voice-button-bar-c{left:50%;height:18px;width:3.2px;transform:translate(-50%,-50%) rotate(-45deg)}
