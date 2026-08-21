@@ -5,13 +5,11 @@ import {
 } from "./mini-app/vexa-live/youtube-download-exec.js";
 import {
   VexaMediaContainerV3,
-  appendPlaybackRuntime,
   handleYouTubePlaybackRequest,
   isYouTubePlaybackRequest,
 } from "./mini-app/vexa-live/youtube-range-playback.js";
 import {
   VexaDownloadProgressHub,
-  appendDownloadProgressRuntime,
   handleTrackedYouTubeDownloadRequest,
   isTrackedYouTubeDownloadRequest,
 } from "./mini-app/vexa-live/youtube-download-progress.js";
@@ -27,10 +25,10 @@ import {
   isVexaLiveSubtitlesRequest,
 } from "./mini-app/vexa-live/youtube-live-subtitles.js";
 import {
-  appendVexaLivePersistenceRuntime,
   handleVexaLivePersistenceRequest,
   isVexaLivePersistenceRequest,
 } from "./mini-app/vexa-live/youtube-live-persistence.js";
+import { appendVexaLiveLandingRuntime } from "./mini-app/vexa-live/vexa-live-landing.js";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export { VexaMediaContainerV3, VexaSubtitleContainer, VexaDownloadProgressHub };
@@ -58,11 +56,10 @@ export default {
         return await handleYouTubeDownloadRequest(request, env, ctx);
       }
       let response = await worker.fetch(request, env, ctx);
-      response = await appendPlaybackRuntime(request, response);
-      response = await appendDownloadProgressRuntime(request, response);
+      response = await appendVexaLiveLandingRuntime(request, response);
       response = await appendVexaCustomPlayerRuntime(request, response);
       response = await appendVexaLiveSubtitlesRuntime(request, response);
-      return await appendVexaLivePersistenceRuntime(request, response);
+      return response;
     } catch (error) {
       console.error("Vexa YouTube request failed", error?.stack || error);
       return json({ error: publicError(error) }, error?.status || 500);
