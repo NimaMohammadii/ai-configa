@@ -25,7 +25,7 @@ import {
   appendVexaLiveSubtitlesRuntime,
   handleVexaLiveSubtitlesRequest,
   isVexaLiveSubtitlesRequest,
-} from "./mini-app/vexa-live/youtube-live-subtitles-v11.js";
+} from "./mini-app/vexa-live/youtube-live-subtitles-v12.js";
 import {
   appendVexaLivePersistenceRuntime,
   isVexaLivePersistenceRequest,
