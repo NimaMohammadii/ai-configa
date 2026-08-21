@@ -45,7 +45,7 @@ function clearCaptionState(p){timedSegments=[];liveFallback='';liveFallbackAt=0;
 function closeSocket(){const current=socket;socket=null;generation++;if(!current)return;current.__vexaIntentional=true;try{if(current.readyState===WebSocket.OPEN)current.send(JSON.stringify({type:'stop'}));}catch{}try{current.close(1000,'stopped');}catch{}}
 function stopSubtitles(p){const v=p.querySelector('video'),resume=warmupActive&&resumeAfterWarmup;enabled=false;targetLanguage='original';warmupActive=false;resumeAfterWarmup=false;p.classList.remove('vexa-subtitle-warming');closeSocket();clearCaptionState(p);if(resume&&v&&!v.ended)Promise.resolve(v.play()).catch(function(){});}
 
-function startSubtitles(p,l){const v=p.querySelector('video');if(!v||!playbackToken(v))return;enabled=true;targetLanguage=l;startWarmup(p,v,!v.paused&&!v.ended);}
+function startSubtitles(p,l){const v=p.querySelector('video');if(!v||!playbackToken(v))return;const shouldResume=warmupActive?resumeAfterWarmup:Boolean(!v.paused&&!v.ended);enabled=true;targetLanguage=l;startWarmup(p,v,shouldResume);}
 function startWarmup(p,v,shouldResume){
  if(!enabled||!v||v.ended)return;
  closeSocket();clearCaptionState(p);warmupActive=true;resumeAfterWarmup=Boolean(shouldResume);p.classList.add('vexa-subtitle-warming');
@@ -118,9 +118,9 @@ function bindPlayer(p){
  v.addEventListener('waiting',function(){if(enabled&&!warmupActive)sendPlaybackState(v,false);});
  v.addEventListener('stalled',function(){if(enabled&&!warmupActive)sendPlaybackState(v,false);});
  v.addEventListener('timeupdate',function(){if(enabled&&!warmupActive)sendPlaybackState(v);});
- v.addEventListener('seeking',function(){if(enabled){closeSocket();clearCaptionState(p);}});
- v.addEventListener('seeked',function(){if(enabled&&!v.ended)startWarmup(p,v,!v.paused);});
- v.addEventListener('ratechange',function(){if(enabled&&!v.ended)startWarmup(p,v,!v.paused);});
+ v.addEventListener('seeking',function(){if(enabled){const resume=warmupActive?resumeAfterWarmup:Boolean(!v.paused&&!v.ended);warmupActive=true;resumeAfterWarmup=resume;p.classList.add('vexa-subtitle-warming');closeSocket();clearCaptionState(p);}});
+ v.addEventListener('seeked',function(){if(enabled&&!v.ended){const resume=warmupActive?resumeAfterWarmup:Boolean(!v.paused&&!v.ended);startWarmup(p,v,resume);}});
+ v.addEventListener('ratechange',function(){if(enabled&&!v.ended){const resume=warmupActive?resumeAfterWarmup:Boolean(!v.paused&&!v.ended);startWarmup(p,v,resume);}});
  v.addEventListener('emptied',function(){if(enabled){closeSocket();clearCaptionState(p);}});
  v.addEventListener('ended',function(){if(enabled){closeSocket();clearCaptionState(p);}});
 }
