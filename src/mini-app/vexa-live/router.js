@@ -75,7 +75,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     style.textContent =
       "#" + SHARED_MESH_CANVAS_ID + "{position:fixed!important;inset:0!important;z-index:0!important;display:block!important;width:100%!important;height:100%!important;pointer-events:none!important;opacity:0;background:" + VEXA_BG + ";transition:opacity .28s ease!important}" +
       "body." + SHARED_MESH_CLASS + " #" + SHARED_MESH_CANVAS_ID + "{opacity:1!important}" +
-      "body." + SHARED_MESH_CLASS + "{background:" + VEXA_BG + "!important}" +
+      "html." + SHARED_MESH_CLASS + ",body." + SHARED_MESH_CLASS + "{background:" + VEXA_BG + "!important}" +
       "body." + SHARED_MESH_CLASS + " .app{position:relative!important;z-index:1!important;background:transparent!important}" +
       "body.image-mode." + SHARED_MESH_CLASS + " .tts-head,body.image-mode." + SHARED_MESH_CLASS + " .tts-head:before,body.image-mode." + SHARED_MESH_CLASS + " .tts-head:after{background:transparent!important}" +
       "body." + SHARED_MESH_CLASS + " .credits-page{background:transparent!important}" +
@@ -130,6 +130,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const canvas = document.getElementById(SHARED_MESH_CANVAS_ID);
     const next = body.classList.contains("image-mode") || body.classList.contains("credits-page-open");
     if (canvas) canvas.dataset.vexaMeshActive = next ? "true" : "false";
+    document.documentElement.classList.toggle(SHARED_MESH_CLASS, next);
     body.classList.toggle(SHARED_MESH_CLASS, next);
     if (next === meshSurfaceActive) {
       if (next && meshSurfaceRenderer) meshSurfaceRenderer.resize();
