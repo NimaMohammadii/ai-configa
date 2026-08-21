@@ -21,6 +21,7 @@ const WARMUP_NO_SPEECH_GRACE_MS=650,WARMUP_MAX_WAIT_MS=6500;
 const SPECULATIVE_DEBOUNCE_MS=140,FINAL_TRANSLATION_MAX_CONCURRENCY=2;
 const VAD_SILENCE_SECONDS=.3,VAD_THRESHOLD=.4,VAD_MIN_SPEECH_MS=100,VAD_MIN_SILENCE_MS=100;
 const CAPTION_LATE_GRACE_SECONDS=.2,CAPTION_EARLY_EPSILON_SECONDS=.06;
+const EOF_FLUSH_FRAMES=5,EOF_FLUSH_GRACE_MS=900;
 const TARGET_LANGUAGES=Object.freeze({original:"Original",en:"English",fa:"Persian",ru:"Russian",de:"German",tr:"Turkish",es:"Spanish",ar:"Arabic",fr:"French",pt:"Portuguese",it:"Italian",hi:"Hindi",zh:"Chinese",ja:"Japanese",ko:"Korean"});
 const SCRIBE_ERROR_TYPES=new Set(["error","auth_error","quota_exceeded","transcriber_error","input_error","invalid_request","unaccepted_terms","commit_throttled","rate_limited","queue_overflow","resource_exhausted","session_time_limit_exceeded","chunk_size_exceeded","insufficient_audio_activity"]);
 
@@ -340,19 +341,25 @@ async function runRealtimeSubtitleSession({request,env,server,payload,playbackSt
     await scribeReady;
     if(signal.aborted)throw new Error("aborted");
     send({type:"ready"});
-    await streamPcmToScribe({
+    const audioEndTime=await streamPcmToScribe({
       audioStream,upstream,control:playbackControl,baseStart,signal,
       onProgress:absoluteAudioTime=>{
         if(playbackControl.warming){audioLeadSeconds=Math.max(audioLeadSeconds,absoluteAudioTime-baseStart);maybeWarmupReady();}
       }
     });
+    await flushScribeTail(upstream,signal);
+    await sleepWithSignal(EOF_FLUSH_GRACE_MS,signal);
+    upstreamEndedNormally=true;
+    signal.removeEventListener("abort",closeUpstream);closeUpstream();
     clearSpeculativeTimer();
     if(pendingSpeculative)launchSpeculative();
     if(speculativeActive)await Promise.allSettled([speculativeActive]);
     while(finalQueue.length||activeFinalTranslations.size){pumpFinalTranslations();if(activeFinalTranslations.size)await Promise.allSettled([...activeFinalTranslations]);else break;}
+    if(playbackControl.warming&&!warmupReadySent&&!signal.aborted){
+      warmupReadySent=true;send({type:"warmup_ready",leadSeconds:roundTime(audioLeadSeconds),prepared:readyCaptions.length>0||speculativeCache.size>0});
+    }
+    await waitForPlaybackDrain(playbackControl,audioEndTime,signal);
     if(!signal.aborted){completed=true;send({type:"ended"});}
-    upstreamEndedNormally=true;
-    signal.removeEventListener("abort",closeUpstream);closeUpstream();
   }finally{
     upstreamEndedNormally=true;
     clearInterval(captionTimer);clearSpeculativeTimer();
@@ -396,6 +403,31 @@ async function streamPcmToScribe({audioStream,upstream,control,baseStart,signal,
       bytesSent+=pending.byteLength;onProgress?.(Number(baseStart||0)+bytesSent/PCM_BYTES_PER_SECOND);
     }
   }finally{signal.removeEventListener("abort",cancelReader);try{await reader.cancel();}catch{}}
+  return Number(baseStart||0)+bytesSent/PCM_BYTES_PER_SECOND;
+}
+
+async function flushScribeTail(upstream,signal){
+  if(signal.aborted||upstream?.readyState!==WebSocket.OPEN)return;
+  const silence=new Uint8Array(PCM_FRAME_BYTES),payload=bytesToBase64(silence);
+  for(let index=0;index<EOF_FLUSH_FRAMES&&!signal.aborted&&upstream.readyState===WebSocket.OPEN;index++){
+    upstream.send(JSON.stringify({message_type:"input_audio_chunk",audio_base_64:payload,sample_rate:PCM_SAMPLE_RATE}));
+  }
+}
+
+async function sleepWithSignal(ms,signal){
+  if(signal.aborted)throw new Error("aborted");
+  await new Promise((resolve,reject)=>{
+    const timer=setTimeout(done,ms);function done(){signal.removeEventListener("abort",abort);resolve();}function abort(){clearTimeout(timer);signal.removeEventListener("abort",abort);reject(new Error("aborted"));}signal.addEventListener("abort",abort,{once:true});
+  });
+}
+
+async function waitForPlaybackDrain(control,audioEndTime,signal){
+  const target=Number(audioEndTime);if(!Number.isFinite(target))return;
+  while(!signal.aborted){
+    if(!control?.warming&&control?.playing&&estimatedControlTime(control)>=target-.08)return;
+    const version=Number(control?.version||0);await waitForControlChange(control,version,signal,100);
+  }
+  throw new Error("aborted");
 }
 
 async function waitForFeedPermission(control,absoluteAudioTime,signal){
@@ -531,7 +563,7 @@ function patchClientRuntime(source){
     'playing event');
   runtime=replaceRequired(runtime,
     'v.addEventListener("pause",()=>{if(enabled)closeSocket();hideCaption(p);});',
-    'v.addEventListener("pause",()=>{if(enabled){v.__vexaSubtitlePlaying=false;if(warmupActive)return;sendPlaybackState(v,false);closeSocket();hideCaption(p);}});',
+    'v.addEventListener("pause",()=>{if(enabled){v.__vexaSubtitlePlaying=false;if(warmupActive)return;sendPlaybackState(v,false);hideCaption(p);}});',
     'pause event');
   runtime=replaceRequired(runtime,
     'v.addEventListener("waiting",()=>{if(enabled)closeSocket();hideCaption(p);});',
