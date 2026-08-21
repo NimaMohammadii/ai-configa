@@ -20,7 +20,7 @@ const PLAYBACK_AUDIO_LEAD_SECONDS = 4.2;
 const WARMUP_NO_SPEECH_GRACE_MS = 650;
 const WARMUP_MAX_WAIT_MS = 12000;
 const PARTIAL_FALLBACK_INTERVAL_SECONDS = 2.4;
-const TIMESTAMP_WAIT_MS = 150;
+const TIMESTAMP_WAIT_MS = 650;
 const VAD_SILENCE_SECONDS = 0.3;
 const VAD_THRESHOLD = 0.4;
 const VAD_MIN_SPEECH_MS = 100;
@@ -219,7 +219,8 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
   const segmentQueue = [];
   let activeTranslation = null;
   const translationCache = new Map();
-  const seenSegments = new Set();
+  const recentSegments = [];
+  let lastPartialSnapshotText = "";
   const timestampState = { offset: 0, lastEnd: 0 };
 
   const clearSettledTimer = () => { if (settledTimer) { clearTimeout(settledTimer); settledTimer = 0; } };
@@ -250,14 +251,19 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
 
   const enqueueSegment = (sourceText, timing, sourceMediaTime) => {
     const text = liveSubtitleWindow(sourceText);
-    if (!text || !timing) return;
-    const signature = text + "|" + Math.round(timing.start * 10) + "|" + Math.round(timing.end * 10);
-    if (seenSegments.has(signature)) return;
-    seenSegments.add(signature);
-    while (seenSegments.size > 80) seenSegments.delete(seenSegments.values().next().value);
+    if (!text || !timing) return false;
+    const overlapsExisting = recentSegments.some(item => {
+      if (item.text !== text) return false;
+      const overlap = Math.min(item.end, timing.end) - Math.max(item.start, timing.start);
+      return overlap >= -0.12;
+    });
+    if (overlapsExisting) return false;
+    recentSegments.push({ text, start: timing.start, end: timing.end });
+    if (recentSegments.length > 40) recentSegments.splice(0, recentSegments.length - 40);
     lastSegmentMediaTime = Math.max(lastSegmentMediaTime, Number(sourceMediaTime || timing.end || baseStart));
     segmentQueue.push({ id: String(++segmentSequence), sourceText: text, start: timing.start, end: timing.end });
     pumpTranslationQueue();
+    return true;
   };
 
   const flushPendingSettled = timingOverride => {
@@ -302,9 +308,11 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
   };
 
   const maybeSnapshotPartial = () => {
-    if (!latestPartial?.text) return;
+    if (!latestPartial?.text || latestPartial.text === lastPartialSnapshotText) return;
     if (latestAudioMediaTime - lastSegmentMediaTime < PARTIAL_FALLBACK_INTERVAL_SECONDS) return;
-    enqueueSegment(latestPartial.text, approximateLiveTiming(latestPartial.text, latestAudioMediaTime, baseStart), latestAudioMediaTime);
+    if (enqueueSegment(latestPartial.text, approximateLiveTiming(latestPartial.text, latestAudioMediaTime, baseStart), latestAudioMediaTime)) {
+      lastPartialSnapshotText = latestPartial.text;
+    }
   };
 
   const publishTranslatedSegment = (job, text) => {
@@ -406,6 +414,7 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
           sawSpeech = true;
           clearNoSpeechTimer();
           latestPartial = { text, audioMediaTime: latestAudioMediaTime };
+          maybeSnapshotPartial();
         }
         return;
       }
