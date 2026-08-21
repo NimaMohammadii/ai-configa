@@ -48,6 +48,7 @@ const SECTION_KEY = "live";
 const SECTION_LABEL = "Vexa Live";
 const LOCK_ACTION = "vexa_live_lock_minutes";
 const YOUTUBE_CALLBACK_PREFIX = "ytdl:";
+const YOUTUBE_WORKFLOW_KIND = "youtube_download";
 
 let botUsernameCache = "";
 
@@ -180,7 +181,8 @@ async function handleYouTubeDownloadCallback(query, env) {
   }
 
   const state = await getState(env, context.userId).catch(() => null);
-  const copy = youtubeDownloadCopy(state?.language);
+  const language = normalizeLang(state?.language || "en");
+  const copy = youtubeDownloadCopy(language);
   await answerCallback(env, query.id, copy.preparing, false).catch(() => null);
   await editMessage(
     env,
@@ -191,22 +193,74 @@ async function handleYouTubeDownloadCallback(query, env) {
   ).catch(() => null);
 
   try {
-    const media = await downloadTelegramYouTubeMedia(env, context.userId, sourceUrl, optionKey);
-    await sendTelegramMediaStream(env, context.chatId, media);
-    await editMessage(
-      env,
-      context.chatId,
-      context.messageId,
-      "✅ " + escapeHtml(copy.sent) + " · " + escapeHtml(media.label),
-    ).catch(() => null);
+    if (!env.AI_CODING_WORKFLOW) {
+      throw new Error("YouTube download is temporarily unavailable");
+    }
+    const workflowId = "yt-" + crypto.randomUUID();
+    await env.AI_CODING_WORKFLOW.create({
+      id: workflowId,
+      params: {
+        kind: YOUTUBE_WORKFLOW_KIND,
+        userId: String(context.userId),
+        chatId: Number(context.chatId),
+        messageId: Number(context.messageId),
+        sourceUrl,
+        optionKey,
+        language,
+      },
+      retention: { successRetention: "1 day", errorRetention: "1 day" },
+    });
   } catch (error) {
-    console.error("bot YouTube download failed", error?.stack || error);
+    console.error("bot YouTube workflow enqueue failed", error?.stack || error);
     await editMessage(
       env,
       context.chatId,
       context.messageId,
       "⚠️ " + escapeHtml(publicYouTubeMessage(error, copy.failed)),
     ).catch(() => null);
+  }
+}
+
+export async function runYouTubeDownloadWorkflowJob(env, payload) {
+  const userId = String(payload?.userId || "").trim();
+  const chatId = Number(payload?.chatId || 0);
+  const messageId = Number(payload?.messageId || 0);
+  const sourceUrl = extractYouTubeUrl(payload?.sourceUrl || "");
+  const optionKey = String(payload?.optionKey || "").trim();
+  const language = normalizeLang(payload?.language || "en");
+  const copy = youtubeDownloadCopy(language);
+
+  if (
+    !userId ||
+    !Number.isSafeInteger(chatId) ||
+    !Number.isSafeInteger(messageId) ||
+    !chatId ||
+    messageId <= 0 ||
+    !sourceUrl ||
+    !/^(?:a|v\d{2,4})$/u.test(optionKey)
+  ) {
+    throw new Error("YouTube download workflow payload is invalid");
+  }
+
+  try {
+    const media = await downloadTelegramYouTubeMedia(env, userId, sourceUrl, optionKey);
+    await sendTelegramMediaStream(env, chatId, media);
+    await editMessage(
+      env,
+      chatId,
+      messageId,
+      "✅ " + escapeHtml(copy.sent) + " · " + escapeHtml(media.label),
+    ).catch(() => null);
+    return { ok: true, label: media.label };
+  } catch (error) {
+    console.error("bot YouTube workflow download failed", error?.stack || error);
+    await editMessage(
+      env,
+      chatId,
+      messageId,
+      "⚠️ " + escapeHtml(publicYouTubeMessage(error, copy.failed)),
+    ).catch(() => null);
+    throw error;
   }
 }
 
