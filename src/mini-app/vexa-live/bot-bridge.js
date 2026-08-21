@@ -275,7 +275,13 @@ async function sendTelegramMediaStream(env, chatId, media) {
   if (media.kind === "audio") {
     fields.push(["title", String(media.title || "YouTube audio").slice(0, 128)]);
   } else {
+    const width = Math.floor(Number(media.width || 0));
+    const height = Math.floor(Number(media.height || 0));
+    const duration = Math.round(Number(media.duration || 0));
     fields.push(["supports_streaming", "true"]);
+    if (Number.isSafeInteger(width) && width > 0) fields.push(["width", String(width)]);
+    if (Number.isSafeInteger(height) && height > 0) fields.push(["height", String(height)]);
+    if (Number.isSafeInteger(duration) && duration > 0) fields.push(["duration", String(duration)]);
     fields.push(["caption", String(media.title || "YouTube video").slice(0, 1024)]);
   }
 
@@ -705,7 +711,7 @@ async function accessPanelKeyboard(env) {
   );
 
   const liveRow = live.adminOnly
-    ? [{ text: "🔓 Open Vexa Live now", callback_data: "admin_vexa_live_unlock" }]
+    ? [{ text: "🔓 Open Vexa Live now", callback_data: "admin_mini_app_access" }]
     : [{ text: "🔒 Lock Vexa Live", callback_data: "admin_vexa_live_lock_prompt" }];
 
   const backIndex = rows.findIndex((row) =>
