@@ -5,15 +5,22 @@ import { runWithCreditIdempotency } from "./credit-idempotency.js";
 import { getAiCodingTaskState } from "./ai-coding-task.js";
 import { summarizeCodingPlan } from "./ai-coding-plan.js";
 import { handleMiniAppRequest } from "./mini-app/server.js";
+import { runYouTubeDownloadWorkflowJob } from "./mini-app/vexa-live/bot-bridge.js";
 
 const MAX_BACKGROUND_PHASES = 12;
 const MAX_TASK_ERROR_CHARS = 1000;
 const MAX_TASK_RESULT_CHARS = 500000;
 const PHASE_TIMEOUT = "10 minutes";
+const YOUTUBE_WORKFLOW_KIND = "youtube_download";
+const YOUTUBE_DOWNLOAD_TIMEOUT = "10 minutes";
 
 export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
   async run(event, step) {
     const payload = event?.payload || {};
+    if (payload.kind === YOUTUBE_WORKFLOW_KIND) {
+      return this.runYouTubeDownload(payload, step);
+    }
+
     const taskId = cleanWorkflowTaskId(payload.taskId || event?.instanceId);
     const userId = String(payload.userId || "").trim();
     if (!taskId || !userId) throw new NonRetryableError("Background AI task payload is invalid.");
@@ -132,6 +139,36 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
         return { taskId, status: "failed" };
       }).catch(() => null);
       throw new NonRetryableError(message);
+    }
+  }
+
+  async runYouTubeDownload(payload, step) {
+    const userId = String(payload?.userId || "").trim();
+    const chatId = String(payload?.chatId || "").trim();
+    const messageId = Number(payload?.messageId || 0);
+    const sourceUrl = String(payload?.sourceUrl || "").trim();
+    const optionKey = String(payload?.optionKey || "").trim();
+    if (
+      !userId ||
+      !chatId ||
+      !Number.isSafeInteger(messageId) ||
+      messageId <= 0 ||
+      !sourceUrl ||
+      !/^(?:a|v\d{2,4})$/u.test(optionKey)
+    ) {
+      throw new NonRetryableError("YouTube download workflow payload is invalid.");
+    }
+
+    try {
+      return await step.do(
+        "download and deliver YouTube media",
+        { retries: { limit: 0, delay: "1 second" }, timeout: YOUTUBE_DOWNLOAD_TIMEOUT },
+        async () => runYouTubeDownloadWorkflowJob(this.env, payload),
+      );
+    } catch (error) {
+      throw new NonRetryableError(
+        String(error?.message || "YouTube download workflow failed.").slice(0, MAX_TASK_ERROR_CHARS)
+      );
     }
   }
 }
