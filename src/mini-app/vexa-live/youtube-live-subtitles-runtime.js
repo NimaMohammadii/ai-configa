@@ -48,23 +48,30 @@ function showCaption(p,text,error){const n=p.querySelector('[data-subtitle-text]
 function hideCaption(p){p.querySelector('[data-subtitle-text]')?.classList.remove('show');}
 function setCaptionError(p,message){stickyError=String(message||'Live subtitles are unavailable');clearRenderTimer();showCaption(p,stickyError,true);}
 function clearCaptionState(p,clearError){timedSegments=[];clearRenderTimer();if(clearError!==false)stickyError='';if(!stickyError)hideCaption(p);}
+function normalizeCaptionMessage(v,message){
+ if(targetLanguage==='original')return message;
+ const text=String(message?.text||'').trim(),start=Number(message?.start),end=Number(message?.end),now=Math.max(0,Number(v?.currentTime||0));
+ if(!text||!Number.isFinite(start)||!Number.isFinite(end)||end>=now+.12)return message;
+ const words=text.split(/\s+/u).filter(Boolean).length,hold=Math.min(4.2,Math.max(1.6,words*.28+.9));
+ return Object.assign({},message,{start:Math.max(0,now-.05),end:now+hold});
+}
 function upsertSegment(message){
  const text=String(message.text||'').trim(),start=Number(message.start),end=Number(message.end);if(!text||!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return false;
  const id=String(message.id||''),revision=Number(message.revision||0),segment={id,text,start,end,revision};
  const index=id?timedSegments.findIndex(function(x){return x.id===id;}):-1;
  if(index>=0)timedSegments[index]=segment;else timedSegments.push(segment);
  timedSegments.sort(function(a,b){return a.start-b.start||a.end-b.end||a.revision-b.revision;});
- if(timedSegments.length>36)timedSegments=timedSegments.slice(-36);
+ if(timedSegments.length>48)timedSegments=timedSegments.slice(-48);
  stickyError='';return true;
 }
-function activeSegmentAt(t){let best=null;for(let i=0;i<timedSegments.length;i++){const x=timedSegments[i];if(x.start>t+.08)break;if(x.end<t-.12)continue;if(!best||x.revision>=best.revision)best=x;}return best;}
+function activeSegmentAt(t){let best=null;for(let i=0;i<timedSegments.length;i++){const x=timedSegments[i];if(x.start>t+.08)break;if(x.end<t-.16)continue;if(!best||x.revision>=best.revision)best=x;}return best;}
 function nextBoundaryAfter(t,best){if(best&&best.end>t)return best.end+.02;for(let i=0;i<timedSegments.length;i++){const x=timedSegments[i];if(x.start>t+.08)return Math.max(t+.01,x.start-.06);}return null;}
 function scheduleRender(p,v){
  clearRenderTimer();
  if(stickyError){showCaption(p,stickyError,true);return;}
  if(!enabled||warmupActive){hideCaption(p);return;}
  const t=Math.max(0,Number(v?.currentTime||0));
- timedSegments=timedSegments.filter(function(x){return x.end>=t-.35&&x.start<=t+45;});
+ timedSegments=timedSegments.filter(function(x){return x.end>=t-.5&&x.start<=t+45;});
  const best=activeSegmentAt(t);if(best)showCaption(p,best.text,false);else hideCaption(p);
  if(!v||v.paused||v.ended||document.hidden)return;
  const boundary=nextBoundaryAfter(t,best);if(!Number.isFinite(boundary))return;
@@ -97,7 +104,7 @@ function connectRealtime(p,v){
    if(!enabled||socket!==ws||generation!==currentGeneration)return;
    let message;try{message=JSON.parse(String(event.data||'{}'));}catch{return;}
    if(message.type==='audio_ready'){try{ws.send(JSON.stringify({type:'playback_start',currentTime:Math.max(0,Number(v.currentTime||0)),playbackRate:Math.max(.25,Math.min(4,Number(v.playbackRate||1))),playing:false,warmup:warmupActive}));}catch{}return;}
-   if(message.type==='caption_segment'){if(upsertSegment(message))scheduleRender(p,v);return;}
+   if(message.type==='caption_segment'){const caption=normalizeCaptionMessage(v,message);if(upsertSegment(caption))scheduleRender(p,v);return;}
    if(message.type==='warmup_ready'){
      if(warmupActive){try{ws.send(JSON.stringify({type:'warmup_complete',currentTime:Math.max(0,Number(v.currentTime||0)),playbackRate:Math.max(.25,Math.min(4,Number(v.playbackRate||1))),playing:false,warmup:false}));}catch{}
        const resume=resumeAfterWarmup;warmupActive=false;resumeAfterWarmup=false;p.classList.remove('vexa-subtitle-warming');scheduleRender(p,v);if(resume&&!v.ended)Promise.resolve(v.play()).catch(function(){});
@@ -122,7 +129,7 @@ function bindWorkspaceLifecycle(p,v){
 }
 
 function bindPlayer(p){
- if(p.dataset.vexaLiveSubtitles==='clean3')return;p.dataset.vexaLiveSubtitles='clean3';installStyle();installUI(p);const v=p.querySelector('video');if(!v)return;bindWorkspaceLifecycle(p,v);
+ if(p.dataset.vexaLiveSubtitles==='visible1')return;p.dataset.vexaLiveSubtitles='visible1';installStyle();installUI(p);const v=p.querySelector('video');if(!v)return;bindWorkspaceLifecycle(p,v);
  v.addEventListener('play',function(){if(!enabled)return;if(warmupActive){try{v.pause();}catch{}return;}if(!socket){startWarmup(p,v,true);return;}sendPlaybackState(v,false);scheduleRender(p,v);});
  v.addEventListener('playing',function(){if(enabled&&!warmupActive){sendPlaybackState(v,true);scheduleRender(p,v);}});
  v.addEventListener('pause',function(){clearRenderTimer();if(!enabled)return;if(warmupActive)return;sendPlaybackState(v,false);closeSocket();scheduleRender(p,v);});
@@ -132,6 +139,7 @@ function bindPlayer(p){
  v.addEventListener('seeking',function(){clearRenderTimer();if(enabled){const resume=warmupActive?resumeAfterWarmup:Boolean(!v.paused&&!v.ended);warmupActive=true;resumeAfterWarmup=resume;p.classList.add('vexa-subtitle-warming');closeSocket();clearCaptionState(p,true);}});
  v.addEventListener('seeked',function(){if(enabled&&!v.ended){const resume=warmupActive?resumeAfterWarmup:Boolean(!v.paused&&!v.ended);startWarmup(p,v,resume);}});
  v.addEventListener('ratechange',function(){if(enabled&&!v.ended){const resume=warmupActive?resumeAfterWarmup:Boolean(!v.paused&&!v.ended);startWarmup(p,v,resume);}});
+ v.addEventListener('loadedmetadata',function(){if(enabled&&!v.ended&&!socket){const resume=warmupActive?resumeAfterWarmup:Boolean(!v.paused&&!v.ended);startWarmup(p,v,resume);}});
  v.addEventListener('emptied',function(){if(enabled){closeSocket();clearCaptionState(p,true);}});
  v.addEventListener('ended',function(){if(enabled){closeSocket();clearCaptionState(p,true);}});
  document.addEventListener('visibilitychange',function(){if(document.hidden){clearRenderTimer();return;}if(enabled)scheduleRender(p,v);});
