@@ -163,4 +163,34 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
 
   scheduleViewportRecovery();
 })();
+
+(function installAdminOnlyAiChatEntry(){
+  var baseFetch=window.fetch.bind(window);
+
+  function applyAdminState(value){
+    var allowed=!!value;
+    if(document.body)document.body.classList.toggle('ai-chat-admin',allowed);
+    var button=document.getElementById('aiChatOpen');
+    if(button)button.setAttribute('aria-hidden',allowed?'false':'true');
+  }
+
+  applyAdminState(false);
+
+  window.fetch=async function(input,init){
+    var response=await baseFetch(input,init);
+    try{
+      var path=typeof input==='string'?input:String(input&&input.url||'');
+      if(path.indexOf('/mini-app/api/session')>=0){
+        response.clone().json().then(function(data){
+          applyAdminState(!!(data&&data.rewardWheel&&data.rewardWheel.isAdmin));
+        }).catch(function(){
+          applyAdminState(false);
+        });
+      }
+    }catch(error){
+      applyAdminState(false);
+    }
+    return response;
+  };
+})();
 `;
