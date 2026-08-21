@@ -711,7 +711,7 @@ async function accessPanelKeyboard(env) {
   );
 
   const liveRow = live.adminOnly
-    ? [{ text: "🔓 Open Vexa Live now", callback_data: "admin_mini_app_access" }]
+    ? [{ text: "🔓 Open Vexa Live now", callback_data: "admin_vexa_live_unlock" }]
     : [{ text: "🔒 Lock Vexa Live", callback_data: "admin_vexa_live_lock_prompt" }];
 
   const backIndex = rows.findIndex((row) =>
