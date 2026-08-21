@@ -6,7 +6,7 @@ import { LIVE_SUBTITLES_RUNTIME_JS } from "./youtube-live-subtitles-runtime.js";
 
 const SOCKET_PATH = "/mini-app/live/api/youtube-subtitles/realtime";
 const RUNTIME_PATH = "/mini-app/vexa-live/live-subtitles.js";
-const RUNTIME_VERSION = "20260821-clean-3";
+const RUNTIME_VERSION = "20260821-clean-2";
 
 const TRANSLATION_MODEL = "gpt-5.6-terra";
 const TRANSLATE_TIMEOUT_MS = 12000;
@@ -125,9 +125,7 @@ export async function appendVexaLiveSubtitlesRuntime(request, response) {
   if (path !== "/mini-app/vexa-live" && path !== "/mini-app/vexa-live/") return response;
   if (!String(response.headers.get("Content-Type") || "").toLowerCase().includes("text/html")) return response;
   const source = await response.text();
-  const energyStyle = '<style id="vexaLiveEnergyStyle">#vexaCustomPlayer .vexa-player-buffer{animation:none!important}#vexaCustomPlayer.is-buffering .vexa-player-buffer,#vexaCustomPlayer.vexa-subtitle-warming .vexa-player-buffer{animation:vexaPlayerSpin .8s linear infinite!important}</style>';
-  const lifecycle = '<script id="vexaLiveLifecycle">(function(){function v(){var n=document.getElementById("vexaLiveVideo");return n&&n.tagName==="VIDEO"?n:null}function parentHidden(){try{var f=window.frameElement,w=f&&f.closest&&f.closest("#vexaMediaWorkspace");return !!(w&&w.getAttribute("aria-hidden")==="true")}catch(e){return false}}function stopHidden(){if(!document.hidden&&!parentHidden())return;var n=v();if(n&&!n.paused)try{n.pause()}catch(e){}}document.addEventListener("visibilitychange",stopHidden);window.addEventListener("pagehide",stopHidden);try{var h=window.parent&&window.parent!==window?window.parent:window,w=h.document.getElementById("vexaMediaWorkspace");if(w)new MutationObserver(stopHidden).observe(w,{attributes:true,attributeFilter:["aria-hidden"]})}catch(e){}stopHidden()})();</script>';
-  const tag = energyStyle + lifecycle + '<script src="' + RUNTIME_PATH + '?v=' + RUNTIME_VERSION + '"></script>';
+  const tag = '<script src="' + RUNTIME_PATH + '?v=' + RUNTIME_VERSION + '"></script>';
   const html = source.includes(RUNTIME_PATH) ? source : source.includes("</body>") ? source.replace("</body>", tag + "\n</body>") : source + tag;
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
@@ -812,7 +810,9 @@ function publicError(error) {
   if (status >= 400 && status < 500) return String(error?.message || "Request failed");
   const message = String(error?.message || "");
   if (/translation/i.test(message)) return message;
-  if (/transcription|speech-to-text/i.test(message)) return message;
+  if (/transcription|speech-to-text|subtitle preparation/i.test(message)) return message;
   return "Live subtitles are temporarily unavailable";
 }
-function json(value, status = 200) { return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } }); }
+function json(value, status = 200) {
+  return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
+}
