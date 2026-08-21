@@ -1,5 +1,5 @@
 const PERSISTENCE_PATH = "/mini-app/vexa-live/persistence.js";
-const PERSISTENCE_VERSION = "20260819-1";
+const PERSISTENCE_VERSION = "20260821-2";
 
 export function isVexaLivePersistenceRequest(request) {
   return new URL(request.url).pathname === PERSISTENCE_PATH;
@@ -130,7 +130,10 @@ export const VEXA_LIVE_PERSISTENCE_RUNTIME_JS = String.raw`
     return normalizeState(best);
   }
   function mergeState(patch){
-    const base=state||readLocal()||normalizeState({})||{};
+    const local=readLocal();
+    const base=!state
+      ? (local||normalizeState({})||{})
+      : (!local||Number(state.updatedAt||0)>=Number(local.updatedAt||0)?state:local);
     const next=normalizeState({...base,...patch,updatedAt:Date.now()}); if(!next)return null;
     state=next; writeLocal(next); lastLocalSaveAt=Date.now(); return next;
   }
