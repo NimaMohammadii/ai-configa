@@ -178,7 +178,7 @@ export class VexaMediaContainerV3 extends Container {
     let timer = 0;
     try {
       const first = await Promise.race([
-        reader.read(),
+        readStreamPrefix(reader, 12),
         new Promise((_, reject) => {
           timer = setTimeout(
             () => reject(new Error("YouTube stream did not start in time")),
@@ -186,11 +186,11 @@ export class VexaMediaContainerV3 extends Container {
           );
         }),
       ]);
-      if (first.done || !first.value?.byteLength) {
+      if (!first?.byteLength) {
         const detail = await processFailureDetail(process, stderrPromise);
         throw publicContainerError(detail || "empty stream");
       }
-      if (!looksLikeMp4(first.value)) {
+      if (!looksLikeMp4(first)) {
         throw new Error("YouTube returned an invalid MP4 stream");
       }
       return true;
@@ -217,7 +217,7 @@ export class VexaMediaContainerV3 extends Container {
     let first;
     try {
       first = await Promise.race([
-        reader.read(),
+        readStreamPrefix(reader, 12),
         new Promise((_, reject) => {
           timer = setTimeout(
             () => reject(new Error("YouTube stream did not start in time")),
@@ -235,13 +235,13 @@ export class VexaMediaContainerV3 extends Container {
       if (timer) clearTimeout(timer);
     }
 
-    if (first.done || !first.value?.byteLength) {
+    if (!first?.byteLength) {
       const detail = await processFailureDetail(process, stderrPromise);
       try { await reader.cancel(); } catch (error) {}
       try { process.kill(); } catch (error) {}
       throw publicContainerError(detail || "empty stream");
     }
-    if (!looksLikeMp4(first.value)) {
+    if (!looksLikeMp4(first)) {
       try { await reader.cancel(); } catch (error) {}
       try { process.kill(); } catch (error) {}
       throw new Error("YouTube returned an invalid MP4 stream");
@@ -252,7 +252,7 @@ export class VexaMediaContainerV3 extends Container {
       async pull(controller) {
         if (!sentFirst) {
           sentFirst = true;
-          controller.enqueue(first.value);
+          controller.enqueue(first);
           return;
         }
         try {
@@ -286,7 +286,12 @@ export class VexaMediaContainerV3 extends Container {
     if (!strategy) throw new Error("YouTube client strategy is invalid");
     const selectedFormat = String(formatId || "").trim() || FORMAT_SELECTOR;
     const mergeArgs = selectedFormat.includes("+")
-      ? ["--merge-output-format", "mp4"]
+      ? [
+          "--merge-output-format",
+          "mp4",
+          "--downloader-args",
+          "ffmpeg_o:-f mp4 -movflags +frag_keyframe+empty_moov+default_base_moof",
+        ]
       : [];
     return this.execYtDlp([
       ...YTDLP_COMMON_ARGS,
@@ -634,6 +639,28 @@ async function collectText(stream, maxBytes) {
   } catch (error) {
     return text.trim();
   }
+}
+
+async function readStreamPrefix(reader, minBytes) {
+  const chunks = [];
+  let total = 0;
+  while (total < minBytes) {
+    const next = await reader.read();
+    if (next.done) break;
+    if (!next.value?.byteLength) continue;
+    chunks.push(next.value);
+    total += next.value.byteLength;
+  }
+  if (!total) return null;
+  if (chunks.length === 1) return chunks[0];
+
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return combined;
 }
 
 async function processFailureDetail(process, stderrPromise) {
