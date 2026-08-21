@@ -213,6 +213,7 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
     'html body.vexa-mesh-surface .credits-page .credits-balance span{display:block!important;margin:3px 0 0!important;color:rgba(255,255,255,.46)!important;font-size:9px!important;font-weight:650!important}'+
     'html body.vexa-mesh-surface .credits-page .credits-page-head:before,html body.vexa-mesh-surface .credits-page .credits-page-head:after{display:none!important;content:none!important;background:none!important}'+
     '@media(max-width:620px){html body.vexa-mesh-surface .credits-page .credits-page-head{padding-right:50px!important}}'+
+    'body.image-mode.vexa-mesh-surface #vexaSharedMeshBackground,body.credits-page-open.vexa-mesh-surface #vexaSharedMeshBackground{filter:brightness(.88)!important}'+
     '.tts-head .mode-toggle[aria-pressed="true"]{background:radial-gradient(145% 110% at 10% -8%,rgba(255,255,255,.98) 0%,rgba(255,255,255,.34) 36%,rgba(255,255,255,0) 58%),linear-gradient(155deg,#fff 0%,#f7f7f7 18%,#cecece 43%,#f4f4f4 68%,#bdbdbd 100%)!important;color:#090909!important;border:1px solid rgba(255,255,255,.9)!important;box-shadow:inset 0 1px 0 #fff,inset 0 -1px 0 rgba(0,0,0,.24),inset 1px 0 0 rgba(255,255,255,.66),inset -1px 0 0 rgba(0,0,0,.08),inset 0 0 8px rgba(255,255,255,.35),0 8px 20px rgba(0,0,0,.26),0 0 14px rgba(255,255,255,.12)!important}';
   document.head.appendChild(style);
 
