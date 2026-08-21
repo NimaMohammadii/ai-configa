@@ -199,7 +199,7 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
   var style=document.createElement('style');
   style.id='primarySectionCoordinatorStyle';
   style.textContent=
-    'html body.vexa-mesh-surface .credits-page .credits-page-scroll{padding:calc(22px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom))!important}'+
+    'html body.vexa-mesh-surface .credits-page .credits-page-scroll{padding:calc(40px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom))!important}'+
     'html body.vexa-mesh-surface .credits-page .credits-page-head{position:relative!important;isolation:auto!important;display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:18px!important;min-height:0!important;max-width:540px!important;margin:0 auto 24px!important;padding:0!important;overflow:visible!important;background:none!important}'+
     'html body.vexa-mesh-surface .credits-page .credits-page-head>div{display:block!important}'+
     'html body.vexa-mesh-surface .credits-page .credits-page-head>div:first-child{position:static!important;z-index:auto!important;display:block!important;width:auto!important;min-width:0!important;flex:1 1 auto!important}'+
