@@ -1,7 +1,7 @@
 import { handleMiniAppRequest } from "../server.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
-const INTEGRATION_VERSION = "20260821-5";
+const INTEGRATION_VERSION = "20260821-6";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -75,8 +75,24 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     document.head.appendChild(style);
   }
 
-  function applyWorkspaceStyle(workspace) {
-    workspace.style.cssText = "position:fixed;z-index:34;inset:0;width:100vw;height:100dvh;min-width:100vw;min-height:100dvh;max-width:none;max-height:none;margin:0;padding:0;display:block;overflow:hidden;background:#07040d;opacity:0;transform:translateX(34px) scale(.985);transform-origin:center;pointer-events:none;transition:opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1);";
+  function applyWorkspaceGeometry(workspace) {
+    if (!workspace) return;
+    workspace.style.position = "fixed";
+    workspace.style.zIndex = "34";
+    workspace.style.inset = "0";
+    workspace.style.width = "100vw";
+    workspace.style.height = "100dvh";
+    workspace.style.minWidth = "100vw";
+    workspace.style.minHeight = "100dvh";
+    workspace.style.maxWidth = "none";
+    workspace.style.maxHeight = "none";
+    workspace.style.margin = "0";
+    workspace.style.padding = "0";
+    workspace.style.display = "block";
+    workspace.style.overflow = "hidden";
+    workspace.style.background = VEXA_BG;
+    workspace.style.transformOrigin = "center";
+    workspace.style.transition = "opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1)";
   }
 
   function installWorkspace() {
@@ -85,9 +101,12 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       workspace = document.createElement("section");
       workspace.id = WORKSPACE_ID;
       workspace.setAttribute("aria-hidden", "true");
+      workspace.style.opacity = "0";
+      workspace.style.transform = "translateX(34px) scale(.985)";
+      workspace.style.pointerEvents = "none";
     }
     if (workspace.parentElement !== document.body) document.body.appendChild(workspace);
-    applyWorkspaceStyle(workspace);
+    applyWorkspaceGeometry(workspace);
     return workspace;
   }
 
