@@ -2,6 +2,11 @@ import {
   VEXA_MESH_BASE_COLOR,
   createVexaMeshRendererSource,
 } from "./mesh-background.js";
+import {
+  LIQUID_GLASS_FOCUS_RING,
+  LIQUID_GLASS_HOVER_CSS,
+  liquidGlassMaterialCss,
+} from "../liquid-glass-style.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
 
@@ -13,9 +18,11 @@ button{font:inherit}
 .vexa-mesh-landing{position:fixed;inset:0;z-index:1;overflow:hidden;background:${VEXA_MESH_BASE_COLOR};opacity:1;transition:opacity .28s ease}
 .vexa-mesh-landing.is-hidden{opacity:0;pointer-events:none}
 #vexaMeshCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
-.vexa-mesh-open{position:absolute;left:50%;top:50%;z-index:2;min-width:108px;height:52px;padding:0 24px;transform:translate(-50%,-50%);border:0!important;outline:0!important;border-radius:999px;background:transparent!important;box-shadow:none!important;color:rgba(255,255,255,.82);font-size:14px;font-weight:620;letter-spacing:.01em;line-height:1;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);appearance:none;-webkit-appearance:none;cursor:pointer;transition:opacity .16s ease,transform .16s ease}
-.vexa-mesh-open:active{transform:translate(-50%,-50%) scale(.96);opacity:.72}
-.vexa-mesh-open:disabled{opacity:.44}
+.vexa-mesh-open{position:absolute;left:50%;top:50%;z-index:2;min-width:108px;height:52px;padding:0 24px;transform:translate(-50%,-50%);${liquidGlassMaterialCss()}outline:0!important;border-radius:999px;color:rgba(255,255,255,.9);font-size:14px;font-weight:620;letter-spacing:.01em;line-height:1;appearance:none;-webkit-appearance:none;cursor:pointer;transform-origin:center;will-change:transform,filter;transition:opacity .16s ease,transform .3s cubic-bezier(.16,1,.3,1),filter .2s ease,background .25s ease,border-color .25s ease,box-shadow .25s ease}
+@media(hover:hover) and (pointer:fine){.vexa-mesh-open:hover{transform:translate(-50%,-50%) scale(1.05);${LIQUID_GLASS_HOVER_CSS}}}
+.vexa-mesh-open:active{transform:translate(-50%,-50%) scale(.97);filter:brightness(.9)}
+.vexa-mesh-open:focus-visible{outline:none!important;box-shadow:${LIQUID_GLASS_FOCUS_RING}!important}
+.vexa-mesh-open:disabled{opacity:.44;cursor:default}
 .vexa-live-stage{position:fixed;inset:0;z-index:3;display:block;background:#000;overflow:hidden}
 .vexa-live-video{display:block;width:100%;height:100%;border:0;background:#000;object-fit:contain}
 @media(prefers-reduced-motion:reduce){.vexa-mesh-landing,.vexa-mesh-open{transition:none!important}}
