@@ -377,6 +377,9 @@ export async function downloadTelegramYouTubeMedia(env, userId, value, optionKey
       filename: selected.filename,
       mimeType: selected.mimeType,
       sizeBytes: selected.sizeBytes,
+      width: selected.width,
+      height: selected.height,
+      duration: selected.duration,
       stream,
     };
   } catch (error) {
@@ -498,6 +501,7 @@ async function assertLiveAccess(env, userId) {
 function buildTelegramCatalog(data, strategyId) {
   const formats = Array.isArray(data?.formats) ? data.formats : [];
   const duration = positiveNumber(data?.duration);
+  const telegramDuration = duration ? Math.max(1, Math.round(duration)) : 0;
   const title = String(data?.title || "YouTube video").trim() || "YouTube video";
 
   const audioCandidates = formats
@@ -510,7 +514,9 @@ function buildTelegramCatalog(data, strategyId) {
   const byHeight = new Map();
   for (const format of formats) {
     if (!isHttpFormat(format) || !isTelegramMp4Video(format)) continue;
-    const height = positiveInteger(format?.height);
+    const dimensions = videoDimensions(format);
+    const width = dimensions.width;
+    const height = dimensions.height;
     const formatId = String(format?.format_id || "").trim();
     if (!height || !formatId || height > 2160) continue;
 
@@ -531,7 +537,9 @@ function buildTelegramCatalog(data, strategyId) {
     const option = {
       key: "v" + height,
       kind: "video",
+      width,
       height,
+      duration: telegramDuration,
       sizeBytes: totalSize,
       selector,
       mimeType: "video/mp4",
@@ -601,6 +609,26 @@ function formatSizeBytes(format, duration) {
   const bitrate = positiveNumber(format?.tbr) || positiveNumber(format?.abr) || positiveNumber(format?.vbr);
   if (!bitrate || !duration) return 0;
   return Math.ceil(bitrate * 125 * duration * 1.05);
+}
+
+function videoDimensions(format) {
+  let width = positiveInteger(format?.width);
+  let height = positiveInteger(format?.height);
+
+  if (!width || !height) {
+    const match = String(format?.resolution || "").trim().match(/^(\d+)\s*x\s*(\d+)$/i);
+    if (match) {
+      if (!width) width = positiveInteger(match[1]);
+      if (!height) height = positiveInteger(match[2]);
+    }
+  }
+
+  if (!width && height) {
+    const ratio = positiveNumber(format?.aspect_ratio);
+    if (ratio) width = Math.max(1, Math.round(height * ratio));
+  }
+
+  return { width, height };
 }
 
 function audioScore(format) {
