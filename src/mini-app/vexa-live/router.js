@@ -1,7 +1,7 @@
 import { handleMiniAppRequest } from "../server.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
-const INTEGRATION_VERSION = "20260821-6";
+const INTEGRATION_VERSION = "20260821-7";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -69,21 +69,24 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       "#" + BUTTON_ID + "[aria-pressed=\"true\"] .vexa-media-stop{opacity:1;transform:scale(1)}" +
       ".vexa-media-play,.vexa-media-stop{transform-origin:center;transition:opacity .18s ease,transform .28s cubic-bezier(.16,1,.3,1)}" +
       ".vexa-media-stop{opacity:0;transform:scale(.62)}" +
-      "body.vexa-live-open,body.vexa-live-open .app{background:transparent!important}" +
-      "body.vexa-live-open .tts-head{background:transparent!important;z-index:35!important}" +
-      "body.vexa-live-open .tts-head:before,body.vexa-live-open .tts-head:after{background:transparent!important}";
+      "body.vexa-live-open{background:transparent!important}" +
+      "body.vexa-live-open .app{position:relative!important;z-index:40!important;background:transparent!important;pointer-events:none!important}" +
+      "body.vexa-live-open .tts-head{position:sticky!important;z-index:41!important;background:transparent!important;opacity:1!important;visibility:visible!important;pointer-events:auto!important}" +
+      "body.vexa-live-open .tts-head:before,body.vexa-live-open .tts-head:after{background:transparent!important}" +
+      "body.vexa-live-open .tts-head .credit-tools,body.vexa-live-open .tts-head .mode-tools,body.vexa-live-open .tts-head button,body.vexa-live-open .tts-head [role=\"button\"]{pointer-events:auto!important}" +
+      "body.vexa-live-open .tts-area,body.vexa-live-open .tts-bottom{opacity:0!important;pointer-events:none!important}";
     document.head.appendChild(style);
   }
 
   function applyWorkspaceGeometry(workspace) {
     if (!workspace) return;
     workspace.style.position = "fixed";
-    workspace.style.zIndex = "34";
+    workspace.style.zIndex = "20";
     workspace.style.inset = "0";
-    workspace.style.width = "100vw";
-    workspace.style.height = "100dvh";
-    workspace.style.minWidth = "100vw";
-    workspace.style.minHeight = "100dvh";
+    workspace.style.width = "100%";
+    workspace.style.height = "100%";
+    workspace.style.minWidth = "100%";
+    workspace.style.minHeight = "100%";
     workspace.style.maxWidth = "none";
     workspace.style.maxHeight = "none";
     workspace.style.margin = "0";
@@ -108,21 +111,6 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     if (workspace.parentElement !== document.body) document.body.appendChild(workspace);
     applyWorkspaceGeometry(workspace);
     return workspace;
-  }
-
-  function setMainContentHidden(hidden) {
-    const area = document.querySelector(".tts-area");
-    const bottom = document.querySelector(".tts-bottom");
-    if (area) {
-      area.style.opacity = hidden ? "0" : "";
-      area.style.transform = hidden ? "translateX(-36px)" : "";
-      area.style.pointerEvents = hidden ? "none" : "";
-    }
-    if (bottom) {
-      bottom.style.opacity = hidden ? "0" : "";
-      bottom.style.transform = hidden ? "translateX(-36px)" : "";
-      bottom.style.pointerEvents = hidden ? "none" : "";
-    }
   }
 
   function closeImageMode() {
@@ -179,7 +167,6 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     workspace.style.opacity = next ? "1" : "0";
     workspace.style.transform = next ? "translateX(0) scale(1)" : "translateX(34px) scale(.985)";
     workspace.style.pointerEvents = next ? "auto" : "none";
-    setMainContentHidden(next);
     if (next) ensureFrame();
     else destroyFrame();
   }
