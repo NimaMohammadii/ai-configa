@@ -1,7 +1,7 @@
 import { handleMiniAppRequest } from "../server.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
-const INTEGRATION_VERSION = "20260821-8";
+const INTEGRATION_VERSION = "20260821-9";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -70,12 +70,15 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       "#" + BUTTON_ID + "[aria-pressed=\"true\"] .vexa-media-mic{opacity:1}" +
       ".vexa-media-play,.vexa-media-mic{transform:none!important;transform-origin:center;transition:opacity .18s ease}" +
       ".vexa-media-mic{opacity:0}" +
+      "body .tts-area{transition:opacity .28s ease,transform .48s cubic-bezier(.16,.86,.22,1)!important}" +
+      "body .tts-bottom{transition:opacity .25s ease,transform .48s cubic-bezier(.16,.86,.22,1)!important}" +
       "body.vexa-live-open{background:transparent!important}" +
       "body.vexa-live-open .app{position:relative!important;z-index:40!important;background:transparent!important;pointer-events:none!important}" +
       "body.vexa-live-open .tts-head{position:sticky!important;z-index:41!important;background:transparent!important;opacity:1!important;visibility:visible!important;pointer-events:auto!important}" +
       "body.vexa-live-open .tts-head:before,body.vexa-live-open .tts-head:after{background:transparent!important}" +
       "body.vexa-live-open .tts-head .credit-tools,body.vexa-live-open .tts-head .mode-tools,body.vexa-live-open .tts-head button,body.vexa-live-open .tts-head [role=\"button\"]{pointer-events:auto!important}" +
-      "body.vexa-live-open .tts-area,body.vexa-live-open .tts-bottom{opacity:0!important;pointer-events:none!important}";
+      "body.vexa-live-open .tts-area{opacity:0!important;transform:translateX(-30px) scale(.985)!important;pointer-events:none!important}" +
+      "body.vexa-live-open .tts-bottom{opacity:0!important;transform:translateX(calc(-50% - 30px)) scale(.985)!important;pointer-events:none!important}";
     document.head.appendChild(style);
   }
 
@@ -96,7 +99,8 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     workspace.style.overflow = "hidden";
     workspace.style.background = VEXA_BG;
     workspace.style.transformOrigin = "center";
-    workspace.style.transition = "opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1)";
+    workspace.style.willChange = "opacity, transform, clip-path";
+    workspace.style.transition = "opacity .34s ease,transform .56s cubic-bezier(.16,.86,.22,1),clip-path .56s cubic-bezier(.16,.86,.22,1)";
   }
 
   function installWorkspace() {
@@ -106,7 +110,8 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       workspace.id = WORKSPACE_ID;
       workspace.setAttribute("aria-hidden", "true");
       workspace.style.opacity = "0";
-      workspace.style.transform = "translateX(34px) scale(.985)";
+      workspace.style.transform = "translateX(56px) scale(.97)";
+      workspace.style.clipPath = "inset(0 0 0 8% round 30px)";
       workspace.style.pointerEvents = "none";
     }
     if (workspace.parentElement !== document.body) document.body.appendChild(workspace);
@@ -140,7 +145,15 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     frame.title = "Vexa Live";
     frame.setAttribute("aria-label", "Vexa Live YouTube workspace");
     frame.setAttribute("allow", "autoplay; fullscreen; picture-in-picture");
-    frame.style.cssText = "position:absolute;inset:0;display:block;width:100%;height:100%;min-width:100%;min-height:100%;border:0;background:#07040d;";
+    frame.style.cssText = "position:absolute;inset:0;display:block;width:100%;height:100%;min-width:100%;min-height:100%;border:0;background:#07040d;opacity:0;transform:scale(1.018);transform-origin:center;pointer-events:none;transition:opacity .32s ease,transform .48s cubic-bezier(.16,.86,.22,1);will-change:opacity,transform;";
+    frame.addEventListener("load", function () {
+      window.requestAnimationFrame(function () {
+        if (!frame.isConnected) return;
+        frame.style.opacity = "1";
+        frame.style.transform = "scale(1)";
+        frame.style.pointerEvents = "auto";
+      });
+    }, { once: true });
     workspace.appendChild(frame);
     mediaFrame = frame;
     return frame;
@@ -158,6 +171,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const workspace = installWorkspace();
     const button = document.getElementById(BUTTON_ID);
     if (!workspace || !button) return;
+    if (next) ensureFrame();
 
     mediaOpen = next;
     document.body.classList.toggle("vexa-live-open", next);
@@ -166,10 +180,10 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     button.setAttribute("aria-label", next ? "Return to voice creation" : "Open Vexa Live");
     workspace.setAttribute("aria-hidden", next ? "false" : "true");
     workspace.style.opacity = next ? "1" : "0";
-    workspace.style.transform = next ? "translateX(0) scale(1)" : "translateX(34px) scale(.985)";
+    workspace.style.transform = next ? "translateX(0) scale(1)" : "translateX(56px) scale(.97)";
+    workspace.style.clipPath = next ? "inset(0 0 0 0 round 0px)" : "inset(0 0 0 8% round 30px)";
     workspace.style.pointerEvents = next ? "auto" : "none";
-    if (next) ensureFrame();
-    else destroyFrame();
+    if (!next) destroyFrame();
   }
 
   function bindSpeechButton() {
@@ -195,7 +209,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     button.className = "mode-toggle vexa-live-media-toggle";
     button.setAttribute("aria-label", "Open Vexa Live");
     button.setAttribute("aria-pressed", "false");
-    button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><g class="vexa-media-play"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><path d="M10 8.7 15.6 12 10 15.3V8.7Z" fill="currentColor"/></g><g class="vexa-media-mic"><rect x="8.75" y="3.75" width="6.5" height="11.5" rx="3.25" stroke="currentColor" stroke-width="2.1"/><path d="M6.5 11.5v.45A5.5 5.5 0 0 0 12 17.45a5.5 5.5 0 0 0 5.5-5.5v-.45M12 17.45v2.8M9.2 20.25h5.6" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></g></svg>';
+    button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><g class="vexa-media-play"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><path d="M10 8.7 15.6 12 10 15.3V8.7Z" fill="currentColor"/></g><g class="vexa-media-mic"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></g></svg>';
     button.addEventListener("click", function (event) {
       event.preventDefault();
       event.stopPropagation();
