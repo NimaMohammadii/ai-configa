@@ -1,7 +1,7 @@
 import { handleMiniAppRequest } from "../server.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
-const INTEGRATION_VERSION = "20260821-4";
+const INTEGRATION_VERSION = "20260821-5";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -23,16 +23,27 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   const SPEECH_BUTTON_ID = "speechToTextOpen";
   const WORKSPACE_ID = "vexaMediaWorkspace";
   const FRAME_ID = "vexaMediaInlineFrame";
+  const VEXA_BG = "#07040d";
+  const DEFAULT_BG = "#000000";
   let mediaOpen = false;
   let mediaFrame = null;
   let speechButtonBound = false;
-  let geometryBound = false;
 
   function telegram() { return window.Telegram && window.Telegram.WebApp; }
+
   function haptic(style) {
     const tg = telegram();
     if (!tg || !tg.HapticFeedback || !tg.HapticFeedback.impactOccurred) return;
     try { tg.HapticFeedback.impactOccurred(style || "light"); } catch (error) {}
+  }
+
+  function syncTelegramChrome(open) {
+    const tg = telegram();
+    if (!tg) return;
+    const color = open ? VEXA_BG : DEFAULT_BG;
+    try { if (tg.setHeaderColor) tg.setHeaderColor(color); } catch (error) {}
+    try { if (tg.setBackgroundColor) tg.setBackgroundColor(color); } catch (error) {}
+    try { if (tg.setBottomBarColor) tg.setBottomBarColor(color); } catch (error) {}
   }
 
   function requestedSection() {
@@ -58,43 +69,25 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       "#" + BUTTON_ID + "[aria-pressed=\"true\"] .vexa-media-stop{opacity:1;transform:scale(1)}" +
       ".vexa-media-play,.vexa-media-stop{transform-origin:center;transition:opacity .18s ease,transform .28s cubic-bezier(.16,1,.3,1)}" +
       ".vexa-media-stop{opacity:0;transform:scale(.62)}" +
+      "body.vexa-live-open,body.vexa-live-open .app{background:transparent!important}" +
       "body.vexa-live-open .tts-head{background:transparent!important;z-index:35!important}" +
       "body.vexa-live-open .tts-head:before,body.vexa-live-open .tts-head:after{background:transparent!important}";
     document.head.appendChild(style);
   }
 
-  function syncWorkspaceGeometry(workspace, page) {
-    if (!workspace || !page) return;
-    const pageTop = Math.max(0, Math.round(Number(page.getBoundingClientRect().top) || 0));
-    workspace.style.top = (-pageTop) + "px";
-  }
-
-  function bindWorkspaceGeometry(workspace, page) {
-    syncWorkspaceGeometry(workspace, page);
-    if (geometryBound) return;
-    geometryBound = true;
-    const sync = function () { syncWorkspaceGeometry(workspace, page); };
-    window.addEventListener("resize", sync, { passive: true });
-    try { window.visualViewport && window.visualViewport.addEventListener("resize", sync, { passive: true }); } catch (error) {}
+  function applyWorkspaceStyle(workspace) {
+    workspace.style.cssText = "position:fixed;z-index:34;inset:0;width:100vw;height:100dvh;min-width:100vw;min-height:100dvh;max-width:none;max-height:none;margin:0;padding:0;display:block;overflow:hidden;background:#07040d;opacity:0;transform:translateX(34px) scale(.985);transform-origin:center;pointer-events:none;transition:opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1);";
   }
 
   function installWorkspace() {
-    const existing = document.getElementById(WORKSPACE_ID);
-    if (existing) {
-      const page = existing.parentElement && existing.parentElement.classList.contains("tts-page")
-        ? existing.parentElement
-        : document.querySelector(".tts-page");
-      if (page) bindWorkspaceGeometry(existing, page);
-      return existing;
+    let workspace = document.getElementById(WORKSPACE_ID);
+    if (!workspace) {
+      workspace = document.createElement("section");
+      workspace.id = WORKSPACE_ID;
+      workspace.setAttribute("aria-hidden", "true");
     }
-    const page = document.querySelector(".tts-page");
-    if (!page) return null;
-    const workspace = document.createElement("section");
-    workspace.id = WORKSPACE_ID;
-    workspace.setAttribute("aria-hidden", "true");
-    workspace.style.cssText = "position:absolute;z-index:34;left:0;right:0;top:0;bottom:0;display:block;overflow:hidden;background:#07040d;opacity:0;transform:translateX(34px) scale(.985);pointer-events:none;transition:opacity .28s ease,transform .46s cubic-bezier(.16,.86,.22,1);";
-    page.appendChild(workspace);
-    bindWorkspaceGeometry(workspace, page);
+    if (workspace.parentElement !== document.body) document.body.appendChild(workspace);
+    applyWorkspaceStyle(workspace);
     return workspace;
   }
 
@@ -119,17 +112,27 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     if (imageToggle) imageToggle.click();
   }
 
+  function destroyFrame() {
+    const frame = mediaFrame || document.getElementById(FRAME_ID);
+    if (!frame) { mediaFrame = null; return; }
+    try {
+      const video = frame.contentDocument && frame.contentDocument.querySelector("video");
+      if (video && !video.paused) video.pause();
+    } catch (error) {}
+    try { frame.remove(); } catch (error) {}
+    mediaFrame = null;
+  }
+
   function ensureFrame() {
-    if (mediaFrame) return mediaFrame;
+    if (mediaFrame && mediaFrame.isConnected) return mediaFrame;
     const workspace = installWorkspace();
-    if (!workspace) return null;
     const frame = document.createElement("iframe");
     frame.id = FRAME_ID;
     frame.src = "/mini-app/vexa-live";
     frame.title = "Vexa Live";
     frame.setAttribute("aria-label", "Vexa Live YouTube workspace");
     frame.setAttribute("allow", "autoplay; fullscreen; picture-in-picture");
-    frame.style.cssText = "display:block;width:100%;height:100%;border:0;background:#07040d;";
+    frame.style.cssText = "position:absolute;inset:0;display:block;width:100%;height:100%;min-width:100%;min-height:100%;border:0;background:#07040d;";
     workspace.appendChild(frame);
     mediaFrame = frame;
     return frame;
@@ -150,15 +153,16 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
 
     mediaOpen = next;
     document.body.classList.toggle("vexa-live-open", next);
+    syncTelegramChrome(next);
     button.setAttribute("aria-pressed", next ? "true" : "false");
     button.setAttribute("aria-label", next ? "Return to voice creation" : "Open Vexa Live");
     workspace.setAttribute("aria-hidden", next ? "false" : "true");
     workspace.style.opacity = next ? "1" : "0";
     workspace.style.transform = next ? "translateX(0) scale(1)" : "translateX(34px) scale(.985)";
     workspace.style.pointerEvents = next ? "auto" : "none";
-    if (next && workspace.parentElement) syncWorkspaceGeometry(workspace, workspace.parentElement);
     setMainContentHidden(next);
     if (next) ensureFrame();
+    else destroyFrame();
   }
 
   function bindSpeechButton() {
