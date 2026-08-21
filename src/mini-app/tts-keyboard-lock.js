@@ -193,4 +193,92 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
     return response;
   };
 })();
+
+(function installPrimarySectionCoordinator(){
+  var coordinating=false;
+  var style=document.createElement('style');
+  style.id='primarySectionCoordinatorStyle';
+  style.textContent=
+    'html body.vexa-mesh-surface .credits-page .credits-page-scroll{padding:calc(22px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom))!important}'+
+    'html body.vexa-mesh-surface .credits-page .credits-page-head{position:relative!important;isolation:auto!important;display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:18px!important;min-height:0!important;max-width:540px!important;margin:0 auto 24px!important;padding:0!important;overflow:visible!important;background:none!important}'+
+    'html body.vexa-mesh-surface .credits-page .credits-page-head>div{display:block!important}'+
+    'html body.vexa-mesh-surface .credits-page .credits-page-head>div:first-child{display:block!important;width:auto!important;min-width:0!important;flex:1 1 auto!important}'+
+    'html body.vexa-mesh-surface .credits-page .credits-page-head p{display:block!important}'+
+    'html body.vexa-mesh-surface .credits-page .credits-page-head:before,html body.vexa-mesh-surface .credits-page .credits-page-head:after{display:none!important;content:none!important;background:none!important}'+
+    '@media(max-width:620px){html body.vexa-mesh-surface .credits-page .credits-page-head{padding-right:50px!important}}';
+  document.head.appendChild(style);
+
+  function actionSection(button){
+    if(!button)return '';
+    var action=button.getAttribute('data-action')||'';
+    if(button.id==='creditPill'||action==='open-credits-page')return 'credits';
+    if(button.id==='modeToggle')return 'image';
+    if(button.id==='speechToTextOpen')return 'speech-to-text';
+    if(button.id==='vexaLiveOpen')return 'vexa-live';
+    if(button.id==='wheelOpenButton'||action==='open-wheel')return 'wheel';
+    if(action==='toggle-voice')return 'voice-picker';
+    if(action==='open-voices-page')return 'voices';
+    if(button.id==='aiChatOpen'||action==='open-ai-chat')return 'ai-chat';
+    return '';
+  }
+
+  function closeExternalToggle(id,section,target){
+    if(target===section)return;
+    var button=document.getElementById(id);
+    if(!button||button.getAttribute('aria-pressed')!=='true')return;
+    button.click();
+  }
+
+  function closeMainSectionsExcept(target){
+    if(target!=='image'&&document.body&&document.body.classList.contains('image-mode')){
+      try{setCreationMode('voice')}catch(error){}
+    }
+    if(target!=='credits'&&document.body&&document.body.classList.contains('credits-page-open')){
+      try{setCreditsPage(false)}catch(error){}
+    }
+    if(target!=='voices'&&document.body&&document.body.classList.contains('voices-page-open')){
+      try{setVoicesPage(false)}catch(error){}
+    }
+    if(target!=='wheel'&&document.body&&document.body.classList.contains('wheel-open')){
+      try{setWheelSheet(false)}catch(error){}
+    }
+    if(document.body&&document.body.classList.contains('explore-page-open')){
+      try{closeExplorePage()}catch(error){}
+    }
+    try{if(exploreReelsIsOpen())closeExploreReels()}catch(error){}
+    try{setHistorySheet(false)}catch(error){}
+    try{setLimitSheet(false)}catch(error){}
+    try{setImageSizeMenu(false)}catch(error){}
+    try{setDemoLanguageMenu(false)}catch(error){}
+    if(target!=='voice-picker'){
+      var wrap=document.getElementById('voiceWrap');
+      if(wrap)wrap.classList.remove('open');
+    }
+  }
+
+  function coordinate(target){
+    if(!target||coordinating)return;
+    coordinating=true;
+    try{
+      closeMainSectionsExcept(target);
+      closeExternalToggle('speechToTextOpen','speech-to-text',target);
+      closeExternalToggle('vexaLiveOpen','vexa-live',target);
+    }finally{
+      coordinating=false;
+    }
+  }
+
+  document.addEventListener('click',function(event){
+    if(coordinating)return;
+    var button=event.target&&event.target.closest?event.target.closest('button,[role="button"]'):null;
+    var target=actionSection(button);
+    if(target)coordinate(target);
+  },true);
+
+  document.addEventListener('keydown',function(event){
+    if(coordinating||!(event.key==='Enter'||event.key===' '))return;
+    var button=event.target&&event.target.closest?event.target.closest('#creditPill'):null;
+    if(button)coordinate('credits');
+  },true);
+})();
 `;
