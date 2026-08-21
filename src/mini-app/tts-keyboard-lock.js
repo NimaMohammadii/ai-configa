@@ -1,3 +1,5 @@
+import { LIQUID_GLASS_CONTROLS_CSS } from "./liquid-glass-style.js";
+
 export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
 (function installTtsKeyboardLayoutLock(){
   var locked=false;
@@ -192,6 +194,14 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
     }
     return response;
   };
+})();
+
+(function installLiquidGlassTopControls(){
+  if(document.getElementById('liquidGlassTopControls'))return;
+  var style=document.createElement('style');
+  style.id='liquidGlassTopControls';
+  style.textContent=${JSON.stringify(LIQUID_GLASS_CONTROLS_CSS)};
+  document.head.appendChild(style);
 })();
 
 (function installPrimarySectionCoordinator(){
