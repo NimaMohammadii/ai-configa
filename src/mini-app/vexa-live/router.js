@@ -5,7 +5,7 @@ import {
 } from "./mesh-background.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
-const INTEGRATION_VERSION = "20260821-10";
+const INTEGRATION_VERSION = "20260821-11";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -75,6 +75,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     style.textContent =
       "#" + SHARED_MESH_CANVAS_ID + "{position:fixed!important;inset:0!important;z-index:0!important;display:block!important;width:100%!important;height:100%!important;pointer-events:none!important;opacity:0;background:" + VEXA_BG + ";transition:opacity .28s ease!important}" +
       "body." + SHARED_MESH_CLASS + " #" + SHARED_MESH_CANVAS_ID + "{opacity:1!important}" +
+      "body.credits-page-open #" + SHARED_MESH_CANVAS_ID + "{z-index:104!important;opacity:1!important}" +
       "html." + SHARED_MESH_CLASS + ",body." + SHARED_MESH_CLASS + "{background:" + VEXA_BG + "!important}" +
       "body." + SHARED_MESH_CLASS + " .app{position:relative!important;z-index:1!important;background:transparent!important}" +
       "body.image-mode." + SHARED_MESH_CLASS + " .tts-head,body.image-mode." + SHARED_MESH_CLASS + " .tts-head:before,body.image-mode." + SHARED_MESH_CLASS + " .tts-head:after{background:transparent!important}" +
