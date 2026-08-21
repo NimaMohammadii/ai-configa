@@ -9,10 +9,11 @@ import {
   hasTrackedUser,
   isAdmin,
   setAdminAction,
+  trackUser,
 } from "../../admin.js";
 import { handleCallback as handleBaseCallback } from "../../bot-github-admin.js";
 import { handleMessage as handleSecureMessage } from "../../bot-secure.js";
-import { getBalance } from "../../credits.js";
+import { ensureBalanceRow, getBalance } from "../../credits.js";
 import { normalizeLang, t } from "../../i18n.js";
 import {
   isFaChannelMember,
@@ -29,17 +30,24 @@ import {
   answerCallback,
   deleteMessage,
   editMessage,
+  sendMessage,
 } from "../../telegram-actions.js";
-import { tgJson } from "../../telegram-api.js";
+import { botMethodUrl, tgJson } from "../../telegram-api.js";
 import { isLockedVoice } from "../../voices.js";
 import {
   getVexaLiveAccessSettings,
   setVexaLiveAccessSettings,
 } from "./access.js";
+import {
+  downloadTelegramYouTubeMedia,
+  extractYouTubeUrl,
+  getTelegramYouTubeOptions,
+} from "./youtube-download-exec.js";
 
 const SECTION_KEY = "live";
 const SECTION_LABEL = "Vexa Live";
 const LOCK_ACTION = "vexa_live_lock_minutes";
+const YOUTUBE_CALLBACK_PREFIX = "ytdl:";
 
 let botUsernameCache = "";
 
@@ -48,6 +56,10 @@ MINI_APP_TRACKED_SECTIONS[SECTION_KEY] = SECTION_LABEL;
 
 export async function handleCallback(query, env) {
   const data = String(query?.data || "");
+
+  if (data.startsWith(YOUTUBE_CALLBACK_PREFIX)) {
+    return handleYouTubeDownloadCallback(query, env);
+  }
 
   if (data === "admin_mini_app_access") {
     return showAccessPanel(query, env);
@@ -75,6 +87,10 @@ export async function handleMessage(message, env) {
     message = { ...message, text: "/start" };
   }
 
+  if (await handleYouTubeLinkMessage(message, env)) {
+    return;
+  }
+
   if (!userId || !(await isAdmin(env, userId))) {
     const referralContext = await getInsufficientReferralContext(message, env).catch(() => null);
     await handleSecureMessage(message, env);
@@ -92,6 +108,252 @@ export async function handleMessage(message, env) {
   }
 
   return handleVexaLiveLockInput(message, env, action);
+}
+
+async function handleYouTubeLinkMessage(message, env) {
+  const userId = message?.from?.id;
+  const chatId = message?.chat?.id;
+  const text = String(message?.text || "").trim();
+  const sourceUrl = extractYouTubeUrl(text);
+  if (!userId || !chatId || message?.chat?.type !== "private" || !sourceUrl) return false;
+
+  const adminAction = await getAdminAction(env, userId).catch(() => null);
+  if (adminAction) return false;
+
+  const pending = await getPendingPayment(env, userId).catch(() => null);
+  const pendingId = String(pending?.package_id || "");
+  if (pendingId.startsWith("input") || pendingId.startsWith("custom:")) return false;
+
+  const state = await getState(env, userId).catch(() => null);
+  if (!state?.language) return false;
+
+  const admin = await isAdmin(env, userId).catch(() => false);
+  if (
+    state.language === "fa" &&
+    !admin &&
+    await isMandatoryFaMembershipEnabled(env).catch(() => false)
+  ) {
+    const member = await isFaChannelMember(env, userId).catch(() => false);
+    if (!member) return false;
+  }
+
+  await trackUser(env, message.from).catch(() => null);
+  await ensureBalanceRow(env, userId).catch(() => null);
+
+  const copy = youtubeDownloadCopy(state.language);
+  try {
+    const prepared = await getTelegramYouTubeOptions(env, userId, sourceUrl);
+    const keyboard = youtubeDownloadKeyboard(prepared.options, copy);
+    const details = prepared.options.length
+      ? prepared.options.map((option) => option.label + " " + formatMegabytes(option.sizeBytes)).join(" · ")
+      : "";
+    await sendMessage(
+      env,
+      chatId,
+      [
+        "<b>" + escapeHtml(copy.title) + "</b>",
+        "",
+        escapeHtml(prepared.title),
+        details ? escapeHtml(details) : "",
+        "",
+        escapeHtml(copy.choose),
+        "",
+        "<code>" + escapeHtml(prepared.sourceUrl) + "</code>",
+      ].filter(Boolean).join("\n"),
+      keyboard,
+    );
+  } catch (error) {
+    console.error("bot YouTube inspect failed", error?.stack || error);
+    await sendMessage(env, chatId, "⚠️ " + escapeHtml(publicYouTubeMessage(error, copy.failed)));
+  }
+  return true;
+}
+
+async function handleYouTubeDownloadCallback(query, env) {
+  const context = callbackContext(query);
+  const data = String(query?.data || "");
+  const optionKey = data.slice(YOUTUBE_CALLBACK_PREFIX.length);
+  const sourceUrl = extractYouTubeUrl(query?.message?.text || "");
+  if (!context || !sourceUrl || !/^(?:a|v\d{2,4})$/u.test(optionKey)) {
+    await answerCallback(env, query?.id, "Download selection expired", true).catch(() => null);
+    return;
+  }
+
+  const state = await getState(env, context.userId).catch(() => null);
+  const copy = youtubeDownloadCopy(state?.language);
+  await answerCallback(env, query.id, copy.preparing, false).catch(() => null);
+  await editMessage(
+    env,
+    context.chatId,
+    context.messageId,
+    "⏳ " + escapeHtml(copy.preparing) + "\n\n<code>" + escapeHtml(sourceUrl) + "</code>",
+    { inline_keyboard: [] },
+  ).catch(() => null);
+
+  try {
+    const media = await downloadTelegramYouTubeMedia(env, context.userId, sourceUrl, optionKey);
+    await sendTelegramMediaStream(env, context.chatId, media);
+    await editMessage(
+      env,
+      context.chatId,
+      context.messageId,
+      "✅ " + escapeHtml(copy.sent) + " · " + escapeHtml(media.label),
+    ).catch(() => null);
+  } catch (error) {
+    console.error("bot YouTube download failed", error?.stack || error);
+    await editMessage(
+      env,
+      context.chatId,
+      context.messageId,
+      "⚠️ " + escapeHtml(publicYouTubeMessage(error, copy.failed)),
+    ).catch(() => null);
+  }
+}
+
+async function sendTelegramMediaStream(env, chatId, media) {
+  const method = media.kind === "audio" ? "sendAudio" : "sendVideo";
+  const fileField = media.kind === "audio" ? "audio" : "video";
+  const boundary = "----Vexa" + crypto.randomUUID().replace(/-/g, "");
+  const encoder = new TextEncoder();
+  const fields = [
+    ["chat_id", String(chatId)],
+  ];
+  if (media.kind === "audio") {
+    fields.push(["title", String(media.title || "YouTube audio").slice(0, 128)]);
+  } else {
+    fields.push(["supports_streaming", "true"]);
+    fields.push(["caption", String(media.title || "YouTube video").slice(0, 1024)]);
+  }
+
+  let prefix = "";
+  for (const [name, value] of fields) {
+    prefix += "--" + boundary + "\r\n" +
+      'Content-Disposition: form-data; name="' + name + '"\r\n\r\n' +
+      value + "\r\n";
+  }
+  prefix += "--" + boundary + "\r\n" +
+    'Content-Disposition: form-data; name="' + fileField + '"; filename="' + media.filename + '"\r\n' +
+    "Content-Type: " + media.mimeType + "\r\n\r\n";
+  const suffix = "\r\n--" + boundary + "--\r\n";
+  const source = media.stream.getReader();
+  let sentBytes = 0;
+  const maxBytes = 49 * 1024 * 1024;
+  let sentPrefix = false;
+  let sentSuffix = false;
+
+  const body = new ReadableStream({
+    async pull(controller) {
+      if (!sentPrefix) {
+        sentPrefix = true;
+        controller.enqueue(encoder.encode(prefix));
+        return;
+      }
+      const next = await source.read();
+      if (!next.done) {
+        if (next.value?.byteLength) {
+          sentBytes += next.value.byteLength;
+          if (sentBytes > maxBytes) {
+            try { await source.cancel("telegram_file_limit"); } catch (error) {}
+            controller.error(new Error("This download is too large for Telegram"));
+            return;
+          }
+          controller.enqueue(next.value);
+        }
+        return;
+      }
+      if (!sentSuffix) {
+        sentSuffix = true;
+        controller.enqueue(encoder.encode(suffix));
+        return;
+      }
+      controller.close();
+    },
+    async cancel(reason) {
+      try { await source.cancel(reason); } catch (error) {}
+    },
+  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("telegram_media_timeout"), 120_000);
+  try {
+    const response = await fetch(botMethodUrl(env, method), {
+      method: "POST",
+      headers: { "Content-Type": "multipart/form-data; boundary=" + boundary },
+      body,
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.ok) {
+      throw new Error("Telegram media upload failed");
+    }
+    return data.result;
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("Telegram media upload timed out");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function youtubeDownloadKeyboard(options, copy) {
+  const videoButtons = options
+    .filter((option) => option.kind === "video")
+    .map((option) => ({
+      text: "🎬 " + option.label + " · " + formatMegabytes(option.sizeBytes),
+      callback_data: YOUTUBE_CALLBACK_PREFIX + option.key,
+    }));
+  const rows = [];
+  for (let index = 0; index < videoButtons.length; index += 2) {
+    rows.push(videoButtons.slice(index, index + 2));
+  }
+  const audio = options.find((option) => option.kind === "audio");
+  if (audio) {
+    rows.push([{
+      text: "🎵 " + copy.audioOnly + " · " + formatMegabytes(audio.sizeBytes),
+      callback_data: YOUTUBE_CALLBACK_PREFIX + audio.key,
+    }]);
+  }
+  return { inline_keyboard: rows };
+}
+
+function youtubeDownloadCopy(language) {
+  if (normalizeLang(language || "en") === "fa") {
+    return {
+      title: "دانلود از یوتیوب",
+      choose: "کیفیت ویدیو را انتخاب کن، یا فقط صدا را دانلود کن:",
+      audioOnly: "فقط صدا",
+      preparing: "در حال آماده‌سازی فایل…",
+      sent: "فایل آماده شد",
+      failed: "دانلود یوتیوب فعلاً انجام نشد",
+    };
+  }
+  return {
+    title: "YouTube download",
+    choose: "Choose a video quality, or download audio only:",
+    audioOnly: "Audio only",
+    preparing: "Preparing the file…",
+    sent: "File ready",
+    failed: "YouTube download is temporarily unavailable",
+  };
+}
+
+function formatMegabytes(bytes) {
+  const value = Number(bytes || 0) / (1024 * 1024);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return "~" + (value >= 10 ? Math.round(value) : Math.round(value * 10) / 10) + " MB";
+}
+
+function publicYouTubeMessage(error, fallback) {
+  const message = String(error?.message || "").trim();
+  if (!message || message.length > 180) return fallback;
+  return message;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function extractReferralPayload(value) {
