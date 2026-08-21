@@ -28,11 +28,9 @@ import {
 } from "./mini-app/vexa-live/youtube-live-subtitles.js";
 import {
   appendVexaLivePersistenceRuntime,
+  handleVexaLivePersistenceRequest,
   isVexaLivePersistenceRequest,
 } from "./mini-app/vexa-live/youtube-live-persistence.js";
-import {
-  handlePatchedVexaLivePersistenceRequest,
-} from "./mini-app/vexa-live/youtube-live-persistence-patched.js";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export { VexaMediaContainerV3, VexaSubtitleContainer, VexaDownloadProgressHub };
@@ -42,7 +40,7 @@ export default {
   async fetch(request, env, ctx) {
     try {
       if (isVexaLivePersistenceRequest(request)) {
-        return handlePatchedVexaLivePersistenceRequest(request);
+        return handleVexaLivePersistenceRequest(request);
       }
       if (isVexaLiveSubtitlesRequest(request)) {
         return await handleVexaLiveSubtitlesRequest(request, env, ctx);
