@@ -11,7 +11,6 @@ const RUNTIME_VERSION="20260821-clean-1";
 const TRANSLATION_MODEL="gpt-5.6-terra";
 const TRANSLATE_TIMEOUT_MS=8000;
 const LIVE_TRANSLATION_MIN_INTERVAL_MS=320;
-const LIVE_TRANSLATION_MAX_STALENESS_MS=1500;
 const EXACT_TRANSLATION_MAX_CONCURRENCY=2;
 
 const PCM_SAMPLE_RATE=16000;
@@ -203,20 +202,20 @@ async function runRealtimeSubtitleSession({request,env,server,payload,playbackSt
   const container=getContainer(env.VEXA_SUBTITLES,"subtitle-"+safeContainerKey(user.id));
   let audioStream=null,upstream=null,upstreamEndedNormally=false,completed=false,scribeFailure="";
   let baseStart=0,latestAudioMediaTime=0,audioLeadSeconds=0,warmupStartedAt=0,warmupLeadReachedAt=0,warmupReadySent=false,sawSpeech=false;
-  let latestLiveSource="",latestLiveTranslation="",latestLiveRevision=0,latestPublishedLiveRevision=0,lastLiveTranslationStartedAt=0;
+  let latestLiveSource="",latestLiveRevision=0,latestPublishedLiveRevision=0,lastLiveTranslationStartedAt=0;
   let pendingLiveJob=null,activeLiveTask=null,liveTimer=0;
   const translationCache=new Map();
   const exactQueue=[];
   const activeExactTranslations=new Set();
   const seenTimedSegments=new Set();
   const timestampState={offset:0,lastEnd:0};
-  let segmentSequence=0,preparedExactCount=0;
+  let segmentSequence=0,preparedExactCount=0,preparedFallbackCount=0;
 
   const maybeWarmupReady=()=>{
     if(warmupReadySent||signal.aborted||!playbackControl.warming)return;
     if(audioLeadSeconds<WARMUP_TARGET_LEAD_SECONDS)return;
     if(!warmupLeadReachedAt)warmupLeadReachedAt=Date.now();
-    const hasUsableCaption=preparedExactCount>0||Boolean(latestLiveTranslation)||(targetLanguage==="original"&&Boolean(latestLiveSource));
+    const hasUsableCaption=preparedExactCount>0||preparedFallbackCount>0;
     const noSpeechSettled=!sawSpeech&&Date.now()-warmupLeadReachedAt>=WARMUP_NO_SPEECH_GRACE_MS;
     const timedOut=warmupStartedAt&&Date.now()-warmupStartedAt>=WARMUP_MAX_WAIT_MS;
     if(!hasUsableCaption&&!noSpeechSettled&&!timedOut)return;
@@ -228,12 +227,16 @@ async function runRealtimeSubtitleSession({request,env,server,payload,playbackSt
   const clearLiveTimer=()=>{if(liveTimer){clearTimeout(liveTimer);liveTimer=0;}};
   signal.addEventListener("abort",clearLiveTimer,{once:true});
 
-  const publishLiveTranslation=(text,revision)=>{
+  const publishLiveTranslation=(text,revision,job)=>{
     const clean=cleanTranslatedText(text);
     if(!clean||revision<latestPublishedLiveRevision||signal.aborted||server.readyState!==WebSocket.OPEN)return;
+    const timing=approximateLiveTiming(job?.text,job?.audioMediaTime,baseStart);
+    if(!timing)return;
+    const current=estimatedControlTime(playbackControl);
+    if(!playbackControl.warming&&timing.end<current-.25)return;
     latestPublishedLiveRevision=revision;
-    latestLiveTranslation=clean;
-    send({type:"caption_live",text:clean,revision});
+    preparedFallbackCount+=1;
+    send({type:"caption_segment",id:"live-"+String(++segmentSequence),text:clean,start:timing.start,end:timing.end,exact:false,revision});
     maybeWarmupReady();
   };
 
@@ -252,14 +255,13 @@ async function runRealtimeSubtitleSession({request,env,server,payload,playbackSt
     task=(async()=>{
       try{
         if(targetLanguage==="original"){
-          if(Date.now()-job.queuedAt<=LIVE_TRANSLATION_MAX_STALENESS_MS)publishLiveTranslation(job.text,job.revision);
+          publishLiveTranslation(job.text,job.revision,job);
           return;
         }
         const cached=translationCache.get(job.text);
         const text=cached||await translateLiveSubtitle({env,sourceText:job.text,targetLanguage,signal});
         if(text)translationCache.set(job.text,text);
-        const stale=Date.now()-job.queuedAt>LIVE_TRANSLATION_MAX_STALENESS_MS;
-        if(text&&!stale)publishLiveTranslation(text,job.revision);
+        if(text)publishLiveTranslation(text,job.revision,job);
       }catch(error){
         if(!signal.aborted)console.warn("Vexa live fallback translation skipped",error?.message||error);
       }
@@ -277,9 +279,10 @@ async function runRealtimeSubtitleSession({request,env,server,payload,playbackSt
     if(text===latestLiveSource){maybeWarmupReady();return;}
     latestLiveSource=text;
     const revision=++latestLiveRevision;
-    pendingLiveJob={text,revision,queuedAt:Date.now(),audioMediaTime:latestAudioMediaTime};
+    pendingLiveJob={text,revision,audioMediaTime:latestAudioMediaTime};
     if(targetLanguage==="original"){
-      publishLiveTranslation(text,revision);
+      publishLiveTranslation(text,revision,pendingLiveJob);
+      pendingLiveJob=null;
       return;
     }
     if(immediate){clearLiveTimer();scheduleLiveTranslation();return;}
@@ -444,7 +447,7 @@ async function runRealtimeSubtitleSession({request,env,server,payload,playbackSt
     }
     if(playbackControl.warming&&!warmupReadySent&&!signal.aborted){
       warmupReadySent=true;
-      send({type:"warmup_ready",leadSeconds:roundTime(audioLeadSeconds),prepared:Boolean(latestLiveTranslation)||preparedExactCount>0,exact:preparedExactCount>0});
+      send({type:"warmup_ready",leadSeconds:roundTime(audioLeadSeconds),prepared:preparedFallbackCount>0||preparedExactCount>0,exact:preparedExactCount>0});
     }
     await waitForPlaybackDrain(playbackControl,audioEndTime,signal);
     if(!signal.aborted){completed=true;send({type:"ended"});}
@@ -603,6 +606,19 @@ function waitForControlChange(control,version,signal,timeoutMs=0){
     if(timeoutMs>0)timer=setTimeout(()=>finish(resolve),timeoutMs);
     if(Number(control?.version||0)!==Number(version||0))wake();
   });
+}
+
+function approximateLiveTiming(text,audioMediaTime,baseStart){
+  const endMedia=Number(audioMediaTime);
+  if(!Number.isFinite(endMedia))return null;
+  const clean=cleanSubtitleText(text);
+  if(!clean)return null;
+  const words=clean.split(/\s+/u).filter(Boolean).length;
+  const chars=Array.from(clean).length;
+  const speechSpan=words>1?words*.45:chars*.12;
+  const span=Math.max(2.8,Math.min(4.5,speechSpan||2.8));
+  const start=Math.max(Number(baseStart||0),endMedia-span);
+  return{start:roundTime(start),end:roundTime(Math.max(start+.6,endMedia+.25))};
 }
 
 function rawTimingFromScribeWords(message){
