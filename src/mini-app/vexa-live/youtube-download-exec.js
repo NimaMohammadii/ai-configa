@@ -13,6 +13,7 @@ const METADATA_TIMEOUT_MS = 35_000;
 const STREAM_START_TIMEOUT_MS = 25_000;
 const DOWNLOAD_FILE_NAME = "Vexa-YouTube-video.mp4";
 const FORMAT_SELECTOR = "b[ext=mp4][protocol^=http][vcodec!=none][acodec!=none]";
+const TELEGRAM_SAFE_FILE_BYTES = 45 * 1024 * 1024;
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
@@ -119,6 +120,49 @@ export class VexaMediaContainerV3 extends Container {
     } catch (error) {
       if (isPublicMediaError(error)) throw error;
       if (error?.message === "YouTube did not return a direct MP4 stream") throw error;
+      throw new Error("YouTube metadata was invalid");
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async getTelegramDownloadCatalog(url) {
+    let lastError = null;
+    for (const strategy of CLIENT_STRATEGIES) {
+      try {
+        return await this.getTelegramDownloadCatalogForStrategy(url, strategy);
+      } catch (error) {
+        lastError = error;
+        console.warn("Vexa Telegram YouTube catalog failed", strategy.id, error?.message || error);
+      }
+    }
+    throw lastError || new Error("YouTube could not prepare this video");
+  }
+
+  async getTelegramDownloadCatalogForStrategy(url, strategy) {
+    const process = await this.execYtDlp([
+      ...YTDLP_COMMON_ARGS,
+      ...strategy.args,
+      "--dump-single-json",
+      "--skip-download",
+      "--no-warnings",
+      url,
+    ]);
+    const timer = setTimeout(() => {
+      try { process.kill(); } catch (error) {}
+    }, METADATA_TIMEOUT_MS);
+
+    try {
+      const output = await process.output();
+      const decoder = new TextDecoder();
+      if (output.exitCode !== 0) {
+        throw publicContainerError(decoder.decode(output.stderr).trim());
+      }
+      const data = JSON.parse(decoder.decode(output.stdout));
+      return buildTelegramCatalog(data, strategy.id);
+    } catch (error) {
+      if (isPublicMediaError(error)) throw error;
+      if (PUBLIC_MEDIA_ERRORS.has(String(error?.message || ""))) throw error;
       throw new Error("YouTube metadata was invalid");
     } finally {
       clearTimeout(timer);
@@ -241,6 +285,9 @@ export class VexaMediaContainerV3 extends Container {
     const strategy = clientStrategy(strategyId);
     if (!strategy) throw new Error("YouTube client strategy is invalid");
     const selectedFormat = String(formatId || "").trim() || FORMAT_SELECTOR;
+    const mergeArgs = selectedFormat.includes("+")
+      ? ["--merge-output-format", "mp4"]
+      : [];
     return this.execYtDlp([
       ...YTDLP_COMMON_ARGS,
       ...strategy.args,
@@ -248,6 +295,7 @@ export class VexaMediaContainerV3 extends Container {
       "--no-warnings",
       "-f",
       selectedFormat,
+      ...mergeArgs,
       "-o",
       "-",
       url,
@@ -279,6 +327,57 @@ export async function handleYouTubeDownloadRequest(request, env, ctx) {
     return streamDownload(request, env);
   }
   return json({ error: "Method Not Allowed" }, 405);
+}
+
+export function extractYouTubeUrl(value) {
+  const matches = String(value || "").match(/https:\/\/[^\s<>"']+/gi) || [];
+  for (const match of matches) {
+    const candidate = match.replace(/[),.;!?]+$/u, "");
+    const normalized = normalizeYouTubeUrl(candidate);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+export async function getTelegramYouTubeOptions(env, userId, value) {
+  const sourceUrl = normalizeYouTubeUrl(value);
+  if (!sourceUrl) throw new Error("Enter a valid YouTube link");
+  if (!env.VEXA_MEDIA) throw new Error("YouTube download is temporarily unavailable");
+  try {
+    const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(userId));
+    const catalog = await container.getTelegramDownloadCatalog(sourceUrl);
+    if (!catalog.options?.length) {
+      throw new Error("This download is too large for Telegram");
+    }
+    return { ...catalog, sourceUrl };
+  } catch (error) {
+    const message = publicMediaError(error);
+    throw new Error(message);
+  }
+}
+
+export async function downloadTelegramYouTubeMedia(env, userId, value, optionKey) {
+  const prepared = await getTelegramYouTubeOptions(env, userId, value);
+  const selected = prepared.options.find((option) => option.key === String(optionKey || ""));
+  if (!selected) throw new Error("This download option is no longer available");
+
+  const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(userId));
+  let stream;
+  try {
+    stream = await container.streamVideo(prepared.sourceUrl, prepared.strategyId, selected.selector);
+    return {
+      kind: selected.kind,
+      title: prepared.title,
+      label: selected.label,
+      filename: selected.filename,
+      mimeType: selected.mimeType,
+      sizeBytes: selected.sizeBytes,
+      stream,
+    };
+  } catch (error) {
+    const message = publicMediaError(error);
+    throw new Error(message);
+  }
 }
 
 async function prepareDownload(request, env, ctx) {
@@ -391,6 +490,124 @@ async function assertLiveAccess(env, userId) {
   }
 }
 
+function buildTelegramCatalog(data, strategyId) {
+  const formats = Array.isArray(data?.formats) ? data.formats : [];
+  const duration = positiveNumber(data?.duration);
+  const title = String(data?.title || "YouTube video").trim() || "YouTube video";
+
+  const audioCandidates = formats
+    .filter((format) => isHttpFormat(format) && isAudioOnlyM4a(format))
+    .map((format) => ({ format, size: formatSizeBytes(format, duration) }))
+    .filter((item) => item.size > 0 && item.size <= TELEGRAM_SAFE_FILE_BYTES)
+    .sort((a, b) => audioScore(b.format) - audioScore(a.format));
+  const audio = audioCandidates[0] || null;
+
+  const byHeight = new Map();
+  for (const format of formats) {
+    if (!isHttpFormat(format) || !isTelegramMp4Video(format)) continue;
+    const height = positiveInteger(format?.height);
+    const formatId = String(format?.format_id || "").trim();
+    if (!height || !formatId || height > 2160) continue;
+
+    const hasAudio = hasAudioCodec(format);
+    if (hasAudio && !isAacCodec(format?.acodec)) continue;
+    if (!hasAudio && !audio) continue;
+
+    const videoSize = formatSizeBytes(format, duration);
+    if (!videoSize) continue;
+    const totalSize = hasAudio ? videoSize : videoSize + audio.size;
+    if (totalSize > TELEGRAM_SAFE_FILE_BYTES) continue;
+
+    const selector = hasAudio
+      ? formatId
+      : formatId + "+" + String(audio.format?.format_id || "");
+    if (!selector || selector.endsWith("+")) continue;
+
+    const option = {
+      key: "v" + height,
+      kind: "video",
+      height,
+      sizeBytes: totalSize,
+      selector,
+      mimeType: "video/mp4",
+      filename: "Vexa-YouTube-" + height + "p.mp4",
+      label: height + "p",
+      score: videoScore(format),
+    };
+    const current = byHeight.get(height);
+    if (!current || option.score > current.score) byHeight.set(height, option);
+  }
+
+  const options = [...byHeight.values()]
+    .sort((a, b) => b.height - a.height)
+    .slice(0, 7)
+    .map(({ score, ...option }) => option);
+
+  if (audio) {
+    options.push({
+      key: "a",
+      kind: "audio",
+      sizeBytes: audio.size,
+      selector: String(audio.format.format_id),
+      mimeType: "audio/mp4",
+      filename: "Vexa-YouTube-audio.m4a",
+      label: "Audio only",
+    });
+  }
+
+  return { title, strategyId, options };
+}
+
+function isHttpFormat(format) {
+  return String(format?.protocol || "").toLowerCase().startsWith("http");
+}
+
+function isAudioOnlyM4a(format) {
+  const ext = String(format?.ext || "").toLowerCase();
+  return ext === "m4a" && !hasVideoCodec(format) && hasAudioCodec(format) && isAacCodec(format?.acodec);
+}
+
+function isTelegramMp4Video(format) {
+  const ext = String(format?.ext || "").toLowerCase();
+  const codec = String(format?.vcodec || "").toLowerCase();
+  return ext === "mp4" && hasVideoCodec(format) && (codec.startsWith("avc1") || codec.includes("h264"));
+}
+
+function hasVideoCodec(format) {
+  const codec = String(format?.vcodec || "").toLowerCase();
+  return Boolean(codec && codec !== "none");
+}
+
+function hasAudioCodec(format) {
+  const codec = String(format?.acodec || "").toLowerCase();
+  return Boolean(codec && codec !== "none");
+}
+
+function isAacCodec(value) {
+  const codec = String(value || "").toLowerCase();
+  return codec.startsWith("mp4a") || codec.includes("aac");
+}
+
+function formatSizeBytes(format, duration) {
+  const exact = positiveNumber(format?.filesize);
+  if (exact) return Math.ceil(exact);
+  const approximate = positiveNumber(format?.filesize_approx);
+  if (approximate) return Math.ceil(approximate);
+  const bitrate = positiveNumber(format?.tbr) || positiveNumber(format?.abr) || positiveNumber(format?.vbr);
+  if (!bitrate || !duration) return 0;
+  return Math.ceil(bitrate * 125 * duration * 1.05);
+}
+
+function audioScore(format) {
+  return (positiveNumber(format?.abr) || positiveNumber(format?.tbr) || 0) * 100 +
+    (positiveNumber(format?.asr) || 0) / 1000;
+}
+
+function videoScore(format) {
+  return (positiveNumber(format?.fps) || 0) * 1000 +
+    (positiveNumber(format?.tbr) || positiveNumber(format?.vbr) || 0);
+}
+
 function clientStrategy(strategyId) {
   const id = String(strategyId || "");
   return CLIENT_STRATEGIES.find((strategy) => strategy.id === id) || null;
@@ -441,6 +658,16 @@ function normalizeYouTubeUrl(value) {
   if (!YOUTUBE_HOSTS.has(url.hostname.toLowerCase())) return "";
   url.hash = "";
   return url.toString();
+}
+
+function positiveNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function positiveInteger(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
 }
 
 function safeContainerKey(value) {
@@ -522,6 +749,9 @@ const PUBLIC_MEDIA_ERRORS = new Set([
   "This YouTube video is unavailable",
   "This YouTube video cannot be downloaded without additional access",
   "This video does not expose a direct MP4 download format",
+  "This download is too large for Telegram",
+  "This download option is no longer available",
+  "Enter a valid YouTube link",
   "YouTube blocked the Cloudflare download request (403)",
   "YouTube requires a PO Token for this download",
   "YouTube blocked this Cloudflare server",
@@ -531,6 +761,7 @@ const PUBLIC_MEDIA_ERRORS = new Set([
   "YouTube returned an invalid MP4 stream",
   "YouTube stream did not start in time",
   "YouTube download ended unexpectedly",
+  "YouTube download is temporarily unavailable",
 ]);
 
 function publicMediaError(error) {
