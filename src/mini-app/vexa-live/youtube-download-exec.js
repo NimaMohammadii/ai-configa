@@ -10,10 +10,14 @@ const PREPARE_PATH = "/mini-app/live/api/youtube-download/prepare";
 const DOWNLOAD_PATH = "/mini-app/live/api/youtube-download";
 const TOKEN_TTL_SECONDS = 10 * 60;
 const METADATA_TIMEOUT_MS = 35_000;
-const STREAM_START_TIMEOUT_MS = 25_000;
+const STREAM_START_TIMEOUT_MS = 90_000;
+const PROCESS_SETTLE_TIMEOUT_MS = 2_000;
 const DOWNLOAD_FILE_NAME = "Vexa-YouTube-video.mp4";
 const FORMAT_SELECTOR = "b[ext=mp4][protocol^=http][vcodec!=none][acodec!=none]";
 const TELEGRAM_SAFE_FILE_BYTES = 45 * 1024 * 1024;
+const FFMPEG_INPUT_ARGS =
+  "ffmpeg_i:-rw_timeout 15000000 -reconnect 1 -reconnect_on_network_error 1 " +
+  "-reconnect_on_http_error 5xx -reconnect_streamed 1 -reconnect_delay_max 2 -reconnect_max_retries 1";
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
@@ -201,8 +205,7 @@ export class VexaMediaContainerV3 extends Container {
       throw error;
     } finally {
       if (timer) clearTimeout(timer);
-      try { await reader.cancel(); } catch (error) {}
-      try { process.kill(); } catch (error) {}
+      stopProcessNow(process, reader, "probe_complete");
       stderrPromise.catch(() => "");
     }
   }
@@ -226,9 +229,8 @@ export class VexaMediaContainerV3 extends Container {
         }),
       ]);
     } catch (error) {
-      try { await reader.cancel(); } catch (ignore) {}
-      try { process.kill(); } catch (ignore) {}
-      const detail = await stderrPromise.catch(() => "");
+      stopProcessNow(process, reader, "stream_start_failed");
+      const detail = await settleWithin(stderrPromise, PROCESS_SETTLE_TIMEOUT_MS, "");
       if (detail) console.error("yt-dlp stream start failed", detail.slice(-2000));
       throw error;
     } finally {
@@ -236,14 +238,12 @@ export class VexaMediaContainerV3 extends Container {
     }
 
     if (!first?.byteLength) {
+      stopProcessNow(process, reader, "empty_stream");
       const detail = await processFailureDetail(process, stderrPromise);
-      try { await reader.cancel(); } catch (error) {}
-      try { process.kill(); } catch (error) {}
       throw publicContainerError(detail || "empty stream");
     }
     if (!looksLikeMp4(first)) {
-      try { await reader.cancel(); } catch (error) {}
-      try { process.kill(); } catch (error) {}
+      stopProcessNow(process, reader, "invalid_mp4");
       throw new Error("YouTube returned an invalid MP4 stream");
     }
 
@@ -258,8 +258,8 @@ export class VexaMediaContainerV3 extends Container {
         try {
           const next = await reader.read();
           if (next.done) {
-            const exitCode = await process.exitCode;
-            const detail = await stderrPromise.catch(() => "");
+            const exitCode = await settleWithin(process.exitCode.catch(() => -1), PROCESS_SETTLE_TIMEOUT_MS, -1);
+            const detail = await settleWithin(stderrPromise, PROCESS_SETTLE_TIMEOUT_MS, "");
             if (exitCode !== 0) {
               if (detail) console.error("yt-dlp download failed", detail.slice(-4000));
               controller.error(publicContainerError(detail || "download failed"));
@@ -273,9 +273,8 @@ export class VexaMediaContainerV3 extends Container {
           controller.error(error);
         }
       },
-      async cancel(reason) {
-        try { await reader.cancel(reason); } catch (error) {}
-        try { process.kill(); } catch (error) {}
+      cancel(reason) {
+        stopProcessNow(process, reader, reason || "stream_cancelled");
         stderrPromise.catch(() => "");
       },
     });
@@ -289,6 +288,8 @@ export class VexaMediaContainerV3 extends Container {
       ? [
           "--merge-output-format",
           "mp4",
+          "--downloader-args",
+          FFMPEG_INPUT_ARGS,
           "--downloader-args",
           "ffmpeg_o:-f mp4 -movflags +frag_keyframe+empty_moov+default_base_moof",
         ]
@@ -514,9 +515,8 @@ function buildTelegramCatalog(data, strategyId) {
   const byHeight = new Map();
   for (const format of formats) {
     if (!isHttpFormat(format) || !isTelegramMp4Video(format)) continue;
-    const dimensions = videoDimensions(format);
-    const width = dimensions.width;
-    const height = dimensions.height;
+    const height = positiveInteger(format?.height);
+    const width = videoWidth(format, height);
     const formatId = String(format?.format_id || "").trim();
     if (!height || !formatId || height > 2160) continue;
 
@@ -611,24 +611,19 @@ function formatSizeBytes(format, duration) {
   return Math.ceil(bitrate * 125 * duration * 1.05);
 }
 
-function videoDimensions(format) {
+function videoWidth(format, height) {
   let width = positiveInteger(format?.width);
-  let height = positiveInteger(format?.height);
-
-  if (!width || !height) {
+  if (!width) {
     const match = String(format?.resolution || "").trim().match(/^(\d+)\s*x\s*(\d+)$/i);
-    if (match) {
-      if (!width) width = positiveInteger(match[1]);
-      if (!height) height = positiveInteger(match[2]);
+    if (match && (!height || positiveInteger(match[2]) === height)) {
+      width = positiveInteger(match[1]);
     }
   }
-
   if (!width && height) {
     const ratio = positiveNumber(format?.aspect_ratio);
     if (ratio) width = Math.max(1, Math.round(height * ratio));
   }
-
-  return { width, height };
+  return width;
 }
 
 function audioScore(format) {
@@ -691,10 +686,34 @@ async function readStreamPrefix(reader, minBytes) {
   return combined;
 }
 
+function stopProcessNow(process, reader, reason) {
+  try { process.kill(9); } catch (error) {}
+  try {
+    const cancelled = reader?.cancel?.(reason);
+    cancelled?.catch?.(() => null);
+  } catch (error) {}
+}
+
+async function settleWithin(promise, timeoutMs, fallback) {
+  let timer = 0;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } catch (error) {
+    return fallback;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function processFailureDetail(process, stderrPromise) {
   const [exitCode, stderr] = await Promise.all([
-    process.exitCode.catch(() => -1),
-    stderrPromise.catch(() => ""),
+    settleWithin(process.exitCode.catch(() => -1), PROCESS_SETTLE_TIMEOUT_MS, -1),
+    settleWithin(stderrPromise.catch(() => ""), PROCESS_SETTLE_TIMEOUT_MS, ""),
   ]);
   const detail = String(stderr || "").trim();
   return detail || "yt-dlp exited with code " + String(exitCode);
