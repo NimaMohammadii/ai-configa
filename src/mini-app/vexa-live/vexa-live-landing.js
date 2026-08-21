@@ -288,7 +288,7 @@ const PREPARE_URL='/mini-app/live/api/youtube-playback/prepare';
 const canvas=document.getElementById('vexaMeshCanvas');
 const landing=document.getElementById('vexaMeshLanding');
 const openButton=document.getElementById('vexaMeshOpen');
-let gl=null,program=null,raf=0,startAt=performance.now(),stopped=false;
+let gl=null,program=null,sceneLocation=null,raf=0,startAt=performance.now(),stopped=false;
 
 function hostWindow(){try{if(window.parent&&window.parent!==window&&window.parent.location.origin===window.location.origin)return window.parent;}catch{}return window;}
 function telegram(){const host=hostWindow();return window.Telegram?.WebApp||host.Telegram?.WebApp||null;}
@@ -304,7 +304,7 @@ function initShader(){
  const fragment=shader(gl.FRAGMENT_SHADER,${JSON.stringify(FRAGMENT_SHADER)});
  program=gl.createProgram();gl.attachShader(program,vertex);gl.attachShader(program,fragment);gl.linkProgram(program);gl.deleteShader(vertex);gl.deleteShader(fragment);
  if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program)||'Shader link failed');
- gl.useProgram(program);
+ gl.useProgram(program);sceneLocation=gl.getUniformLocation(program,'u_scene');
  const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
  const position=gl.getAttribLocation(program,'a_position');gl.enableVertexAttribArray(position);gl.vertexAttribPointer(position,2,gl.FLOAT,false,0,0);
  gl.uniform3fv(gl.getUniformLocation(program,'u_colors[0]'),new Float32Array([
@@ -323,13 +323,14 @@ function initShader(){
  resize();start();
 }
 function resize(){if(!gl||!canvas)return;const dpr=Math.min(2,Math.max(1,Number(window.devicePixelRatio)||1));const w=Math.max(1,Math.round(canvas.clientWidth*dpr));const h=Math.max(1,Math.round(canvas.clientHeight*dpr));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}}
-function frame(now){raf=0;if(stopped||document.hidden||!gl||!program)return;resize();gl.useProgram(program);gl.uniform4f(gl.getUniformLocation(program,'u_scene'),canvas.width,canvas.height,((now-startAt)/1000)*0.73,4.0);gl.drawArrays(gl.TRIANGLES,0,3);raf=requestAnimationFrame(frame);}
+function frame(now){raf=0;if(stopped||document.hidden||!gl||!program||!sceneLocation)return;gl.useProgram(program);gl.uniform4f(sceneLocation,canvas.width,canvas.height,((now-startAt)/1000)*0.73,4.0);gl.drawArrays(gl.TRIANGLES,0,3);raf=requestAnimationFrame(frame);}
 function start(){if(stopped||document.hidden||raf||!gl)return;raf=requestAnimationFrame(frame);}
 function stop(){stopped=true;if(raf){cancelAnimationFrame(raf);raf=0;}try{gl?.getExtension('WEBGL_lose_context')?.loseContext();}catch{}}
 function pause(){if(raf){cancelAnimationFrame(raf);raf=0;}}
 
 document.addEventListener('visibilitychange',function(){if(document.hidden)pause();else start();});
 window.addEventListener('resize',resize,{passive:true});
+window.visualViewport?.addEventListener?.('resize',resize,{passive:true});
 
 function setButton(text,busy){if(!openButton)return;openButton.textContent=text;openButton.disabled=Boolean(busy);}
 function fail(message){console.error('Vexa Live open failed',message);setButton('Open',false);haptic('light');}
