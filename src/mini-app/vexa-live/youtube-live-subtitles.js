@@ -6,7 +6,7 @@ import { LIVE_SUBTITLES_RUNTIME_JS } from "./youtube-live-subtitles-runtime.js";
 
 const SOCKET_PATH = "/mini-app/live/api/youtube-subtitles/realtime";
 const RUNTIME_PATH = "/mini-app/vexa-live/live-subtitles.js";
-const RUNTIME_VERSION = "20260821-clean-2";
+const RUNTIME_VERSION = "20260821-visible-1";
 
 const TRANSLATION_MODEL = "gpt-5.6-terra";
 const TRANSLATE_TIMEOUT_MS = 12000;
@@ -261,7 +261,9 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
     recentSegments.push({ text, start: timing.start, end: timing.end });
     if (recentSegments.length > 40) recentSegments.splice(0, recentSegments.length - 40);
     lastSegmentMediaTime = Math.max(lastSegmentMediaTime, Number(sourceMediaTime || timing.end || baseStart));
-    segmentQueue.push({ id: String(++segmentSequence), sourceText: text, start: timing.start, end: timing.end });
+    const job = { id: String(++segmentSequence), sourceText: text, start: timing.start, end: timing.end };
+    if (targetLanguage !== "original" && segmentQueue.length) segmentQueue.splice(0, segmentQueue.length);
+    segmentQueue.push(job);
     pumpTranslationQueue();
     return true;
   };
@@ -319,9 +321,18 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
     const clean = cleanTranslatedText(text);
     if (!clean || signal.aborted || server.readyState !== WebSocket.OPEN) return;
     const current = estimatedControlTime(playbackControl);
-    if (!playbackControl.warming && job.end < current - 0.18) return;
+    let start = Number(job.start), end = Number(job.end);
+    if (!playbackControl.warming) {
+      if (targetLanguage === "original" && end < current - 0.18) return;
+      if (targetLanguage !== "original" && end < current + 0.12) {
+        const words = clean.split(/\s+/u).filter(Boolean).length;
+        const hold = Math.min(4.2, Math.max(1.6, words * 0.28 + 0.9));
+        start = Math.max(0, current - 0.05);
+        end = current + hold;
+      }
+    }
     preparedCount += 1;
-    send({ type: "caption_segment", id: job.id, text: clean, start: job.start, end: job.end, revision: Number(job.id) || 0 });
+    send({ type: "caption_segment", id: job.id, text: clean, start: roundTime(start), end: roundTime(end), revision: Number(job.id) || 0 });
     maybeWarmupReady();
   };
 
@@ -329,7 +340,7 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
     if (activeTranslation || signal.aborted || server.readyState !== WebSocket.OPEN) return;
     while (segmentQueue.length) {
       const candidate = segmentQueue.shift();
-      if (!playbackControl.warming && candidate.end < estimatedControlTime(playbackControl) - 0.18) continue;
+      if (targetLanguage === "original" && !playbackControl.warming && candidate.end < estimatedControlTime(playbackControl) - 0.18) continue;
       let task;
       task = (async () => {
         try {
