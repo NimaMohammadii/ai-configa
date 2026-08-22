@@ -13,6 +13,43 @@ export async function ensureUserAudioUploadsTable(env) {
   await env.DB.prepare(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_audio_uploads_message_file ON user_audio_uploads (user_id, telegram_message_id, file_id)"
   ).run();
+  await env.DB.prepare("ALTER TABLE user_audio_uploads ADD COLUMN storage_key TEXT").run().catch(() => null);
+  await env.DB.prepare("ALTER TABLE user_audio_uploads ADD COLUMN source TEXT NOT NULL DEFAULT 'telegram'").run().catch(() => null);
+}
+
+export async function saveMiniAppAudioUpload(env, userId, audio, options = {}) {
+  if (!audio || !env.EXPLORE_MEDIA) return;
+  await ensureUserAudioUploadsTable(env);
+  const id = crypto.randomUUID();
+  const mimeType = String(options.mimeType || "application/octet-stream");
+  const fileName = String(options.fileName || "voice-recording.webm");
+  const storageKey = "user-audio-uploads/" + encodeURIComponent(String(userId)) + "/" + id + "/" + encodeURIComponent(fileName);
+
+  await env.EXPLORE_MEDIA.put(storageKey, audio, {
+    httpMetadata: { contentType: mimeType },
+    customMetadata: { kind: "mini-app-user-audio", userId: String(userId) },
+  });
+  try {
+    await env.DB.prepare(
+      "INSERT INTO user_audio_uploads (id, user_id, file_id, file_type, file_name, mime_type, file_size, duration, telegram_message_id, storage_key, source, created_at) VALUES (?, ?, '', 'document', ?, ?, ?, ?, NULL, ?, 'mini_app', CURRENT_TIMESTAMP)"
+    ).bind(
+      id, String(userId), fileName, mimeType, Number(options.fileSize || audio.byteLength || 0),
+      Math.max(0, Math.round(Number(options.durationMs || 0) / 1000)), storageKey
+    ).run();
+  } catch (error) {
+    await env.EXPLORE_MEDIA.delete(storageKey).catch(() => null);
+    throw error;
+  }
+}
+
+export async function getStoredUserAudioUpload(env, item) {
+  if (!item?.storage_key || !env.EXPLORE_MEDIA) return null;
+  const object = await env.EXPLORE_MEDIA.get(String(item.storage_key));
+  if (!object) return null;
+  return {
+    buffer: await object.arrayBuffer(),
+    mimeType: String(object.httpMetadata?.contentType || item.mime_type || "application/octet-stream"),
+  };
 }
 
 export async function saveUserAudioUpload(env, userId, messageId, attachment) {
@@ -35,7 +72,7 @@ export async function getUserAudioUploadsPage(env, userId, page = 0) {
     "SELECT COUNT(*) AS total FROM user_audio_uploads WHERE user_id = ?"
   ).bind(String(userId)).first();
   const rows = await env.DB.prepare(
-    "SELECT id, file_id, file_type, file_name, mime_type, file_size, duration, created_at FROM user_audio_uploads WHERE user_id = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ? OFFSET ?"
+    "SELECT id, file_id, file_type, file_name, mime_type, file_size, duration, storage_key, source, created_at FROM user_audio_uploads WHERE user_id = ? ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ? OFFSET ?"
   ).bind(String(userId), PAGE_LIMIT, safePage * PAGE_LIMIT).all();
   return { total: Number(count?.total || 0), page: safePage, limit: PAGE_LIMIT, rows: rows.results || [] };
 }
@@ -68,6 +105,7 @@ export function userAudioUploadCaption(item, userId) {
     "🎙 <b>User Audio File</b>", "",
     "User ID: <code>" + escapeHtml(userId) + "</code>",
     "Type: <b>" + escapeHtml(item.file_type) + "</b>",
+    "Source: <b>" + escapeHtml(item.source === "mini_app" ? "Mini App" : "Telegram") + "</b>",
     "Name: <b>" + escapeHtml(item.file_name || "-") + "</b>",
     "Duration: <b>" + formatDuration(item.duration) + "</b>",
     "Date: <b>" + escapeHtml(item.created_at || "-") + "</b>",
@@ -77,7 +115,8 @@ export function userAudioUploadCaption(item, userId) {
 function uploadLabel(item) {
   const date = String(item.created_at || "").slice(0, 16);
   const name = String(item.file_name || item.file_type || "audio").replace(/\s+/g, " ").slice(0, 24);
-  return `📥 ${date} • ${formatDuration(item.duration)} • ${name}`;
+  const source = item.source === "mini_app" ? "Mini App" : "Telegram";
+  return `📥 ${date} • ${source} • ${formatDuration(item.duration)} • ${name}`;
 }
 
 function formatDuration(seconds) {
