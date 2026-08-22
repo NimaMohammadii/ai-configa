@@ -172,7 +172,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
         u_contour:0,
         u_angle:45,
         u_scale:8,
-        u_shape:1,
+        u_shape:0,
         u_offsetX:.1,
         u_offsetY:-.1
       },undefined,.6);
@@ -295,7 +295,7 @@ export const MINI_APP_HTML = `<!doctype html>
             </div>
           </div>
           <section id="ttsAudioEditor" class="tts-audio-editor" aria-hidden="true">
-            <header class="tts-audio-editor-head"><div><strong>Fine tune</strong><span id="ttsAudioSelectionTime">0:00 — 0:00</span></div><button data-action="close-audio-editor" type="button" aria-label="Close audio editor"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></button></header>
+            <header class="tts-audio-editor-head"><div><strong>Fine tune</strong><span id="ttsAudioSelectionTime">0:00 — 0:00</span></div><button data-action="close-audio-editor" type="button" aria-label="Close audio editor"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button></header>
             <div class="tts-audio-timeline-shell">
               <div id="ttsAudioTimeline" class="tts-audio-timeline" aria-label="Audio clip timeline">
                 <div id="ttsAudioClipLane" class="tts-audio-clip-lane"></div>
@@ -374,7 +374,7 @@ export const MINI_APP_HTML = `<!doctype html>
 
   <section id="exploreReelsPage" class="explore-reels-page" aria-hidden="true"><div id="exploreReelsFeed" class="explore-reels-feed"></div><div id="exploreReelsEmpty" class="explore-reels-empty" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4.5" y="3.5" width="15" height="17" rx="5" stroke="currentColor" stroke-width="1.6"/><path d="m9.7 8.2 5.5 3.8-5.5 3.8V8.2Z" fill="currentColor"/></svg><span>No content yet</span></div></section>
 
-  <section id="voicesPage" class="voices-page" aria-hidden="true"><button class="keyboard-dismiss voices-keyboard-dismiss" data-action="dismiss-keyboard" type="button" aria-label="Hide keyboard"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><header class="voices-page-head"><div><span>VOICE LIBRARY</span><h2>Voices</h2></div><div class="voices-page-count"><strong id="savedVoiceCount">1</strong><span>/ 6 saved</span></div></header><label class="voice-library-search" for="voiceLibrarySearch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3" stroke="currentColor" stroke-width="1.9"/><path d="m15.5 15.5 4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg><input id="voiceLibrarySearch" type="search" autocomplete="off" placeholder="Search voices..."/></label><section class="saved-voices-strip"><div class="saved-voices-copy"><strong>Your voices</strong><small>Available in the quick menu</small></div><div id="savedVoiceAvatars" class="saved-voice-avatars"></div></section><div class="voice-library-grid">${VOICE_LIBRARY_CARDS}</div></section>
+  <section id="voicesPage" class="voices-page" aria-hidden="true"><button class="keyboard-dismiss voices-keyboard-dismiss" data-action="dismiss-keyboard" type="button" aria-label="Hide keyboard"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><header class="voices-page-head"><div><span>VOICE LIBRARY</span><h2>Voices</h2></div><div class="voices-page-count"><strong id="savedVoiceCount">1</strong><span>/ 6 saved</span></div></header><label class="voice-library-search" for="voiceLibrarySearch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3" stroke="currentColor" stroke-width="1.9"/><path d="m15.5 15.5 4.1 4.1" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg><input id="voiceLibrarySearch" type="search" autocomplete="off" placeholder="Search voices..."/></label><section class="saved-voices-strip"><div class="saved-voices-copy"><strong>Your voices</strong><small>Available in the quick menu</small></div><div id="savedVoiceAvatars" class="saved-voice-avatars"></div></section><div class="voice-library-grid">${VOICE_LIBRARY_CARDS}</div></section>
 
 
   <section id="creditsPage" class="credits-page" aria-hidden="true">
