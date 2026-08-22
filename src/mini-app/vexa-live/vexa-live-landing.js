@@ -12,9 +12,9 @@ const LIVE_ROOT = "/mini-app/vexa-live";
 
 const LANDING_STYLE = String.raw`
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;width:100%;height:100%;min-height:100%;overflow:hidden;overscroll-behavior:none;background:${VEXA_MESH_BASE_COLOR};color:#fff}
-body{position:fixed;inset:0;min-height:100dvh;font-family:"SF Pro Display","SF Pro Text",Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
-button{font:inherit}
+html,body{margin:0;width:100%;height:100%;min-height:0;overflow:hidden;overscroll-behavior:none;background:${VEXA_MESH_BASE_COLOR};color:#fff}
+body{position:fixed;inset:0;height:100%;min-height:0;font-family:"SF Pro Display","SF Pro Text",Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+button,input{font:inherit}
 .vexa-mesh-landing{position:fixed;inset:0;z-index:1;overflow:hidden;background:${VEXA_MESH_BASE_COLOR};opacity:1;transition:opacity .28s ease}
 .vexa-mesh-landing.is-hidden{opacity:0;pointer-events:none}
 #vexaMeshCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
@@ -26,6 +26,10 @@ button{font:inherit}
 .vexa-mode-option:active{transform:scale(.96)}
 .vexa-mode-option[aria-selected="true"]{color:#09090a}
 .vexa-mode-option:focus-visible{outline:none!important;box-shadow:${LIQUID_GLASS_FOCUS_RING}!important;border-radius:999px}
+.vexa-video-input{width:min(78vw,320px);height:38px;margin:0;padding:0 8px;border:0!important;border-radius:0!important;outline:0!important;background:transparent!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;appearance:none!important;-webkit-appearance:none!important;color:#fff;text-align:center;font-size:14px;font-weight:560;letter-spacing:.01em;caret-color:#fff}
+.vexa-video-input::placeholder{color:rgba(255,255,255,.46);opacity:1}
+.vexa-video-input:focus{border:0!important;outline:0!important;background:transparent!important;box-shadow:none!important}
+.vexa-video-input:disabled{opacity:.44}
 .vexa-mesh-open{min-width:108px;height:52px;padding:0 24px;${liquidGlassMaterialCss()}outline:0!important;border-radius:999px;color:rgba(255,255,255,.9);font-size:14px;font-weight:620;letter-spacing:.01em;line-height:1;appearance:none;-webkit-appearance:none;cursor:pointer;transform-origin:center;will-change:transform,filter;transition:opacity .16s ease,transform .3s cubic-bezier(.16,1,.3,1),filter .2s ease,background .25s ease,border-color .25s ease,box-shadow .25s ease}
 @media(hover:hover) and (pointer:fine){.vexa-mesh-open:hover{transform:scale(1.05);${LIQUID_GLASS_HOVER_CSS}}}
 .vexa-mesh-open:active{transform:scale(.97);filter:brightness(.9)}
@@ -44,6 +48,7 @@ const DOWNLOAD_SESSION_URL='/mini-app/live/api/youtube-download/session';
 const canvas=document.getElementById('vexaMeshCanvas');
 const landing=document.getElementById('vexaMeshLanding');
 const openButton=document.getElementById('vexaMeshOpen');
+const videoInput=document.getElementById('vexaVideoUrl');
 const modeSwitch=document.getElementById('vexaModeSwitch');
 const modeButtons=Array.from(document.querySelectorAll('[data-vexa-mode]'));
 const mesh=${createVexaMeshRendererSource("canvas", { autoStart: true })};
@@ -54,10 +59,11 @@ function telegram(){const host=hostWindow();return window.Telegram?.WebApp||host
 function initData(){return String(telegram()?.initData||'');}
 function haptic(style){try{telegram()?.HapticFeedback?.impactOccurred?.(style||'light');}catch{}}
 function idleLabel(){return mode==='download'?'Download':'Open';}
-function setBusy(busy,text){if(openButton){openButton.textContent=text||idleLabel();openButton.disabled=Boolean(busy);}for(const button of modeButtons)button.disabled=Boolean(busy);}
+function setBusy(busy,text){if(openButton){openButton.textContent=text||idleLabel();openButton.disabled=Boolean(busy);}if(videoInput)videoInput.disabled=Boolean(busy);for(const button of modeButtons)button.disabled=Boolean(busy);}
 function fail(message){console.error('Vexa Live action failed',message);setBusy(false);try{window.alert(String(message||'Could not open this video'));}catch{}haptic('light');}
 function selectMode(next,vibrate){if(next!=='watch'&&next!=='download')return;mode=next;if(modeSwitch)modeSwitch.dataset.mode=mode;for(const button of modeButtons)button.setAttribute('aria-selected',String(button.dataset.vexaMode===mode));if(openButton&&!openButton.disabled)openButton.textContent=idleLabel();if(vibrate!==false)haptic('light');}
-function promptVideoUrl(){const source=window.prompt('Enter video link');if(source===null)return'';return String(source||'').trim();}
+function videoUrl(){return String(videoInput?.value||'').trim();}
+function releaseKeyboard(){try{videoInput?.blur();}catch{}requestAnimationFrame(function(){try{window.scrollTo(0,0);}catch{}});setTimeout(function(){try{window.scrollTo(0,0);}catch{}},120);}
 function playbackToken(data){try{return String(new URL(String(data?.playbackUrl||''),window.location.origin).searchParams.get('token')||'').trim();}catch{return'';}}
 function startDownload(data){
  const absoluteUrl=new URL(String(data.downloadUrl),window.location.origin).href;
@@ -98,7 +104,9 @@ async function prepareDownload(playback){
 
 async function runAction(){
  if(!openButton||openButton.disabled)return;
- const url=promptVideoUrl();if(!url)return;
+ const url=videoUrl();
+ if(!url){try{videoInput?.focus({preventScroll:true});}catch{try{videoInput?.focus();}catch{}}return;}
+ releaseKeyboard();
  setBusy(true,mode==='download'?'Preparing…':'Opening…');haptic('light');
  try{
   const playback=await preparePlayback(url);
@@ -110,12 +118,14 @@ async function runAction(){
  }catch(error){fail(String(error?.message||'Could not open this video'));}
 }
 for(const button of modeButtons)button.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();if(!button.disabled)selectMode(String(button.dataset.vexaMode||''),true);});
+videoInput?.addEventListener('keydown',function(event){if(event.key!=='Enter')return;event.preventDefault();event.stopPropagation();runAction();});
+videoInput?.addEventListener('blur',releaseKeyboard);
 openButton?.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();runAction();});
 selectMode('watch',false);
 })();
 `;
 
-const LANDING_BODY = '<body><main id="vexaMeshLanding" class="vexa-mesh-landing"><canvas id="vexaMeshCanvas" aria-hidden="true"></canvas><div class="vexa-mesh-actions"><div id="vexaModeSwitch" class="vexa-mode-switch" data-mode="watch" role="tablist" aria-label="Video action"><span class="vexa-mode-thumb" aria-hidden="true"></span><button class="vexa-mode-option" data-vexa-mode="watch" type="button" role="tab" aria-selected="true">Watch</button><button class="vexa-mode-option" data-vexa-mode="download" type="button" role="tab" aria-selected="false">Download</button></div><button id="vexaMeshOpen" class="vexa-mesh-open" type="button">Open</button></div></main><script>' + LANDING_RUNTIME_JS.split('</script>').join('<\\/script>') + '</script></body>';
+const LANDING_BODY = '<body><main id="vexaMeshLanding" class="vexa-mesh-landing"><canvas id="vexaMeshCanvas" aria-hidden="true"></canvas><div class="vexa-mesh-actions"><div id="vexaModeSwitch" class="vexa-mode-switch" data-mode="watch" role="tablist" aria-label="Video action"><span class="vexa-mode-thumb" aria-hidden="true"></span><button class="vexa-mode-option" data-vexa-mode="watch" type="button" role="tab" aria-selected="true">Watch</button><button class="vexa-mode-option" data-vexa-mode="download" type="button" role="tab" aria-selected="false">Download</button></div><input id="vexaVideoUrl" class="vexa-video-input" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="go" placeholder="Enter video link" aria-label="Video link"><button id="vexaMeshOpen" class="vexa-mesh-open" type="button">Open</button></div></main><script>' + LANDING_RUNTIME_JS.split('</script>').join('<\\/script>') + '</script></body>';
 
 export async function appendVexaLiveLandingRuntime(request, response) {
   if (!response?.ok || request.method !== "GET") return response;
