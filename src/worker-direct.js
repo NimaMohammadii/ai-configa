@@ -21,6 +21,7 @@ import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, handleStarsTextInput, isStarsCallback } from "./stars-flow.js";
 import { handleSupportMessage } from "./support-flow-strict.js";
+import { handleVoiceTransformMessage } from "./voice-transform.js";
 import { handleExploreMediaRequest, isExploreMediaRequest } from "./explore-media.js";
 import {
   handlePaymentHeroAdminCallback,
@@ -141,6 +142,8 @@ async function handleMessageWithSupport(message, env) {
     return;
   }
 
+  if (await handleVoiceTransformMessage(message, env)) return;
+
   await handleMessageAndPin(message, env);
 }
 
@@ -149,6 +152,7 @@ async function isAdminPendingPhoto(message, env) {
   if (!adminId || !(await isAdmin(env, adminId))) return false;
 
   const action = await getAdminAction(env, adminId);
+  if (!action) return false;
   return isAdminPhotoAction(action);
 }
 
