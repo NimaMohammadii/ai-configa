@@ -20,9 +20,9 @@ button{font:inherit}
 #vexaMeshCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
 .vexa-mesh-actions{position:absolute;left:50%;top:50%;z-index:2;display:flex;flex-direction:column;align-items:center;gap:12px;transform:translate(-50%,-50%)}
 .vexa-mode-switch{position:relative;display:grid;grid-template-columns:1fr 1fr;width:206px;height:40px;padding:3px;${liquidGlassMaterialCss()}border-radius:999px;overflow:hidden;isolation:isolate}
-.vexa-mode-thumb{position:absolute;left:3px;top:3px;width:calc(50% - 3px);height:34px;border-radius:999px;background:rgba(255,255,255,.9);box-shadow:0 4px 15px rgba(0,0,0,.18);transform:translateX(0);transition:transform .32s cubic-bezier(.16,1,.3,1);z-index:-1}
+.vexa-mode-thumb{position:absolute;left:3px;top:3px;width:calc(50% - 3px);height:34px;border-radius:999px;background:rgba(255,255,255,.9);box-shadow:0 4px 15px rgba(0,0,0,.18);transform:translateX(0);transition:transform .32s cubic-bezier(.16,1,.3,1);z-index:0}
 .vexa-mode-switch[data-mode="download"] .vexa-mode-thumb{transform:translateX(100%)}
-.vexa-mode-option{height:34px;padding:0 15px;border:0;background:transparent;color:rgba(255,255,255,.72);font-size:12px;font-weight:680;letter-spacing:.01em;cursor:pointer;transition:color .22s ease,transform .14s ease}
+.vexa-mode-option{position:relative;z-index:1;height:34px;padding:0 15px;border:0;background:transparent;color:rgba(255,255,255,.72);font-size:12px;font-weight:680;letter-spacing:.01em;cursor:pointer;transition:color .22s ease,transform .14s ease}
 .vexa-mode-option:active{transform:scale(.96)}
 .vexa-mode-option[aria-selected="true"]{color:#09090a}
 .vexa-mode-option:focus-visible{outline:none!important;box-shadow:${LIQUID_GLASS_FOCUS_RING}!important;border-radius:999px}
@@ -56,7 +56,7 @@ function haptic(style){try{telegram()?.HapticFeedback?.impactOccurred?.(style||'
 function idleLabel(){return mode==='download'?'Download':'Open';}
 function setBusy(busy,text){if(openButton){openButton.textContent=text||idleLabel();openButton.disabled=Boolean(busy);}for(const button of modeButtons)button.disabled=Boolean(busy);}
 function fail(message){console.error('Vexa Live action failed',message);setBusy(false);haptic('light');}
-function selectMode(next){if(next!=='watch'&&next!=='download')return;mode=next;if(modeSwitch)modeSwitch.dataset.mode=mode;for(const button of modeButtons)button.setAttribute('aria-selected',String(button.dataset.vexaMode===mode));if(openButton&&!openButton.disabled)openButton.textContent=idleLabel();haptic('light');}
+function selectMode(next,vibrate){if(next!=='watch'&&next!=='download')return;mode=next;if(modeSwitch)modeSwitch.dataset.mode=mode;for(const button of modeButtons)button.setAttribute('aria-selected',String(button.dataset.vexaMode===mode));if(openButton&&!openButton.disabled)openButton.textContent=idleLabel();if(vibrate!==false)haptic('light');}
 function promptVideoUrl(){const source=window.prompt('لینک ویدیو رو وارد کن');if(source===null)return'';return String(source||'').trim();}
 function startDownload(data){
  const absoluteUrl=new URL(String(data.downloadUrl),window.location.origin).href;
@@ -95,9 +95,9 @@ async function runAction(){
   mountVideo(data);haptic('medium');
  }catch(error){fail(String(error?.message||'Could not open this video'));}
 }
-for(const button of modeButtons)button.addEventListener('click',function(){if(!button.disabled)selectMode(String(button.dataset.vexaMode||''));});
+for(const button of modeButtons)button.addEventListener('click',function(){if(!button.disabled)selectMode(String(button.dataset.vexaMode||''),true);});
 openButton?.addEventListener('click',runAction);
-selectMode('watch');
+selectMode('watch',false);
 })();
 `;
 
