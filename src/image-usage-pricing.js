@@ -11,11 +11,6 @@ const GPT_IMAGE_TIMEOUT_MS = 180000;
 const GPT_IMAGE_TEXT_INPUT_USD_PER_MILLION = 5;
 const GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION = 8;
 const GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION = 30;
-const CLOUDFLARE_FLUX_SELECTION = "flux-2-dev";
-const CLOUDFLARE_FLUX_MODEL = "@cf/black-forest-labs/flux-2-dev";
-const CLOUDFLARE_FLUX_STEPS = 25;
-const CLOUDFLARE_FLUX_OUTPUT_TILE_USD_PER_STEP = 0.00041;
-const CLOUDFLARE_FLUX_MAX_DIMENSION = 1920;
 const IMAGE_MARKUP_RATE = 0.30;
 const MAX_SOURCE_IMAGES = 4;
 const MAX_SOURCE_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -64,7 +59,6 @@ export async function handleUsagePricedImageRequest(request, env) {
     const body = await request.json().catch(() => ({}));
     const prompt = String(body.prompt || "").trim();
     const exploreId = String(body.exploreId || "").trim();
-    const model = normalizeImageModel(body.model);
     if (!prompt && !exploreId) return errorResponse("Describe the image you want first.", 400);
     if (Array.from(prompt).length > MAX_PROMPT_CHARS) return errorResponse("Image prompt is too long. Please send a shorter prompt.", 400);
 
@@ -78,9 +72,6 @@ export async function handleUsagePricedImageRequest(request, env) {
         : [];
     if (requestedSources.length > MAX_SOURCE_IMAGES) return errorResponse("You can edit up to 4 images together.", 400);
     if (exploreId && !requestedSources.length) return errorResponse("Upload your image before using an Explore reference.", 400);
-    if (model === CLOUDFLARE_FLUX_SELECTION && (requestedSources.length || exploreId)) {
-      return errorResponse("FLUX.2 Dev is enabled for text-to-image testing right now. Remove the reference photos or switch to GPT Image 2 for image editing.", 400);
-    }
 
     const sources = requestedSources.map((source) => decodeImageSource(source?.data, source?.name)).filter(Boolean);
     const userSourceCount = sources.length;
@@ -108,7 +99,6 @@ export async function handleUsagePricedImageRequest(request, env) {
       prompt: effectivePrompt,
       sources,
       size: body.size,
-      model,
       metadata: {
         surface: "mini_app",
         sourceCount: userSourceCount,
@@ -117,10 +107,8 @@ export async function handleUsagePricedImageRequest(request, env) {
       },
     });
 
-    const mimeType = generated.mimeType || "image/jpeg";
-    const extension = imageExtensionForMime(mimeType);
-    const filename = sources.length ? "vexa-edited-image" + extension : "vexa-image" + extension;
-    const fileId = await storeImageInTelegram(env, user.id, generated.buffer, filename, mimeType).catch((error) => {
+    const filename = sources.length ? "vexa-edited-image.jpg" : "vexa-image.jpg";
+    const fileId = await storeImageInTelegram(env, user.id, generated.buffer, filename).catch((error) => {
       console.error("store mini app image failed", error?.message || error);
       return null;
     });
@@ -131,7 +119,7 @@ export async function handleUsagePricedImageRequest(request, env) {
       prompt: prompt || "Explore reference " + exploreId,
       fileId,
       filename,
-      mimeType,
+      mimeType: "image/jpeg",
       size: generated.size,
       sourceCount: userSourceCount,
     }).catch((error) => {
@@ -142,13 +130,12 @@ export async function handleUsagePricedImageRequest(request, env) {
     return jsonResponse({
       imageBase64: arrayBufferToBase64(generated.buffer),
       filename,
-      mimeType,
+      mimeType: "image/jpeg",
       kind: generated.kind,
-      model: generated.billing.model,
       sourceCount: userSourceCount,
       size: generated.size,
       cost: generated.billing.credits,
-      pricing: dynamicPricingPayload(generated.billing.credits, model),
+      pricing: dynamicPricingPayload(generated.billing.credits),
       billing: generated.billing,
       balance: generated.balance,
       historyId: history?.id || null,
@@ -170,23 +157,12 @@ export async function generateUsagePricedImage(env, options = {}) {
   const userId = String(options.userId || "").trim();
   const prompt = String(options.prompt || "").trim();
   const sources = Array.isArray(options.sources) ? options.sources.filter((source) => source?.buffer?.byteLength) : [];
-  const model = normalizeImageModel(options.model);
   if (!userId) throw publicError("Image user is missing.", 400);
   if (!prompt) throw publicError("Image prompt is empty.", 400);
   if (Array.from(prompt).length > MAX_PROMPT_CHARS) throw publicError("Image prompt is too long. Please send a shorter prompt.", 400);
   if (sources.length > MAX_SOURCE_IMAGES + 1) throw publicError("Too many image inputs.", 400);
   if (sources.reduce((total, source) => total + Number(source.buffer.byteLength || 0), 0) > MAX_TOTAL_SOURCE_BYTES) {
     throw publicError("The selected images are too large together.", 413);
-  }
-
-  if (model === CLOUDFLARE_FLUX_SELECTION) {
-    if (sources.length) throw publicError("FLUX.2 Dev reference-image editing is not enabled in Vexa yet. Use GPT Image 2 for edits.", 400);
-    return generateCloudflareFluxImage(env, {
-      userId,
-      prompt,
-      size: options.size,
-      metadata: options.metadata,
-    });
   }
 
   const size = normalizeImageSize(options.size);
@@ -253,7 +229,6 @@ export async function generateUsagePricedImage(env, options = {}) {
 
     return {
       buffer: upstream.buffer,
-      mimeType: "image/jpeg",
       billing,
       balance: settlement.balance,
       kind,
@@ -270,111 +245,10 @@ export async function generateUsagePricedImage(env, options = {}) {
   }
 }
 
-async function generateCloudflareFluxImage(env, options = {}) {
-  if (!env.AI || typeof env.AI.run !== "function") throw publicError("Cloudflare image service is not configured.", 503);
-  const userId = String(options.userId || "").trim();
-  const prompt = String(options.prompt || "").trim();
-  const size = normalizeFluxImageSize(options.size);
-  const metadata = options.metadata && typeof options.metadata === "object" ? options.metadata : {};
-  const billing = calculateCloudflareFluxBilling(size);
-  let reservation = null;
-  let settled = false;
-
-  try {
-    reservation = await reserveImageCredits(env, userId, billing.credits, {
-      model: CLOUDFLARE_FLUX_MODEL,
-      provider: "cloudflare_workers_ai",
-      kind: "generate",
-      size,
-      sourceCount: 0,
-      ...metadata,
-      steps: CLOUDFLARE_FLUX_STEPS,
-      outputTiles: billing.outputTiles,
-      markupRate: billing.markupRate,
-      baseUsd: billing.baseUsd,
-      billedUsd: billing.billedUsd,
-    });
-    if (!reservation.ok) {
-      const error = publicError(
-        "Not enough credits · FLUX.2 Dev needs " + billing.credits + " credits for this size",
-        402,
-      );
-      error.balance = reservation.balance;
-      error.creditsRequired = billing.credits;
-      error.reserveOnly = true;
-      throw error;
-    }
-
-    const upstream = await requestCloudflareFluxImage(env, prompt, size);
-    const usageMetadata = {
-      model: CLOUDFLARE_FLUX_MODEL,
-      provider: "cloudflare_workers_ai",
-      kind: "generate",
-      size,
-      ...metadata,
-      steps: CLOUDFLARE_FLUX_STEPS,
-      outputTiles: billing.outputTiles,
-      markupRate: billing.markupRate,
-      baseUsd: billing.baseUsd,
-      billedUsd: billing.billedUsd,
-      reservedCredits: reservation.reservedCredits,
-    };
-    const settlement = await settleImageReservation(env, reservation.id, userId, billing.credits, usageMetadata);
-    if (!settlement.ok) {
-      reservation = null;
-      const error = publicError("Not enough credits · Your temporary credit hold was released", 402);
-      error.balance = settlement.balance;
-      error.creditsRequired = billing.credits;
-      throw error;
-    }
-    settled = true;
-
-    return {
-      buffer: upstream.buffer,
-      mimeType: upstream.mimeType,
-      billing,
-      balance: settlement.balance,
-      kind: "generate",
-      size,
-      sourceCount: 0,
-    };
-  } catch (error) {
-    if (reservation && !settled) {
-      await releaseImageReservation(env, reservation.id, reservation.userId, "request_failed").catch((releaseError) => {
-        console.error("release FLUX image credit reservation failed", releaseError?.message || releaseError);
-      });
-    }
-    if (error?.publicMessage || error?.status) throw error;
-    console.error("cloudflare FLUX.2 Dev request failed", error?.message || error);
-    throw publicError("FLUX.2 Dev couldn't complete that image. Please try again.", 502);
-  }
-}
-
-async function requestCloudflareFluxImage(env, prompt, size) {
-  const { width, height } = parseImageSize(size);
-  const form = new FormData();
-  form.append("prompt", prompt);
-  form.append("steps", String(CLOUDFLARE_FLUX_STEPS));
-  form.append("width", String(width));
-  form.append("height", String(height));
-  const formRequest = new Request("https://workers-ai.local/flux-2-dev", { method: "POST", body: form });
-  const contentType = formRequest.headers.get("content-type") || "multipart/form-data";
-  const result = await env.AI.run(CLOUDFLARE_FLUX_MODEL, {
-    multipart: {
-      body: formRequest.body,
-      contentType,
-    },
-  });
-  const base64 = String(result?.image || "").replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "").trim();
-  if (!base64) throw publicError("FLUX.2 Dev did not return an image. Please try again.", 502);
-  const buffer = base64ToArrayBuffer(base64);
-  return { buffer, mimeType: detectImageMime(buffer) };
-}
-
-export function dynamicPricingPayload(lastCost = 0, model = GPT_IMAGE_MODEL) {
+export function dynamicPricingPayload(lastCost = 0) {
   return {
     mode: "api_usage",
-    model: normalizeImageModel(model) === CLOUDFLARE_FLUX_SELECTION ? CLOUDFLARE_FLUX_MODEL : GPT_IMAGE_MODEL,
+    model: GPT_IMAGE_MODEL,
     markupRate: IMAGE_MARKUP_RATE,
     usdPerCredit: AI_CHAT_USD_PER_CREDIT,
     lastCost: Math.max(0, Math.floor(Number(lastCost || 0))),
@@ -421,26 +295,6 @@ export function calculateImageBilling(usage = {}) {
     imageInputTokens,
     unclassifiedInputTokens,
     outputTokens,
-  };
-}
-
-function calculateCloudflareFluxBilling(size) {
-  const { width, height } = parseImageSize(size);
-  const outputTiles = Math.ceil(width / 512) * Math.ceil(height / 512);
-  const baseUsd = outputTiles * CLOUDFLARE_FLUX_STEPS * CLOUDFLARE_FLUX_OUTPUT_TILE_USD_PER_STEP;
-  const billedUsd = baseUsd * (1 + IMAGE_MARKUP_RATE);
-  return {
-    model: CLOUDFLARE_FLUX_MODEL,
-    provider: "cloudflare_workers_ai",
-    credits: usdToCredits(billedUsd),
-    baseUsd,
-    billedUsd,
-    markupRate: IMAGE_MARKUP_RATE,
-    usdPerCredit: AI_CHAT_USD_PER_CREDIT,
-    steps: CLOUDFLARE_FLUX_STEPS,
-    outputTiles,
-    width,
-    height,
   };
 }
 
@@ -740,11 +594,11 @@ async function isMiniAppLocked(env, userId) {
   return !(await isAdmin(env, userId));
 }
 
-async function storeImageInTelegram(env, chatId, buffer, filename, mimeType = "image/jpeg") {
+async function storeImageInTelegram(env, chatId, buffer, filename) {
   const form = new FormData();
   form.append("chat_id", String(chatId));
   form.append("disable_notification", "true");
-  form.append("photo", new Blob([buffer], { type: mimeType }), filename);
+  form.append("photo", new Blob([buffer], { type: "image/jpeg" }), filename);
   const sent = await tgForm(env, "sendPhoto", form);
   try {
     const fileId = (Array.isArray(sent?.photo) ? sent.photo : []).at(-1)?.file_id;
@@ -782,47 +636,9 @@ function decodeImageSource(data, name) {
   };
 }
 
-function normalizeImageModel(value) {
-  const model = String(value || "").trim().toLowerCase();
-  return model === CLOUDFLARE_FLUX_SELECTION || model === CLOUDFLARE_FLUX_MODEL.toLowerCase()
-    ? CLOUDFLARE_FLUX_SELECTION
-    : GPT_IMAGE_MODEL;
-}
-
 function normalizeImageSize(value) {
   const size = String(value || "").trim().toLowerCase();
   return IMAGE_SIZES.has(size) ? size : "1024x1024";
-}
-
-function normalizeFluxImageSize(value) {
-  const base = normalizeImageSize(value);
-  const parsed = parseImageSize(base);
-  const scale = Math.min(1, CLOUDFLARE_FLUX_MAX_DIMENSION / Math.max(parsed.width, parsed.height));
-  const width = Math.max(256, Math.min(CLOUDFLARE_FLUX_MAX_DIMENSION, Math.floor((parsed.width * scale) / 16) * 16));
-  const height = Math.max(256, Math.min(CLOUDFLARE_FLUX_MAX_DIMENSION, Math.floor((parsed.height * scale) / 16) * 16));
-  return width + "x" + height;
-}
-
-function parseImageSize(value) {
-  const [rawWidth, rawHeight] = String(value || "1024x1024").toLowerCase().split("x");
-  return {
-    width: Math.max(1, Math.floor(Number(rawWidth) || 1024)),
-    height: Math.max(1, Math.floor(Number(rawHeight) || 1024)),
-  };
-}
-
-function detectImageMime(buffer) {
-  const bytes = new Uint8Array(buffer || new ArrayBuffer(0));
-  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
-  if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return "image/webp";
-  return "image/jpeg";
-}
-
-function imageExtensionForMime(mimeType) {
-  if (mimeType === "image/png") return ".png";
-  if (mimeType === "image/webp") return ".webp";
-  return ".jpg";
 }
 
 function normalizeMime(value, filename) {
