@@ -12,8 +12,11 @@ const TOKEN_TTL_SECONDS = 10 * 60;
 const METADATA_TIMEOUT_MS = 35_000;
 const STREAM_START_TIMEOUT_MS = 90_000;
 const PROCESS_SETTLE_TIMEOUT_MS = 2_000;
-const DOWNLOAD_FILE_NAME = "Vexa-YouTube-video.mp4";
+const DOWNLOAD_FILE_NAME = "Vexa-video.mp4";
 const FORMAT_SELECTOR = "b[ext=mp4][protocol^=http][vcodec!=none][acodec!=none]";
+const PORNHUB_MINI_APP_SELECTOR =
+  "b[ext=mp4][protocol^=m3u8][vcodec!=none][acodec!=none]/" +
+  "bv[ext=mp4][protocol^=m3u8]+ba[protocol^=m3u8]/b[ext=mp4]";
 const TELEGRAM_SAFE_FILE_BYTES = 45_000_000;
 const TELEGRAM_UPLOAD_FILE_BYTES = 49_000_000;
 const FFMPEG_INPUT_ARGS =
@@ -71,11 +74,17 @@ export class VexaMediaContainerV3 extends Container {
   entrypoint = ["sh", "-c", "trap 'exit 0' TERM INT; while :; do sleep 3600; done"];
 
   async prepareVideo(url) {
+    const normalized = normalizeBotMediaUrl(url);
+    if (normalized?.provider === "pornhub") {
+      return this.preparePornHubVideo(normalized.url);
+    }
+
+    const youtubeUrl = normalized?.provider === "youtube" ? normalized.url : normalizeYouTubeUrl(url);
     let lastError = null;
     for (const strategy of CLIENT_STRATEGIES) {
       try {
-        const metadata = await this.getVideoMetadataForStrategy(url, strategy);
-        await this.probeVideo(url, metadata.strategyId, metadata.formatId);
+        const metadata = await this.getVideoMetadataForStrategy(youtubeUrl, strategy);
+        await this.probeVideo(youtubeUrl, metadata.strategyId, metadata.formatId);
         return metadata;
       } catch (error) {
         lastError = error;
@@ -83,6 +92,44 @@ export class VexaMediaContainerV3 extends Container {
       }
     }
     throw lastError || new Error("YouTube could not prepare this video");
+  }
+
+  async preparePornHubVideo(url) {
+    const process = await this.execYtDlp([
+      ...YTDLP_COMMON_ARGS,
+      ...PORNHUB_STRATEGY.args,
+      "--dump-single-json",
+      "--skip-download",
+      "--no-warnings",
+      "-f",
+      PORNHUB_MINI_APP_SELECTOR,
+      url,
+    ]);
+    const timer = setTimeout(() => {
+      try { process.kill(); } catch (error) {}
+    }, METADATA_TIMEOUT_MS);
+
+    try {
+      const output = await process.output();
+      const decoder = new TextDecoder();
+      if (output.exitCode !== 0) {
+        throw publicContainerError(decoder.decode(output.stderr).trim(), "pornhub");
+      }
+      const data = JSON.parse(decoder.decode(output.stdout));
+      return {
+        title: String(data?.title || "Video"),
+        ext: "mp4",
+        protocol: "media",
+        formatId: PORNHUB_MINI_APP_SELECTOR,
+        strategyId: PORNHUB_STRATEGY.id,
+        transport: "ffmpeg",
+      };
+    } catch (error) {
+      if (isPublicMediaError(error)) throw error;
+      throw new Error("PornHub metadata was invalid");
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async getVideoMetadata(url) {
@@ -229,7 +276,7 @@ export class VexaMediaContainerV3 extends Container {
     }
   }
 
-  async streamVideo(url, strategyId, formatId, transport = "") {
+  async streamVideo(url, strategyId, formatId, transport = "", maxFinalizedBytes = TELEGRAM_UPLOAD_FILE_BYTES) {
     const provider = mediaProviderForStrategy(strategyId);
     const timeoutMessage = provider === "pornhub"
       ? "PornHub stream did not start in time"
@@ -238,7 +285,7 @@ export class VexaMediaContainerV3 extends Container {
       ? "PornHub returned an invalid MP4 stream"
       : "YouTube returned an invalid MP4 stream";
     const process = provider === "pornhub"
-      ? await this.startFinalizedPornHubProcess(url, strategyId, formatId, transport)
+      ? await this.startFinalizedPornHubProcess(url, strategyId, formatId, transport, maxFinalizedBytes)
       : await this.startVideoProcess(url, strategyId, formatId, transport);
     if (!process.stdout) throw new Error(provider === "pornhub"
       ? "Could not start the PornHub download"
@@ -314,7 +361,7 @@ export class VexaMediaContainerV3 extends Container {
     });
   }
 
-  async startFinalizedPornHubProcess(url, strategyId, formatId, transport = "") {
+  async startFinalizedPornHubProcess(url, strategyId, formatId, transport = "", maxBytes = TELEGRAM_UPLOAD_FILE_BYTES) {
     const tempPath = "/tmp/vexa-pornhub-" + crypto.randomUUID() + ".mp4";
     try {
       const downloadProcess = await this.startVideoProcess(
@@ -345,7 +392,7 @@ export class VexaMediaContainerV3 extends Container {
       if (sizeOutput.exitCode !== 0 || !Number.isSafeInteger(fileSize) || fileSize <= 0) {
         throw new Error("PornHub returned an empty video stream");
       }
-      if (fileSize > TELEGRAM_UPLOAD_FILE_BYTES) {
+      if (Number(maxBytes) > 0 && fileSize > Number(maxBytes)) {
         throw new Error("This download is too large for Telegram");
       }
 
@@ -493,16 +540,17 @@ async function prepareDownload(request, env, ctx) {
   const user = await authenticateMiniAppPayload(payload, env);
   await assertLiveAccess(env, user.id);
 
-  const sourceUrl = normalizeYouTubeUrl(payload.url);
-  if (!sourceUrl) return json({ error: "Enter a valid YouTube link" }, 400);
+  const normalized = normalizeBotMediaUrl(payload.url);
+  if (!normalized?.url) return json({ error: "لینک ویدیو رو وارد کن" }, 400);
+  const sourceUrl = normalized.url;
 
   const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(user.id));
   let metadata;
   try {
     metadata = await container.prepareVideo(sourceUrl);
   } catch (error) {
-    console.error("Vexa YouTube prepare failed", error?.stack || error);
-    return json({ error: publicMediaError(error) }, 502);
+    console.error("Vexa media prepare failed", error?.stack || error);
+    return json({ error: publicMediaError(error, normalized.provider) }, 502);
   }
 
   await ensureTokenTable(env);
@@ -523,7 +571,7 @@ async function prepareDownload(request, env, ctx) {
     ok: true,
     downloadUrl: DOWNLOAD_PATH + "?token=" + encodeURIComponent(token),
     fileName: DOWNLOAD_FILE_NAME,
-    title: metadata?.title || "YouTube video",
+    title: metadata?.title || "Video",
     format: "mp4",
     expiresIn: TOKEN_TTL_SECONDS,
   });
@@ -544,20 +592,27 @@ async function streamDownload(request, env) {
 
   const row = checked.row;
   await markDownloadTokenUsed(env, checked.token).catch(() => null);
-  const sourceUrl = normalizeYouTubeUrl(row.source_url);
-  if (!sourceUrl) return json({ error: "Download source is invalid" }, 400);
+  const normalized = normalizeBotMediaUrl(row.source_url);
+  if (!normalized?.url) return json({ error: "Download source is invalid" }, 400);
+  const sourceUrl = normalized.url;
 
   try {
     const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(row.user_id));
     const metadata = await container.prepareVideo(sourceUrl);
-    const body = await container.streamVideo(sourceUrl, metadata.strategyId, metadata.formatId);
+    const body = await container.streamVideo(
+      sourceUrl,
+      metadata.strategyId,
+      metadata.formatId,
+      metadata.transport || "",
+      0,
+    );
     return new Response(body, {
       status: 200,
       headers: downloadHeaders(),
     });
   } catch (error) {
-    console.error("Vexa YouTube media container failed", error?.stack || error);
-    return json({ error: publicMediaError(error) }, 502);
+    console.error("Vexa media container failed", error?.stack || error);
+    return json({ error: publicMediaError(error, normalized.provider) }, 502);
   }
 }
 
@@ -917,7 +972,7 @@ async function processFailureDetail(process, stderrPromise) {
   return detail || "yt-dlp exited with code " + String(exitCode);
 }
 
-function normalizeBotMediaUrl(value) {
+export function normalizeBotMediaUrl(value) {
   const youtube = normalizeYouTubeUrl(value);
   if (youtube) return { url: youtube, provider: "youtube" };
   const pornhub = normalizePornHubUrl(value);
@@ -1087,6 +1142,7 @@ const PUBLIC_MEDIA_ERRORS = new Set([
   "This download option is no longer available",
   "Enter a valid YouTube link",
   "Enter a valid YouTube or PornHub link",
+  "لینک ویدیو رو وارد کن",
   "YouTube blocked the Cloudflare download request (403)",
   "YouTube requires a PO Token for this download",
   "YouTube blocked this Cloudflare server",
