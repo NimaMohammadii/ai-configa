@@ -5,7 +5,7 @@ import {
 } from "./mesh-background.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
-const INTEGRATION_VERSION = "20260822-12";
+const INTEGRATION_VERSION = "20260822-13";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -159,7 +159,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     workspace.style.padding = "0";
     workspace.style.display = "block";
     workspace.style.overflow = "hidden";
-    workspace.style.background = VEXA_BG;
+    workspace.style.background = "transparent";
     workspace.style.transformOrigin = "center";
     workspace.style.willChange = "opacity, transform, clip-path";
     workspace.style.transition = "opacity .34s ease,transform .56s cubic-bezier(.16,.86,.22,1),clip-path .56s cubic-bezier(.16,.86,.22,1)";
@@ -207,7 +207,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     frame.title = "Vexa Live";
     frame.setAttribute("aria-label", "Vexa Live YouTube workspace");
     frame.setAttribute("allow", "autoplay; fullscreen; picture-in-picture");
-    frame.style.cssText = "position:absolute;inset:0;display:block;width:100%;height:100%;min-width:100%;min-height:100%;border:0;background:" + VEXA_BG + ";opacity:0;transform:scale(1.018);transform-origin:center;pointer-events:none;transition:opacity .32s ease,transform .48s cubic-bezier(.16,.86,.22,1);will-change:opacity,transform;";
+    frame.style.cssText = "position:absolute;inset:0;display:block;width:100%;height:100%;min-width:100%;min-height:100%;border:0;background:transparent;opacity:0;transform:scale(1.018);transform-origin:center;pointer-events:none;transition:opacity .32s ease,transform .48s cubic-bezier(.16,.86,.22,1);will-change:opacity,transform;";
     frame.addEventListener("load", function () {
       window.requestAnimationFrame(function () {
         if (!frame.isConnected) return;
@@ -329,7 +329,8 @@ export async function appendVexaLiveToMiniApp(response) {
   const html = source.includes("/mini-app/vexa-live/integration.js")
     ? source
     : source.includes("</body>")
-      ? source.replace("</body>", script + "\n</body>")
+      ? source.replace("</body>", script + "\
+</body>")
       : source + script;
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
