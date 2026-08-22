@@ -3,11 +3,9 @@ import {
   VEXA_MESH_BASE_COLOR,
   createVexaMeshRendererSource,
 } from "./mesh-background.js";
-import { LIQUID_METAL_BUTTONS_JS } from "./liquid-metal-buttons.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
 const INTEGRATION_VERSION = "20260822-13";
-const LIQUID_METAL_BUTTON_VERSION = "20260822-1";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -319,9 +317,6 @@ export async function handleVexaLiveRequest(request) {
   if (request.method === "GET" && path === LIVE_ROOT + "/integration.js") {
     return textResponse(VEXA_LIVE_INTEGRATION_JS, "application/javascript;charset=utf-8");
   }
-  if (request.method === "GET" && path === LIVE_ROOT + "/liquid-metal-buttons.js") {
-    return textResponse(LIQUID_METAL_BUTTONS_JS, "application/javascript;charset=utf-8");
-  }
   return jsonResponse({ error: "Not Found" }, 404);
 }
 
@@ -330,15 +325,12 @@ export async function appendVexaLiveToMiniApp(response) {
   const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
   if (!contentType.includes("text/html")) return response;
   const source = await response.text();
-  const integrationScript = '<script src="/mini-app/vexa-live/integration.js?v=' + INTEGRATION_VERSION + '"></script>';
-  const liquidMetalScript = '<script type="module" src="/mini-app/vexa-live/liquid-metal-buttons.js?v=' + LIQUID_METAL_BUTTON_VERSION + '"></script>';
-  let html = source;
-  if (!html.includes("/mini-app/vexa-live/integration.js")) {
-    html = html.includes("</body>") ? html.replace("</body>", integrationScript + "\n</body>") : html + integrationScript;
-  }
-  if (!html.includes("/mini-app/vexa-live/liquid-metal-buttons.js")) {
-    html = html.includes("</body>") ? html.replace("</body>", liquidMetalScript + "\n</body>") : html + liquidMetalScript;
-  }
+  const script = '<script src="/mini-app/vexa-live/integration.js?v=' + INTEGRATION_VERSION + '"></script>';
+  const html = source.includes("/mini-app/vexa-live/integration.js")
+    ? source
+    : source.includes("</body>")
+      ? source.replace("</body>", script + "\n</body>")
+      : source + script;
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
   headers.delete("Content-Encoding");
