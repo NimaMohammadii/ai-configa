@@ -165,6 +165,17 @@ export function sendBinaryDocument(env, chatId, content, filename, mimeType = "a
   return tgForm(env, "sendDocument", form);
 }
 
+export function sendBinaryVoice(env, chatId, content, filename = "voice-recording.ogg", mimeType = "audio/ogg", caption = "") {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("voice", new Blob([content], { type: mimeType }), filename);
+  if (caption) {
+    form.append("caption", caption);
+    form.append("parse_mode", "HTML");
+  }
+  return tgForm(env, "sendVoice", form);
+}
+
 export function sendAudio(env, chatId, audioBuffer, filename = "vexa-voice.mp3", title = "Vexa Voice") {
   return sendNamedAudio(env, chatId, audioBuffer, title, filename);
 }

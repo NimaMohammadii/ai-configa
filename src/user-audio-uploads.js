@@ -31,7 +31,7 @@ export async function saveMiniAppAudioUpload(env, userId, audio, options = {}) {
   });
   try {
     await env.DB.prepare(
-      "INSERT INTO user_audio_uploads (id, user_id, file_id, file_type, file_name, mime_type, file_size, duration, telegram_message_id, storage_key, source, created_at) VALUES (?, ?, '', 'document', ?, ?, ?, ?, NULL, ?, 'mini_app', CURRENT_TIMESTAMP)"
+      "INSERT INTO user_audio_uploads (id, user_id, file_id, file_type, file_name, mime_type, file_size, duration, telegram_message_id, storage_key, source, created_at) VALUES (?, ?, '', 'voice', ?, ?, ?, ?, NULL, ?, 'mini_app', CURRENT_TIMESTAMP)"
     ).bind(
       id, String(userId), fileName, mimeType, Number(options.fileSize || audio.byteLength || 0),
       Math.max(0, Math.round(Number(options.durationMs || 0) / 1000)), storageKey
@@ -101,10 +101,11 @@ export function userAudioUploadsKeyboard(data, userId, backPage = 0) {
 }
 
 export function userAudioUploadCaption(item, userId) {
+  const fileType = item.source === "mini_app" ? "voice" : item.file_type;
   return [
     "🎙 <b>User Audio File</b>", "",
     "User ID: <code>" + escapeHtml(userId) + "</code>",
-    "Type: <b>" + escapeHtml(item.file_type) + "</b>",
+    "Type: <b>" + escapeHtml(fileType) + "</b>",
     "Source: <b>" + escapeHtml(item.source === "mini_app" ? "Mini App" : "Telegram") + "</b>",
     "Name: <b>" + escapeHtml(item.file_name || "-") + "</b>",
     "Duration: <b>" + formatDuration(item.duration) + "</b>",
