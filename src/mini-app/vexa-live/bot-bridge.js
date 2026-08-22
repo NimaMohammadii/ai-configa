@@ -297,7 +297,7 @@ async function sendTelegramMediaStream(env, chatId, media) {
   const suffix = "\r\n--" + boundary + "--\r\n";
   const source = media.stream.getReader();
   let sentBytes = 0;
-  const maxBytes = 49 * 1024 * 1024;
+  const maxBytes = 49_000_000;
   let sentPrefix = false;
   let sentSuffix = false;
 
@@ -342,9 +342,32 @@ async function sendTelegramMediaStream(env, chatId, media) {
       body,
       signal: controller.signal,
     });
-    const data = await response.json().catch(() => null);
+    const responseText = await response.text();
+    let data = null;
+    try {
+      data = JSON.parse(responseText);
+    } catch (error) {}
     if (!response.ok || !data?.ok) {
-      throw new Error("Telegram media upload failed");
+      const description = String(data?.description || responseText || "").trim().slice(0, 500);
+      const errorCode = Number(data?.error_code || response.status || 0);
+      console.error("Telegram media upload rejected", {
+        status: response.status,
+        errorCode,
+        description,
+        sentBytes,
+        expectedBytes: Number(media.sizeBytes || 0),
+        kind: media.kind,
+        mimeType: media.mimeType,
+      });
+      if (/file is too big|request entity too large|payload too large/i.test(description)) {
+        throw new Error("This download is too large for Telegram");
+      }
+      if (/wrong file type|video.*invalid|failed to process|can(?:not|'t) parse|not enough data|file.*invalid|media.*invalid/i.test(description)) {
+        throw new Error("Telegram rejected this media file");
+      }
+      throw new Error(description
+        ? "Telegram media upload failed: " + description
+        : "Telegram media upload failed");
     }
     return data.result;
   } catch (error) {
