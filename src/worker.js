@@ -6,6 +6,7 @@ import { ensurePinnedFromState } from "./pinned-message.js";
 import { handleReceiptCallback, handleReceiptPhoto, isReceiptCallback } from "./receipt-approval.js";
 import { handlePreCheckout, handleStarsCallback, handleStarsPayment, handleStarsTextInput, isStarsCallback } from "./stars-flow.js";
 import { handleSupportMessage } from "./support-flow-v2.js";
+import { handleVoiceTransformMessage } from "./voice-transform.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -73,6 +74,8 @@ async function handleMessageWithSupport(message, env) {
     await handleReceiptPhoto(message, env);
     return;
   }
+
+  if (await handleVoiceTransformMessage(message, env)) return;
 
   await handleMessageAndPin(message, env);
 }
