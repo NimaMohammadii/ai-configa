@@ -40,7 +40,7 @@ const LANDING_RUNTIME_JS = String.raw`
 (function(){
 'use strict';
 const PLAYBACK_PREPARE_URL='/mini-app/live/api/youtube-playback/prepare';
-const DOWNLOAD_PREPARE_URL='/mini-app/live/api/youtube-download/prepare';
+const DOWNLOAD_SESSION_URL='/mini-app/live/api/youtube-download/session';
 const canvas=document.getElementById('vexaMeshCanvas');
 const landing=document.getElementById('vexaMeshLanding');
 const openButton=document.getElementById('vexaMeshOpen');
@@ -55,9 +55,10 @@ function initData(){return String(telegram()?.initData||'');}
 function haptic(style){try{telegram()?.HapticFeedback?.impactOccurred?.(style||'light');}catch{}}
 function idleLabel(){return mode==='download'?'Download':'Open';}
 function setBusy(busy,text){if(openButton){openButton.textContent=text||idleLabel();openButton.disabled=Boolean(busy);}for(const button of modeButtons)button.disabled=Boolean(busy);}
-function fail(message){console.error('Vexa Live action failed',message);setBusy(false);haptic('light');}
+function fail(message){console.error('Vexa Live action failed',message);setBusy(false);try{window.alert(String(message||'Could not open this video'));}catch{}haptic('light');}
 function selectMode(next,vibrate){if(next!=='watch'&&next!=='download')return;mode=next;if(modeSwitch)modeSwitch.dataset.mode=mode;for(const button of modeButtons)button.setAttribute('aria-selected',String(button.dataset.vexaMode===mode));if(openButton&&!openButton.disabled)openButton.textContent=idleLabel();if(vibrate!==false)haptic('light');}
-function promptVideoUrl(){const source=window.prompt('لینک ویدیو رو وارد کن');if(source===null)return'';return String(source||'').trim();}
+function promptVideoUrl(){const source=window.prompt('Enter video link');if(source===null)return'';return String(source||'').trim();}
+function playbackToken(data){try{return String(new URL(String(data?.playbackUrl||''),window.location.origin).searchParams.get('token')||'').trim();}catch{return'';}}
 function startDownload(data){
  const absoluteUrl=new URL(String(data.downloadUrl),window.location.origin).href;
  const fileName=String(data.fileName||'Vexa-video.mp4');
@@ -79,24 +80,37 @@ function mountVideo(data){
  setBusy(false);
 }
 
+async function preparePlayback(url){
+ const response=await fetch(PLAYBACK_PREPARE_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:url})});
+ const data=await response.json().catch(function(){return{};});
+ if(!response.ok||!data.playbackUrl)throw new Error(String(data.error||'Could not prepare this video'));
+ return data;
+}
+
+async function prepareDownload(playback){
+ const token=playbackToken(playback);
+ if(!token)throw new Error('Video session is invalid');
+ const response=await fetch(DOWNLOAD_SESSION_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),playbackToken:token})});
+ const data=await response.json().catch(function(){return{};});
+ if(!response.ok||!data.downloadUrl)throw new Error(String(data.error||'Could not prepare download'));
+ return data;
+}
+
 async function runAction(){
  if(!openButton||openButton.disabled)return;
  const url=promptVideoUrl();if(!url)return;
  setBusy(true,mode==='download'?'Preparing…':'Opening…');haptic('light');
  try{
-  const endpoint=mode==='download'?DOWNLOAD_PREPARE_URL:PLAYBACK_PREPARE_URL;
-  const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:url})});
-  const data=await response.json().catch(function(){return{};});
+  const playback=await preparePlayback(url);
   if(mode==='download'){
-   if(!response.ok||!data.downloadUrl)throw new Error(String(data.error||'Could not prepare this video'));
-   startDownload(data);setBusy(false);haptic('medium');return;
+   const download=await prepareDownload(playback);
+   startDownload(download);setBusy(false);haptic('medium');return;
   }
-  if(!response.ok||!data.playbackUrl)throw new Error(String(data.error||'Could not prepare this video'));
-  mountVideo(data);haptic('medium');
+  mountVideo(playback);haptic('medium');
  }catch(error){fail(String(error?.message||'Could not open this video'));}
 }
-for(const button of modeButtons)button.addEventListener('click',function(){if(!button.disabled)selectMode(String(button.dataset.vexaMode||''),true);});
-openButton?.addEventListener('click',runAction);
+for(const button of modeButtons)button.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();if(!button.disabled)selectMode(String(button.dataset.vexaMode||''),true);});
+openButton?.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();runAction();});
 selectMode('watch',false);
 })();
 `;
