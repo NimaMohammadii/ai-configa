@@ -5,7 +5,7 @@ import {
 } from "./mesh-background.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
-const INTEGRATION_VERSION = "20260821-11";
+const INTEGRATION_VERSION = "20260822-12";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -92,9 +92,10 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       "body .tts-bottom{transition:opacity .25s ease,transform .48s cubic-bezier(.16,.86,.22,1)!important}" +
       "body.vexa-live-open{background:transparent!important}" +
       "body.vexa-live-open .app{position:relative!important;z-index:40!important;background:transparent!important;pointer-events:none!important}" +
-      "body.vexa-live-open .tts-head{position:sticky!important;z-index:41!important;background:transparent!important;opacity:1!important;visibility:visible!important;pointer-events:auto!important}" +
-      "body.vexa-live-open .tts-head:before,body.vexa-live-open .tts-head:after{background:transparent!important}" +
-      "body.vexa-live-open .tts-head .credit-tools,body.vexa-live-open .tts-head .mode-tools,body.vexa-live-open .tts-head button,body.vexa-live-open .tts-head [role=\"button\"]{pointer-events:auto!important}" +
+      "body.vexa-live-open .app *{pointer-events:none!important}" +
+      "body.vexa-live-open .tts-head{position:sticky!important;z-index:41!important;background:transparent!important;opacity:1!important;visibility:visible!important;pointer-events:none!important}" +
+      "body.vexa-live-open .tts-head:before,body.vexa-live-open .tts-head:after{background:transparent!important;pointer-events:none!important}" +
+      "body.vexa-live-open #" + BUTTON_ID + "{pointer-events:auto!important}" +
       "body.vexa-live-open .tts-area{opacity:0!important;transform:translateX(-30px) scale(.985)!important;pointer-events:none!important}" +
       "body.vexa-live-open .tts-bottom{opacity:0!important;transform:translateX(calc(-50% - 30px)) scale(.985)!important;pointer-events:none!important}";
     document.head.appendChild(style);
