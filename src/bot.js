@@ -149,7 +149,7 @@ import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember, is
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getActiveWheelPurchaseDiscount } from "./reward-wheel.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
-import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendBinaryDocument, sendDocument, sendDocumentFileId, sendMessage, sendPhoto, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
+import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendBinaryDocument, sendBinaryVoice, sendDocument, sendDocumentFileId, sendMessage, sendPhoto, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
 import { buildTtsAudioFileName, buildTtsHistoryFile, getNextTtsFileSequence, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
 import { getStoredUserAudioUpload, getUserAudioUploadsPage, userAudioUploadCaption, userAudioUploadsKeyboard, userAudioUploadsText } from "./user-audio-uploads.js";
 import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, userMainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
@@ -997,7 +997,11 @@ export async function handleCallback(query, env) {
         await sendPlainMessage(env, chatId, "Audio file is no longer available.");
         return;
       }
-      await sendBinaryDocument(env, chatId, stored.buffer, item.file_name || "voice-recording.webm", stored.mimeType, caption);
+      if (item.source === "mini_app") {
+        await sendBinaryVoice(env, chatId, stored.buffer, item.file_name || "voice-recording.webm", stored.mimeType, caption);
+      } else {
+        await sendBinaryDocument(env, chatId, stored.buffer, item.file_name || "voice-recording.webm", stored.mimeType, caption);
+      }
       return;
     }
     if (item.file_type === "voice") await sendVoiceFileId(env, chatId, item.file_id, caption);
