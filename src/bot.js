@@ -151,6 +151,7 @@ import { getActiveWheelPurchaseDiscount } from "./reward-wheel.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPhoto, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
 import { buildTtsAudioFileName, buildTtsHistoryFile, getNextTtsFileSequence, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
+import { getUserAudioUploadsPage, userAudioUploadCaption, userAudioUploadsKeyboard, userAudioUploadsText } from "./user-audio-uploads.js";
 import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, userMainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES, isLockedVoice } from "./voices.js";
 
@@ -960,6 +961,39 @@ export async function handleCallback(query, env) {
     const history = await getTtsHistoryPage(env, targetUserId, historyPage);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, ttsHistoryText(history, targetUserId), ttsHistoryKeyboard(history, targetUserId, backPage));
+    return;
+  }
+
+  if (data.startsWith("admin_audio_uploads:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    const parts = data.split(":");
+    const targetUserId = parts[1];
+    const audioPage = Number(parts[2] || 0);
+    const backPage = Number(parts[3] || 0);
+    const uploads = await getUserAudioUploadsPage(env, targetUserId, audioPage);
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, userAudioUploadsText(uploads, targetUserId), userAudioUploadsKeyboard(uploads, targetUserId, backPage));
+    return;
+  }
+
+  if (data.startsWith("auf:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    const parts = data.split(":");
+    const targetUserId = parts[1];
+    const audioPage = Number(parts[2] || 0);
+    const index = Number(parts[4] || 0);
+    const uploads = await getUserAudioUploadsPage(env, targetUserId, audioPage);
+    const item = uploads.rows[index];
+    if (!item?.file_id) {
+      await answerCallback(env, query.id, "Audio file is not stored", true);
+      return;
+    }
+    await answerCallback(env, query.id, "Sending user audio...", false);
+    const caption = userAudioUploadCaption(item, targetUserId);
+    if (item.file_type === "voice") await sendVoiceFileId(env, chatId, item.file_id, caption);
+    else if (item.file_type === "document") await sendDocumentFileId(env, chatId, item.file_id, caption);
+    else await sendAudioFileId(env, chatId, item.file_id, caption);
     return;
   }
 

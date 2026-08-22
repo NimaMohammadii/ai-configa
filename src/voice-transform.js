@@ -14,6 +14,7 @@ import { deleteMessage, sendAudio, sendMessage, sendPlainMessage } from "./teleg
 import { downloadTelegramFile } from "./telegram-api.js";
 import { buildTtsAudioFileName, getNextTtsFileSequence, saveTtsHistory } from "./tts-history.js";
 import { VOICES, isLockedVoice } from "./voices.js";
+import { saveUserAudioUpload } from "./user-audio-uploads.js";
 
 const MAX_TELEGRAM_DOWNLOAD_BYTES = 20 * 1024 * 1024;
 const MAX_KNOWN_DURATION_SECONDS = 180;
@@ -43,6 +44,10 @@ export async function handleVoiceTransformMessage(message, env) {
     const action = await getAdminAction(env, userId);
     if (action) return false;
   }
+
+  await saveUserAudioUpload(env, userId, message?.message_id, attachment).catch((error) => {
+    console.error("save user audio upload failed", error?.message || error);
+  });
 
   const state = await getState(env, userId);
   if (!state.language) {
