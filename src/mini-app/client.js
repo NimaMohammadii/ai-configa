@@ -1,4 +1,5 @@
 import { MINI_APP_JS as BASE_MINI_APP_JS } from "./client-original.js";
+import { IMAGE_MODEL_SELECTOR_PATCH } from "./image-model-selector.js";
 
 const PURCHASE_DISCOUNT_PATCH = String.raw`
   var purchaseDiscountState=null;
@@ -77,4 +78,4 @@ MINI_APP_JS_WITH_HISTORY = replaceMiniAppSource(
   "history details button"
 );
 
-export const MINI_APP_JS = MINI_APP_JS_WITH_HISTORY.replace("(function(){", "(function(){\n" + HISTORY_UI_PATCH + PURCHASE_DISCOUNT_PATCH);
+export const MINI_APP_JS = MINI_APP_JS_WITH_HISTORY.replace("(function(){", "(function(){\n" + HISTORY_UI_PATCH + PURCHASE_DISCOUNT_PATCH + IMAGE_MODEL_SELECTOR_PATCH);
