@@ -359,6 +359,9 @@ async function sendTelegramMediaStream(env, chatId, media) {
         kind: media.kind,
         mimeType: media.mimeType,
       });
+      if (response.status === 413 || errorCode === 413) {
+        throw new Error("This download is too large for Telegram");
+      }
       if (/file is too big|request entity too large|payload too large/i.test(description)) {
         throw new Error("This download is too large for Telegram");
       }
@@ -367,7 +370,7 @@ async function sendTelegramMediaStream(env, chatId, media) {
       }
       throw new Error(description
         ? "Telegram media upload failed: " + description
-        : "Telegram media upload failed");
+        : "Telegram media upload failed (HTTP " + response.status + ", " + sentBytes + " bytes sent)");
     }
     return data.result;
   } catch (error) {
