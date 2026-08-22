@@ -126,36 +126,20 @@ export async function handleVoiceTransformMessage(message, env) {
       mimeType: attachment.mimeType,
     });
 
-    const transcript = await transcribeForV3(env, media);
-    const cleanTranscript = String(transcript?.text || "").trim();
-    if (!cleanTranscript) {
-      throw new Error(lang === "fa" ? "گفتار قابل تشخیصی داخل فایل پیدا نشد." : "No recognizable speech was found in the file.");
-    }
-
-    const transcriptChars = Array.from(cleanTranscript).length;
-    if (transcriptChars > MAX_TRANSCRIPT_CHARS) {
-      throw new Error(
-        lang === "fa"
-          ? "این فایل برای نسخه آزمایشی V3 طولانیه. یک ویس کوتاه‌تر بفرست."
-          : "This file is too long for the current V3 test. Send a shorter recording.",
-      );
-    }
-
-    const currentBalance = await getBalance(env, userId);
-    if (currentBalance < transcriptChars) {
-      throw insufficientCreditsError(lang, transcriptChars, currentBalance);
-    }
-
-    const performancePrompt = buildV3PerformancePrompt(transcript);
-    if (!performancePrompt || Array.from(performancePrompt).length > 5000) {
-      throw new Error(
-        lang === "fa"
-          ? "اجرای این ویس برای V3 زیادی طولانی شد. یک ویس کوتاه‌تر بفرست."
-          : "This recording is too long to rebuild with V3. Send a shorter recording.",
-      );
-    }
-
-    const outputAudio = await textToSpeech(env, performancePrompt, voiceId, lang);
+    const transformed = await transformVoiceMediaForV3(env, {
+      buffer: media.buffer,
+      filename: media.filename,
+      mimeType: media.mimeType,
+      voiceId,
+      lang,
+      beforeGenerate: async ({ transcriptChars }) => {
+        const currentBalance = await getBalance(env, userId);
+        if (currentBalance < transcriptChars) {
+          throw insufficientCreditsError(lang, transcriptChars, currentBalance);
+        }
+      },
+    });
+    const { transcript, cleanTranscript, transcriptChars, outputAudio } = transformed;
 
     if (statusMessage?.message_id) {
       await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
@@ -202,6 +186,58 @@ export async function handleVoiceTransformMessage(message, env) {
     ).catch(() => null);
     return true;
   }
+}
+
+export async function transformVoiceMediaForV3(env, options = {}) {
+  const lang = normalizeLang(options.lang || "en");
+  const media = {
+    buffer: options.buffer,
+    filename: String(options.filename || "voice-recording.webm"),
+    mimeType: String(options.mimeType || "application/octet-stream"),
+  };
+  if (!(media.buffer instanceof ArrayBuffer) || !media.buffer.byteLength) {
+    throw new Error(lang === "fa" ? "فایل صوتی خالی است." : "The audio recording is empty.");
+  }
+
+  const voiceId = String(options.voiceId || "").trim();
+  if (!voiceId) throw new Error("Voice not found.");
+
+  const transcript = await transcribeForV3(env, media);
+  const cleanTranscript = String(transcript?.text || "").trim();
+  if (!cleanTranscript) {
+    throw new Error(lang === "fa" ? "گفتار قابل تشخیصی داخل فایل پیدا نشد." : "No recognizable speech was found in the file.");
+  }
+
+  const transcriptChars = Array.from(cleanTranscript).length;
+  if (transcriptChars > MAX_TRANSCRIPT_CHARS) {
+    throw new Error(
+      lang === "fa"
+        ? "این فایل برای نسخه آزمایشی V3 طولانیه. یک ویس کوتاه‌تر بفرست."
+        : "This file is too long for the current V3 test. Send a shorter recording.",
+    );
+  }
+
+  if (typeof options.beforeGenerate === "function") {
+    await options.beforeGenerate({ transcript, cleanTranscript, transcriptChars });
+  }
+
+  const performancePrompt = buildV3PerformancePrompt(transcript);
+  if (!performancePrompt || Array.from(performancePrompt).length > 5000) {
+    throw new Error(
+      lang === "fa"
+        ? "اجرای این ویس برای V3 زیادی طولانی شد. یک ویس کوتاه‌تر بفرست."
+        : "This recording is too long to rebuild with V3. Send a shorter recording.",
+    );
+  }
+
+  const outputAudio = await textToSpeech(env, performancePrompt, voiceId, lang);
+  return {
+    transcript,
+    cleanTranscript,
+    transcriptChars,
+    performancePrompt,
+    outputAudio,
+  };
 }
 
 function getVoiceTransformAttachment(message) {
