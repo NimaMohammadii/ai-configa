@@ -15,11 +15,13 @@ const PROCESS_SETTLE_TIMEOUT_MS = 2_000;
 const DOWNLOAD_FILE_NAME = "Vexa-YouTube-video.mp4";
 const FORMAT_SELECTOR = "b[ext=mp4][protocol^=http][vcodec!=none][acodec!=none]";
 const TELEGRAM_SAFE_FILE_BYTES = 45_000_000;
+const TELEGRAM_UPLOAD_FILE_BYTES = 49_000_000;
 const FFMPEG_INPUT_ARGS =
   "ffmpeg_i:-rw_timeout 15000000 -reconnect 1 -reconnect_on_network_error 1 " +
   "-reconnect_on_http_error 5xx -reconnect_streamed 1 -reconnect_delay_max 2 -reconnect_max_retries 1";
 const FFMPEG_OUTPUT_ARGS =
   "ffmpeg_o:-f mp4 -movflags +frag_keyframe+empty_moov+default_base_moof";
+const FFMPEG_FILE_OUTPUT_ARGS = "ffmpeg_o:-movflags +faststart";
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
@@ -235,7 +237,9 @@ export class VexaMediaContainerV3 extends Container {
     const invalidStreamMessage = provider === "pornhub"
       ? "PornHub returned an invalid MP4 stream"
       : "YouTube returned an invalid MP4 stream";
-    const process = await this.startVideoProcess(url, strategyId, formatId, transport);
+    const process = provider === "pornhub"
+      ? await this.startFinalizedPornHubProcess(url, strategyId, formatId, transport)
+      : await this.startVideoProcess(url, strategyId, formatId, transport);
     if (!process.stdout) throw new Error(provider === "pornhub"
       ? "Could not start the PornHub download"
       : "Could not start the YouTube download");
@@ -310,7 +314,58 @@ export class VexaMediaContainerV3 extends Container {
     });
   }
 
-  async startVideoProcess(url, strategyId, formatId, transport = "") {
+  async startFinalizedPornHubProcess(url, strategyId, formatId, transport = "") {
+    const tempPath = "/tmp/vexa-pornhub-" + crypto.randomUUID() + ".mp4";
+    try {
+      const downloadProcess = await this.startVideoProcess(
+        url,
+        strategyId,
+        formatId,
+        transport,
+        tempPath,
+      );
+      const output = await downloadProcess.output();
+      const decoder = new TextDecoder();
+      const detail = decoder.decode(output.stderr).trim();
+      if (output.exitCode !== 0) {
+        if (detail) console.error("yt-dlp finalized PornHub download failed", detail.slice(-4000));
+        throw publicContainerError(detail || "download failed", "pornhub");
+      }
+
+      const sizeProcess = await this.ctx.container.exec([
+        "sh",
+        "-c",
+        'wc -c < "$1"',
+        "vexa-pornhub-size",
+        tempPath,
+      ]);
+      const sizeOutput = await sizeProcess.output();
+      const sizeText = new TextDecoder().decode(sizeOutput.stdout).trim();
+      const fileSize = Number.parseInt(sizeText, 10);
+      if (sizeOutput.exitCode !== 0 || !Number.isSafeInteger(fileSize) || fileSize <= 0) {
+        throw new Error("PornHub returned an empty video stream");
+      }
+      if (fileSize > TELEGRAM_UPLOAD_FILE_BYTES) {
+        throw new Error("This download is too large for Telegram");
+      }
+
+      return await this.ctx.container.exec([
+        "sh",
+        "-c",
+        'exec 3<"$1" || exit 1; rm -f "$1" "$1.part"; cat <&3',
+        "vexa-pornhub-stream",
+        tempPath,
+      ]);
+    } catch (error) {
+      try {
+        const cleanup = await this.ctx.container.exec(["rm", "-f", tempPath, tempPath + ".part"]);
+        cleanup.output().catch(() => null);
+      } catch (ignore) {}
+      throw error;
+    }
+  }
+
+  async startVideoProcess(url, strategyId, formatId, transport = "", outputPath = "-") {
     const strategy = clientStrategy(strategyId);
     if (!strategy) throw new Error("Media client strategy is invalid");
     const selectedFormat = String(formatId || "").trim() || FORMAT_SELECTOR;
@@ -328,7 +383,7 @@ export class VexaMediaContainerV3 extends Container {
         "--downloader-args",
         FFMPEG_INPUT_ARGS,
         "--downloader-args",
-        FFMPEG_OUTPUT_ARGS,
+        outputPath === "-" ? FFMPEG_OUTPUT_ARGS : FFMPEG_FILE_OUTPUT_ARGS,
       );
     }
     return this.execYtDlp([
@@ -340,7 +395,7 @@ export class VexaMediaContainerV3 extends Container {
       selectedFormat,
       ...processingArgs,
       "-o",
-      "-",
+      outputPath,
       url,
     ]);
   }
