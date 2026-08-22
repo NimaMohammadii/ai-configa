@@ -149,9 +149,9 @@ import { faJoinKeyboard, faJoinText, grantFaJoinBonusOnce, isFaChannelMember, is
 import { clearPendingPayment, getPendingPayment, setPendingPayment } from "./payments.js";
 import { getActiveWheelPurchaseDiscount } from "./reward-wheel.js";
 import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.js";
-import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendDocument, sendDocumentFileId, sendMessage, sendPhoto, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
+import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendBinaryDocument, sendDocument, sendDocumentFileId, sendMessage, sendPhoto, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
 import { buildTtsAudioFileName, buildTtsHistoryFile, getNextTtsFileSequence, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
-import { getUserAudioUploadsPage, userAudioUploadCaption, userAudioUploadsKeyboard, userAudioUploadsText } from "./user-audio-uploads.js";
+import { getStoredUserAudioUpload, getUserAudioUploadsPage, userAudioUploadCaption, userAudioUploadsKeyboard, userAudioUploadsText } from "./user-audio-uploads.js";
 import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, userMainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES, isLockedVoice } from "./voices.js";
 
@@ -985,12 +985,21 @@ export async function handleCallback(query, env) {
     const index = Number(parts[4] || 0);
     const uploads = await getUserAudioUploadsPage(env, targetUserId, audioPage);
     const item = uploads.rows[index];
-    if (!item?.file_id) {
+    if (!item?.file_id && !item?.storage_key) {
       await answerCallback(env, query.id, "Audio file is not stored", true);
       return;
     }
     await answerCallback(env, query.id, "Sending user audio...", false);
     const caption = userAudioUploadCaption(item, targetUserId);
+    if (item.storage_key) {
+      const stored = await getStoredUserAudioUpload(env, item);
+      if (!stored) {
+        await sendPlainMessage(env, chatId, "Audio file is no longer available.");
+        return;
+      }
+      await sendBinaryDocument(env, chatId, stored.buffer, item.file_name || "voice-recording.webm", stored.mimeType, caption);
+      return;
+    }
     if (item.file_type === "voice") await sendVoiceFileId(env, chatId, item.file_id, caption);
     else if (item.file_type === "document") await sendDocumentFileId(env, chatId, item.file_id, caption);
     else await sendAudioFileId(env, chatId, item.file_id, caption);

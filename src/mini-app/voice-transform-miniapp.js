@@ -9,6 +9,7 @@ import {
   saveTtsHistory,
 } from "../tts-history.js";
 import { transformVoiceMediaForV3 } from "../voice-transform.js";
+import { saveMiniAppAudioUpload } from "../user-audio-uploads.js";
 import { VOICES, isLockedVoice } from "../voices.js";
 import { authenticateMiniAppPayload } from "./auth.js";
 import VEXA_VOICE_ORB_SOURCE from "./vexa-live/voice-orb-original.txt";
@@ -54,6 +55,14 @@ export async function handleMiniAppVoiceTransformRequest(request, env) {
     if (startingBalance <= 0) return json({ error: "Not enough credits." }, 402);
 
     const buffer = await audio.arrayBuffer();
+    await saveMiniAppAudioUpload(env, user.id, buffer, {
+      fileName: safeAudioFilename(audio.name, audio.type),
+      mimeType: String(audio.type || "application/octet-stream"),
+      fileSize: size,
+      durationMs,
+    }).catch((error) => {
+      console.error("save mini app user audio failed", error?.message || error);
+    });
     const transformed = await transformVoiceMediaForV3(env, {
       buffer,
       filename: safeAudioFilename(audio.name, audio.type),
