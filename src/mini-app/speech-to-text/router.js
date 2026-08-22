@@ -5,32 +5,25 @@ import {
 import {
   handleMiniAppWithVexaLive as handleLegacyMiniAppWithSpeechToText,
   handleVexaLiveRequest as handleLegacySpeechToTextRequest,
-  isVexaLiveRequest as isLegacySpeechToTextRequest,
 } from "./router-legacy.js";
 
 const LEGACY_ROOT = "/mini-app/live";
 const SPEECH_ROOT = "/mini-app/speech-to-text";
 const SECTION_KEY = "stt";
 const SECTION_LABEL = "Speech to Text";
-const LIQUID_METAL_BUTTON_VERSION = "20260822-2";
 
 MINI_APP_BROADCAST_SECTIONS[SECTION_KEY] = SECTION_LABEL;
 MINI_APP_TRACKED_SECTIONS[SECTION_KEY] = SECTION_LABEL;
 
 export function isSpeechToTextRequest(request) {
   const path = new URL(request.url).pathname;
-  return isLegacySpeechToTextRequest(request) ||
-    path === SPEECH_ROOT ||
+  return path === SPEECH_ROOT ||
     path === SPEECH_ROOT + "/" ||
     path.startsWith(SPEECH_ROOT + "/");
 }
 
 export async function handleSpeechToTextRequest(request, env) {
-  const url = new URL(request.url);
-  const canonical = url.pathname === SPEECH_ROOT ||
-    url.pathname === SPEECH_ROOT + "/" ||
-    url.pathname.startsWith(SPEECH_ROOT + "/");
-  const targetRequest = canonical ? rewriteSpeechRequestToLegacy(request) : request;
+  const targetRequest = rewriteSpeechRequestToLegacy(request);
   const response = await handleLegacySpeechToTextRequest(targetRequest, env);
   return relabelSpeechToTextResponse(response);
 }
@@ -57,10 +50,6 @@ async function relabelSpeechToTextResponse(response) {
     source = source
       .replace("<title>Vexa Live</title>", "<title>Speech to Text</title>")
       .replace('aria-label="Vexa Live speech to text"', 'aria-label="Speech to Text"');
-    if (!source.includes("/mini-app/vexa-live/liquid-metal-buttons.js")) {
-      const script = '<script type="module" src="/mini-app/vexa-live/liquid-metal-buttons.js?v=' + LIQUID_METAL_BUTTON_VERSION + '"></script>';
-      source = source.includes("</body>") ? source.replace("</body>", script + "\n</body>") : source + script;
-    }
   } else {
     source = source
       .replace('const BUTTON_ID = "vexaLiveOpen";', 'const BUTTON_ID = "speechToTextOpen";')
