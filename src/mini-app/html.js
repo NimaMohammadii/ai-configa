@@ -84,6 +84,154 @@ const VOICE_LIBRARY_CARDS = VOICE_LIBRARY_NAMES.map((name) => {
   return `<article class="voice-library-card" data-library-voice="${voiceId}" data-library-name="${name}"><button class="voice-library-main" data-action="select-library-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button"><span class="voice-library-avatar" aria-hidden="true"></span><span class="voice-library-copy"><span class="voice-library-name"><strong>${name}</strong><em class="voice-library-state">Add</em></span><small class="voice-library-description">${VOICE_DESCRIPTIONS[name] || "Natural, expressive and versatile"}</small></span></button><div class="voice-library-actions"><button class="voice-library-preview" data-action="preview-voice" data-preview-voice="${voiceId}" data-preview-name="${name}" type="button" aria-label="Hear ${name}"><span class="voice-preview-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.15 5.95c-.86-.54-1.97.08-1.97 1.1v9.9c0 1.02 1.11 1.64 1.97 1.1l7.92-4.95a1.3 1.3 0 0 0 0-2.2L8.15 5.95Z" fill="currentColor"/></svg></span></button><button class="voice-library-save" data-action="toggle-saved-voice" data-voice="${voiceId}" data-voice-name="${name}" type="button" aria-label="Add ${name}"><span class="voice-save-plus" aria-hidden="true"></span><span class="voice-save-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7.5 8.25h9l-.5 9.1a1.8 1.8 0 0 1-1.8 1.7H9.8a1.8 1.8 0 0 1-1.8-1.7l-.5-9.1Z" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/><path d="M6 5.85h12M9.4 5.85V4.9c0-.75.6-1.35 1.35-1.35h2.5c.75 0 1.35.6 1.35 1.35v.95M10.3 11.1v4.75M13.7 11.1v4.75" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/></svg></span></button></div></article>`;
 }).join("");
 
+const LIQUID_METAL_RUNTIME = String.raw`<script>
+(function(){
+  var mounts=new WeakMap();
+  var libraryPromise=null;
+
+  function loadLibrary(){
+    if(!libraryPromise){
+      libraryPromise=import('https://cdn.jsdelivr.net/npm/@paper-design/shaders@0.0.80/+esm').then(function(library){
+        if(!library||!library.ShaderMount||!library.liquidMetalFragmentShader)throw new Error('Liquid Metal shader unavailable');
+        return library;
+      });
+    }
+    return libraryPromise;
+  }
+
+  function ensureStyles(doc){
+    if(!doc||!doc.head||doc.getElementById('vexaLiquidMetalStyles'))return;
+    var style=doc.createElement('style');
+    style.id='vexaLiquidMetalStyles';
+    style.textContent=[
+      'button.vexa-liquid-metal-button{position:relative!important;background:transparent!important;border:0!important;outline:0!important;box-shadow:none!important;overflow:visible!important;border-radius:100px!important;color:#666!important;font-size:14px!important;font-weight:400!important;text-shadow:0 1px 2px rgba(0,0,0,.5)!important;opacity:1!important;transform:none!important;perspective:1000px!important;perspective-origin:50% 50%!important;transform-style:preserve-3d!important;isolation:isolate!important}',
+      'button.vexa-liquid-metal-button.empty,button.vexa-liquid-metal-button:disabled{opacity:1!important}',
+      'button.vexa-liquid-metal-button:active{transform:none!important}',
+      'button.vexa-liquid-metal-button::before{content:none!important;display:none!important}',
+      'button.vexa-liquid-metal-button>.vexa-lm-shader-layer,button.vexa-liquid-metal-button>.vexa-lm-inner-layer,button.vexa-liquid-metal-button>.vexa-lm-ripple-layer{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;pointer-events:none!important;transform-style:preserve-3d!important}',
+      'button.vexa-liquid-metal-button>.vexa-lm-shader-layer{z-index:10!important;transform:translateZ(0) translateY(0) scale(1)!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),width .4s ease,height .4s ease!important}',
+      'button.vexa-liquid-metal-button>.vexa-lm-inner-layer{z-index:20!important;transform:translateZ(10px) translateY(0) scale(1)!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),width .4s ease,height .4s ease!important}',
+      'button.vexa-liquid-metal-button>.vexa-lm-ripple-layer{z-index:40!important;border-radius:100px!important;overflow:hidden!important}',
+      'button.vexa-liquid-metal-button>:not(.vexa-lm-shader-layer):not(.vexa-lm-inner-layer):not(.vexa-lm-ripple-layer){position:relative!important;z-index:30!important;translate:0 0 20px;color:#666!important;text-shadow:0 1px 2px rgba(0,0,0,.5)!important}',
+      'button.vexa-liquid-metal-button .vexa-lm-inner{position:absolute!important;inset:2px!important;border-radius:100px!important;background:linear-gradient(180deg,#202020 0%,#000 100%)!important;box-shadow:none!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),width .4s ease,height .4s ease,box-shadow .15s cubic-bezier(.4,0,.2,1)!important}',
+      'button.vexa-liquid-metal-button .vexa-lm-shader-frame{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;border-radius:100px!important;background:rgb(0 0 0 / 0)!important;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 36px 14px rgba(0,0,0,.02),0 20px 12px rgba(0,0,0,.08),0 9px 9px rgba(0,0,0,.12),0 2px 5px rgba(0,0,0,.15)!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),width .4s ease,height .4s ease,box-shadow .15s cubic-bezier(.4,0,.2,1)!important}',
+      'button.vexa-liquid-metal-button .vexa-lm-shader-host{position:absolute!important;inset:0!important;width:100%!important;max-width:100%!important;height:100%!important;border-radius:100px!important;overflow:hidden!important;transition:width .4s ease,height .4s ease!important}',
+      'button.vexa-liquid-metal-button .vexa-lm-shader-host canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;display:block!important;border-radius:100px!important}',
+      'button.vexa-liquid-metal-button.vexa-lm-hover .vexa-lm-shader-frame{box-shadow:0 0 0 1px rgba(0,0,0,.4),0 12px 6px rgba(0,0,0,.05),0 8px 5px rgba(0,0,0,.1),0 4px 4px rgba(0,0,0,.15),0 1px 2px rgba(0,0,0,.2)!important}',
+      'button.vexa-liquid-metal-button.vexa-lm-pressed>.vexa-lm-inner-layer{transform:translateZ(10px) translateY(1px) scale(.98)!important}',
+      'button.vexa-liquid-metal-button.vexa-lm-pressed>.vexa-lm-shader-layer{transform:translateZ(0) translateY(1px) scale(.98)!important}',
+      'button.vexa-liquid-metal-button.vexa-lm-pressed .vexa-lm-inner{box-shadow:inset 0 2px 4px rgba(0,0,0,.4),inset 0 1px 2px rgba(0,0,0,.3)!important}',
+      'button.vexa-liquid-metal-button.vexa-lm-pressed .vexa-lm-shader-frame{box-shadow:0 0 0 1px rgba(0,0,0,.5),0 1px 2px rgba(0,0,0,.3)!important}',
+      '.vexa-lm-ripple{position:absolute!important;width:20px!important;height:20px!important;border-radius:50%!important;background:radial-gradient(circle,rgba(255,255,255,.4) 0%,rgba(255,255,255,0) 70%)!important;pointer-events:none!important;animation:vexaLmRipple .6s ease-out!important}',
+      'button.vexa-liquid-metal-button.tts-generate .tts-generate-wave i{background:#666!important}',
+      'button.vexa-liquid-metal-button.tts-generate .tts-generate-wave::before{background:linear-gradient(90deg,#000 0,rgba(0,0,0,.94) 28%,rgba(0,0,0,0) 100%)!important}',
+      'button.vexa-liquid-metal-button.tts-generate .tts-generate-wave::after{background:linear-gradient(270deg,#000 0,rgba(0,0,0,.94) 28%,rgba(0,0,0,0) 100%)!important}',
+      'button.vexa-liquid-metal-button.image-generate.loading>:not(.vexa-lm-shader-layer):not(.vexa-lm-inner-layer):not(.vexa-lm-ripple-layer){opacity:0!important}',
+      'button.vexa-liquid-metal-button.image-generate.loading::after{z-index:35!important;border:2px solid rgba(102,102,102,.28)!important;border-top-color:#666!important}',
+      'button.vexa-liquid-metal-button.vexa-stt-record .vexa-stt-stop-shape{background:#666!important}',
+      '.vexa-stt.processing button.vexa-liquid-metal-button.vexa-stt-record::after{z-index:30!important;color:#666!important;text-shadow:0 1px 2px rgba(0,0,0,.5)!important}',
+      '@keyframes vexaLmRipple{0%{transform:translate(-50%,-50%) scale(0);opacity:.6}100%{transform:translate(-50%,-50%) scale(4);opacity:0}}'
+    ].join('');
+    doc.head.appendChild(style);
+  }
+
+  function layer(doc,className){
+    var node=doc.createElement('span');
+    node.className=className;
+    node.setAttribute('aria-hidden','true');
+    return node;
+  }
+
+  function mount(button){
+    if(!button||mounts.has(button))return;
+    mounts.set(button,{pending:true});
+    loadLibrary().then(function(library){
+      if(!button.isConnected){mounts.delete(button);return}
+      var doc=button.ownerDocument;
+      ensureStyles(doc);
+      var shaderLayer=layer(doc,'vexa-lm-shader-layer');
+      var shaderFrame=layer(doc,'vexa-lm-shader-frame');
+      var shaderHost=layer(doc,'vexa-lm-shader-host');
+      var innerLayer=layer(doc,'vexa-lm-inner-layer');
+      var inner=layer(doc,'vexa-lm-inner');
+      var rippleLayer=layer(doc,'vexa-lm-ripple-layer');
+      shaderFrame.appendChild(shaderHost);
+      shaderLayer.appendChild(shaderFrame);
+      innerLayer.appendChild(inner);
+      button.appendChild(shaderLayer);
+      button.appendChild(innerLayer);
+      button.appendChild(rippleLayer);
+      button.classList.add('vexa-liquid-metal-button');
+
+      var shaderMount=new library.ShaderMount(shaderHost,library.liquidMetalFragmentShader,{
+        u_repetition:4,
+        u_softness:.5,
+        u_shiftRed:.3,
+        u_shiftBlue:.3,
+        u_distortion:0,
+        u_contour:0,
+        u_angle:45,
+        u_scale:8,
+        u_shape:1,
+        u_offsetX:.1,
+        u_offsetY:-.1
+      },undefined,.6);
+      mounts.set(button,{mount:shaderMount});
+
+      button.addEventListener('mouseenter',function(){
+        button.classList.add('vexa-lm-hover');
+        if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(1);
+      });
+      button.addEventListener('mouseleave',function(){
+        button.classList.remove('vexa-lm-hover','vexa-lm-pressed');
+        if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(.6);
+      });
+      button.addEventListener('pointerdown',function(){
+        if(!button.disabled)button.classList.add('vexa-lm-pressed');
+      });
+      function release(){button.classList.remove('vexa-lm-pressed')}
+      button.addEventListener('pointerup',release);
+      button.addEventListener('pointercancel',release);
+      button.addEventListener('click',function(event){
+        if(button.disabled)return;
+        if(shaderMount&&shaderMount.setSpeed){
+          shaderMount.setSpeed(2.4);
+          setTimeout(function(){
+            if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(button.classList.contains('vexa-lm-hover')?1:.6);
+          },300);
+        }
+        var rect=button.getBoundingClientRect();
+        var ripple=layer(doc,'vexa-lm-ripple');
+        var x=Number(event.clientX),y=Number(event.clientY);
+        ripple.style.left=String(Number.isFinite(x)&&x>0?x-rect.left:rect.width/2)+'px';
+        ripple.style.top=String(Number.isFinite(y)&&y>0?y-rect.top:rect.height/2)+'px';
+        rippleLayer.appendChild(ripple);
+        setTimeout(function(){if(ripple.parentNode)ripple.remove()},600);
+      });
+    }).catch(function(error){
+      mounts.delete(button);
+      console.error('[Vexa] Liquid Metal unavailable',error);
+    });
+  }
+
+  window.vexaMountLiquidMetalButton=mount;
+  mount(document.getElementById('convertButton'));
+  mount(document.getElementById('generateImageButton'));
+
+  document.addEventListener('load',function(event){
+    var frame=event.target;
+    if(!frame||frame.tagName!=='IFRAME')return;
+    setTimeout(function(){
+      try{
+        var doc=frame.contentDocument;
+        var record=doc&&doc.getElementById('vexaSttRecord');
+        if(record)mount(record);
+      }catch(error){}
+    },0);
+  },true);
+})();
+</script>`;
+
 export const MINI_APP_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -290,6 +438,7 @@ export const MINI_APP_HTML = `<!doctype html>
   </section>
 
   <div id="toast" class="toast" role="status"></div>
+  ${LIQUID_METAL_RUNTIME}
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script type="module" src="/mini-app/app.js?v=20260815-image-wheel-fix-1"></script>
 </body>
