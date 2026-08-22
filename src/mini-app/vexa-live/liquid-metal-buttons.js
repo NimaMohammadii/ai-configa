@@ -19,8 +19,8 @@ function installStyles() {
   style.id = STYLE_ID;
   style.textContent =
     ".vexa-lm-shell{width:142px!important;height:46px!important;min-width:142px!important;min-height:46px!important;display:block!important;justify-self:center!important;align-self:center!important;margin-left:auto!important;margin-right:auto!important;perspective:1000px!important;perspective-origin:50% 50%!important;overflow:visible!important}" +
-    "button.vexa-liquid-metal-button{position:relative!important;width:142px!important;max-width:142px!important;min-width:142px!important;height:46px!important;max-height:46px!important;min-height:46px!important;margin:0!important;padding:0!important;display:block!important;overflow:hidden!important;border:0!important;border-radius:100px!important;outline:0!important;background:transparent!important;color:transparent!important;box-shadow:none!important;cursor:pointer!important;transform-style:preserve-3d!important;transform:translateZ(25px)!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),opacity .2s ease!important;isolation:isolate!important;-webkit-appearance:none!important;appearance:none!important}" +
-    "button.vexa-liquid-metal-button:active{transform:translateZ(25px)!important}button.vexa-liquid-metal-button:disabled{cursor:default!important}" +
+    "button.vexa-liquid-metal-button{position:relative!important;width:142px!important;max-width:142px!important;min-width:142px!important;height:46px!important;max-height:46px!important;min-height:46px!important;margin:0!important;padding:0!important;display:block!important;overflow:hidden!important;border:0!important;border-radius:100px!important;outline:0!important;background:transparent!important;color:transparent!important;box-shadow:none!important;cursor:pointer!important;transform-style:preserve-3d!important;transform:none!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),opacity .2s ease!important;isolation:isolate!important;-webkit-appearance:none!important;appearance:none!important}" +
+    "button.vexa-liquid-metal-button:active{transform:none!important}button.vexa-liquid-metal-button:disabled{cursor:default!important}button.vexa-liquid-metal-button:before,button.vexa-liquid-metal-button:after{display:none!important;content:none!important}" +
     "button.vexa-liquid-metal-button>*:not(.vexa-lm-stage):not(.vexa-lm-ripple){opacity:0!important;visibility:hidden!important;pointer-events:none!important}" +
     ".vexa-lm-original{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}" +
     ".vexa-lm-stage{position:absolute!important;inset:0!important;width:142px!important;height:46px!important;display:block!important;pointer-events:none!important;transform-style:preserve-3d!important;z-index:1!important}" +
@@ -179,7 +179,9 @@ function decorate(button, target) {
 
   const stateObserver = new MutationObserver(function () {
     syncLabel();
-    if (button.classList.contains("loading") && mount && mount.setSpeed) mount.setSpeed(CLICK_SPEED);
+    if (!mount || !mount.setSpeed) return;
+    if (button.classList.contains("loading")) mount.setSpeed(CLICK_SPEED);
+    else mount.setSpeed(button.classList.contains("is-hovered") ? HOVER_SPEED : BASE_SPEED);
   });
   stateObserver.observe(button, { attributes: true, attributeFilter: ["class", "disabled"] });
 
