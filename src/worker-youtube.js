@@ -1,9 +1,5 @@
 import worker from "./worker-live-events.js";
 import {
-  appendAdminTtsTestingRuntime,
-  handleAdminTtsTestingRequest,
-} from "./mini-app/admin-tts-testing.js";
-import {
   handleYouTubeDownloadRequest,
   isYouTubeDownloadRequest,
 } from "./mini-app/vexa-live/youtube-download-exec.js";
@@ -41,9 +37,6 @@ export default {
   ...worker,
   async fetch(request, env, ctx) {
     try {
-      const adminTtsResponse = await handleAdminTtsTestingRequest(request, env);
-      if (adminTtsResponse) return adminTtsResponse;
-
       if (isVexaLivePersistenceRequest(request)) {
         return handleVexaLivePersistenceRequest(request);
       }
@@ -63,7 +56,6 @@ export default {
         return await handleYouTubeDownloadRequest(request, env, ctx);
       }
       let response = await worker.fetch(request, env, ctx);
-      response = await appendAdminTtsTestingRuntime(request, response);
       response = await appendVexaLiveLandingRuntime(request, response);
       response = await appendVexaCustomPlayerRuntime(request, response);
       response = await appendVexaLiveSubtitlesRuntime(request, response);
