@@ -283,7 +283,7 @@ export function createVexaMeshRendererSource(canvasExpression, { autoStart = tru
 
     function resize(){
       if(!gl||!canvas)return;
-      const dpr=Math.min(2,Math.max(1,Number(window.devicePixelRatio)||1));
+      const dpr=Math.min(3,Math.max(1,Number(window.devicePixelRatio)||1));
       const w=Math.max(1,Math.round(canvas.clientWidth*dpr));
       const h=Math.max(1,Math.round(canvas.clientHeight*dpr));
       if(canvas.width!==w||canvas.height!==h){
