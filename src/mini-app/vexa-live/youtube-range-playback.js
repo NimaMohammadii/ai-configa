@@ -5,7 +5,10 @@ import {
 } from "../../admin.js";
 import { authenticateMiniAppPayload } from "../auth.js";
 import { getVexaLiveAccessSettings } from "./access.js";
-import { VexaMediaContainerV3 as BaseVexaMediaContainerV3 } from "./youtube-download-exec.js";
+import {
+  VexaMediaContainerV3 as BaseVexaMediaContainerV3,
+  normalizeBotMediaUrl,
+} from "./youtube-download-exec.js";
 
 const PREPARE_PATH = "/mini-app/live/api/youtube-playback/prepare";
 const PLAYBACK_PATH = "/mini-app/live/api/youtube-playback";
@@ -14,6 +17,8 @@ const TOKEN_TTL_SECONDS = 4 * 60 * 60;
 const METADATA_TIMEOUT_MS = 35_000;
 const STREAM_START_TIMEOUT_MS = 25_000;
 const FORMAT_SELECTOR = "b[ext=mp4][protocol^=http][vcodec!=none][acodec!=none]";
+const R2_MEDIA_PREFIX = "r2://";
+const PLAYBACK_STORAGE_PREFIX = "vexa-playback/";
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
@@ -344,47 +349,95 @@ async function preparePlayback(request, env, ctx) {
   const payload = await request.json().catch(() => ({}));
   const user = await authenticateMiniAppPayload(payload, env);
   await assertLiveAccess(env, user.id);
-  const sourceUrl = normalizeYouTubeUrl(payload.url);
-  if (!sourceUrl) return json({ error: "Enter a valid YouTube link" }, 400);
+  const normalized = normalizeBotMediaUrl(payload.url);
+  if (!normalized?.url) return json({ error: "لینک ویدیو رو وارد کن" }, 400);
+  const sourceUrl = normalized.url;
 
+  await ensureTokenTable(env);
+  const now = Math.floor(Date.now() / 1000);
+  const token = randomToken();
   const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(user.id));
   let media;
   try {
-    media = await container.resolvePlaybackMedia(sourceUrl);
+    media = normalized.provider === "pornhub"
+      ? await stagePornHubPlayback(env, container, sourceUrl, token, now + TOKEN_TTL_SECONDS)
+      : await container.resolvePlaybackMedia(sourceUrl);
   } catch (error) {
     console.error("Vexa playback prepare failed", error?.stack || error);
     return json({ error: publicErrorMessage(error) }, 502);
   }
 
-  await ensureTokenTable(env);
-  const now = Math.floor(Date.now() / 1000);
-  const token = randomToken();
-  await env.DB.prepare(
-    "INSERT INTO vexa_youtube_playback_tokens " +
-    "(token, user_id, source_url, media_url, media_headers, media_size, title, created_at, expires_at) " +
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(
-    token,
-    String(user.id),
-    sourceUrl,
-    media.mediaUrl,
-    JSON.stringify(media.requestHeaders || {}),
-    Number(media.fileSize),
-    String(media.title || "YouTube video"),
-    now,
-    now + TOKEN_TTL_SECONDS,
-  ).run();
+  try {
+    await env.DB.prepare(
+      "INSERT INTO vexa_youtube_playback_tokens " +
+      "(token, user_id, source_url, media_url, media_headers, media_size, title, created_at, expires_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      token,
+      String(user.id),
+      sourceUrl,
+      media.mediaUrl,
+      JSON.stringify(media.requestHeaders || {}),
+      Number(media.fileSize),
+      String(media.title || "Video"),
+      now,
+      now + TOKEN_TTL_SECONDS,
+    ).run();
+  } catch (error) {
+    if (media.r2Key && env.EXPLORE_MEDIA) {
+      await env.EXPLORE_MEDIA.delete(media.r2Key).catch(() => null);
+    }
+    throw error;
+  }
 
-  ctx?.waitUntil?.(
-    env.DB.prepare("DELETE FROM vexa_youtube_playback_tokens WHERE expires_at < ?")
-      .bind(now - 86400).run().catch(() => null)
-  );
+  ctx?.waitUntil?.(cleanupExpiredPlayback(env, now).catch(() => null));
 
   return json({
     ok: true,
     playbackUrl: PLAYBACK_PATH + "?token=" + encodeURIComponent(token),
-    title: media.title || "YouTube video",
+    title: media.title || "Video",
   });
+}
+
+async function stagePornHubPlayback(env, container, sourceUrl, token, expiresAt) {
+  if (!env.EXPLORE_MEDIA) throw new Error("Video playback storage is unavailable");
+  const metadata = await container.prepareVideo(sourceUrl);
+  const stream = await container.streamVideo(
+    sourceUrl,
+    metadata.strategyId,
+    metadata.formatId,
+    metadata.transport || "",
+    0,
+  );
+  const key = PLAYBACK_STORAGE_PREFIX + token + ".mp4";
+  let object;
+  try {
+    object = await env.EXPLORE_MEDIA.put(key, stream, {
+      httpMetadata: {
+        contentType: "video/mp4",
+        cacheControl: "private, max-age=" + TOKEN_TTL_SECONDS,
+      },
+      customMetadata: {
+        vexaPlayback: "1",
+        expiresAt: String(expiresAt),
+      },
+    });
+  } catch (error) {
+    await env.EXPLORE_MEDIA.delete(key).catch(() => null);
+    throw error;
+  }
+  const fileSize = positiveInteger(object?.size);
+  if (!object || !fileSize) {
+    await env.EXPLORE_MEDIA.delete(key).catch(() => null);
+    throw new Error("Video playback could not be prepared");
+  }
+  return {
+    title: metadata?.title || "Video",
+    mediaUrl: R2_MEDIA_PREFIX + key,
+    requestHeaders: {},
+    fileSize,
+    r2Key: key,
+  };
 }
 
 async function streamPlayback(request, env) {
@@ -397,9 +450,40 @@ async function streamPlayback(request, env) {
 
   let range = parseByteRange(request.headers.get("Range"), size);
   if (range.error) return rangeNotSatisfiable(size);
+
+  const r2Key = playbackStorageKey(row.media_url);
+  if (r2Key) {
+    if (!env.EXPLORE_MEDIA) return json({ error: "Playback source is unavailable" }, 503);
+    if (request.method === "HEAD") {
+      const head = await env.EXPLORE_MEDIA.head(r2Key);
+      if (!head) return json({ error: "Playback link expired" }, 410);
+      const actualSize = positiveInteger(head.size);
+      if (actualSize && actualSize !== size) {
+        size = actualSize;
+        range = parseByteRange(request.headers.get("Range"), size);
+        if (range.error) return rangeNotSatisfiable(size);
+      }
+      return new Response(null, {
+        status: range.partial ? 206 : 200,
+        headers: playbackHeaders(size, range),
+      });
+    }
+
+    const object = await env.EXPLORE_MEDIA.get(r2Key, {
+      range: {
+        offset: range.start,
+        length: range.end - range.start + 1,
+      },
+    });
+    if (!object?.body) return json({ error: "Playback link expired" }, 410);
+    return new Response(object.body, {
+      status: range.partial ? 206 : 200,
+      headers: playbackHeaders(size, range),
+    });
+  }
+
   const status = range.partial ? 206 : 200;
   const responseHeaders = playbackHeaders(size, range);
-
   if (request.method === "HEAD") {
     return new Response(null, { status, headers: responseHeaders });
   }
@@ -463,9 +547,36 @@ async function readToken(request, env) {
     "FROM vexa_youtube_playback_tokens WHERE token = ?"
   ).bind(token).first();
   if (!row || Number(row.expires_at || 0) <= now) {
+    const key = playbackStorageKey(row?.media_url);
+    if (key && env.EXPLORE_MEDIA) await env.EXPLORE_MEDIA.delete(key).catch(() => null);
+    if (row) await env.DB.prepare("DELETE FROM vexa_youtube_playback_tokens WHERE token = ?").bind(token).run().catch(() => null);
     return { response: json({ error: "Playback link expired" }, 410), token };
   }
   return { row, token };
+}
+
+function playbackStorageKey(value) {
+  const raw = String(value || "");
+  if (!raw.startsWith(R2_MEDIA_PREFIX)) return "";
+  const key = raw.slice(R2_MEDIA_PREFIX.length);
+  return key.startsWith(PLAYBACK_STORAGE_PREFIX) && /^[A-Za-z0-9_./-]+$/.test(key) ? key : "";
+}
+
+async function cleanupExpiredPlayback(env, now) {
+  if (!env.EXPLORE_MEDIA) return;
+  await ensureTokenTable(env);
+  const result = await env.DB.prepare(
+    "SELECT token, media_url FROM vexa_youtube_playback_tokens " +
+    "WHERE expires_at <= ? AND media_url LIKE ? ORDER BY expires_at ASC LIMIT 25"
+  ).bind(now, R2_MEDIA_PREFIX + "%").all();
+  for (const row of result?.results || []) {
+    const key = playbackStorageKey(row.media_url);
+    if (key) await env.EXPLORE_MEDIA.delete(key).catch(() => null);
+    await env.DB.prepare("DELETE FROM vexa_youtube_playback_tokens WHERE token = ?").bind(String(row.token || "")).run().catch(() => null);
+  }
+  await env.DB.prepare(
+    "DELETE FROM vexa_youtube_playback_tokens WHERE expires_at < ? AND media_url NOT LIKE ?"
+  ).bind(now - 86400, R2_MEDIA_PREFIX + "%").run().catch(() => null);
 }
 
 function parseByteRange(value, size) {
@@ -625,6 +736,19 @@ const PUBLIC_ERRORS = new Set([
   "Could not determine YouTube video size",
   "YouTube playback did not start in time",
   "YouTube playback metadata was invalid",
+  "This PornHub video is not available from the server region",
+  "PornHub blocked the Cloudflare download request",
+  "This PornHub video requires additional access",
+  "This PornHub video is unavailable",
+  "PornHub did not expose a downloadable video format",
+  "PornHub returned an empty video stream",
+  "PornHub returned an invalid MP4 stream",
+  "PornHub stream did not start in time",
+  "PornHub metadata was invalid",
+  "PornHub could not prepare this video",
+  "PornHub download is temporarily unavailable",
+  "Video playback storage is unavailable",
+  "Video playback could not be prepared",
 ]);
 
 function isPublicError(error) {
@@ -633,7 +757,7 @@ function isPublicError(error) {
 
 function publicErrorMessage(error) {
   const message = String(error?.message || "");
-  return PUBLIC_ERRORS.has(message) ? message : "YouTube playback is temporarily unavailable";
+  return PUBLIC_ERRORS.has(message) ? message : "Video playback is temporarily unavailable";
 }
 
 function randomToken() {
@@ -727,7 +851,7 @@ export const PLAYBACK_RUNTIME_JS = String.raw`
     const empty = document.getElementById("vexaLiveEmpty");
     if (empty) empty.style.display = "none";
     const titleNode = document.getElementById("vexaLiveVideoTitle");
-    if (titleNode) titleNode.textContent = String(title || "YouTube video");
+    if (titleNode) titleNode.textContent = String(title || "Video");
     const download = document.getElementById("vexaLiveDownload");
     if (download) {
       download.disabled = false;
@@ -738,7 +862,7 @@ export const PLAYBACK_RUNTIME_JS = String.raw`
 
   async function openVideo() {
     const sourceUrl = String(document.getElementById("vexaLiveYoutubeUrl")?.value || "").trim();
-    if (!sourceUrl) return setState(false, "Paste a YouTube link", true);
+    if (!sourceUrl) return setState(false, "لینک ویدیو رو وارد کن", true);
     setState(true, "Preparing video…", false);
     haptic("light");
     try {
@@ -761,7 +885,7 @@ export const PLAYBACK_RUNTIME_JS = String.raw`
       video.addEventListener("loadedmetadata", () => setState(false, "", false), { once: true });
       video.addEventListener("waiting", () => setState(false, "Buffering…", false));
       video.addEventListener("playing", () => setState(false, "", false));
-      video.addEventListener("error", () => setState(false, "Could not play this YouTube video", true), { once: true });
+      video.addEventListener("error", () => setState(false, "Could not play this video", true), { once: true });
       video.load();
       setState(false, "Buffering…", false);
       try { await video.play(); } catch (error) {}
@@ -788,7 +912,7 @@ export const PLAYBACK_RUNTIME_JS = String.raw`
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.downloadUrl) throw new Error(String(data.error || "Could not prepare download"));
       const absoluteUrl = new URL(String(data.downloadUrl), window.location.origin).href;
-      const fileName = String(data.fileName || "Vexa-YouTube-video.mp4");
+      const fileName = String(data.fileName || "Vexa-video.mp4");
       const tg = telegram();
       if (tg?.downloadFile) {
         try { tg.downloadFile({ url: absoluteUrl, file_name: fileName }); }
