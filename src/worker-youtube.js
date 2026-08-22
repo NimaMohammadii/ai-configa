@@ -1,5 +1,9 @@
 import worker from "./worker-live-events.js";
 import {
+  appendMiniAppVoiceTransformRuntime,
+  handleMiniAppVoiceTransformRequest,
+} from "./mini-app/voice-transform-miniapp.js";
+import {
   handleYouTubeDownloadRequest,
   isYouTubeDownloadRequest,
 } from "./mini-app/vexa-live/youtube-download-exec.js";
@@ -37,6 +41,9 @@ export default {
   ...worker,
   async fetch(request, env, ctx) {
     try {
+      const voiceTransformResponse = await handleMiniAppVoiceTransformRequest(request, env);
+      if (voiceTransformResponse) return voiceTransformResponse;
+
       if (isVexaLivePersistenceRequest(request)) {
         return handleVexaLivePersistenceRequest(request);
       }
@@ -56,6 +63,7 @@ export default {
         return await handleYouTubeDownloadRequest(request, env, ctx);
       }
       let response = await worker.fetch(request, env, ctx);
+      response = await appendMiniAppVoiceTransformRuntime(request, response);
       response = await appendVexaLiveLandingRuntime(request, response);
       response = await appendVexaCustomPlayerRuntime(request, response);
       response = await appendVexaLiveSubtitlesRuntime(request, response);
