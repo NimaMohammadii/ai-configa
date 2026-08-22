@@ -3,6 +3,8 @@ import { liquidMetalFragmentShader, ShaderMount } from "https://cdn.jsdelivr.net
 
 const STYLE_ID = "vexaLiquidMetalButtonStyles";
 const READY_ATTR = "data-vexa-liquid-metal";
+const MIN_PIXEL_RATIO = 4;
+const MAX_PIXEL_COUNT = 2000000;
 
 const TARGETS = [
   { id: "convertButton", labelSelector: ".tts-generate-label", fallback: "Generate Voice" },
@@ -15,7 +17,7 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent =
-    "button.vexa-liquid-metal{position:relative!important;overflow:visible!important;border-radius:100px!important;background:transparent!important;border:none!important;outline:none!important;box-shadow:none!important;isolation:isolate!important;transform-style:preserve-3d!important;perspective:1000px!important;perspective-origin:50% 50%!important}" +
+    "button.vexa-liquid-metal{--vexa-lm-radius:13px;position:relative!important;overflow:visible!important;border-radius:var(--vexa-lm-radius)!important;background:transparent!important;border:none!important;outline:none!important;box-shadow:none!important;isolation:isolate!important;transform-style:preserve-3d!important;perspective:1000px!important;perspective-origin:50% 50%!important}" +
     "button.vexa-liquid-metal:active{transform:none!important}" +
     "button.vexa-liquid-metal:before,button.vexa-liquid-metal:after{display:none!important;content:none!important}" +
     ".vexa-lm-original{position:absolute!important;inset:0!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important}" +
@@ -24,20 +26,22 @@ function installStyles() {
     ".vexa-lm-content{display:flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;transform:translateZ(20px)!important;z-index:30!important;pointer-events:none!important}" +
     ".vexa-lm-label{font-size:14px!important;line-height:1!important;color:#666666!important;font-weight:400!important;text-shadow:0 1px 2px rgba(0,0,0,.5)!important;white-space:nowrap!important;transition:all .8s cubic-bezier(.34,1.56,.64,1)!important;transform:scale(1)!important;font-family:inherit!important}" +
     ".vexa-lm-inner-layer{transform:translateZ(10px) translateY(0) scale(1)!important;z-index:20!important}" +
-    ".vexa-lm-inner{position:absolute!important;inset:2px!important;border-radius:100px!important;background:linear-gradient(180deg,#202020 0%,#000000 100%)!important;box-shadow:none!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),box-shadow .15s cubic-bezier(.4,0,.2,1)!important}" +
+    ".vexa-lm-inner{position:absolute!important;inset:2px!important;border-radius:calc(var(--vexa-lm-radius) - 2px)!important;background:linear-gradient(180deg,#202020 0%,#000000 100%)!important;box-shadow:none!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),box-shadow .15s cubic-bezier(.4,0,.2,1)!important}" +
     ".vexa-lm-shader-layer{transform:translateZ(0) translateY(0) scale(1)!important;z-index:10!important}" +
-    ".vexa-lm-shader-frame{position:absolute!important;inset:0!important;border-radius:100px!important;background:rgb(0 0 0 / 0)!important;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 36px 14px rgba(0,0,0,.02),0 20px 12px rgba(0,0,0,.08),0 9px 9px rgba(0,0,0,.12),0 2px 5px rgba(0,0,0,.15)!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),box-shadow .15s cubic-bezier(.4,0,.2,1)!important}" +
-    ".vexa-lm-shader{position:absolute!important;inset:0!important;width:100%!important;max-width:100%!important;height:100%!important;border-radius:100px!important;overflow:hidden!important;transition:width .4s ease,height .4s ease!important}" +
-    ".vexa-lm-shader canvas{width:100%!important;height:100%!important;display:block!important;position:absolute!important;top:0!important;left:0!important;border-radius:100px!important}" +
-    ".vexa-lm-ripple-clip{position:absolute!important;inset:0!important;z-index:40!important;overflow:hidden!important;border-radius:100px!important;pointer-events:none!important}" +
+    ".vexa-lm-shader-frame{position:absolute!important;inset:0!important;border-radius:var(--vexa-lm-radius)!important;background:rgb(0 0 0 / 0)!important;box-shadow:inset 0 0 0 1px rgba(235,235,242,.72),0 0 0 1px rgba(0,0,0,.3),0 36px 14px rgba(0,0,0,.02),0 20px 12px rgba(0,0,0,.08),0 9px 9px rgba(0,0,0,.12),0 2px 5px rgba(0,0,0,.15)!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),box-shadow .15s cubic-bezier(.4,0,.2,1)!important}" +
+    ".vexa-lm-shader{position:absolute!important;inset:0!important;width:100%!important;max-width:100%!important;height:100%!important;border-radius:var(--vexa-lm-radius)!important;overflow:hidden!important;transition:width .4s ease,height .4s ease!important;filter:brightness(1.08) contrast(1.04)}" +
+    ".vexa-lm-shader canvas{width:100%!important;height:100%!important;display:block!important;position:absolute!important;top:0!important;left:0!important;border-radius:var(--vexa-lm-radius)!important}" +
+    ".vexa-lm-ripple-clip{position:absolute!important;inset:0!important;z-index:40!important;overflow:hidden!important;border-radius:var(--vexa-lm-radius)!important;pointer-events:none!important}" +
     ".vexa-lm-ripple{position:absolute!important;width:20px!important;height:20px!important;border-radius:50%!important;background:radial-gradient(circle,rgba(255,255,255,.4) 0%,rgba(255,255,255,0) 70%)!important;pointer-events:none!important;animation:vexaLmRipple .6s ease-out!important}" +
-    "button.vexa-liquid-metal.vexa-lm-hover .vexa-lm-shader-frame{box-shadow:0 0 0 1px rgba(0,0,0,.4),0 12px 6px rgba(0,0,0,.05),0 8px 5px rgba(0,0,0,.1),0 4px 4px rgba(0,0,0,.15),0 1px 2px rgba(0,0,0,.2)!important}" +
+    "button.vexa-liquid-metal.vexa-lm-hover .vexa-lm-shader-frame{box-shadow:inset 0 0 0 1px rgba(245,245,250,.82),0 0 0 1px rgba(0,0,0,.4),0 12px 6px rgba(0,0,0,.05),0 8px 5px rgba(0,0,0,.1),0 4px 4px rgba(0,0,0,.15),0 1px 2px rgba(0,0,0,.2)!important}" +
     "button.vexa-liquid-metal.vexa-lm-pressed .vexa-lm-inner-layer{transform:translateZ(10px) translateY(1px) scale(.98)!important}" +
     "button.vexa-liquid-metal.vexa-lm-pressed .vexa-lm-shader-layer{transform:translateZ(0) translateY(1px) scale(.98)!important}" +
     "button.vexa-liquid-metal.vexa-lm-pressed .vexa-lm-inner{box-shadow:inset 0 2px 4px rgba(0,0,0,.4),inset 0 1px 2px rgba(0,0,0,.3)!important}" +
-    "button.vexa-liquid-metal.vexa-lm-pressed .vexa-lm-shader-frame{box-shadow:0 0 0 1px rgba(0,0,0,.5),0 1px 2px rgba(0,0,0,.3)!important}" +
+    "button.vexa-liquid-metal.vexa-lm-pressed .vexa-lm-shader-frame{box-shadow:inset 0 0 0 1px rgba(225,225,232,.68),0 0 0 1px rgba(0,0,0,.5),0 1px 2px rgba(0,0,0,.3)!important}" +
     "button.vexa-liquid-metal:disabled .vexa-lm-stage{opacity:.45!important}" +
     "button.vexa-liquid-metal.loading .vexa-lm-label{opacity:.5!important}" +
+    "#convertButton.vexa-liquid-metal,#convertButton.vexa-liquid-metal.empty,#convertButton.vexa-liquid-metal:disabled{opacity:1!important}" +
+    "#convertButton.vexa-liquid-metal:disabled .vexa-lm-stage,#convertButton.vexa-liquid-metal.loading .vexa-lm-label{opacity:1!important}" +
     "@keyframes vexaLmRipple{0%{transform:translate(-50%,-50%) scale(0);opacity:.6}100%{transform:translate(-50%,-50%) scale(4);opacity:0}}";
   document.head.appendChild(style);
 }
@@ -58,8 +62,8 @@ function currentLabel(button, target) {
 function destroyShader(mount) {
   if (!mount) return;
   try {
-    if (typeof mount.destroy === "function") mount.destroy();
-    else if (typeof mount.dispose === "function") mount.dispose();
+    if (typeof mount.dispose === "function") mount.dispose();
+    else if (typeof mount.destroy === "function") mount.destroy();
   } catch (error) {}
 }
 
@@ -115,6 +119,9 @@ function decorate(button, target) {
       },
       undefined,
       0.6,
+      0,
+      MIN_PIXEL_RATIO,
+      MAX_PIXEL_COUNT,
     );
   } catch (error) {
     console.error("[Vexa] Failed to load Liquid Metal shader", error);
