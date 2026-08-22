@@ -239,7 +239,18 @@ const MINI_APP_VOICE_TRANSFORM_UI = String.raw`
   function q(id){return document.getElementById(id)}
   function playbackEnergy(){return 0}
   function haptic(kind){try{if(kind==='success')tg&&tg.HapticFeedback&&tg.HapticFeedback.notificationOccurred&&tg.HapticFeedback.notificationOccurred('success');else if(kind==='error')tg&&tg.HapticFeedback&&tg.HapticFeedback.notificationOccurred&&tg.HapticFeedback.notificationOccurred('error');else tg&&tg.HapticFeedback&&tg.HapticFeedback.impactOccurred&&tg.HapticFeedback.impactOccurred(kind||'light')}catch(error){}}
-  function setPhase(phase,label){state.phase=phase;var overlay=q('vexaVoiceTransformOverlay');if(overlay){overlay.classList.remove('listening','thinking','error');if(phase)overlay.classList.add(phase)}var status=q('vexaVoiceTransformStatus');if(status)status.textContent=String(label||'')}
+  function setPhase(phase,label){
+    state.phase=phase;
+    var surface=q('vexaVoiceTransformOverlay');
+    if(surface){surface.classList.remove('connecting','listening','thinking','error');if(phase&&phase!=='idle')surface.classList.add(phase)}
+    var status=q('vexaVoiceTransformStatus');
+    if(status){
+      status.classList.remove('motion-in');
+      status.textContent=String(label||'');
+      void status.offsetWidth;
+      status.classList.add('motion-in');
+    }
+  }
   function fail(error){setPhase('error',String(error&&error.message||'Voice conversion failed'));haptic('error')}
 
 ${VEXA_VOICE_ORB_SOURCE}
@@ -248,7 +259,7 @@ ${VEXA_VOICE_ORB_SOURCE}
     if(q('vexaVoiceTransformStyles'))return;
     var style=document.createElement('style');
     style.id='vexaVoiceTransformStyles';
-    style.textContent='.vexa-vt-open{width:32px;height:32px;flex:0 0 32px;padding:0;border:0;border-radius:10px;display:grid;place-items:center;color:rgba(255,255,255,.74);background:rgba(255,255,255,.045);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);transition:transform .2s ease,background .2s ease,color .2s ease}.vexa-vt-open svg{width:16px;height:16px}.vexa-vt-open:active{transform:scale(.9);background:rgba(255,255,255,.1);color:#fff}.vexa-vt-overlay{position:fixed;z-index:90;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:calc(18px + env(safe-area-inset-top)) 18px calc(26px + env(safe-area-inset-bottom));background:#080808;color:#fff;opacity:0;visibility:hidden;pointer-events:none;transform:scale(1.018);transition:opacity .3s ease,transform .46s cubic-bezier(.16,.86,.22,1),visibility 0s linear .46s;overflow:hidden}.vexa-vt-overlay.open{opacity:1;visibility:visible;pointer-events:auto;transform:scale(1);transition-delay:0s}.vexa-vt-cancel{position:absolute;z-index:3;top:calc(16px + env(safe-area-inset-top));left:16px;width:38px;height:38px;padding:0;border:1px solid rgba(255,255,255,.1);border-radius:50%;display:grid;place-items:center;color:#fff;background:rgba(255,255,255,.05);font-size:20px;font-weight:300;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:transform .2s ease,opacity .2s ease}.vexa-vt-cancel:active{transform:scale(.9)}.vexa-vt-overlay.thinking .vexa-vt-cancel{opacity:.24;pointer-events:none}.vexa-vt-stage{position:relative;width:min(78vw,340px);aspect-ratio:1;display:grid;place-items:center;opacity:0;transform:scale(.72);filter:blur(8px);transition:opacity .42s .03s ease,transform .66s cubic-bezier(.16,1,.3,1),filter .42s ease}.vexa-vt-overlay.open .vexa-vt-stage{opacity:1;transform:scale(1);filter:blur(0)}.vexa-vt-orb{display:block;width:100%;height:100%;touch-action:manipulation;cursor:pointer}.vexa-vt-copy{min-height:42px;margin-top:-14px;display:flex;flex-direction:column;align-items:center;text-align:center;opacity:0;transform:translateY(9px);transition:opacity .28s .16s ease,transform .42s .12s cubic-bezier(.16,1,.3,1)}.vexa-vt-overlay.open .vexa-vt-copy{opacity:1;transform:none}.vexa-vt-copy .vexa-voice-status{height:auto!important;min-height:20px!important;max-width:86vw!important;color:rgba(255,255,255,.72)!important;font-size:12px!important;font-weight:650!important;line-height:1.35!important;letter-spacing:-.015em!important;text-align:center!important}.vexa-vt-hint{margin-top:7px;color:rgba(255,255,255,.28);font-size:9px;font-weight:560}.vexa-vt-overlay.thinking .vexa-vt-hint{opacity:.28}.vexa-vt-overlay.error .vexa-voice-status{color:rgba(255,210,220,.78)!important}@media(max-height:650px){.vexa-vt-stage{width:min(58vh,290px)}.vexa-vt-copy{margin-top:-20px}}';
+    style.textContent='.vexa-vt-open{width:32px;height:32px;flex:0 0 32px;padding:0;border:0;border-radius:10px;display:grid;place-items:center;color:rgba(255,255,255,.74);background:rgba(255,255,255,.045);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);transition:transform .2s ease,background .2s ease,color .2s ease}.vexa-vt-open svg{width:16px;height:16px}.vexa-vt-open:active{transform:scale(.9);background:rgba(255,255,255,.1);color:#fff}.vexa-vt-open[aria-pressed="true"]{color:#fff;background:rgba(255,255,255,.095);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 0 22px rgba(132,82,255,.11)}.vexa-vt-surface{position:absolute;z-index:18;left:50%;top:59%;width:min(78vw,320px);height:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;opacity:0;visibility:hidden;pointer-events:none;transform:translate(-50%,-47%) scale(.84);filter:blur(7px);transition:opacity .3s ease,transform .58s cubic-bezier(.16,1,.3,1),filter .38s ease,visibility 0s linear .58s}.vexa-vt-surface.open{opacity:1;visibility:visible;pointer-events:auto;transform:translate(-50%,-50%) scale(1);filter:blur(0);transition-delay:0s}.vexa-vt-stage{position:relative;width:min(62vw,244px);height:min(62vw,244px);max-width:244px;max-height:244px;display:grid;place-items:center;opacity:0;transform:translateY(20px) scale(.76);filter:blur(8px);transition:opacity .34s .02s ease,transform .66s cubic-bezier(.16,1,.3,1),filter .4s ease}.vexa-vt-surface.open .vexa-vt-stage{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}.vexa-vt-orb{display:block;width:100%;height:100%;touch-action:manipulation;cursor:pointer}.vexa-vt-copy{width:100%;min-height:28px;margin-top:36px;display:flex;align-items:center;justify-content:center;text-align:center;opacity:0;transform:translateY(10px);transition:opacity .26s .17s ease,transform .46s .12s cubic-bezier(.16,1,.3,1)}.vexa-vt-surface.open .vexa-vt-copy{opacity:1;transform:none}.vexa-vt-status{display:inline-flex;align-items:center;justify-content:center;min-height:24px;max-width:min(82vw,300px);padding:0 12px;color:rgba(255,255,255,.66);font-size:11px;font-weight:650;line-height:1.25;letter-spacing:-.012em;white-space:nowrap;text-align:center;transform-origin:50% 50%}.vexa-vt-status.motion-in{animation:vexaVtStatusMotion .46s cubic-bezier(.16,1,.3,1) both}.vexa-vt-surface.listening .vexa-vt-status{color:rgba(255,255,255,.76)}.vexa-vt-surface.thinking .vexa-vt-status{color:rgba(255,255,255,.7)}.vexa-vt-surface.error .vexa-vt-status{color:rgba(255,208,219,.82);white-space:normal}.vexa-vt-cancel{position:absolute;z-index:3;right:2px;top:2px;width:32px;height:32px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;color:rgba(255,255,255,.48);background:rgba(255,255,255,.035);box-shadow:inset 0 0 0 1px rgba(255,255,255,.055);font-size:17px;font-weight:300;opacity:0;transform:scale(.8);transition:opacity .22s ease,transform .3s cubic-bezier(.16,1,.3,1),background .2s ease,color .2s ease}.vexa-vt-surface.open .vexa-vt-cancel{opacity:1;transform:scale(1)}.vexa-vt-cancel:active{transform:scale(.86);background:rgba(255,255,255,.08);color:#fff}.vexa-vt-surface.thinking .vexa-vt-cancel{opacity:.2;pointer-events:none}@keyframes vexaVtStatusMotion{0%{opacity:0;transform:translateY(8px) scale(.965);filter:blur(3px)}58%{opacity:1;filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}@media(max-height:650px){.vexa-vt-surface{top:57%}.vexa-vt-stage{width:min(48vh,210px);height:min(48vh,210px)}.vexa-vt-copy{margin-top:28px}}';
     document.head.appendChild(style);
   }
 
@@ -261,18 +272,23 @@ ${VEXA_VOICE_ORB_SOURCE}
       button.className='vexa-vt-open';
       button.type='button';
       button.setAttribute('aria-label','Transform your voice');
+      button.setAttribute('aria-pressed','false');
       button.innerHTML='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>';
       tools.insertBefore(button,tools.firstChild);
-      button.addEventListener('click',function(){openRecorder().catch(function(error){fail(error);setTimeout(closeOverlay,1500)})});
+      button.addEventListener('click',function(){
+        if(state.active&&state.phase==='listening'){finishRecording();return}
+        if(state.active)return;
+        openRecorder().catch(function(error){fail(error);setTimeout(closeOverlay,1500)})
+      });
     }
     var page=document.querySelector('.tts-page');
     if(page&&!q('vexaVoiceTransformOverlay')){
-      var overlay=document.createElement('section');
-      overlay.id='vexaVoiceTransformOverlay';
-      overlay.className='vexa-vt-overlay';
-      overlay.setAttribute('aria-hidden','true');
-      overlay.innerHTML='<button id="vexaVoiceTransformCancel" class="vexa-vt-cancel" type="button" aria-label="Cancel">×</button><div class="vexa-vt-stage"><canvas id="vexaVoiceTransformOrb" class="vexa-vt-orb" aria-label="Voice activity orb"></canvas></div><div class="vexa-vt-copy"><div id="vexaVoiceTransformStatus" class="vexa-voice-status">Ready</div><div id="vexaVoiceTransformHint" class="vexa-vt-hint">Tap the orb when you are done</div></div>';
-      page.appendChild(overlay);
+      var surface=document.createElement('section');
+      surface.id='vexaVoiceTransformOverlay';
+      surface.className='vexa-vt-surface';
+      surface.setAttribute('aria-hidden','true');
+      surface.innerHTML='<button id="vexaVoiceTransformCancel" class="vexa-vt-cancel" type="button" aria-label="Cancel">×</button><div class="vexa-vt-stage"><canvas id="vexaVoiceTransformOrb" class="vexa-vt-orb" aria-label="Voice activity orb"></canvas></div><div class="vexa-vt-copy"><div id="vexaVoiceTransformStatus" class="vexa-vt-status">Ready</div></div>';
+      page.appendChild(surface);
       q('vexaVoiceTransformCancel').addEventListener('click',cancelRecording);
       q('vexaVoiceTransformOrb').addEventListener('click',function(){if(state.active&&state.phase==='listening')finishRecording()});
     }
@@ -301,8 +317,9 @@ ${VEXA_VOICE_ORB_SOURCE}
     if(!voice.id)throw new Error('Choose a voice first');
     var active=document.activeElement;if(active&&typeof active.blur==='function')active.blur();
     state.active=true;state.phase='connecting';state.micEnergy=0;cancelled=false;chunks=[];
-    var overlay=q('vexaVoiceTransformOverlay');overlay.classList.add('open');overlay.setAttribute('aria-hidden','false');
-    setPhase('connecting','Preparing microphone');
+    var surface=q('vexaVoiceTransformOverlay');surface.classList.add('open');surface.setAttribute('aria-hidden','false');
+    var trigger=q('vexaVoiceTransformOpen');if(trigger)trigger.setAttribute('aria-pressed','true');
+    setPhase('connecting','Preparing');
     var canvas=q('vexaVoiceTransformOrb');
     state.orb=createOrbRenderer(canvas);state.orb.start();
     haptic('medium');
@@ -317,8 +334,8 @@ ${VEXA_VOICE_ORB_SOURCE}
       recorder.start(250);
       startedAt=Date.now();
       maxTimer=setTimeout(function(){if(state.active&&state.phase==='listening')finishRecording()},180000);
-      setPhase('listening','Listening · '+voice.name+' V3');
-    }catch(error){cleanupMedia();state.active=false;if(state.orb){state.orb.stop();state.orb=null}throw error}
+      setPhase('listening','Listening');
+    }catch(error){cleanupMedia();state.active=false;if(state.orb){state.orb.stop();state.orb=null}var failedTrigger=q('vexaVoiceTransformOpen');if(failedTrigger)failedTrigger.setAttribute('aria-pressed','false');throw error}
   }
 
   function startEnergyMeter(mediaStream){
@@ -336,7 +353,6 @@ ${VEXA_VOICE_ORB_SOURCE}
     if(!state.active||state.phase!=='listening'||!recorder)return;
     clearTimeout(maxTimer);maxTimer=0;
     setPhase('thinking','Generating '+selectedVoice().name+' V3');
-    var hint=q('vexaVoiceTransformHint');if(hint)hint.textContent='Analyzing your delivery and pauses';
     haptic('light');
     if(recorder.state!=='inactive')recorder.stop();
   }
@@ -384,8 +400,8 @@ ${VEXA_VOICE_ORB_SOURCE}
   function closeOverlay(){
     cleanupMedia();state.active=false;state.phase='idle';
     if(state.orb){state.orb.stop();state.orb=null}
-    var overlay=q('vexaVoiceTransformOverlay');if(overlay){overlay.classList.remove('open','listening','thinking','error');overlay.setAttribute('aria-hidden','true')}
-    var hint=q('vexaVoiceTransformHint');if(hint)hint.textContent='Tap the orb when you are done';
+    var surface=q('vexaVoiceTransformOverlay');if(surface){surface.classList.remove('open','connecting','listening','thinking','error');surface.setAttribute('aria-hidden','true')}
+    var trigger=q('vexaVoiceTransformOpen');if(trigger)trigger.setAttribute('aria-pressed','false');
     setPhase('idle','Ready');
   }
 
