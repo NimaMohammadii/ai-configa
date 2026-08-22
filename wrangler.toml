@@ -26,6 +26,9 @@ bucket_name = "ai-configa-explore-media"
 [browser]
 binding = "BROWSER"
 
+[ai]
+binding = "AI"
+
 [[workflows]]
 name = "vexa-ai-coding-tasks"
 binding = "AI_CODING_WORKFLOW"
