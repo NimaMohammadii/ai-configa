@@ -3,9 +3,6 @@ import { liquidMetalFragmentShader, ShaderMount } from "https://cdn.jsdelivr.net
 
 const STYLE_ID = "vexaLiquidMetalButtonStyles";
 const READY_ATTR = "data-vexa-liquid-metal";
-const BASE_SPEED = 0.6;
-const HOVER_SPEED = 1;
-const CLICK_SPEED = 2.4;
 
 const TARGETS = [
   { id: "convertButton", labelSelector: ".tts-generate-label", fallback: "Generate Voice" },
@@ -18,7 +15,8 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent =
-    "button.vexa-liquid-metal{position:relative!important;overflow:hidden!important;border-radius:100px!important;background:transparent!important;border:none!important;outline:none!important;isolation:isolate!important;transform-style:preserve-3d!important;box-shadow:none!important}" +
+    "button.vexa-liquid-metal{position:relative!important;overflow:visible!important;border-radius:100px!important;background:transparent!important;border:none!important;outline:none!important;box-shadow:none!important;isolation:isolate!important;transform-style:preserve-3d!important;perspective:1000px!important;perspective-origin:50% 50%!important}" +
+    "button.vexa-liquid-metal:active{transform:none!important}" +
     "button.vexa-liquid-metal:before,button.vexa-liquid-metal:after{display:none!important;content:none!important}" +
     ".vexa-lm-original{position:absolute!important;inset:0!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important}" +
     ".vexa-lm-stage{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;display:block!important;pointer-events:none!important;transform-style:preserve-3d!important;z-index:1!important}" +
@@ -31,6 +29,8 @@ function installStyles() {
     ".vexa-lm-shader-frame{position:absolute!important;inset:0!important;border-radius:100px!important;background:rgb(0 0 0 / 0)!important;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 36px 14px rgba(0,0,0,.02),0 20px 12px rgba(0,0,0,.08),0 9px 9px rgba(0,0,0,.12),0 2px 5px rgba(0,0,0,.15)!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),box-shadow .15s cubic-bezier(.4,0,.2,1)!important}" +
     ".vexa-lm-shader{position:absolute!important;inset:0!important;width:100%!important;max-width:100%!important;height:100%!important;border-radius:100px!important;overflow:hidden!important;transition:width .4s ease,height .4s ease!important}" +
     ".vexa-lm-shader canvas{width:100%!important;height:100%!important;display:block!important;position:absolute!important;top:0!important;left:0!important;border-radius:100px!important}" +
+    ".vexa-lm-ripple-clip{position:absolute!important;inset:0!important;z-index:40!important;overflow:hidden!important;border-radius:100px!important;pointer-events:none!important}" +
+    ".vexa-lm-ripple{position:absolute!important;width:20px!important;height:20px!important;border-radius:50%!important;background:radial-gradient(circle,rgba(255,255,255,.4) 0%,rgba(255,255,255,0) 70%)!important;pointer-events:none!important;animation:vexaLmRipple .6s ease-out!important}" +
     "button.vexa-liquid-metal.vexa-lm-hover .vexa-lm-shader-frame{box-shadow:0 0 0 1px rgba(0,0,0,.4),0 12px 6px rgba(0,0,0,.05),0 8px 5px rgba(0,0,0,.1),0 4px 4px rgba(0,0,0,.15),0 1px 2px rgba(0,0,0,.2)!important}" +
     "button.vexa-liquid-metal.vexa-lm-pressed .vexa-lm-inner-layer{transform:translateZ(10px) translateY(1px) scale(.98)!important}" +
     "button.vexa-liquid-metal.vexa-lm-pressed .vexa-lm-shader-layer{transform:translateZ(0) translateY(1px) scale(.98)!important}" +
@@ -38,7 +38,6 @@ function installStyles() {
     "button.vexa-liquid-metal.vexa-lm-pressed .vexa-lm-shader-frame{box-shadow:0 0 0 1px rgba(0,0,0,.5),0 1px 2px rgba(0,0,0,.3)!important}" +
     "button.vexa-liquid-metal:disabled .vexa-lm-stage{opacity:.45!important}" +
     "button.vexa-liquid-metal.loading .vexa-lm-label{opacity:.5!important}" +
-    ".vexa-lm-ripple{position:absolute!important;z-index:35!important;width:20px!important;height:20px!important;border-radius:50%!important;background:radial-gradient(circle,rgba(255,255,255,.4) 0%,rgba(255,255,255,0) 70%)!important;pointer-events:none!important;animation:vexaLmRipple .6s ease-out!important}" +
     "@keyframes vexaLmRipple{0%{transform:translate(-50%,-50%) scale(0);opacity:.6}100%{transform:translate(-50%,-50%) scale(4);opacity:0}}";
   document.head.appendChild(style);
 }
@@ -88,10 +87,13 @@ function decorate(button, target) {
   label.textContent = currentLabel(button, target);
   content.appendChild(label);
 
+  const rippleClip = createLayer("vexa-lm-ripple-clip");
+
   stage.appendChild(shaderLayer);
   stage.appendChild(innerLayer);
   stage.appendChild(content);
   button.appendChild(stage);
+  button.appendChild(rippleClip);
 
   let shaderMount = null;
   try {
@@ -173,7 +175,7 @@ function decorate(button, target) {
     const ripple = createLayer("vexa-lm-ripple");
     ripple.style.left = String(event.clientX - rect.left) + "px";
     ripple.style.top = String(event.clientY - rect.top) + "px";
-    button.appendChild(ripple);
+    rippleClip.appendChild(ripple);
     window.setTimeout(function () { ripple.remove(); }, 600);
   });
 
