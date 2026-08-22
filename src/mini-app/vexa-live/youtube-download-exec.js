@@ -14,7 +14,7 @@ const STREAM_START_TIMEOUT_MS = 90_000;
 const PROCESS_SETTLE_TIMEOUT_MS = 2_000;
 const DOWNLOAD_FILE_NAME = "Vexa-YouTube-video.mp4";
 const FORMAT_SELECTOR = "b[ext=mp4][protocol^=http][vcodec!=none][acodec!=none]";
-const TELEGRAM_SAFE_FILE_BYTES = 45 * 1024 * 1024;
+const TELEGRAM_SAFE_FILE_BYTES = 45_000_000;
 const FFMPEG_INPUT_ARGS =
   "ffmpeg_i:-rw_timeout 15000000 -reconnect 1 -reconnect_on_network_error 1 " +
   "-reconnect_on_http_error 5xx -reconnect_streamed 1 -reconnect_delay_max 2 -reconnect_max_retries 1";
