@@ -329,8 +329,7 @@ export async function appendVexaLiveToMiniApp(response) {
   const html = source.includes("/mini-app/vexa-live/integration.js")
     ? source
     : source.includes("</body>")
-      ? source.replace("</body>", script + "\
-</body>")
+      ? source.replace("</body>", script + "\n</body>")
       : source + script;
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
