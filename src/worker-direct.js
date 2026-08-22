@@ -152,7 +152,6 @@ async function isAdminPendingPhoto(message, env) {
   if (!adminId || !(await isAdmin(env, adminId))) return false;
 
   const action = await getAdminAction(env, adminId);
-  if (!action) return false;
   return isAdminPhotoAction(action);
 }
 
