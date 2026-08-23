@@ -1,9 +1,9 @@
+import { USD_PER_CREDIT } from "./credits.js";
 import { requireDb } from "./state.js";
-import { CUSTOM_STARS_USD_PER_1000_CREDITS } from "./stars.js";
 
 export const AI_CHAT_MODELS = Object.freeze([
-  Object.freeze({ id: "gpt-5.6-luna", label: "Luna", inputUsd: 1.00, cachedInputUsd: 0.10, cacheWriteUsd: 1.25, outputUsd: 6.00 }),
-  Object.freeze({ id: "gpt-5.6-terra", label: "Terra", inputUsd: 2.50, cachedInputUsd: 0.25, cacheWriteUsd: 3.125, outputUsd: 15.00 }),
+  Object.freeze({ id: "gpt-5.6-luna", label: "Luna", inputUsd: 0.20, cachedInputUsd: 0.02, cacheWriteUsd: 0.25, outputUsd: 1.20 }),
+  Object.freeze({ id: "gpt-5.6-terra", label: "Terra", inputUsd: 2.00, cachedInputUsd: 0.20, cacheWriteUsd: 2.50, outputUsd: 12.00 }),
   Object.freeze({ id: "gpt-5.6-sol", label: "Sol", inputUsd: 5.00, cachedInputUsd: 0.50, cacheWriteUsd: 6.25, outputUsd: 30.00 }),
 ]);
 
@@ -21,7 +21,7 @@ export const AI_CHAT_FILE_SEARCH_USD_PER_CALL = 0.0025;
 export const AI_CHAT_CONTAINER_1GB_USD_PER_SESSION = 0.03;
 export const AI_CHAT_VECTOR_STORAGE_USD_PER_GB_DAY = 0.10;
 export const AI_CHAT_BROWSER_USD_PER_HOUR = 0.09;
-export const AI_CHAT_USD_PER_CREDIT = CUSTOM_STARS_USD_PER_1000_CREDITS / 1000;
+export const AI_CHAT_USD_PER_CREDIT = USD_PER_CREDIT;
 const AI_CHAT_MODEL_SETTING_KEY = "ai_chat_model";
 const LONG_CONTEXT_TOKEN_THRESHOLD = 272000;
 const AI_CHAT_REQUEST_PREFERENCES_KEY = "__VEXA_AI_CHAT_REQUEST_PREFERENCES";
