@@ -1,5 +1,5 @@
 import { trackUser } from "./admin.js";
-import { addCredits, formatUsdBalanceFromCredits } from "./credits.js";
+import { formatUsdBalanceFromCredits } from "./credits.js";
 import { getAllAdminIds } from "./receipt-admins.js";
 import { clearPendingPayment, getPendingPayment } from "./payments.js";
 import { requireDb } from "./state.js";
@@ -36,6 +36,18 @@ export async function handleReceiptPhoto(message, env) {
   const pack = pendingPackage(pending);
   const totalCredits = Number(pack.credits || 0) + Number(pack.bonus || 0);
   const receiptId = await createReceipt(env, user, pending.package_id, pack.amount, totalCredits);
+  if (!receiptId) {
+    const menu = await sendMessage(env, chatId, startText(state), await userMainKeyboard(env, userId, state));
+    await setMenuMessageId(env, userId, menu?.message_id || null);
+    await notifyUser(
+      env,
+      chatId,
+      "⏳ <b>رسید قبلی هنوز در حال بررسی است</b>\n\nتا مشخص شدن نتیجه، رسید جدید نفرست.",
+      "⏳ رسید قبلی هنوز در حال بررسی است\n\nتا مشخص شدن نتیجه، رسید جدید نفرست.",
+    );
+    return true;
+  }
+
   const caption = receiptCaption({ user, amount: pack.amount, credits: totalCredits });
   const admins = await getAllAdminIds(env);
 
@@ -56,12 +68,12 @@ export async function handleReceiptPhoto(message, env) {
   if (sentToAdmin > 0) {
     await notifyUser(env, chatId, "✅ <b>Payment receipt received</b>\n\nYour receipt was sent for admin review. After approval, the USD amount will be added to your balance", "✅ Payment receipt received\n\nYour receipt was sent for admin review. After approval, the USD amount will be added to your balance");
   } else {
+    await markReceiptDeliveryFailed(env, receiptId);
     await notifyUser(env, chatId, "⚠️ <b>Payment receipt received</b>\n\nAdmin chat is not configured yet. Please contact support", "⚠️ Payment receipt received\n\nAdmin chat is not configured yet. Please contact support");
   }
 
   return true;
 }
-
 
 function pendingPackage(pending) {
   const packageId = pending?.package_id || "";
@@ -100,17 +112,28 @@ export async function handleReceiptCallback(query, env) {
   }
 
   if (approved) {
-    const balance = await addCredits(env, receipt.user_id, receipt.credits);
-    await markReceipt(env, receiptId, "approved", adminId);
+    const result = await approveReceiptAtomically(env, receipt, adminId);
+    if (!result.approved) {
+      const latest = await getReceipt(env, receiptId);
+      await removeButtonsFromClickedReceipt(env, query, latest?.status || "approved");
+      await answerCallback(env, query.id, "Already reviewed", true);
+      return;
+    }
     await clearPendingPayment(env, receipt.user_id);
     await updateClickedReceiptCaption(env, query, "approved");
     await updateAllReceiptCaptions(env, receiptId, "approved", chatId, messageId);
-    await sendPaymentApprovedMessage(env, receipt.user_id, receipt.credits, balance);
+    await sendPaymentApprovedMessage(env, receipt.user_id, receipt.credits, result.balance);
     await answerCallback(env, query.id, "Approved", true);
     return;
   }
 
-  await markReceipt(env, receiptId, "rejected", adminId);
+  const rejected = await markReceipt(env, receiptId, "rejected", adminId);
+  if (!rejected) {
+    const latest = await getReceipt(env, receiptId);
+    await removeButtonsFromClickedReceipt(env, query, latest?.status || "rejected");
+    await answerCallback(env, query.id, "Already reviewed", true);
+    return;
+  }
   await clearPendingPayment(env, receipt.user_id);
   await updateClickedReceiptCaption(env, query, "rejected");
   await updateAllReceiptCaptions(env, receiptId, "rejected", chatId, messageId);
@@ -286,10 +309,22 @@ async function notifyUser(env, chatId, htmlText, plainText) {
 async function createReceipt(env, user, packageId, amount, credits) {
   requireDb(env);
   const id = crypto.randomUUID();
-  await env.DB.prepare(
-    "INSERT INTO payment_receipts (id, user_id, username, first_name, last_name, package_id, amount, credits, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)"
-  ).bind(id, String(user.id), user.username || null, user.first_name || null, user.last_name || null, packageId, String(amount), Number(credits)).run();
-  return id;
+  const result = await env.DB.prepare(
+    "INSERT INTO payment_receipts (id, user_id, username, first_name, last_name, package_id, amount, credits, status, created_at) " +
+      "SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP " +
+      "WHERE NOT EXISTS (SELECT 1 FROM payment_receipts WHERE user_id = ? AND status = 'pending')"
+  ).bind(
+    id,
+    String(user.id),
+    user.username || null,
+    user.first_name || null,
+    user.last_name || null,
+    packageId,
+    String(amount),
+    Number(credits),
+    String(user.id),
+  ).run();
+  return changedRows(result) === 1 ? id : null;
 }
 
 async function getReceipt(env, id) {
@@ -297,11 +332,47 @@ async function getReceipt(env, id) {
   return await env.DB.prepare("SELECT * FROM payment_receipts WHERE id = ?").bind(String(id)).first();
 }
 
+async function approveReceiptAtomically(env, receipt, adminId) {
+  requireDb(env);
+  const claimStatus = "approving:" + crypto.randomUUID();
+  const statements = [
+    env.DB.prepare(
+      "UPDATE payment_receipts SET status = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'"
+    ).bind(claimStatus, String(adminId), String(receipt.id)),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO user_credits (user_id, credits, updated_at, created_at) VALUES (?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+    ).bind(String(receipt.user_id)),
+    env.DB.prepare(
+      "UPDATE user_credits SET credits = credits + ?, updated_at = CURRENT_TIMESTAMP " +
+        "WHERE user_id = ? AND EXISTS (SELECT 1 FROM payment_receipts WHERE id = ? AND status = ?)"
+    ).bind(Number(receipt.credits), String(receipt.user_id), String(receipt.id), claimStatus),
+    env.DB.prepare(
+      "UPDATE payment_receipts SET status = 'approved' WHERE id = ? AND status = ?"
+    ).bind(String(receipt.id), claimStatus),
+  ];
+  const results = await env.DB.batch(statements);
+  if (changedRows(results?.[0]) !== 1) return { approved: false, balance: null };
+  const balanceRow = await env.DB.prepare("SELECT credits FROM user_credits WHERE user_id = ?").bind(String(receipt.user_id)).first();
+  return { approved: true, balance: Number(balanceRow?.credits || 0) };
+}
+
 async function markReceipt(env, id, status, adminId) {
   requireDb(env);
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     "UPDATE payment_receipts SET status = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'"
   ).bind(status, String(adminId), String(id)).run();
+  return changedRows(result) === 1;
+}
+
+async function markReceiptDeliveryFailed(env, receiptId) {
+  requireDb(env);
+  await env.DB.prepare(
+    "UPDATE payment_receipts SET status = 'delivery_failed', reviewed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'"
+  ).bind(String(receiptId)).run();
+}
+
+function changedRows(result) {
+  return Number(result?.meta?.changes ?? result?.changes ?? 0) || 0;
 }
 
 async function saveReceiptAdminMessage(env, receiptId, adminId, messageId, caption) {
