@@ -1,4 +1,4 @@
-import { trackUser } from "./admin.js";
+import { isAdmin, trackUser } from "./admin.js";
 import { formatUsdBalanceFromCredits } from "./credits.js";
 import { getAllAdminIds } from "./receipt-admins.js";
 import { clearPendingPayment, getPendingPayment } from "./payments.js";
@@ -55,8 +55,10 @@ export async function handleReceiptPhoto(message, env) {
   for (const adminId of admins) {
     try {
       const copied = await copyMessage(env, adminId, chatId, message.message_id, caption, receiptKeyboard(receiptId));
-      await saveReceiptAdminMessage(env, receiptId, adminId, copied.message_id, caption);
       sentToAdmin++;
+      await saveReceiptAdminMessage(env, receiptId, adminId, copied.message_id, caption).catch((error) => {
+        console.error("save receipt admin message failed", adminId, error && error.message ? error.message : error);
+      });
     } catch (error) {
       console.error("copy receipt to admin failed", adminId, error && error.message ? error.message : error);
     }
@@ -95,6 +97,11 @@ export async function handleReceiptCallback(query, env) {
   const chatId = query.message && query.message.chat && query.message.chat.id;
   const messageId = query.message && query.message.message_id;
   if (!adminId || !chatId || !messageId) return;
+
+  if (!(await isAdmin(env, adminId))) {
+    await answerCallback(env, query.id, "Access denied", true);
+    return;
+  }
 
   const approved = data.startsWith("receipt_approve:");
   const receiptId = data.split(":")[1];
