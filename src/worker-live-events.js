@@ -1,6 +1,12 @@
 import worker from "./worker-live.js";
 import { getElevenApiSetting } from "./admin.js";
-import { getBalance, spendCredits } from "./credits.js";
+import {
+  creditsForUsdMicros,
+  getBalance,
+  spendCredits,
+  VOICE_AGENT_MINIMUM_USD_MICROS,
+  VOICE_AGENT_USD_MICROS_PER_MINUTE,
+} from "./credits.js";
 
 const MINI_APP_RUNTIME_PATH = "/mini-app/app.js";
 const LIVE_INTEGRATION_PATH = "/mini-app/live/integration.js";
@@ -8,12 +14,12 @@ const VOICE_RUNTIME_PATH = "/mini-app/live/voice-agent-runtime.js";
 const VOICE_ROOT = "/mini-app/live/api/voice-agent";
 const VOICE_SESSION_PATH = VOICE_ROOT + "/session";
 const VOICE_PROXY_PATH = VOICE_ROOT + "/connect";
-const VOICE_CREDITS_PER_MINUTE = 800;
+const VOICE_MINIMUM_BALANCE = creditsForUsdMicros(VOICE_AGENT_MINIMUM_USD_MICROS);
 const VOICE_SESSION_TTL_MS = 15 * 60 * 1000;
 const VOICE_MAX_SESSION_MS = 10 * 60 * 1000;
 const VAD_SPEECH_START = 0.55;
 const VAD_SPEECH_RESET = 0.35;
-const BILLING_VERSION = "20260818-7-balance-sync";
+const BILLING_VERSION = "20260823-2-usd-pricing";
 const REQUIRED_CLIENT_EVENTS = [
   "audio",
   "interruption",
@@ -262,7 +268,7 @@ async function handleEventBilledVoiceProxy(request, env, ctx) {
 
   const userId = String(row.user_id || "");
   const balance = await getBalance(env, userId);
-  if (balance <= 0) {
+  if (balance < VOICE_MINIMUM_BALANCE) {
     await markProxySession(env, sessionId, "insufficient", 0, true).catch(() => null);
     return new Response("Not enough credits", { status: 402 });
   }
@@ -337,6 +343,7 @@ async function handleEventBilledVoiceProxy(request, env, ctx) {
 function attachEventBilledVoiceProxy({ server, upstream, env, ctx, sessionId, userId, startedAt, startingBalance }) {
   let closed = false;
   let chargedCredits = 0;
+  let billedDurationMs = 0;
   let balance = Math.max(0, Number(startingBalance || 0));
   let activeTurnStartedAt = 0;
   let pendingTurn = null;
@@ -382,16 +389,22 @@ function attachEventBilledVoiceProxy({ server, upstream, env, ctx, sessionId, us
     if (!turn || turn.charged) return true;
     turn.charged = true;
     const durationMs = Math.max(1, Math.min(VOICE_MAX_SESSION_MS, Number(turn.durationMs || 0)));
-    const credits = creditsForDuration(durationMs, VOICE_CREDITS_PER_MINUTE);
+    const nextBilledDurationMs = Math.min(VOICE_MAX_SESSION_MS, billedDurationMs + durationMs);
+    const targetCredits = creditsForDuration(nextBilledDurationMs, VOICE_AGENT_USD_MICROS_PER_MINUTE);
+    const credits = Math.max(0, targetCredits - chargedCredits);
+    billedDurationMs = nextBilledDurationMs;
+    if (credits <= 0) return true;
+
     const spent = await spendCredits(env, userId, credits, "vexa_voice_agent", {
       billingSessionId: sessionId,
       billingMode: "completed_turn",
       trigger,
       turnDurationMs: durationMs,
+      billedDurationMs,
       turnStartedAtMs: Number(turn.startedAt || 0),
       agentCompletedAtMs: Number(turn.completedAt || 0),
       agentResponseEventId: String(turn.eventId || ""),
-      creditsPerMinute: VOICE_CREDITS_PER_MINUTE,
+      usdMicrosPerMinute: VOICE_AGENT_USD_MICROS_PER_MINUTE,
     });
 
     if (!spent.ok) {
@@ -402,8 +415,9 @@ function attachEventBilledVoiceProxy({ server, upstream, env, ctx, sessionId, us
           billingMode: "completed_turn",
           trigger,
           turnDurationMs: durationMs,
+          billedDurationMs,
           partial: true,
-          creditsPerMinute: VOICE_CREDITS_PER_MINUTE,
+          usdMicrosPerMinute: VOICE_AGENT_USD_MICROS_PER_MINUTE,
         });
         if (remainder.ok) {
           chargedCredits += Number(remainder.spent || available);
@@ -601,8 +615,10 @@ async function markProxySession(env, sessionId, status, chargedCredits, clearSig
   ).bind(String(status), Math.max(0, Number(chargedCredits || 0)), clearSignedUrl ? 1 : 0, now, sessionId).run();
 }
 
-function creditsForDuration(durationMs, creditsPerMinute) {
-  return Math.max(1, Math.ceil((Number(durationMs) * Number(creditsPerMinute)) / 60000));
+function creditsForDuration(durationMs, usdMicrosPerMinute) {
+  const duration = Math.max(0, Number(durationMs) || 0);
+  const rate = Math.max(0, Number(usdMicrosPerMinute) || 0);
+  return duration > 0 && rate > 0 ? creditsForUsdMicros((duration * rate) / 60000) : 0;
 }
 
 function normalizeSessionId(value) {
