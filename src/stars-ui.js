@@ -19,8 +19,8 @@ export function customStarsPromptText(state = {}) {
     t(lang, "audioCreditRule"),
     "",
     lang === "fa"
-      ? `هر <b>1000 کردیت</b> برابر <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b> است`
-      : `Every <b>1,000 credits</b> costs <b>$${formatUsd(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b>`,
+      ? `هر <b>1000 کردیت</b> برابر <b>$${formatUsdRate(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b> است`
+      : `Every <b>1,000 credits</b> costs <b>$${formatUsdRate(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b>`,
     lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست" : "Send your custom credit amount in this chat",
   ].join("\n");
 }
@@ -69,7 +69,7 @@ export function starsPackagesKeyboard(state = {}) {
 
 export function starsPackageInvoiceText(pack, state = {}) {
   const lang = state.language || "en";
-  const audioLine = starPackageAudioLine(pack, lang);
+  const audioLine = starPackageAudioLine(lang);
   const paymentLine = starsPaymentLine(pack, lang);
 
   return [
@@ -109,15 +109,10 @@ function starsPaymentLine(pack, lang) {
   return lang === "fa" ? `پرداخت <b>${pack.stars} ⭐️</b> برای اضافه شدن کردیت‌ها` : `Pay <b>${pack.stars} ⭐️</b> to add credits`;
 }
 
-function starPackageAudioLine(pack, lang) {
-  if (lang === "fa") {
-    if (pack.id === "s400") return "با <b>400 کردیت</b> میشه <b>1 دقیقه</b> صدا تبدیل کرد";
-    if (pack.id === "s1000") return "هر <b>1000 کردیت</b> میشه <b>2 دقیقه</b> صدا ساخت";
-    if (pack.id === "s33000") return "حدوداً <b>88 دقیقه</b> محتوای صوتی";
-  }
-
-  const audioMinutes = pack.id === "s400" ? "1" : pack.id === "s33000" ? "88" : String(Math.round(Number(pack.totalCredits || 0) / 500));
-  return `About <b>${audioMinutes}</b> minutes of audio content`;
+function starPackageAudioLine(lang) {
+  return lang === "fa"
+    ? `نرخ TTS: <b>$0.00017 برای هر کاراکتر</b>`
+    : `TTS rate: <b>$0.00017 per character</b>`;
 }
 
 function formatNumber(value) {
@@ -127,4 +122,8 @@ function formatNumber(value) {
 function formatUsd(value) {
   const displayValue = Math.floor((Number(value) + Number.EPSILON) * 100) / 100;
   return displayValue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function formatUsdRate(value) {
+  return Number(value).toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
