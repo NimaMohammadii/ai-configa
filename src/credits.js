@@ -5,6 +5,10 @@ export const USD_MICROS_PER_CREDIT = 178;
 export const USD_PER_CREDIT = USD_MICROS_PER_CREDIT / 1_000_000;
 export const USD_PER_1000_CREDITS = USD_MICROS_PER_CREDIT / 1_000;
 export const TTS_USD_MICROS_PER_CHARACTER = 170;
+export const SMART_TTS_EDIT_BASE_USD_MICROS = 10_000;
+export const LIVE_STT_USD_MICROS_PER_MINUTE = 5_000;
+export const VOICE_AGENT_USD_MICROS_PER_MINUTE = 140_000;
+export const VOICE_AGENT_MINIMUM_USD_MICROS = 150_000;
 
 export function creditsForUsdMicros(value) {
   const usdMicros = Math.max(0, Number(value) || 0);
