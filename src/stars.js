@@ -1,9 +1,9 @@
-import { addCredits } from "./credits.js";
+import { addCredits, USD_PER_1000_CREDITS } from "./credits.js";
 import { requireDb } from "./state.js";
 
 const STAR_USD_PER_50 = 0.76;
 export const CUSTOM_STARS_CREDITS_PER_STAR = 1000 / 12;
-export const CUSTOM_STARS_USD_PER_1000_CREDITS = 0.178;
+export const CUSTOM_STARS_USD_PER_1000_CREDITS = USD_PER_1000_CREDITS;
 
 export const STAR_PACKAGES = {
   s400: createStarPackage("s400", 400, 0, 0.0712, 5),
