@@ -1,3 +1,4 @@
+import { formatUsdBalanceFromCredits, USD_PER_CREDIT } from "./credits.js";
 import { trackUser } from "./admin.js";
 import { getStarPackage, applySuccessfulStarsPayment, createCustomStarPackage, getStarPackageFromPayload, starInvoicePayload, applyStarPackageDiscount } from "./stars.js";
 import { getActiveWheelPurchaseDiscount } from "./reward-wheel.js";
@@ -45,7 +46,7 @@ export async function handleStarsCallback(query, env) {
   if (data === "stars_confirm") {
     const pending = await getPendingCustomStars(env, userId);
     if (!pending?.credits) {
-      await answerCallback(env, query.id, "Send a credit amount first", true);
+      await answerCallback(env, query.id, "Send a USD balance amount first", true);
       return;
     }
     const pack = createCustomStarPackage(pending.credits, await getActiveWheelPurchaseDiscount(env, userId));
@@ -85,11 +86,11 @@ export async function handleStarsTextInput(message, env) {
 
   await trackUser(env, message.from);
   const state = await getState(env, userId);
-  const credits = parseCreditAmount(text);
+  const credits = parseUsdBalanceAmountToCredits(text);
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
 
   if (!credits) {
-    await editOrSend(env, chatId, Number(pending.message_id), customStarsPromptText(state) + "\n\nPlease send a positive number like <code>1000</code>", customStarsCancelKeyboard(state));
+    await editOrSend(env, chatId, Number(pending.message_id), customStarsPromptText(state) + "\n\nPlease send a positive USD amount like <code>0.50</code>", customStarsCancelKeyboard(state));
     return true;
   }
 
@@ -129,7 +130,7 @@ export async function handleStarsPayment(message, env) {
   await sendMessage(
     env,
     chatId,
-    `✅ Payment successful\n\nAdded: <b>${result.pack.totalCredits.toLocaleString("en-US")} credits</b>\nBalance: <b>${result.balance?.toLocaleString("en-US") || "updated"} credits</b>\n\n${startText(state)}`,
+    `✅ Payment successful\n\nAdded: <b>${formatUsdBalanceFromCredits(result.pack.totalCredits)}</b>\nBalance: <b>${result.balance == null ? "updated" : formatUsdBalanceFromCredits(result.balance)}</b>\n\n${startText(state)}`,
     await userMainKeyboard(env, userId, state)
   );
   return true;
@@ -179,13 +180,17 @@ async function ensurePendingCustomStarsTable(env) {
   ).run();
 }
 
-function parseCreditAmount(text) {
-  const normalized = String(text || "")
+function parseUsdBalanceAmountToCredits(text) {
+  let normalized = String(text || "")
     .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
     .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
-    .replace(/[,_\s]/g, "");
-  if (!/^\d+$/.test(normalized)) return null;
-  const value = Number.parseInt(normalized, 10);
-  if (!Number.isSafeInteger(value) || value <= 0) return null;
-  return value;
+    .replace(/[$€£\s]/g, "");
+  if (normalized.includes(",") && !normalized.includes(".")) normalized = normalized.replace(",", ".");
+  normalized = normalized.replace(/,/g, "");
+  if (!/^\d+(?:\.\d{1,6})?$/.test(normalized)) return null;
+  const usd = Number(normalized);
+  if (!Number.isFinite(usd) || usd <= 0) return null;
+  const credits = Math.max(1, Math.round(usd / USD_PER_CREDIT));
+  if (!Number.isSafeInteger(credits) || credits > 1_000_000) return null;
+  return credits;
 }
