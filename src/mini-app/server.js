@@ -261,6 +261,7 @@ async function injectMiniAppUi(response, includeHistoryIdentity) {
 
   let source = await response.text();
   if (includeHistoryIdentity) source = applyUsagePricedImageUi(source);
+  else source = applyAiChatUsdBalanceUi(source);
   const marker = "(function(){";
   if (!source.includes(marker)) return cloneTextResponse(response, source);
   const injection =
@@ -270,6 +271,16 @@ async function injectMiniAppUi(response, includeHistoryIdentity) {
       : "");
   const patched = source.replace(marker, marker + "\n" + injection);
   return cloneTextResponse(response, patched);
+}
+
+function applyAiChatUsdBalanceUi(source) {
+  const before = "balance.textContent=\n        Number(data.balance).toLocaleString('en-US');";
+  const after = "balance.textContent=String.fromCharCode(36)+(Math.max(0,Number(data.balance)||0)*.000178).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});\n      var balanceUnit=balance.nextElementSibling;if(balanceUnit)balanceUnit.textContent='USD';";
+  if (!source.includes(before)) {
+    console.error("AI Chat USD balance UI patch target missing");
+    return source;
+  }
+  return source.replace(before, () => after);
 }
 
 function applyUsagePricedImageUi(source) {
