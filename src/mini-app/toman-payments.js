@@ -9,6 +9,7 @@ import { tgForm } from "../telegram-api.js";
 import {
   createCustomTomanPackage,
   TOMAN_MIN_PURCHASE_AMOUNT,
+  TOMAN_MIN_PURCHASE_CREDITS,
   TOMAN_PRICE_PER_1000,
 } from "../ui.js";
 
@@ -29,6 +30,8 @@ export async function getMiniAppTomanConfig(env, user) {
     cardNumber: CARD_NUMBER,
     pricePer1000: TOMAN_PRICE_PER_1000,
     minimumAmount: TOMAN_MIN_PURCHASE_AMOUNT,
+    minimumCredits: TOMAN_MIN_PURCHASE_CREDITS,
+    minimumUsd: formatUsdBalanceFromCredits(TOMAN_MIN_PURCHASE_CREDITS),
     discountPercent: Number(discount?.percent || 0),
     discountExpiresAt: Number(discount?.expiresAt || 0),
     packages: Object.values(MINI_APP_TOMAN_PACKAGES).map((pack) => buildFixedTomanPackage(pack, discount)),
@@ -49,8 +52,11 @@ export async function submitMiniAppTomanReceipt(env, user, payload = {}) {
     pack = buildFixedTomanPackage(fixed, discount);
   } else {
     const credits = Number(payload.credits);
-    if (!Number.isSafeInteger(credits) || credits < 1 || credits > 1_000_000) {
+    if (!Number.isSafeInteger(credits) || credits > 1_000_000) {
       throw httpError("مقدار موجودی دلاری معتبر نیست.", 400);
+    }
+    if (credits < TOMAN_MIN_PURCHASE_CREDITS) {
+      throw httpError(`حداقل خرید دلخواه ${formatUsdBalanceFromCredits(TOMAN_MIN_PURCHASE_CREDITS)} است.`, 400);
     }
     pack = createCustomTomanPackage(credits, discount);
   }
@@ -157,9 +163,24 @@ async function sendReceiptPhoto(env, adminId, receipt, caption, receiptId) {
 async function createReceipt(env, user, packageId, amount, credits) {
   requireDb(env);
   const id = crypto.randomUUID();
-  await env.DB.prepare(
-    "INSERT INTO payment_receipts (id, user_id, username, first_name, last_name, package_id, amount, credits, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)"
-  ).bind(id, String(user.id), user.username || null, user.first_name || null, user.last_name || null, packageId, String(amount), Number(credits)).run();
+  const result = await env.DB.prepare(
+    "INSERT INTO payment_receipts (id, user_id, username, first_name, last_name, package_id, amount, credits, status, created_at) " +
+      "SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP " +
+      "WHERE NOT EXISTS (SELECT 1 FROM payment_receipts WHERE user_id = ? AND status = 'pending')"
+  ).bind(
+    id,
+    String(user.id),
+    user.username || null,
+    user.first_name || null,
+    user.last_name || null,
+    packageId,
+    String(amount),
+    Number(credits),
+    String(user.id),
+  ).run();
+  if (changedRows(result) !== 1) {
+    throw httpError("یک رسید پرداخت هنوز در حال بررسی است؛ تا مشخص شدن نتیجه، رسید جدید نفرست.", 409);
+  }
   return id;
 }
 
@@ -175,6 +196,10 @@ async function markReceiptDeliveryFailed(env, receiptId) {
   await env.DB.prepare(
     "UPDATE payment_receipts SET status = 'delivery_failed', reviewed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'"
   ).bind(String(receiptId)).run();
+}
+
+function changedRows(result) {
+  return Number(result?.meta?.changes ?? result?.changes ?? 0) || 0;
 }
 
 function receiptKeyboard(receiptId) {
