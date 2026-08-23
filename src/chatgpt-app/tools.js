@@ -1,5 +1,5 @@
 import { isAdmin } from "../admin.js";
-import { creditsForTtsCharacters, getBalance, spendCredits } from "../credits.js";
+import { creditsForTtsCharacters, formatUsdBalanceFromCredits, formatUsdChargeFromCredits, getBalance, refundCredits, spendCredits, usdForCredits } from "../credits.js";
 import { textToSpeech } from "../elevenlabs.js";
 import { normalizeLang } from "../i18n.js";
 import { getState } from "../state.js";
@@ -19,7 +19,6 @@ import {
 } from "./constants.js";
 import {
   createAudioLink,
-  refundChatGptCredits,
   storeChatGptAudio,
 } from "./audio-storage.js";
 
@@ -93,16 +92,17 @@ async function listVoices(env, userId) {
 
 async function readBalance(env, userId) {
   const balance = await getBalance(env, userId);
+  const balanceUsd = usdNumber(balance);
 
   return {
     structuredContent: {
-      balance,
-      unit: "credits",
+      balance: balanceUsd,
+      unit: "USD",
     },
     content: [
       {
         type: "text",
-        text: `The user has ${balance.toLocaleString("en-US")} voice credits.`,
+        text: `The user's Vexa balance is ${formatUsdBalanceFromCredits(balance)}.`,
       },
     ],
   };
@@ -144,7 +144,7 @@ async function readHistory(env, userId, origin, args) {
       text: String(row.text || ""),
       voice: String(row.voice || ""),
       language: String(row.language || ""),
-      credits: Number(row.credits || 0),
+      cost_usd: usdNumber(row.credits),
       source: String(row.source || "chatbot"),
       created_at: String(row.created_at || ""),
       filename: buildTtsAudioFileName(Number(row.file_sequence || 1)),
@@ -206,7 +206,7 @@ async function generateVoice(env, userId, origin, args) {
 
   if (balanceBefore < chargeCredits) {
     throw new ToolInputError(
-      `Not enough credits. This voice needs ${chargeCredits.toLocaleString("en-US")} credits, but the account has ${balanceBefore.toLocaleString("en-US")}.`,
+      `Not enough balance. This voice needs ${formatUsdChargeFromCredits(chargeCredits)}, but the account has ${formatUsdBalanceFromCredits(balanceBefore)}.`,
     );
   }
 
@@ -217,6 +217,7 @@ async function generateVoice(env, userId, origin, args) {
     language,
   );
 
+  const billingOperationId = crypto.randomUUID();
   const spent = await spendCredits(
     env,
     userId,
@@ -226,12 +227,13 @@ async function generateVoice(env, userId, origin, args) {
       voice: voiceName,
       language,
       characters: characterCount,
+      billingOperationId,
     },
   );
 
   if (!spent.ok) {
     throw new ToolInputError(
-      "The account no longer has enough credits for this voice generation.",
+      `The account no longer has enough balance for this voice generation. Balance: ${formatUsdBalanceFromCredits(spent.balance)}.`,
     );
   }
 
@@ -253,8 +255,9 @@ async function generateVoice(env, userId, origin, args) {
         voice: voiceName,
         language,
         characters: characterCount,
-        credits_used: chargeCredits,
-        balance: Number(spent.balance || 0),
+        cost_usd: usdNumber(chargeCredits),
+        balance: usdNumber(spent.balance),
+        unit: "USD",
         filename: stored.filename,
         audio_url: stored.audioUrl,
         mime_type: "audio/mpeg",
@@ -262,29 +265,36 @@ async function generateVoice(env, userId, origin, args) {
       content: [
         {
           type: "text",
-          text: `The voice was generated with ${voiceName}. Audio: ${stored.audioUrl}`,
+          text: `The voice was generated with ${voiceName}. Cost: ${formatUsdChargeFromCredits(chargeCredits)}. Audio: ${stored.audioUrl}`,
         },
       ],
     };
   } catch (error) {
-    await refundChatGptCredits(
+    await refundCredits(
       env,
       userId,
       chargeCredits,
+      "chatgpt_tts_refund",
       {
         voice: voiceName,
         language,
         reason: "audio_storage_failed",
+        billingOperationId,
       },
+      `chatgpt_tts:${billingOperationId}`,
     ).catch((refundError) => {
       console.error(
-        "chatgpt tts credit refund failed",
+        "chatgpt tts refund failed",
         refundError?.stack || refundError,
       );
     });
 
     throw error;
   }
+}
+
+function usdNumber(credits) {
+  return Number(usdForCredits(credits).toFixed(6));
 }
 
 function resolveVoiceName(value) {
