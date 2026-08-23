@@ -1,4 +1,4 @@
-import { addCredits, USD_PER_1000_CREDITS } from "./credits.js";
+import { addCredits, formatUsdBalanceFromCredits, USD_PER_1000_CREDITS } from "./credits.js";
 import { requireDb } from "./state.js";
 
 const STAR_USD_PER_50 = 0.76;
@@ -53,6 +53,7 @@ export function createCustomStarPackage(credits, discount = null) {
   const discountPercent = normalizeDiscountPercent(discount?.percent);
   const stars = discountPercent > 0 ? discountedStars(baseStars, discountPercent) : baseStars;
   const usd = (cleanCredits / 1000) * CUSTOM_STARS_USD_PER_1000_CREDITS;
+  const balanceLabel = formatUsdBalanceFromCredits(cleanCredits);
   return {
     id: `custom_${cleanCredits}_${stars}`,
     credits: cleanCredits,
@@ -63,9 +64,9 @@ export function createCustomStarPackage(credits, discount = null) {
     originalStars: baseStars,
     discountPercent,
     discountExpiresAt: Number(discount?.expiresAt || 0),
-    label: `${formatNumber(cleanCredits)} • ${formatUsd(usd)}$ • ${stars} ⭐️`,
-    description: `${formatNumber(cleanCredits)} Vexa credits`,
-    invoiceLabel: `${formatNumber(cleanCredits)} credits`,
+    label: `${balanceLabel} balance • ${stars} ⭐️`,
+    description: `Add ${balanceLabel} to Vexa balance`,
+    invoiceLabel: `${balanceLabel} Vexa balance`,
     custom: true,
   };
 }
@@ -110,7 +111,7 @@ export function applyStarPackageDiscount(pack, discount = null) {
     originalStars,
     discountPercent: percent,
     discountExpiresAt: Number(discount?.expiresAt || 0),
-    label: `${formatNumber(pack.totalCredits)} • ${formatUsd(pack.usd)}$ • ${stars} ⭐️`,
+    label: `${formatUsdBalanceFromCredits(pack.totalCredits)} balance • ${stars} ⭐️`,
   };
 }
 
@@ -157,7 +158,7 @@ export async function applySuccessfulStarsPayment(env, userId, successfulPayment
 function createStarPackage(id, credits, bonus, usd, starsOverride = null) {
   const totalCredits = credits + bonus;
   const stars = starsOverride ?? Math.ceil((usd / STAR_USD_PER_50) * 50);
-  const creditLabel = bonus > 0 ? `${formatNumber(credits)} + ${formatNumber(bonus)}🎁` : formatNumber(credits);
+  const balanceLabel = formatUsdBalanceFromCredits(totalCredits);
 
   return {
     id,
@@ -166,9 +167,9 @@ function createStarPackage(id, credits, bonus, usd, starsOverride = null) {
     totalCredits,
     usd,
     stars,
-    label: `${creditLabel} • ${formatUsd(usd)}$ • ${stars} ⭐️`,
-    description: `${formatNumber(totalCredits)} Vexa credits`,
-    invoiceLabel: `${formatNumber(totalCredits)} credits`,
+    label: `${balanceLabel} balance • ${stars} ⭐️`,
+    description: `Add ${balanceLabel} to Vexa balance`,
+    invoiceLabel: `${balanceLabel} Vexa balance`,
   };
 }
 
@@ -201,10 +202,6 @@ function normalizeDiscountPercent(value) {
 
 function discountedStars(originalStars, percent) {
   return Math.max(1, Math.ceil(Number(originalStars || 0) * (100 - percent) / 100));
-}
-
-function formatNumber(value) {
-  return Number(value).toLocaleString("en-US");
 }
 
 function formatUsd(value) {
