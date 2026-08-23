@@ -1,5 +1,5 @@
 import { getAdminAction, isAdmin, resolveStartLanguage, trackUser } from "./admin.js";
-import { creditsForTtsCharacters, ensureBalanceRow, getBalance, spendCredits } from "./credits.js";
+import { creditsForTtsCharacters, ensureBalanceRow, formatUsdBalanceFromCredits, formatUsdChargeFromCredits, getBalance, refundCredits, spendCredits } from "./credits.js";
 import { getSelectedElevenApiKey, textToSpeech } from "./elevenlabs.js";
 import { normalizeLang } from "./i18n.js";
 import {
@@ -105,8 +105,8 @@ export async function handleVoiceTransformMessage(message, env) {
       env,
       chatId,
       lang === "fa"
-        ? "کردیتت تموم شده. اول کردیت بگیر و دوباره ویس رو بفرست."
-        : "You are out of credits. Add credits and send the audio again.",
+        ? "موجودیت تموم شده. اول حسابت رو شارژ کن و دوباره ویس رو بفرست."
+        : "Your balance is empty. Add balance and send the audio again.",
     );
     return true;
   }
@@ -156,9 +156,31 @@ export async function handleVoiceTransformMessage(message, env) {
       statusMessage = null;
     }
 
-    const sequence = await getNextTtsFileSequence(env, userId);
-    const filename = buildTtsAudioFileName(sequence);
-    const sent = await sendAudio(env, chatId, outputAudio, filename, filename.replace(/\.mp3$/i, ""));
+    let sequence;
+    let filename;
+    let sent;
+    try {
+      sequence = await getNextTtsFileSequence(env, userId);
+      filename = buildTtsAudioFileName(sequence);
+      sent = await sendAudio(env, chatId, outputAudio, filename, filename.replace(/\.mp3$/i, ""));
+    } catch (deliveryError) {
+      await refundCredits(
+        env,
+        userId,
+        chargeCredits,
+        "voice_v3_delivery_refund",
+        {
+          voice: voiceName,
+          language: transcript?.language_code || lang,
+          sourceType: attachment.fileType,
+          telegramMessageId: message?.message_id || null,
+        },
+        `voice_v3_delivery:${userId}:${message?.message_id || attachment.fileId}`,
+      ).catch((refundError) => {
+        console.error("Voice Transform delivery refund failed", refundError?.stack || refundError);
+      });
+      throw deliveryError;
+    }
 
     await saveTtsHistory(
       env,
@@ -436,8 +458,8 @@ async function requireVoiceTransformMembership(env, chatId, userId, state) {
 function insufficientCreditsError(lang, needed, balance) {
   const error = new Error(
     lang === "fa"
-      ? `کردیت کافی نیست. برای این ویس ${Number(needed).toLocaleString("en-US")} کردیت لازمه و موجودی تو ${Number(balance || 0).toLocaleString("en-US")} هست.`
-      : `Not enough credits. This voice needs ${Number(needed).toLocaleString("en-US")} credits; your balance is ${Number(balance || 0).toLocaleString("en-US")}.`,
+      ? `موجودی کافی نیست. برای این ویس ${formatUsdChargeFromCredits(needed)} لازم داری و موجودی تو ${formatUsdBalanceFromCredits(balance)} است.`
+      : `Not enough balance. This voice needs ${formatUsdChargeFromCredits(needed)}; your balance is ${formatUsdBalanceFromCredits(balance)}.`,
   );
   error.status = 402;
   return error;
