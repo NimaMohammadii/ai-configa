@@ -51,13 +51,11 @@ export async function submitMiniAppTomanReceipt(env, user, payload = {}) {
     if (!fixed) throw httpError("پکیج انتخاب‌شده معتبر نیست.", 400);
     pack = buildFixedTomanPackage(fixed, discount);
   } else {
-    const credits = Number(payload.credits);
-    if (!Number.isSafeInteger(credits) || credits > 1_000_000) {
+    const requestedCredits = Number(payload.credits);
+    if (!Number.isSafeInteger(requestedCredits) || requestedCredits < 1 || requestedCredits > 1_000_000) {
       throw httpError("مقدار موجودی دلاری معتبر نیست.", 400);
     }
-    if (credits < TOMAN_MIN_PURCHASE_CREDITS) {
-      throw httpError(`حداقل خرید دلخواه ${formatUsdBalanceFromCredits(TOMAN_MIN_PURCHASE_CREDITS)} است.`, 400);
-    }
+    const credits = Math.max(TOMAN_MIN_PURCHASE_CREDITS, requestedCredits);
     pack = createCustomTomanPackage(credits, discount);
   }
 
@@ -81,8 +79,10 @@ export async function submitMiniAppTomanReceipt(env, user, payload = {}) {
   for (const adminId of admins) {
     try {
       const message = await sendReceiptPhoto(env, adminId, receipt, caption, receiptId);
-      await saveReceiptAdminMessage(env, receiptId, adminId, message.message_id, caption);
       sentToAdmin += 1;
+      await saveReceiptAdminMessage(env, receiptId, adminId, message.message_id, caption).catch((error) => {
+        console.error("save mini app receipt admin message failed", adminId, error?.message || error);
+      });
     } catch (error) {
       console.error("send mini app receipt to admin failed", adminId, error?.message || error);
     }
@@ -111,7 +111,6 @@ function buildFixedTomanPackage(base, discount) {
     credits: Number(base.credits || 0),
     bonus: Number(base.bonus || 0),
     totalCredits,
-    voiceMinutes: totalCredits / 1000,
     amount: formatNumber(pricing.amount),
     amountValue: pricing.amount,
     originalAmountValue: pricing.originalAmount,
