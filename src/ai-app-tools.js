@@ -1,7 +1,7 @@
 import { getUserAiChatPreferences } from "./ai-chat-model.js";
 import { buildAiAudioFileInstructions, executeAiAudioFileTool, getAiAudioFileTools, isAiAudioFileToolCall, isAiAudioFileWriteToolCall } from "./ai-audio-file-tools.js";
 import { getAiChatAccessSettings, getMiniAppAccessSettings, isAdmin } from "./admin.js";
-import { addCredits, getBalance, spendCredits } from "./credits.js";
+import { addCredits, creditsForTtsCharacters, getBalance, spendCredits } from "./credits.js";
 import { textToSpeechWithTimestamps } from "./elevenlabs.js";
 import { normalizeLang } from "./i18n.js";
 import { getReferralStatus } from "./referrals.js";
@@ -43,7 +43,7 @@ export function buildAiAppInstructions() {
     "When a file reference is ambiguous, call vexa_list_audio first, then use the returned history ID with the appropriate audio tool.",
     "If the user says an audio file will not download, will not open, cannot be retrieved, or asks how to get the file, proactively offer to send that exact file to their private bot chat. Do not send it until the user explicitly asks you to send it or clearly accepts that offer.",
     "When the user explicitly asks to send an owned audio file to the bot chat, call vexa_send_audio_to_bot. Do not ask for a Telegram user ID or chat ID; the tool securely uses the authenticated user's own bot chat.",
-    "Call vexa_edit_audio_text only on an explicit request to change an existing audio file. It updates the same owned single-speaker Mini App TTS history item by fully regenerating the updated text with the same voice; credit cost equals the full updated text length. Ownership, balance, storage and revision are checked before commit.",
+    "Call vexa_edit_audio_text only on an explicit request to change an existing audio file. It updates the same owned single-speaker Mini App TTS history item by fully regenerating the updated text with the same voice; its charge uses the same per-character TTS pricing as normal voice generation. Ownership, balance, storage and revision are checked before commit.",
     "Never expose R2 keys, Telegram file IDs, secrets or raw database internals. Report only user-facing information.",
   ].join(" ");
 }
@@ -56,7 +56,7 @@ export function getAiAppTools() {
     ...getAiAudioFileTools(),
     tool(N.audioGet, "Read one owned TTS/audio history item in detail and derive its duration from timestamps or the stored WAV/MP3 when needed.", { historyId: { type: "string", minLength: 1, maxLength: 100 } }, ["historyId"]),
     tool(N.audioSend, "Send one exact owned TTS/audio history item to the current user's private Telegram bot chat. Use only after an explicit send request or a clear acceptance of an earlier offer to send the file. The authenticated user/chat is fixed server-side and is never supplied by the model.", { historyId: { type: "string", minLength: 1, maxLength: 100 } }, ["historyId"]),
-    tool(N.audioEdit, "Replace an exact text segment in one owned single-speaker editable Mini App TTS item and regenerate the full updated audio with the same voice. This updates the same history item, increments revision, and spends credits equal to the full updated text length. Use only on explicit user intent.", {
+    tool(N.audioEdit, "Replace an exact text segment in one owned single-speaker editable Mini App TTS item and regenerate the full updated audio with the same voice. This updates the same history item, increments revision, and charges the full updated text with the shared TTS per-character rate. Use only on explicit user intent.", {
       historyId: { type: "string", minLength: 1, maxLength: 100 },
       findText: { type: "string", minLength: 1, maxLength: MAX_EDIT_CHARS },
       replacement: { type: "string", maxLength: MAX_EDIT_CHARS },
@@ -207,9 +207,10 @@ async function audioEdit(env, userId, args) {
   if (!matches) throw pub("I couldn't find that exact text in the selected audio. Use an exact segment from its current text.");
   if (matches > 1 && !replaceAll) throw pub("That text appears more than once. Use a longer unique segment or explicitly replace all occurrences.");
   const newText = replaceAll ? oldText.split(findText).join(replacement) : replaceOnce(oldText, findText, replacement);
-  const cost = Array.from(newText).length;
+  const characterCount = Array.from(newText).length;
+  const cost = creditsForTtsCharacters(characterCount);
   if (!newText.trim()) throw pub("The edited TTS text cannot be empty.");
-  if (cost > MAX_EDIT_CHARS) throw pub("The edited TTS text is too long.");
+  if (characterCount > MAX_EDIT_CHARS) throw pub("The edited TTS text is too long.");
   if (newText === oldText) return { ok: true, unchanged: true, id, revision: Number(row.edit_revision || 0) };
   const balance = await getBalance(env, uid);
   if (balance < cost) throw pub(`Not enough credits. This AI audio edit needs ${cost} credits, but your balance is ${balance}.`);
@@ -219,7 +220,7 @@ async function audioEdit(env, userId, args) {
   const oldRevision = Number(row.edit_revision || 0), revision = oldRevision + 1;
   const key = `tts-audio/${encodeURIComponent(uid)}/${id}/revision-${revision}.mp3`;
   await env.EXPLORE_MEDIA.put(key, generated.audio, { httpMetadata: { contentType: "audio/mpeg" }, customMetadata: { kind: "tts-editable-audio" } });
-  const spent = await spendCredits(env, uid, cost, "ai_chat_tts_edit", { historyId: id, revision: oldRevision, voice, language: String(row.language || "en"), mode: "full_regeneration" });
+  const spent = await spendCredits(env, uid, cost, "ai_chat_tts_edit", { historyId: id, revision: oldRevision, voice, language: String(row.language || "en"), mode: "full_regeneration", characters: characterCount });
   if (!spent?.ok) { await env.EXPLORE_MEDIA.delete(key).catch(() => null); throw pub("Your credit balance changed before the edit could be saved. Try again."); }
   const alignment = generated.alignment || generated.normalizedAlignment || null;
   const result = await env.DB.prepare("UPDATE tts_history SET text=?,credits=credits+?,audio_base64='',audio_r2_key=?,audio_mime='audio/mpeg',alignment_json=?,edit_revision=? WHERE id=? AND user_id=? AND source='mini_app' AND edit_revision=?")
