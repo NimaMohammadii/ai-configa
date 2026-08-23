@@ -1,5 +1,5 @@
 import { getAdminAction, isAdmin, resolveStartLanguage, trackUser } from "./admin.js";
-import { ensureBalanceRow, getBalance, spendCredits } from "./credits.js";
+import { creditsForTtsCharacters, ensureBalanceRow, getBalance, spendCredits } from "./credits.js";
 import { getSelectedElevenApiKey, textToSpeech } from "./elevenlabs.js";
 import { normalizeLang } from "./i18n.js";
 import {
@@ -132,14 +132,14 @@ export async function handleVoiceTransformMessage(message, env) {
       mimeType: media.mimeType,
       voiceId,
       lang,
-      beforeGenerate: async ({ transcriptChars }) => {
+      beforeGenerate: async ({ chargeCredits }) => {
         const currentBalance = await getBalance(env, userId);
-        if (currentBalance < transcriptChars) {
-          throw insufficientCreditsError(lang, transcriptChars, currentBalance);
+        if (currentBalance < chargeCredits) {
+          throw insufficientCreditsError(lang, chargeCredits, currentBalance);
         }
       },
     });
-    const { transcript, cleanTranscript, transcriptChars, outputAudio } = transformed;
+    const { transcript, cleanTranscript, chargeCredits, outputAudio } = transformed;
 
     if (statusMessage?.message_id) {
       await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
@@ -156,7 +156,7 @@ export async function handleVoiceTransformMessage(message, env) {
       cleanTranscript,
       voiceName,
       String(transcript?.language_code || lang),
-      transcriptChars,
+      chargeCredits,
       sent,
       sequence,
       "",
@@ -165,9 +165,7 @@ export async function handleVoiceTransformMessage(message, env) {
       console.error("save V3 voice history failed", error?.message || error);
     });
 
-    // Match the existing bot TTS behavior: deliver first, then charge the same
-    // one-credit-per-transcript-character rule.
-    await spendCredits(env, userId, transcriptChars, "voice_v3", {
+    await spendCredits(env, userId, chargeCredits, "voice_v3", {
       voice: voiceName,
       language: transcript?.language_code || lang,
       sourceType: attachment.fileType,
@@ -216,9 +214,10 @@ export async function transformVoiceMediaForV3(env, options = {}) {
         : "This file is too long for the current V3 test. Send a shorter recording.",
     );
   }
+  const chargeCredits = creditsForTtsCharacters(transcriptChars);
 
   if (typeof options.beforeGenerate === "function") {
-    await options.beforeGenerate({ transcript, cleanTranscript, transcriptChars });
+    await options.beforeGenerate({ transcript, cleanTranscript, transcriptChars, chargeCredits });
   }
 
   const performancePrompt = buildV3PerformancePrompt(transcript);
@@ -235,6 +234,7 @@ export async function transformVoiceMediaForV3(env, options = {}) {
     transcript,
     cleanTranscript,
     transcriptChars,
+    chargeCredits,
     performancePrompt,
     outputAudio,
   };
