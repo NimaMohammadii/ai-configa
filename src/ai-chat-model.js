@@ -1,5 +1,5 @@
 import { requireDb } from "./state.js";
-import { CUSTOM_STARS_USD_PER_1000_CREDITS, MINI_APP_STAR_PACKAGES } from "./stars.js";
+import { CUSTOM_STARS_USD_PER_1000_CREDITS } from "./stars.js";
 
 export const AI_CHAT_MODELS = Object.freeze([
   Object.freeze({ id: "gpt-5.6-luna", label: "Luna", inputUsd: 1.00, cachedInputUsd: 0.10, cacheWriteUsd: 1.25, outputUsd: 6.00 }),
@@ -21,10 +21,7 @@ export const AI_CHAT_FILE_SEARCH_USD_PER_CALL = 0.0025;
 export const AI_CHAT_CONTAINER_1GB_USD_PER_SESSION = 0.03;
 export const AI_CHAT_VECTOR_STORAGE_USD_PER_GB_DAY = 0.10;
 export const AI_CHAT_BROWSER_USD_PER_HOUR = 0.09;
-export const AI_CHAT_USD_PER_CREDIT = Math.min(
-  CUSTOM_STARS_USD_PER_1000_CREDITS / 1000,
-  ...Object.values(MINI_APP_STAR_PACKAGES).map((pack) => Number(pack.usd) / Number(pack.totalCredits)),
-);
+export const AI_CHAT_USD_PER_CREDIT = CUSTOM_STARS_USD_PER_1000_CREDITS / 1000;
 const AI_CHAT_MODEL_SETTING_KEY = "ai_chat_model";
 const LONG_CONTEXT_TOKEN_THRESHOLD = 272000;
 const AI_CHAT_REQUEST_PREFERENCES_KEY = "__VEXA_AI_CHAT_REQUEST_PREFERENCES";
