@@ -926,7 +926,7 @@ export async function handleCallback(query, env) {
     const key = data === "admin_lang_toggle_prompt" ? "language_prompt_enabled" : "language_command_enabled";
     const current = data === "admin_lang_toggle_prompt" ? settings.languagePromptEnabled : settings.languageCommandEnabled;
     await setLanguageSetting(env, key, current ? "0" : "1");
-    await answerCallback(env, query.id, current ? "Disabled" : "Enabled");
+    await answerCallback(env, query.id, current ? "Disabled" : "Enabled", false);
     await editCurrentMenu(env, chatId, userId, messageId, await adminLanguageSettingsText(env), await adminLanguageSettingsKeyboard(env));
     return;
   }
@@ -1154,7 +1154,7 @@ export async function handleCallback(query, env) {
   if (data === "admin_broadcast_button") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     const action = await getAdminAction(env, userId);
-    const current = decodeBroadcastConfig(action.target_user_id);
+    const current = decodeBroadcastConfig(action?.target_user_id);
     const config = { ...current, button: !current.button };
     await answerCallback(env, query.id, config.button ? "Button enabled" : "Button disabled");
     await setAdminAction(env, userId, "broadcast", { targetUserId: encodeBroadcastConfig(config), chatId, messageId });
@@ -1175,7 +1175,7 @@ export async function handleCallback(query, env) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     const section = data.split(":")[1] || "home";
     const action = await getAdminAction(env, userId);
-    const config = { ...decodeBroadcastConfig(action.target_user_id), section };
+    const config = { ...decodeBroadcastConfig(action?.target_user_id), section };
     await answerCallback(env, query.id, "Section updated");
     await setAdminAction(env, userId, "broadcast", { targetUserId: encodeBroadcastConfig(config), chatId, messageId });
     await editCurrentMenu(env, chatId, userId, messageId, adminBroadcastPromptText(config), adminBroadcastKeyboard(config));
@@ -1764,7 +1764,7 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     try {
       const miniAppUrl = await buildMiniAppUrl(env, section);
       const richText = getRichTextPayload(message, text);
-      await sendPlainMessage(env, settings.channel, richText.text, channelPostMiniAppKeyboard(miniAppUrl), { entities: richText.entities }).catch(() => null);
+      await sendPlainMessage(env, settings.channel, richText.text, channelPostMiniAppKeyboard(miniAppUrl), { entities: richText.entities });
       await clearAdminAction(env, adminId);
       await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminChannelPostsText() + "\n\n✅ Post sent to " + settings.channel + ".", adminChannelPostsKeyboard());
     } catch (error) {
