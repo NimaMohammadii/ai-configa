@@ -173,7 +173,7 @@ function makeInlineVoice(source) {
       en: {
         title: "Vexa Voice Agent",
         body: "Talk naturally with Vexa in real time. It listens, understands, and replies by voice.",
-        price: "800 credits / minute",
+        price: "$0.14 USD / minute",
         okay: "Got it",
         never: "Don’t show again",
         close: "Close",
@@ -182,7 +182,7 @@ function makeInlineVoice(source) {
       fa: {
         title: "ایجنت صوتی وکسا",
         body: "زنده و طبیعی با وکسا صحبت کن؛ صدایت را می‌شنود، می‌فهمد و صوتی پاسخ می‌دهد.",
-        price: "۸۰۰ کردیت / دقیقه",
+        price: "$0.14 USD / minute",
         okay: "باشه",
         never: "دیگر نشانم نده",
         close: "بستن",
@@ -200,7 +200,7 @@ function makeInlineVoice(source) {
       de: {
         title: "Vexa Sprachagent",
         body: "Sprich in Echtzeit ganz natürlich mit Vexa. Vexa hört zu, versteht und antwortet per Stimme.",
-        price: "800 Credits / Minute",
+        price: "$0.14 USD / minute",
         okay: "Verstanden",
         never: "Nicht mehr anzeigen",
         close: "Schließen",

@@ -103,8 +103,8 @@ export const EMOTION_UI_FIXES_JS = String.raw`
   }
 
   var creditWarningBuyLabels={
-    'Not enough credits':'Buy credits',
-    'اعتبار کافی نیست':'خرید کردیت',
+    'Not enough USD balance':'Add USD balance',
+    'موجودی دلاری کافی نیست':'افزایش موجودی دلاری',
     'Недостаточно кредитов':'Купить кредиты',
     'Nicht genügend Credits':'Credits kaufen',
     'Yetersiz kredi':'Kredi satın al',
@@ -126,7 +126,7 @@ export const EMOTION_UI_FIXES_JS = String.raw`
     if(!isCreditWarning)return;
     var title=document.getElementById('ttsWarningTitle');
     var titleText=String(title&&title.textContent||'').trim();
-    var label=creditWarningBuyLabels[titleText]||(card.dir==='rtl'?'خرید کردیت':'Buy credits');
+    var label=creditWarningBuyLabels[titleText]||(card.dir==='rtl'?'افزایش موجودی دلاری':'Add USD balance');
     button.textContent=label;
     button.setAttribute('aria-label',label);
   }

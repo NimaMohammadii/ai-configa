@@ -60,7 +60,7 @@ export async function regenerateSmartTtsSelection(env, input) {
 
   const cost = creditsForUsdMicros(SMART_TTS_EDIT_BASE_USD_MICROS + replacementChars.length * TTS_USD_MICROS_PER_CHARACTER);
   const balance = await getBalance(env, userId);
-  if (balance < cost) throw httpError("Not enough credits.", 402);
+  if (balance < cost) throw httpError("Not enough USD balance.", 402);
 
   const storedVoiceId = VOICES[String(row.voice || "")] || "";
   const suppliedVoiceId = String(input.voiceId || "");
@@ -127,7 +127,7 @@ export async function regenerateSmartTtsSelection(env, input) {
     performanceDirection: directive.trim() || null,
     seed,
   });
-  if (!spent?.ok) throw httpError("Not enough credits.", 402);
+  if (!spent?.ok) throw httpError("Not enough USD balance.", 402);
 
   const token = crypto.randomUUID();
   await env.DB.prepare(

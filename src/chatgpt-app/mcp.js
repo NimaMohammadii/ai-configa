@@ -289,7 +289,7 @@ function initializeResult(params) {
     },
     instructions:
       "Use list_voices before generation when the user has not named a voice. " +
-      "Voice generation costs one account credit per character. " +
+      "Voice generation is billed in USD at $0.00017 per character. " +
       "Use get_balance before long generations when available.",
   };
 }

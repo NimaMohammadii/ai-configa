@@ -250,7 +250,7 @@ async function applyDigitalProductPurchase(env, payload) {
       transactionId,
       productId,
       userId,
-      String(payload?.product_name || product.name || "Vexa Credits").slice(0, 240),
+      String(payload?.product_name || product.name || "Vexa USD Balance").slice(0, 240),
       product.credits,
       product.amountMinor,
       product.currency,
@@ -299,7 +299,7 @@ async function applyDigitalProductRefund(env, payload) {
       normalizeOptionalId(payload?.transaction_id),
       productId,
       userId,
-      String(payload?.product_name || product.name || "Vexa Credits").slice(0, 240),
+      String(payload?.product_name || product.name || "Vexa USD Balance").slice(0, 240),
       product.credits,
       product.amountMinor,
       product.currency,
@@ -470,7 +470,7 @@ function toCardProduct(row) {
 
   return {
     productId: Number(productId),
-    name: String(row?.name || "Vexa Credits").slice(0, 120),
+    name: String(row?.name || "Vexa USD Balance").slice(0, 120),
     description: String(row?.description || "").slice(0, 240),
     credits,
     amountMinor,

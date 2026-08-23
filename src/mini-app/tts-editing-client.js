@@ -926,7 +926,7 @@ export const TTS_EDITING_JS = `
     node.textContent=cost.toLocaleString('en-US');
     node.setAttribute('data-value',String(cost));
     var generate=generateButton();
-    if(generate&&state.active)generate.setAttribute('aria-label','Regenerate edited text · '+String(cost)+' credits');
+    if(generate&&state.active)generate.setAttribute('aria-label','Regenerate edited text · '+formatBalanceUsd(cost));
     if(animate&&changed){
       node.classList.remove('is-changing');
       void node.offsetWidth;
@@ -1088,7 +1088,7 @@ export const TTS_EDITING_JS = `
       state.active=false;
       setMode(false);
       haptic('medium');
-      toast('Voice updated · '+Number(prepared.cost||0)+' credits');
+      toast('Voice updated · '+formatBalanceUsd(Number(prepared.cost||0)));
     }catch(error){
       var message=error&&error.message?error.message:'Could not regenerate this section';
       toast(message);
