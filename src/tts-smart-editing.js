@@ -1,4 +1,4 @@
-import { creditsForUsdMicros, getBalance, spendCredits, TTS_USD_MICROS_PER_CHARACTER } from "./credits.js";
+import { creditsForUsdMicros, getBalance, SMART_TTS_EDIT_BASE_USD_MICROS, spendCredits, TTS_USD_MICROS_PER_CHARACTER } from "./credits.js";
 import { getSelectedElevenApiKey } from "./elevenlabs.js";
 import { ensureTtsHistoryTable } from "./tts-history.js";
 import { VOICES } from "./voices.js";
@@ -58,7 +58,7 @@ export async function regenerateSmartTtsSelection(env, input) {
     throw httpError("Could not locate a natural phrase boundary in the audio.", 409);
   }
 
-  const cost = creditsForUsdMicros(10_000 + replacementChars.length * TTS_USD_MICROS_PER_CHARACTER);
+  const cost = creditsForUsdMicros(SMART_TTS_EDIT_BASE_USD_MICROS + replacementChars.length * TTS_USD_MICROS_PER_CHARACTER);
   const balance = await getBalance(env, userId);
   if (balance < cost) throw httpError("Not enough credits.", 402);
 
