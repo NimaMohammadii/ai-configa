@@ -6,6 +6,7 @@ import { VOICE_NAMES } from "./voices.js";
 
 export const TOMAN_PRICE_PER_1000 = 38000;
 export const TOMAN_MIN_PURCHASE_AMOUNT = 260000;
+export const TOMAN_MIN_PURCHASE_CREDITS = Math.ceil((TOMAN_MIN_PURCHASE_AMOUNT / TOMAN_PRICE_PER_1000) * 1000);
 export const MINIMAL_MIC_ICON = "🪼";
 
 export const TOMAN_PACKAGES = {
@@ -96,6 +97,7 @@ export function buyCreditsKeyboard(state = {}) {
 
 export function tomanPackagesText(state = {}) {
   const lang = state.language || "en";
+  const minimumUsd = formatUsdBalanceFromCredits(TOMAN_MIN_PURCHASE_CREDITS);
   return [
     t(lang, "buyTomanTitle"),
     "",
@@ -103,8 +105,8 @@ export function tomanPackagesText(state = {}) {
     t(lang, "audioCreditRule"),
     "",
     lang === "fa"
-      ? `حداقل پرداخت <b>${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} تومان</b> است`
-      : `Minimum payment is <b>${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} Toman</b>`,
+      ? `حداقل خرید دلخواه <b>${minimumUsd}</b> (${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} تومان) است`
+      : `Minimum custom purchase is <b>${minimumUsd}</b> (${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} Toman)`,
     lang === "fa" ? "مقدار موجودی دلاری موردنظرت را بفرست؛ مثلاً <code>1.50</code>" : "Send the USD balance amount you want, for example <code>1.50</code>",
   ].join("\n");
 }
