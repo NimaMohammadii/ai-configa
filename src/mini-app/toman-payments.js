@@ -1,4 +1,5 @@
 import { trackUser } from "../admin.js";
+import { formatUsdBalanceFromCredits } from "../credits.js";
 import { CARD_NUMBER } from "../payment-card.js";
 import { getAllAdminIds } from "../receipt-admins.js";
 import { applyWheelPurchaseDiscountToAmount, getActiveWheelPurchaseDiscount } from "../reward-wheel.js";
@@ -49,7 +50,7 @@ export async function submitMiniAppTomanReceipt(env, user, payload = {}) {
   } else {
     const credits = Number(payload.credits);
     if (!Number.isSafeInteger(credits) || credits < 1 || credits > 1_000_000) {
-      throw httpError("مقدار کردیت معتبر نیست.", 400);
+      throw httpError("مقدار موجودی دلاری معتبر نیست.", 400);
     }
     pack = createCustomTomanPackage(credits, discount);
   }
@@ -193,7 +194,7 @@ function receiptCaption({ user, amount, credits }) {
     `• Name: ${escapeHtml(name)}`,
     "",
     `• مبلغ: <b>${escapeHtml(amount)} تومان</b>`,
-    `• کردیت: <b>${Number(credits).toLocaleString("en-US")}</b>`,
+    `• موجودی دلاری: <b>${formatUsdBalanceFromCredits(credits)}</b>`,
   ].join("\n");
 }
 
