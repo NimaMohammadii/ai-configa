@@ -1,3 +1,4 @@
+import { formatUsdBalanceFromCredits } from "./credits.js";
 import { t } from "./i18n.js";
 import { CARD_NUMBER } from "./payment-card.js";
 import { getUserVoices } from "./user-voices.js";
@@ -8,10 +9,10 @@ export const TOMAN_MIN_PURCHASE_AMOUNT = 260000;
 export const MINIMAL_MIC_ICON = "🪼";
 
 export const TOMAN_PACKAGES = {
-  vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: "🧪 Vexa Test — 400 Credit" },
-  starter: { credits: 2000, bonus: 100, amount: "160,000", label: "⚡ Starter — 2,000 + 100 🎁" },
-  pro: { credits: 8000, bonus: 500, amount: "510,000", label: "🚀 Pro — 8,000 + 500 🎁" },
-  ultra: { credits: 22000, bonus: 2000, amount: "999,000", label: "👑 Ultra — 22,000 + 2,000 🎁" },
+  vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: `🧪 Vexa Test — ${formatUsdBalanceFromCredits(400)}` },
+  starter: { credits: 2000, bonus: 100, amount: "160,000", label: `⚡ Starter — ${formatUsdBalanceFromCredits(2100)} 🎁` },
+  pro: { credits: 8000, bonus: 500, amount: "510,000", label: `🚀 Pro — ${formatUsdBalanceFromCredits(8500)} 🎁` },
+  ultra: { credits: 22000, bonus: 2000, amount: "999,000", label: `👑 Ultra — ${formatUsdBalanceFromCredits(24000)} 🎁` },
 };
 
 export function languageText() {
@@ -102,12 +103,9 @@ export function tomanPackagesText(state = {}) {
     t(lang, "audioCreditRule"),
     "",
     lang === "fa"
-      ? `هر <b>1000 کردیت</b> برابر <b>${formatNumber(TOMAN_PRICE_PER_1000)} تومان</b> است`
-      : `Every <b>1,000 credits</b> costs <b>${formatNumber(TOMAN_PRICE_PER_1000)} Toman</b>`,
-    lang === "fa"
-      ? `حداقل خرید <b>${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} تومان</b> است`
-      : `Minimum purchase is <b>${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} Toman</b>`,
-    lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست" : "Send your custom credit amount in this chat",
+      ? `حداقل پرداخت <b>${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} تومان</b> است`
+      : `Minimum payment is <b>${Number(TOMAN_MIN_PURCHASE_AMOUNT).toLocaleString("en-US")} Toman</b>`,
+    lang === "fa" ? "مقدار موجودی دلاری موردنظرت را بفرست؛ مثلاً <code>1.50</code>" : "Send the USD balance amount you want, for example <code>1.50</code>",
   ].join("\n");
 }
 
@@ -134,7 +132,7 @@ export function createCustomTomanPackage(credits, discount = null) {
     discountAmountValue: baseAmountValue - amountValue,
     discountExpiresAt: Number(discount?.expiresAt || 0),
     minimumApplied: baseAmountValue > calculatedAmountValue,
-    label: `${formatNumber(cleanCredits)} • ${formatNumber(amountValue)} تومان`,
+    label: `${formatUsdBalanceFromCredits(cleanCredits)} • ${formatNumber(amountValue)} تومان`,
     custom: true,
   };
 }
@@ -145,7 +143,7 @@ export function customTomanInstructionText(pack, state = {}) {
   return [
     lang === "fa" ? "🇮🇷 <b>پرداخت با تومان</b>" : t(lang, "buyTomanTitle"),
     "",
-    `${t(lang, "package")}: <b>${formatNumber(totalCredits)} credits</b>`,
+    `${t(lang, "package")}: <b>${formatUsdBalanceFromCredits(totalCredits)}</b>`,
     paymentAmountLine(pack, lang),
     "",
     t(lang, "transfer"),
@@ -167,7 +165,7 @@ export function paymentInstructionText(pack, state = {}) {
   return [
     t(lang, "almostThere"),
     "",
-    `${t(lang, "package")}: <b>${formatNumber(totalCredits)} credits</b>`,
+    `${t(lang, "package")}: <b>${formatUsdBalanceFromCredits(totalCredits)}</b>`,
     `${t(lang, "amount")}: <b>${pack.amount} T</b>`,
     "",
     t(lang, "transfer"),
