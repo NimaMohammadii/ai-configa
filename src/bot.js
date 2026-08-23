@@ -134,7 +134,7 @@ import {
   tryAdminLogin,
 } from "./admin.js";
 import { AI_CHAT_MODELS, setAiChatModel } from "./ai-chat-model.js";
-import { addCredits, creditsForTtsCharacters, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
+import { addCredits, creditsForTtsCharacters, ensureBalanceRow, formatUsdBalanceFromCredits, getBalance, removeCredits, spendCredits, USD_PER_CREDIT } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { storeTelegramExploreMedia } from "./explore-media.js";
 import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
@@ -152,7 +152,7 @@ import { getState, saveState, setMenuMessageId, setUserLanguage } from "./state.
 import { answerCallback, copyMessage, deleteMessage, editMessage, sendAudio, sendAudioFileId, sendBinaryDocument, sendBinaryVoice, sendDocument, sendDocumentFileId, sendMessage, sendPhoto, sendPlainMessage, sendVoiceFileId, sendTextDocument } from "./telegram-actions.js";
 import { buildTtsAudioFileName, buildTtsHistoryFile, getNextTtsFileSequence, getTtsHistoryExport, getTtsHistoryItemByIndex, getTtsHistoryPage, saveTtsHistory, ttsAudioCaption, ttsHistoryItemKeyboard, ttsHistoryItemText, ttsHistoryKeyboard, ttsHistoryText } from "./tts-history.js";
 import { getStoredUserAudioUpload, getUserAudioUploadsPage, userAudioUploadCaption, userAudioUploadsKeyboard, userAudioUploadsText } from "./user-audio-uploads.js";
-import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, userMainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_PACKAGES } from "./ui.js";
+import { buyCreditsKeyboard, buyCreditsText, createCustomTomanPackage, customTomanConfirmKeyboard, customTomanInstructionText, languageKeyboard, languageText, userMainKeyboard, paymentCancelKeyboard, paymentInstructionText, startText, tomanPackagesKeyboard, tomanPackagesText, TOMAN_MIN_PURCHASE_AMOUNT, TOMAN_MIN_PURCHASE_CREDITS, TOMAN_PACKAGES } from "./ui.js";
 import { VOICES, isLockedVoice } from "./voices.js";
 
 export async function handleMessage(message, env) {
@@ -433,7 +433,7 @@ export async function handleCallback(query, env) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await answerCallback(env, query.id);
     await setAdminAction(env, userId, "user_search", { chatId, messageId });
-    await editCurrentMenu(env, chatId, userId, messageId, adminUserSearchPromptText(), adminCancelKeyboard("admin_users:0"));
+    await editCurrentMenu(env, chatId, userId, messageId, adminUserSearchResultsText("", []), adminCancelKeyboard("admin_users:0"));
     return;
   }
 
@@ -545,7 +545,6 @@ export async function handleCallback(query, env) {
     return;
   }
 
-
   if (data.startsWith("admin_vexa_live_downloads:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
@@ -598,7 +597,9 @@ export async function handleCallback(query, env) {
 
   if (data.startsWith("admin_ai_chat_download:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    const targetUserId = data.slice("admin_ai_chat_download:".length);
+    await clearAdminAction(env, userId);
+    const parts = data.split(":");
+    const targetUserId = parts[1];
     const rows = await getAiChatHistory(env, targetUserId);
     const filename = "ai-chat-" + String(targetUserId).replace(/[^a-zA-Z0-9_-]/g, "_") + ".txt";
     await answerCallback(env, query.id, "Sending chat history...", false);
@@ -652,7 +653,6 @@ export async function handleCallback(query, env) {
     return;
   }
 
-
   if (data === "admin_image_pricing") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
@@ -696,7 +696,6 @@ export async function handleCallback(query, env) {
     return;
   }
 
-
   if (data === "admin_image_explore_noop") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await answerCallback(env, query.id);
@@ -719,8 +718,6 @@ export async function handleCallback(query, env) {
     await editCurrentMenu(env, chatId, userId, messageId, adminImageExploreUploadText(), adminCancelKeyboard("admin_image_explore"));
     return;
   }
-
-
 
   if (data.startsWith("admin_image_explore_voice:")) {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
@@ -820,7 +817,6 @@ export async function handleCallback(query, env) {
     await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppAccessText(env), await adminMiniAppAccessKeyboard(env));
     return;
   }
-
 
   if (data === "admin_mini_app_icons") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
@@ -973,7 +969,7 @@ export async function handleCallback(query, env) {
     const backPage = Number(parts[3] || 0);
     const uploads = await getUserAudioUploadsPage(env, targetUserId, audioPage);
     await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, userAudioUploadsText(uploads, targetUserId), userAudioUploadsKeyboard(uploads, targetUserId, backPage));
+    await editCurrentMenu(env, chatId, userId, messageId, userAudioUploadCaption(uploads.rows[0] || {}, targetUserId), adminUserKeyboard(targetUserId, backPage));
     return;
   }
 
@@ -1077,7 +1073,7 @@ export async function handleCallback(query, env) {
     const page = Number(parts[2] || 0);
     await resetUser(env, targetUserId);
     await answerCallback(env, query.id, "User reset and deleted", true);
-    await editCurrentMenu(env, chatId, userId, messageId, await adminUsersText(env, page), await adminUsersKeyboard(env, page));
+    await editCurrentMenu(env, chatId, userId, messageId, await adminUserText(env, targetUserId), adminUserKeyboard(targetUserId, page));
     return;
   }
 
@@ -1103,7 +1099,6 @@ export async function handleCallback(query, env) {
     return;
   }
 
-
   if (data === "admin_initial_start") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     await clearAdminAction(env, userId);
@@ -1119,7 +1114,6 @@ export async function handleCallback(query, env) {
     await editCurrentMenu(env, chatId, userId, messageId, adminInitialStartPromptText(), adminCancelKeyboard("admin_initial_start"));
     return;
   }
-
 
   if (data === "admin_broadcast") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
@@ -1269,7 +1263,6 @@ export async function handleCallback(query, env) {
     return;
   }
 
-
   if (data === "buy_credits") {
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, buyCreditsText(state), localizedBuyCreditsKeyboard(state));
@@ -1295,7 +1288,7 @@ export async function handleCallback(query, env) {
     const pending = await getPendingPayment(env, userId);
     const pack = pendingPackage(pending);
     if (!pack) {
-      await answerCallback(env, query.id, state.language === "fa" ? "اول مقدار کردیت را بفرست" : "Send a credit amount first", true);
+      await answerCallback(env, query.id, state.language === "fa" ? "اول مقدار موجودی دلاری را بفرست" : "Send a USD balance amount first", true);
       return;
     }
     await answerCallback(env, query.id);
@@ -1426,7 +1419,7 @@ function imageEditWaitText(state) {
 function imageUsageText(state) {
   return state.language === "fa"
     ? "🎨 برای ساخت تصویر، دستور را همراه توضیح تصویر بفرست:\n\n<code>/image یک گربه فضانورد روی ماه، سبک سینمایی</code>"
-    : "🎨 To create an image, send /image followed by your prompt:\n\n<code>/image a cinematic astronaut cat on the moon</code>";
+    : "To create an image, send /image followed by your prompt:\n\n<code>/image a cinematic astronaut cat on the moon</code>";
 }
 
 function imageWaitText(state) {
@@ -1443,7 +1436,6 @@ async function handleAdminPhotoInput(env, chatId, adminId, message) {
   if (!action) return false;
 
   const inputMessageId = message.message_id;
-
 
   if (action.action === "image_explore_image" || action.action === "image_explore_prompt") {
     const fileId = getLargestPhotoFileId(message);
@@ -1569,7 +1561,6 @@ async function handleAdminAudioInput(env, chatId, adminId, inputMessageId, audio
   const action = await getAdminAction(env, adminId);
   if (!action) return false;
 
-
   if (action.action === "welcome_audio") {
     const language = normalizeLang(action.target_user_id || "en");
     await setWelcomeAudio(env, language, audioAttachment.fileId, audioAttachment.fileType);
@@ -1594,7 +1585,6 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   if (!action) return false;
 
   await deleteMessage(env, chatId, inputMessageId).catch(() => null);
-
 
   if (action.action === "user_search") {
     const users = await searchAdminUsers(env, text);
@@ -1622,9 +1612,6 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminWelcomeAudioPromptText(action.target_user_id || "en") + "\n\nPlease send an audio file, not text.", adminCancelKeyboard("admin_welcome_audio"));
     return true;
   }
-
-
-
 
   if (action.action === "image_explore_move") {
     const position = Number.parseInt(String(text).trim(), 10);
@@ -1866,18 +1853,27 @@ async function denyCallback(env, callbackQueryId, state = {}) {
   await answerCallback(env, callbackQueryId, t(state.language, "accessDenied"), true);
 }
 
-
 async function handleTomanCreditInput(env, chatId, userId, messageId, text, state) {
   const pending = await getPendingPayment(env, userId);
   const pendingPackageId = String(pending?.package_id || "");
   const isAwaitingCustomTomanInput = pendingPackageId.startsWith("input") || pendingPackageId.startsWith("custom:");
   if (!pending || !isAwaitingCustomTomanInput) return false;
 
-  const credits = parseTomanCreditAmount(text);
+  const credits = parseTomanUsdBalanceAmount(text);
   await deleteMessage(env, chatId, messageId).catch(() => null);
+  const minimumUsd = formatUsdBalanceFromCredits(TOMAN_MIN_PURCHASE_CREDITS);
 
-  if (!credits) {
-    await editCurrentMenu(env, chatId, userId, state.menuMessageId, tomanPackagesText(state) + "\n\n" + (state.language === "fa" ? "لطفاً یک عدد مثبت مثل <code>1000</code> بفرست" : "Please send a positive number like <code>1000</code>"), tomanPackagesKeyboard(state));
+  if (!credits || credits < TOMAN_MIN_PURCHASE_CREDITS) {
+    await editCurrentMenu(
+      env,
+      chatId,
+      userId,
+      state.menuMessageId,
+      tomanPackagesText(state) + "\n\n" + (state.language === "fa"
+        ? `حداقل خرید دلخواه <b>${minimumUsd}</b> است؛ مثلاً <code>1.50</code> بفرست`
+        : `Minimum custom purchase is <b>${minimumUsd}</b>; send an amount like <code>1.50</code>`),
+      tomanPackagesKeyboard(state),
+    );
     return true;
   }
 
@@ -1892,7 +1888,7 @@ function customTomanPreviewText(pack, state = {}) {
   const lines = [
     lang === "fa" ? "🇮🇷 <b>پرداخت با تومان</b>" : t(lang, "buyTomanTitle"),
     "",
-    `${t(lang, "package")}: <b>${Number(pack.credits).toLocaleString("en-US")} credits</b>`,
+    `${t(lang, "package")}: <b>${formatUsdBalanceFromCredits(pack.credits)}</b>`,
     customTomanAmountLine(pack, lang),
   ];
 
@@ -1939,15 +1935,19 @@ function pendingPackage(pending) {
   return null;
 }
 
-function parseTomanCreditAmount(text) {
-  const normalized = String(text || "")
+function parseTomanUsdBalanceAmount(text) {
+  let normalized = String(text || "")
     .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
     .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
-    .replace(/[,_\s]/g, "");
-  if (!/^\d+$/.test(normalized)) return null;
-  const value = Number.parseInt(normalized, 10);
-  if (!Number.isSafeInteger(value) || value <= 0) return null;
-  return value;
+    .replace(/[$€£\s]/g, "");
+  if (normalized.includes(",") && !normalized.includes(".")) normalized = normalized.replace(",", ".");
+  normalized = normalized.replace(/,/g, "");
+  if (!/^\d+(?:\.\d{1,6})?$/.test(normalized)) return null;
+  const usd = Number(normalized);
+  if (!Number.isFinite(usd) || usd <= 0) return null;
+  const credits = Math.max(1, Math.round(usd / USD_PER_CREDIT));
+  if (!Number.isSafeInteger(credits) || credits > 1_000_000) return null;
+  return credits;
 }
 
 async function handlePaymentScreenshot(env, chatId, userId, state) {
