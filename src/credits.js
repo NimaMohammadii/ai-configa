@@ -2,6 +2,8 @@ import { requireDb } from "./state.js";
 import { getCreditIdempotencyKey } from "./credit-idempotency.js";
 
 export const USD_MICROS_PER_CREDIT = 178;
+export const USD_PER_CREDIT = USD_MICROS_PER_CREDIT / 1_000_000;
+export const USD_PER_1000_CREDITS = USD_MICROS_PER_CREDIT / 1_000;
 export const TTS_USD_MICROS_PER_CHARACTER = 170;
 
 export function creditsForUsdMicros(value) {
