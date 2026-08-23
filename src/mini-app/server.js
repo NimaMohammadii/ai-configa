@@ -269,7 +269,7 @@ async function injectMiniAppUi(response, includeHistoryIdentity) {
     (includeHistoryIdentity
       ? "\n" + TTS_KEYBOARD_LOCK_PATCH + "\n" + TTS_EDIT_PERFORMANCE_PATCH + "\n" + VOICE_INTRO_REFERRAL_UI_PATCH + "\n" + HISTORY_FILE_IDENTITY_PATCH
       : "");
-  const patched = source.replace(marker, marker + "\n" + injection);
+  const patched = source.replace(marker, () => marker + "\n" + injection);
   return cloneTextResponse(response, patched);
 }
 
