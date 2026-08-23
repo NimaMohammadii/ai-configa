@@ -1,6 +1,19 @@
 import { requireDb } from "./state.js";
 import { getCreditIdempotencyKey } from "./credit-idempotency.js";
 
+export const USD_MICROS_PER_CREDIT = 178;
+export const TTS_USD_MICROS_PER_CHARACTER = 170;
+
+export function creditsForUsdMicros(value) {
+  const usdMicros = Math.max(0, Number(value) || 0);
+  return usdMicros > 0 ? Math.max(1, Math.ceil((usdMicros / USD_MICROS_PER_CREDIT) - 1e-12)) : 0;
+}
+
+export function creditsForTtsCharacters(value) {
+  const characters = Math.max(0, Math.floor(Number(value) || 0));
+  return creditsForUsdMicros(characters * TTS_USD_MICROS_PER_CHARACTER);
+}
+
 export async function getBalance(env, userId) {
   requireDb(env);
 
