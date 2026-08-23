@@ -1,5 +1,5 @@
 import { isAdmin } from "../admin.js";
-import { getBalance, spendCredits } from "../credits.js";
+import { creditsForTtsCharacters, getBalance, spendCredits } from "../credits.js";
 import { textToSpeech } from "../elevenlabs.js";
 import { normalizeLang } from "../i18n.js";
 import { getState } from "../state.js";
@@ -97,7 +97,7 @@ async function readBalance(env, userId) {
   return {
     structuredContent: {
       balance,
-      unit: "characters",
+      unit: "credits",
     },
     content: [
       {
@@ -179,6 +179,7 @@ async function generateVoice(env, userId, origin, args) {
       `Text must be ${MAX_TTS_CHARACTERS.toLocaleString("en-US")} characters or fewer.`,
     );
   }
+  const chargeCredits = creditsForTtsCharacters(characterCount);
 
   const state = await getState(env, userId);
   const requestedVoice = args.voice == null
@@ -203,9 +204,9 @@ async function generateVoice(env, userId, origin, args) {
   );
   const balanceBefore = await getBalance(env, userId);
 
-  if (balanceBefore < characterCount) {
+  if (balanceBefore < chargeCredits) {
     throw new ToolInputError(
-      `Not enough credits. This voice needs ${characterCount.toLocaleString("en-US")} credits, but the account has ${balanceBefore.toLocaleString("en-US")}.`,
+      `Not enough credits. This voice needs ${chargeCredits.toLocaleString("en-US")} credits, but the account has ${balanceBefore.toLocaleString("en-US")}.`,
     );
   }
 
@@ -219,7 +220,7 @@ async function generateVoice(env, userId, origin, args) {
   const spent = await spendCredits(
     env,
     userId,
-    characterCount,
+    chargeCredits,
     "chatgpt_tts",
     {
       voice: voiceName,
@@ -240,7 +241,7 @@ async function generateVoice(env, userId, origin, args) {
       text,
       voice: voiceName,
       language,
-      credits: characterCount,
+      credits: chargeCredits,
       audio,
       origin,
     });
@@ -252,7 +253,7 @@ async function generateVoice(env, userId, origin, args) {
         voice: voiceName,
         language,
         characters: characterCount,
-        credits_used: characterCount,
+        credits_used: chargeCredits,
         balance: Number(spent.balance || 0),
         filename: stored.filename,
         audio_url: stored.audioUrl,
@@ -269,7 +270,7 @@ async function generateVoice(env, userId, origin, args) {
     await refundChatGptCredits(
       env,
       userId,
-      characterCount,
+      chargeCredits,
       {
         voice: voiceName,
         language,
