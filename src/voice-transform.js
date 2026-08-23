@@ -141,6 +141,16 @@ export async function handleVoiceTransformMessage(message, env) {
     });
     const { transcript, cleanTranscript, chargeCredits, outputAudio } = transformed;
 
+    const spent = await spendCredits(env, userId, chargeCredits, "voice_v3", {
+      voice: voiceName,
+      language: transcript?.language_code || lang,
+      sourceType: attachment.fileType,
+      duration: attachment.duration || null,
+    });
+    if (!spent?.ok) {
+      throw insufficientCreditsError(lang, chargeCredits, spent?.balance || 0);
+    }
+
     if (statusMessage?.message_id) {
       await deleteMessage(env, chatId, statusMessage.message_id).catch(() => null);
       statusMessage = null;
@@ -163,13 +173,6 @@ export async function handleVoiceTransformMessage(message, env) {
       "chatbot",
     ).catch((error) => {
       console.error("save V3 voice history failed", error?.message || error);
-    });
-
-    await spendCredits(env, userId, chargeCredits, "voice_v3", {
-      voice: voiceName,
-      language: transcript?.language_code || lang,
-      sourceType: attachment.fileType,
-      duration: attachment.duration || null,
     });
 
     return true;
