@@ -1,6 +1,6 @@
 import worker from "./worker-voice.js";
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
-import { getBalance, spendCredits } from "./credits.js";
+import { creditsForUsdMicros, getBalance, spendCredits, USD_MICROS_PER_CREDIT } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { textToSpeech } from "./elevenlabs.js";
 import { VOICES } from "./voices.js";
@@ -12,88 +12,88 @@ const VOICE_ROOT = "/mini-app/live/api/voice-agent";
 const VOICE_SESSION_PATH = VOICE_ROOT + "/session";
 const VOICE_PROXY_PATH = VOICE_ROOT + "/connect";
 const VOICE_LOCKED_PROMPT_PATH = VOICE_ROOT + "/locked-prompt";
-const STT_CREDITS_PER_MINUTE = 30;
-const VOICE_CREDITS_PER_MINUTE = 800;
-const VOICE_MINIMUM_BALANCE = 10000;
-const VOICE_LOCKED_PROMPT_VERSION = "v1";
+const STT_CREDITS_PER_MINUTE = 5_000 / USD_MICROS_PER_CREDIT;
+const VOICE_CREDITS_PER_MINUTE = 140_000 / USD_MICROS_PER_CREDIT;
+const VOICE_MINIMUM_BALANCE = creditsForUsdMicros(150_000);
+const VOICE_LOCKED_PROMPT_VERSION = "v2";
 const VOICE_LOCKED_PROMPT_VOICE = "VexaVoiceLocked:Laura:" + VOICE_LOCKED_PROMPT_VERSION;
 const VOICE_LOCKED_PROMPT_COUNT = 5;
 const VOICE_LOCKED_PROMPT_VOICE_ID = VOICES.Laura;
 const VOICE_SESSION_TTL_MS = 15 * 60 * 1000;
 const VOICE_MAX_SESSION_MS = 10 * 60 * 1000;
 const VOICE_MAX_SETTLE_INTERVAL_MS = 5000;
-const BILLING_VERSION = "20260818-5";
+const BILLING_VERSION = "20260823-1";
 const VOICE_LOCKED_LANGUAGES = new Set(["en", "fa", "ru", "de", "tr", "ar", "es", "hi", "zh", "ja"]);
 const VOICE_LOCKED_PROMPTS = {
   en: [
-    "[clears throat] To talk with me, you need at least ten thousand credits in your balance.",
-    "[sighs] Your balance is still below ten thousand credits. Top it up a little, then we can talk.",
-    "[laughs] You're still a little short on credits. Once you reach ten thousand, I'm right here.",
-    "Voice Agent unlocks when your balance reaches at least ten thousand credits.",
-    "[clears throat] Still under ten thousand credits. Bring your balance up to ten thousand and we can start.",
+    "[clears throat] To talk with me, you need at least fifteen cents in your balance.",
+    "[sighs] Your balance is still below fifteen cents. Top it up a little, then we can talk.",
+    "[laughs] You're still a little short. Once your balance reaches fifteen cents, I'm right here.",
+    "Voice Agent unlocks when your balance reaches at least fifteen cents.",
+    "[clears throat] Still below fifteen cents. Bring your balance up to fifteen cents and we can start.",
   ],
   fa: [
-    "[clears throat] برای صحبت با من، باید حداقل ده هزار کردیت توی حسابت داشته باشی.",
-    "[sighs] هنوز ده هزار کردیت توی حسابت نداری. یکم حسابت رو شارژ کن تا بتونیم حرف بزنیم.",
-    "[laughs] هنوز چندتا کردیت کم داری. وقتی حسابت به ده هزار کردیت برسه، می‌تونیم شروع کنیم.",
-    "برای فعال شدن ویس ایجنت، حداقل ده هزار کردیت توی حسابت لازمه.",
-    "[clears throat] هنوز کردیت کافی توی حسابت نداری. حسابت رو برسون به ده هزار کردیت تا شروع کنیم.",
+    "[clears throat] برای صحبت با من، باید حداقل پانزده سنت توی حسابت داشته باشی.",
+    "[sighs] موجودیت هنوز کمتر از پانزده سنته. یکم حسابت رو شارژ کن تا بتونیم حرف بزنیم.",
+    "[laughs] هنوز یکم موجودی کم داری. وقتی حسابت به پانزده سنت برسه، می‌تونیم شروع کنیم.",
+    "برای فعال شدن ویس ایجنت، حداقل پانزده سنت موجودی لازمه.",
+    "[clears throat] موجودیت هنوز زیر پانزده سنته. حسابت رو برسون به پانزده سنت تا شروع کنیم.",
   ],
   ru: [
-    "[clears throat] Чтобы поговорить со мной, на балансе должно быть минимум десять тысяч кредитов.",
-    "[sighs] На балансе пока меньше десяти тысяч кредитов. Немного пополни его, и сможем поговорить.",
-    "[laughs] Тебе совсем немного не хватает кредитов. Как только будет десять тысяч, я здесь.",
-    "Голосовой агент откроется, когда на балансе будет минимум десять тысяч кредитов.",
-    "[clears throat] Пока меньше десяти тысяч кредитов. Пополни баланс до десяти тысяч, и начнём.",
+    "[clears throat] Чтобы поговорить со мной, на балансе должно быть минимум пятнадцать центов.",
+    "[sighs] На балансе пока меньше пятнадцати центов. Немного пополни его, и сможем поговорить.",
+    "[laughs] Тебе совсем немного не хватает. Как только будет пятнадцать центов, я здесь.",
+    "Голосовой агент откроется, когда на балансе будет минимум пятнадцать центов.",
+    "[clears throat] Пока меньше пятнадцати центов. Пополни баланс до пятнадцати центов, и начнём.",
   ],
   de: [
-    "[clears throat] Um mit mir zu sprechen, brauchst du mindestens zehntausend Credits auf deinem Guthaben.",
-    "[sighs] Dein Guthaben liegt noch unter zehntausend Credits. Lade es etwas auf, dann können wir reden.",
-    "[laughs] Dir fehlen nur noch ein paar Credits. Sobald du zehntausend hast, bin ich da.",
-    "Der Voice Agent wird freigeschaltet, sobald dein Guthaben mindestens zehntausend Credits erreicht.",
-    "[clears throat] Noch unter zehntausend Credits. Lade dein Guthaben auf zehntausend auf, dann legen wir los.",
+    "[clears throat] Um mit mir zu sprechen, brauchst du mindestens fünfzehn Cent Guthaben.",
+    "[sighs] Dein Guthaben liegt noch unter fünfzehn Cent. Lade es etwas auf, dann können wir reden.",
+    "[laughs] Dir fehlt nur noch ein wenig. Sobald du fünfzehn Cent hast, bin ich da.",
+    "Der Voice Agent wird freigeschaltet, sobald dein Guthaben mindestens fünfzehn Cent erreicht.",
+    "[clears throat] Noch unter fünfzehn Cent. Lade dein Guthaben auf fünfzehn Cent auf, dann legen wir los.",
   ],
   tr: [
-    "[clears throat] Benimle konuşmak için bakiyende en az on bin kredi olmalı.",
-    "[sighs] Bakiyen hâlâ on bin kredinin altında. Biraz yükle, sonra konuşabiliriz.",
-    "[laughs] Biraz daha krediye ihtiyacın var. On bine ulaştığında ben buradayım.",
-    "Sesli asistan, bakiyen en az on bin krediye ulaştığında açılır.",
-    "[clears throat] Hâlâ on bin kredinin altındasın. Bakiyeni on bine çıkar, başlayalım.",
+    "[clears throat] Benimle konuşmak için bakiyende en az on beş sent olmalı.",
+    "[sighs] Bakiyen hâlâ on beş sentin altında. Biraz yükle, sonra konuşabiliriz.",
+    "[laughs] Biraz daha bakiyeye ihtiyacın var. On beş sente ulaştığında ben buradayım.",
+    "Sesli asistan, bakiyen en az on beş sente ulaştığında açılır.",
+    "[clears throat] Hâlâ on beş sentin altındasın. Bakiyeni on beş sente çıkar, başlayalım.",
   ],
   ar: [
-    "[clears throat] للتحدث معي، يجب أن يكون رصيدك عشرة آلاف كريدت على الأقل.",
-    "[sighs] رصيدك ما زال أقل من عشرة آلاف كريدت. اشحنه قليلاً وبعدها نقدر نتكلم.",
-    "[laughs] باقي لك شوية كريدت فقط. لما توصل لعشرة آلاف، أنا هنا.",
-    "الوكيل الصوتي يفتح عندما يصل رصيدك إلى عشرة آلاف كريدت على الأقل.",
-    "[clears throat] ما زلت تحت عشرة آلاف كريدت. ارفع رصيدك لعشرة آلاف ونبدأ.",
+    "[clears throat] للتحدث معي، يجب أن يكون رصيدك خمسة عشر سنتًا على الأقل.",
+    "[sighs] رصيدك ما زال أقل من خمسة عشر سنتًا. اشحنه قليلاً وبعدها نقدر نتكلم.",
+    "[laughs] باقي لك شوية فقط. لما توصل لخمسة عشر سنتًا، أنا هنا.",
+    "الوكيل الصوتي يفتح عندما يصل رصيدك إلى خمسة عشر سنتًا على الأقل.",
+    "[clears throat] ما زلت تحت خمسة عشر سنتًا. ارفع رصيدك لخمسة عشر سنتًا ونبدأ.",
   ],
   es: [
-    "[clears throat] Para hablar conmigo, necesitas al menos diez mil créditos en tu saldo.",
-    "[sighs] Tu saldo todavía está por debajo de diez mil créditos. Recárgalo un poco y podremos hablar.",
-    "[laughs] Te faltan solo unos pocos créditos. Cuando llegues a diez mil, aquí estaré.",
-    "El agente de voz se desbloquea cuando tu saldo llega al menos a diez mil créditos.",
-    "[clears throat] Sigues por debajo de diez mil créditos. Sube tu saldo a diez mil y empezamos.",
+    "[clears throat] Para hablar conmigo, necesitas al menos quince centavos en tu saldo.",
+    "[sighs] Tu saldo todavía está por debajo de quince centavos. Recárgalo un poco y podremos hablar.",
+    "[laughs] Te falta solo un poco. Cuando llegues a quince centavos, aquí estaré.",
+    "El agente de voz se desbloquea cuando tu saldo llega al menos a quince centavos.",
+    "[clears throat] Sigues por debajo de quince centavos. Sube tu saldo a quince centavos y empezamos.",
   ],
   hi: [
-    "[clears throat] मुझसे बात करने के लिए तुम्हारे बैलेंस में कम से कम दस हज़ार क्रेडिट होने चाहिए।",
-    "[sighs] तुम्हारा बैलेंस अभी दस हज़ार क्रेडिट से कम है। थोड़ा टॉप अप कर लो, फिर हम बात कर सकते हैं।",
-    "[laughs] बस थोड़े से क्रेडिट और चाहिए। दस हज़ार होते ही मैं यहीं हूँ।",
-    "वॉइस एजेंट तब खुलेगा जब तुम्हारे बैलेंस में कम से कम दस हज़ार क्रेडिट होंगे।",
-    "[clears throat] अभी भी दस हज़ार से कम है। बैलेंस दस हज़ार तक कर लो, फिर शुरू करते हैं।",
+    "[clears throat] मुझसे बात करने के लिए तुम्हारे बैलेंस में कम से कम पंद्रह सेंट होने चाहिए।",
+    "[sighs] तुम्हारा बैलेंस अभी पंद्रह सेंट से कम है। थोड़ा टॉप अप कर लो, फिर हम बात कर सकते हैं।",
+    "[laughs] बस थोड़ा सा बैलेंस और चाहिए। पंद्रह सेंट होते ही मैं यहीं हूँ।",
+    "वॉइस एजेंट तब खुलेगा जब तुम्हारे बैलेंस में कम से कम पंद्रह सेंट होंगे।",
+    "[clears throat] अभी भी पंद्रह सेंट से कम है। बैलेंस पंद्रह सेंट तक कर लो, फिर शुरू करते हैं।",
   ],
   zh: [
-    "[clears throat] 要和我语音聊天，你的余额至少需要一万积分。",
-    "[sighs] 你的余额还不到一万积分。再充一点，我们就能聊天了。",
-    "[laughs] 还差一点积分。到一万以后，我就在这里等你。",
-    "余额达到至少一万积分后，语音助手就会解锁。",
-    "[clears throat] 现在还不到一万积分。把余额补到一万，我们就开始吧。",
+    "[clears throat] 要和我语音聊天，你的余额至少需要十五美分。",
+    "[sighs] 你的余额还不到十五美分。再充一点，我们就能聊天了。",
+    "[laughs] 还差一点余额。到十五美分以后，我就在这里等你。",
+    "余额达到至少十五美分后，语音助手就会解锁。",
+    "[clears throat] 现在还不到十五美分。把余额补到十五美分，我们就开始吧。",
   ],
   ja: [
-    "[clears throat] 私と話すには、残高が最低一万クレジット必要です。",
-    "[sighs] まだ一万クレジットに届いていません。少しチャージしたら、話せます。",
-    "[laughs] あと少しクレジットが必要です。一万になったら、ここで待っています。",
-    "残高が最低一万クレジットになると、ボイスエージェントが使えるようになります。",
-    "[clears throat] まだ一万クレジット未満です。一万までチャージして、始めましょう。",
+    "[clears throat] 私と話すには、残高が最低15セント必要です。",
+    "[sighs] まだ15セントに届いていません。少しチャージしたら、話せます。",
+    "[laughs] あと少し残高が必要です。15セントになったら、ここで待っています。",
+    "残高が最低15セントになると、ボイスエージェントが使えるようになります。",
+    "[clears throat] まだ15セント未満です。残高を15セントまでチャージして、始めましょう。",
   ],
 };
 
@@ -866,7 +866,7 @@ async function patchLiveIntegration(response) {
   source = replaceOrKeep(
     source,
     "Transcript</span><span id=\\\"vexaSttLanguage\\\"",
-    "Transcript <small style=\\\"margin-left:5px;color:rgba(255,255,255,.28);font-size:8.5px;font-weight:620;letter-spacing:-.01em;text-transform:none\\\">· 30 credits/min</small></span><span id=\\\"vexaSttLanguage\\\"",
+    "Transcript <small style=\\\"margin-left:5px;color:rgba(255,255,255,.28);font-size:8.5px;font-weight:620;letter-spacing:-.01em;text-transform:none\\\">· $0.005/min</small></span><span id=\\\"vexaSttLanguage\\\"",
     "STT rate label",
   );
 
