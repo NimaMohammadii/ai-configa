@@ -117,24 +117,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
       'button.vexa-liquid-metal-button .vexa-lm-shader-frame{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;border-radius:100px!important;background:rgb(0 0 0 / 0)!important;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 36px 14px rgba(0,0,0,.02),0 20px 12px rgba(0,0,0,.08),0 9px 9px rgba(0,0,0,.12),0 2px 5px rgba(0,0,0,.15)!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),width .4s ease,height .4s ease,box-shadow .15s cubic-bezier(.4,0,.2,1)!important}',
       'button.vexa-liquid-metal-button .vexa-lm-shader-host{position:absolute!important;inset:0!important;width:100%!important;max-width:100%!important;height:100%!important;border-radius:100px!important;overflow:hidden!important;transition:width .4s ease,height .4s ease!important}',
       'button.vexa-liquid-metal-button .vexa-lm-shader-host canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;display:block!important;border-radius:100px!important}',
-      'button.vexa-liquid-metal-button.vexa-lm-generate{color:#dedee1!important;font-weight:720!important;letter-spacing:-.012em!important;text-shadow:0 1px 0 rgba(255,255,255,.08),0 2px 4px rgba(0,0,0,.82)!important}',
-      'button.vexa-liquid-metal-button.vexa-lm-generate>:not(.vexa-lm-shader-layer):not(.vexa-lm-inner-layer):not(.vexa-lm-ripple-layer){color:#dedee1!important;text-shadow:0 1px 0 rgba(255,255,255,.08),0 2px 4px rgba(0,0,0,.82)!important}',
-      'button.vexa-liquid-metal-button.vexa-lm-generate .vexa-lm-inner{inset:1.5px!important;background:radial-gradient(125% 190% at 50% -92%,rgba(255,255,255,.24) 0%,rgba(255,255,255,.08) 34%,rgba(255,255,255,0) 56%),linear-gradient(180deg,#202023 0%,#101012 42%,#050506 100%)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),inset 0 -1px 0 rgba(0,0,0,.92),inset 0 0 18px rgba(255,255,255,.035),0 10px 26px rgba(0,0,0,.36)!important}',
-      'button.vexa-liquid-metal-button.vexa-lm-generate .vexa-lm-shader-frame{isolation:isolate!important;box-shadow:0 0 0 1px rgba(0,0,0,.72),0 12px 28px rgba(0,0,0,.34),0 0 20px rgba(255,255,255,.035)!important}',
-      'button.vexa-liquid-metal-button.vexa-lm-generate .vexa-lm-shader-host{display:none!important}',
-      '.vexa-lm-orbit{position:absolute!important;inset:0!important;z-index:2!important;width:100%!important;height:100%!important;display:block!important;overflow:visible!important;pointer-events:none!important}',
-      '.vexa-lm-orbit-track,.vexa-lm-orbit-glow,.vexa-lm-orbit-core{fill:none!important;vector-effect:non-scaling-stroke!important}',
-      '.vexa-lm-orbit-track{stroke:rgba(235,236,241,.34)!important;stroke-width:1.15!important}',
-      '.vexa-lm-orbit-glow,.vexa-lm-orbit-core{stroke-dasharray:17 83!important;stroke-dashoffset:0;stroke-linecap:round!important;animation:vexaLmPerimeter 3.35s linear infinite!important;will-change:stroke-dashoffset}',
-      '.vexa-lm-orbit-glow{stroke:rgba(225,231,255,.82)!important;stroke-width:4.6!important;opacity:.42!important;filter:blur(2.2px)}',
-      '.vexa-lm-orbit-core{stroke:#f8f8fb!important;stroke-width:1.75!important;filter:drop-shadow(0 0 2px rgba(255,255,255,.9)) drop-shadow(0 0 5px rgba(155,178,255,.46))}',
-      'button.vexa-liquid-metal-button.vexa-lm-generate.vexa-lm-hover .vexa-lm-orbit-glow,button.vexa-liquid-metal-button.vexa-lm-generate.vexa-lm-hover .vexa-lm-orbit-core{animation-duration:2.55s!important}',
-      'button.vexa-liquid-metal-button.vexa-lm-generate.vexa-lm-pressed .vexa-lm-orbit-glow,button.vexa-liquid-metal-button.vexa-lm-generate.vexa-lm-pressed .vexa-lm-orbit-core{animation-duration:1.7s!important}',
-      'button.vexa-liquid-metal-button.vexa-lm-generate:disabled:not(.loading)>:not(.vexa-lm-shader-layer):not(.vexa-lm-inner-layer):not(.vexa-lm-ripple-layer),button.vexa-liquid-metal-button.vexa-lm-generate.empty:not(.loading)>:not(.vexa-lm-shader-layer):not(.vexa-lm-inner-layer):not(.vexa-lm-ripple-layer){opacity:.46!important}',
-      'button.vexa-liquid-metal-button.vexa-lm-generate:disabled:not(.loading) .vexa-lm-orbit,button.vexa-liquid-metal-button.vexa-lm-generate.empty:not(.loading) .vexa-lm-orbit{opacity:.48!important}',
-      'button.vexa-liquid-metal-button.vexa-lm-generate:disabled:not(.loading) .vexa-lm-orbit-glow,button.vexa-liquid-metal-button.vexa-lm-generate:disabled:not(.loading) .vexa-lm-orbit-core{animation-play-state:paused!important}',
       'button.vexa-liquid-metal-button.vexa-lm-hover .vexa-lm-shader-frame{box-shadow:0 0 0 1px rgba(0,0,0,.4),0 12px 6px rgba(0,0,0,.05),0 8px 5px rgba(0,0,0,.1),0 4px 4px rgba(0,0,0,.15),0 1px 2px rgba(0,0,0,.2)!important}',
-      'button.vexa-liquid-metal-button.vexa-lm-generate.vexa-lm-hover .vexa-lm-shader-frame{box-shadow:0 0 0 1px rgba(0,0,0,.74),0 14px 30px rgba(0,0,0,.38),0 0 24px rgba(224,229,255,.055)!important}',
       'button.vexa-liquid-metal-button.vexa-lm-pressed>.vexa-lm-inner-layer{transform:translateZ(10px) translateY(1px) scale(.98)!important}',
       'button.vexa-liquid-metal-button.vexa-lm-pressed>.vexa-lm-shader-layer{transform:translateZ(0) translateY(1px) scale(.98)!important}',
       'button.vexa-liquid-metal-button.vexa-lm-pressed .vexa-lm-inner{box-shadow:inset 0 2px 4px rgba(0,0,0,.4),inset 0 1px 2px rgba(0,0,0,.3)!important}',
@@ -147,9 +130,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
       'button.vexa-liquid-metal-button.image-generate.loading::after{z-index:35!important;border:2px solid rgba(102,102,102,.28)!important;border-top-color:#666!important}',
       'button.vexa-liquid-metal-button.vexa-stt-record .vexa-stt-stop-shape{background:#666!important}',
       '.vexa-stt.processing button.vexa-liquid-metal-button.vexa-stt-record::after{z-index:30!important;color:#666!important;text-shadow:0 1px 2px rgba(0,0,0,.5)!important}',
-      '@keyframes vexaLmPerimeter{to{stroke-dashoffset:-100}}',
-      '@keyframes vexaLmRipple{0%{transform:translate(-50%,-50%) scale(0);opacity:.6}100%{transform:translate(-50%,-50%) scale(4);opacity:0}}',
-      '@media(prefers-reduced-motion:reduce){.vexa-lm-orbit-glow,.vexa-lm-orbit-core{animation:none!important;stroke-dashoffset:-12!important}}'
+      '@keyframes vexaLmRipple{0%{transform:translate(-50%,-50%) scale(0);opacity:.6}100%{transform:translate(-50%,-50%) scale(4);opacity:0}}'
     ].join('');
     doc.head.appendChild(style);
   }
@@ -161,87 +142,28 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
     return node;
   }
 
-  function isGenerateButton(button){
-    return button&&('convertButton'===button.id||'generateImageButton'===button.id);
-  }
-
-  function buildLayers(button){
-    var doc=button.ownerDocument;
-    ensureStyles(doc);
-    var shaderLayer=layer(doc,'vexa-lm-shader-layer');
-    var shaderFrame=layer(doc,'vexa-lm-shader-frame');
-    var shaderHost=layer(doc,'vexa-lm-shader-host');
-    var innerLayer=layer(doc,'vexa-lm-inner-layer');
-    var inner=layer(doc,'vexa-lm-inner');
-    var rippleLayer=layer(doc,'vexa-lm-ripple-layer');
-    shaderFrame.appendChild(shaderHost);
-    shaderLayer.appendChild(shaderFrame);
-    innerLayer.appendChild(inner);
-    button.appendChild(shaderLayer);
-    button.appendChild(innerLayer);
-    button.appendChild(rippleLayer);
-    return {shaderFrame:shaderFrame,shaderHost:shaderHost,rippleLayer:rippleLayer};
-  }
-
-  function installPerimeter(button,shaderFrame){
-    var doc=button.ownerDocument;
-    var ns='http://www.w3.org/2000/svg';
-    var svg=doc.createElementNS(ns,'svg');
-    var track=doc.createElementNS(ns,'rect');
-    var glow=doc.createElementNS(ns,'rect');
-    var core=doc.createElementNS(ns,'rect');
-    svg.setAttribute('class','vexa-lm-orbit');
-    svg.setAttribute('aria-hidden','true');
-    [track,glow,core].forEach(function(rect){
-      rect.setAttribute('pathLength','100');
-      rect.setAttribute('vector-effect','non-scaling-stroke');
-      svg.appendChild(rect);
-    });
-    track.setAttribute('class','vexa-lm-orbit-track');
-    glow.setAttribute('class','vexa-lm-orbit-glow');
-    core.setAttribute('class','vexa-lm-orbit-core');
-    shaderFrame.appendChild(svg);
-
-    function sync(){
-      var rect=button.getBoundingClientRect();
-      var width=Math.max(1,rect.width);
-      var height=Math.max(1,rect.height);
-      var inset=1.35;
-      var radius=Math.max(1,(height-inset*2)/2);
-      svg.setAttribute('viewBox','0 0 '+width+' '+height);
-      [track,glow,core].forEach(function(path){
-        path.setAttribute('x',String(inset));
-        path.setAttribute('y',String(inset));
-        path.setAttribute('width',String(Math.max(1,width-inset*2)));
-        path.setAttribute('height',String(Math.max(1,height-inset*2)));
-        path.setAttribute('rx',String(radius));
-        path.setAttribute('ry',String(radius));
-      });
-    }
-
-    sync();
-    var observer='ResizeObserver'in window?new ResizeObserver(sync):null;
-    if(observer)observer.observe(button);
-    return observer;
-  }
-
   function mount(button){
     if(!button||mounts.has(button))return;
     mounts.set(button,{pending:true});
-    if(isGenerateButton(button)){
-      var layers=buildLayers(button);
-      button.classList.add('vexa-liquid-metal-button','vexa-lm-generate');
-      var orbitObserver=installPerimeter(button,layers.shaderFrame);
-      mounts.set(button,{mount:null,observer:orbitObserver});
-      bindInteraction(button,null,layers.rippleLayer);
-      return;
-    }
     loadLibrary().then(function(library){
       if(!button.isConnected){mounts.delete(button);return}
-      var layers=buildLayers(button);
+      var doc=button.ownerDocument;
+      ensureStyles(doc);
+      var shaderLayer=layer(doc,'vexa-lm-shader-layer');
+      var shaderFrame=layer(doc,'vexa-lm-shader-frame');
+      var shaderHost=layer(doc,'vexa-lm-shader-host');
+      var innerLayer=layer(doc,'vexa-lm-inner-layer');
+      var inner=layer(doc,'vexa-lm-inner');
+      var rippleLayer=layer(doc,'vexa-lm-ripple-layer');
+      shaderFrame.appendChild(shaderHost);
+      shaderLayer.appendChild(shaderFrame);
+      innerLayer.appendChild(inner);
+      button.appendChild(shaderLayer);
+      button.appendChild(innerLayer);
+      button.appendChild(rippleLayer);
       button.classList.add('vexa-liquid-metal-button');
 
-      var shaderMount=new library.ShaderMount(layers.shaderHost,library.liquidMetalFragmentShader,{
+      var shaderMount=new library.ShaderMount(shaderHost,library.liquidMetalFragmentShader,{
         u_repetition:1,
         u_softness:.5,
         u_shiftRed:.3,
@@ -255,15 +177,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
         u_offsetY:-.1
       },undefined,.6);
       mounts.set(button,{mount:shaderMount});
-      bindInteraction(button,shaderMount,layers.rippleLayer);
-    }).catch(function(error){
-      mounts.delete(button);
-      console.error('[Vexa] Liquid Metal unavailable',error);
-    });
-  }
 
-  function bindInteraction(button,shaderMount,rippleLayer){
-      var doc=button.ownerDocument;
       button.addEventListener('mouseenter',function(){
         button.classList.add('vexa-lm-hover');
         if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(1);
@@ -294,6 +208,10 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
         rippleLayer.appendChild(ripple);
         setTimeout(function(){if(ripple.parentNode)ripple.remove()},600);
       });
+    }).catch(function(error){
+      mounts.delete(button);
+      console.error('[Vexa] Liquid Metal unavailable',error);
+    });
   }
 
   window.vexaMountLiquidMetalButton=mount;
