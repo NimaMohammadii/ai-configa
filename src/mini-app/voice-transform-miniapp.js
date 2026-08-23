@@ -69,11 +69,11 @@ export async function handleMiniAppVoiceTransformRequest(request, env) {
       mimeType: String(audio.type || "application/octet-stream"),
       voiceId,
       lang,
-      beforeGenerate: async ({ transcriptChars }) => {
+      beforeGenerate: async ({ chargeCredits }) => {
         const currentBalance = await getBalance(env, user.id);
-        if (currentBalance < transcriptChars) {
+        if (currentBalance < chargeCredits) {
           throw httpError(
-            "Not enough credits · Voice creation needs " + transcriptChars.toLocaleString("en-US") +
+            "Not enough credits · Voice creation needs " + chargeCredits.toLocaleString("en-US") +
               " credits · Balance " + currentBalance.toLocaleString("en-US") + " credits",
             402,
           );
@@ -92,7 +92,7 @@ export async function handleMiniAppVoiceTransformRequest(request, env) {
       transformed.cleanTranscript,
       voiceName,
       language,
-      transformed.transcriptChars,
+      transformed.chargeCredits,
       null,
       sequence,
       audioBase64,
@@ -101,7 +101,7 @@ export async function handleMiniAppVoiceTransformRequest(request, env) {
       console.error("save mini app V3 voice history failed", error?.message || error);
     });
 
-    const spent = await spendCredits(env, user.id, transformed.transcriptChars, "mini_app_voice_v3", {
+    const spent = await spendCredits(env, user.id, transformed.chargeCredits, "mini_app_voice_v3", {
       voice: voiceName,
       language,
       sourceType: "microphone",
@@ -120,7 +120,7 @@ export async function handleMiniAppVoiceTransformRequest(request, env) {
       voiceId,
       dialogue: false,
       language,
-      balance: Number(spent.balance ?? (startingBalance - transformed.transcriptChars)),
+      balance: Number(spent.balance ?? (startingBalance - transformed.chargeCredits)),
       historyId,
       revision: 0,
       text: transformed.cleanTranscript,
