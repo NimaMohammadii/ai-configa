@@ -86,4 +86,4 @@ const MINI_APP_JS_WITH_USD_BALANCE = replaceMiniAppSource(
   "USD balance"
 );
 
-export const MINI_APP_JS = MINI_APP_JS_WITH_USD_BALANCE.replace("(function(){", "(function(){\n" + HISTORY_UI_PATCH + PURCHASE_DISCOUNT_PATCH);
+export const MINI_APP_JS = MINI_APP_JS_WITH_USD_BALANCE.replace("(function(){", () => "(function(){\n" + HISTORY_UI_PATCH + PURCHASE_DISCOUNT_PATCH);
