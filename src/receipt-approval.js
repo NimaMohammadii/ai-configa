@@ -1,5 +1,5 @@
 import { trackUser } from "./admin.js";
-import { addCredits } from "./credits.js";
+import { addCredits, formatUsdBalanceFromCredits } from "./credits.js";
 import { getAllAdminIds } from "./receipt-admins.js";
 import { clearPendingPayment, getPendingPayment } from "./payments.js";
 import { requireDb } from "./state.js";
@@ -133,15 +133,15 @@ async function sendPaymentRejectedMessage(env, userId) {
 function paymentApprovedMessage(language, credits, balance) {
   const lang = normalizeReceiptLanguage(language);
   const text = PAYMENT_TEXTS[lang] || PAYMENT_TEXTS.en;
-  const creditText = Number(credits).toLocaleString("en-US");
-  const balanceText = Number(balance).toLocaleString("en-US");
+  const addedBalanceText = formatUsdBalanceFromCredits(credits);
+  const balanceText = formatUsdBalanceFromCredits(balance);
 
   const html = [
     "✅ <b>" + text.approvedTitle + "</b>",
     "",
     text.approvedVerifiedHtml,
-    "<b>" + creditText + " " + text.credits + "</b> " + text.addedToBalance,
-    text.currentBalance + ": <b>" + balanceText + " " + text.credits + "</b>",
+    "<b>" + addedBalanceText + "</b> " + text.addedToBalance,
+    text.currentBalance + ": <b>" + balanceText + "</b>",
     "",
     text.readyHtml,
   ].join("\n");
@@ -168,10 +168,9 @@ function normalizeReceiptLanguage(language) {
 
 const PAYMENT_TEXTS = {
   en: {
-    credits: "credits",
     approvedTitle: "Payment approved",
     approvedVerifiedHtml: "Your payment was <b>verified successfully</b>",
-    addedToBalance: "have been added to your balance",
+    addedToBalance: "has been added to your balance",
     currentBalance: "Current balance",
     readyHtml: "You can now <b>send your text</b> to create voice",
     rejectedTitle: "Payment rejected",
@@ -179,7 +178,6 @@ const PAYMENT_TEXTS = {
     rejectedBody2: "Please check the payment details and send a valid screenshot again",
   },
   fa: {
-    credits: "کردیت",
     approvedTitle: "پرداختت تایید شد",
     approvedVerifiedHtml: "پرداختت <b>با موفقیت تایید شد</b>",
     addedToBalance: "به موجودیت اضافه شد",
@@ -190,7 +188,6 @@ const PAYMENT_TEXTS = {
     rejectedBody2: "لطفاً اطلاعات پرداخت رو چک کن و اسکرین‌شات معتبر دوباره بفرست",
   },
   ru: {
-    credits: "кредитов",
     approvedTitle: "Платеж подтвержден",
     approvedVerifiedHtml: "Ваш платеж <b>успешно подтвержден</b>",
     addedToBalance: "добавлено на ваш баланс",
@@ -201,10 +198,9 @@ const PAYMENT_TEXTS = {
     rejectedBody2: "Проверьте данные платежа и отправьте корректный скриншот еще раз",
   },
   de: {
-    credits: "Credits",
     approvedTitle: "Zahlung bestätigt",
     approvedVerifiedHtml: "Deine Zahlung wurde <b>erfolgreich bestätigt</b>",
-    addedToBalance: "wurden deinem Guthaben hinzugefügt",
+    addedToBalance: "wurde deinem Guthaben hinzugefügt",
     currentBalance: "Aktuelles Guthaben",
     readyHtml: "Du kannst jetzt <b>deinen Text senden</b>, um eine Stimme zu erstellen",
     rejectedTitle: "Zahlung abgelehnt",
@@ -212,7 +208,6 @@ const PAYMENT_TEXTS = {
     rejectedBody2: "Bitte prüfe die Zahlungsdetails und sende erneut einen gültigen Screenshot",
   },
   tr: {
-    credits: "kredi",
     approvedTitle: "Ödeme onaylandı",
     approvedVerifiedHtml: "Ödemeniz <b>başarıyla doğrulandı</b>",
     addedToBalance: "bakiyenize eklendi",
@@ -223,10 +218,9 @@ const PAYMENT_TEXTS = {
     rejectedBody2: "Lütfen ödeme bilgilerini kontrol edip geçerli bir ekran görüntüsü tekrar gönderin",
   },
   ar: {
-    credits: "رصيد",
     approvedTitle: "تم تأكيد الدفع",
     approvedVerifiedHtml: "تم <b>التحقق من الدفع بنجاح</b>",
-    addedToBalance: "تمت إضافتها إلى رصيدك",
+    addedToBalance: "تمت إضافته إلى رصيدك",
     currentBalance: "الرصيد الحالي",
     readyHtml: "يمكنك الآن <b>إرسال النص</b> لإنشاء الصوت",
     rejectedTitle: "تم رفض الدفع",
@@ -234,7 +228,6 @@ const PAYMENT_TEXTS = {
     rejectedBody2: "يرجى التحقق من تفاصيل الدفع وإرسال لقطة شاشة صالحة مرة أخرى",
   },
   zh: {
-    credits: "credits",
     approvedTitle: "付款已通过",
     approvedVerifiedHtml: "你的付款已<b>成功验证</b>",
     addedToBalance: "已添加到你的余额",
@@ -245,7 +238,6 @@ const PAYMENT_TEXTS = {
     rejectedBody2: "请检查付款信息并重新发送有效截图",
   },
   ja: {
-    credits: "credits",
     approvedTitle: "支払いが承認されました",
     approvedVerifiedHtml: "支払いは<b>正常に確認されました</b>",
     addedToBalance: "が残高に追加されました",
@@ -256,10 +248,9 @@ const PAYMENT_TEXTS = {
     rejectedBody2: "支払い情報を確認し、有効なスクリーンショットをもう一度送信してください",
   },
   es: {
-    credits: "créditos",
     approvedTitle: "Pago aprobado",
     approvedVerifiedHtml: "Tu pago fue <b>verificado correctamente</b>",
-    addedToBalance: "se han añadido a tu saldo",
+    addedToBalance: "se ha añadido a tu saldo",
     currentBalance: "Saldo actual",
     readyHtml: "Ahora puedes <b>enviar tu texto</b> para crear voz",
     rejectedTitle: "Pago rechazado",
@@ -267,10 +258,9 @@ const PAYMENT_TEXTS = {
     rejectedBody2: "Revisa los detalles del pago y envía otra captura válida",
   },
   hi: {
-    credits: "credits",
     approvedTitle: "पेमेंट अप्रूव हो गया",
     approvedVerifiedHtml: "आपका पेमेंट <b>सफलतापूर्वक वेरिफाई हो गया</b>",
-    addedToBalance: "आपके बैलेंस में जोड़ दिए गए हैं",
+    addedToBalance: "आपके बैलेंस में जोड़ दिया गया है",
     currentBalance: "मौजूदा बैलेंस",
     readyHtml: "अब आप आवाज़ बनाने के लिए <b>अपना टेक्स्ट भेज सकते हैं</b>",
     rejectedTitle: "पेमेंट रिजेक्ट हो गया",
@@ -393,7 +383,7 @@ function receiptCaption({ user, amount, credits }) {
     `• Name: ${escapeHtml(name)}`,
     "",
     `• مبلغ: <b>${escapeHtml(amount)} تومان</b>`,
-    `• کردیت: <b>${Number(credits).toLocaleString("en-US")}</b>`,
+    `• موجودی دلاری: <b>${formatUsdBalanceFromCredits(credits)}</b>`,
   ].join("\n");
 }
 
