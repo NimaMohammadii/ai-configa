@@ -2,8 +2,8 @@ import { USD_PER_CREDIT } from "./credits.js";
 import { requireDb } from "./state.js";
 
 export const AI_CHAT_MODELS = Object.freeze([
-  Object.freeze({ id: "gpt-5.6-luna", label: "Luna", inputUsd: 0.20, cachedInputUsd: 0.02, cacheWriteUsd: 0.25, outputUsd: 1.20 }),
-  Object.freeze({ id: "gpt-5.6-terra", label: "Terra", inputUsd: 2.00, cachedInputUsd: 0.20, cacheWriteUsd: 2.50, outputUsd: 12.00 }),
+  Object.freeze({ id: "gpt-5.6-luna", label: "Luna", inputUsd: 1.00, cachedInputUsd: 0.10, cacheWriteUsd: 1.25, outputUsd: 6.00 }),
+  Object.freeze({ id: "gpt-5.6-terra", label: "Terra", inputUsd: 2.50, cachedInputUsd: 0.25, cacheWriteUsd: 3.125, outputUsd: 15.00 }),
   Object.freeze({ id: "gpt-5.6-sol", label: "Sol", inputUsd: 5.00, cachedInputUsd: 0.50, cacheWriteUsd: 6.25, outputUsd: 30.00 }),
 ]);
 
