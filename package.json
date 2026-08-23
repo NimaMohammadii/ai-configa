@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node --test",
     "set:webhook": "node scripts/set-webhook.js"
   },
   "dependencies": {
