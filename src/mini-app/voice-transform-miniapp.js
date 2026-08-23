@@ -81,10 +81,18 @@ export async function handleMiniAppVoiceTransformRequest(request, env) {
       },
     });
 
+    const language = String(transformed.transcript?.language_code || lang);
+    const spent = await spendCredits(env, user.id, transformed.chargeCredits, "mini_app_voice_v3", {
+      voice: voiceName,
+      language,
+      sourceType: "microphone",
+      duration: durationMs > 0 ? Math.round(durationMs / 1000) : null,
+    });
+    if (!spent?.ok) return json({ error: "Not enough credits." }, 402);
+
     const sequence = await getNextTtsFileSequence(env, user.id);
     const filename = buildTtsAudioFileName(sequence);
     const audioBase64 = arrayBufferToBase64(transformed.outputAudio);
-    const language = String(transformed.transcript?.language_code || lang);
 
     await saveTtsHistory(
       env,
@@ -100,14 +108,6 @@ export async function handleMiniAppVoiceTransformRequest(request, env) {
     ).catch((error) => {
       console.error("save mini app V3 voice history failed", error?.message || error);
     });
-
-    const spent = await spendCredits(env, user.id, transformed.chargeCredits, "mini_app_voice_v3", {
-      voice: voiceName,
-      language,
-      sourceType: "microphone",
-      duration: durationMs > 0 ? Math.round(durationMs / 1000) : null,
-    });
-    if (!spent?.ok) return json({ error: "Not enough credits." }, 402);
 
     const latest = await getMiniAppTtsHistory(env, user.id, 1).catch(() => []);
     const historyId = latest?.[0]?.file_sequence === sequence ? latest[0].id : null;
