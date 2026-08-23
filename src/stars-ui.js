@@ -1,4 +1,5 @@
-import { STAR_PACKAGES, CUSTOM_STARS_USD_PER_1000_CREDITS } from "./stars.js";
+import { formatUsdBalanceFromCredits } from "./credits.js";
+import { STAR_PACKAGES } from "./stars.js";
 import { t } from "./i18n.js";
 
 export function starsPackagesText(state = {}) {
@@ -19,9 +20,8 @@ export function customStarsPromptText(state = {}) {
     t(lang, "audioCreditRule"),
     "",
     lang === "fa"
-      ? `هر <b>1000 کردیت</b> برابر <b>$${formatUsdRate(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b> است`
-      : `Every <b>1,000 credits</b> costs <b>$${formatUsdRate(CUSTOM_STARS_USD_PER_1000_CREDITS)}</b>`,
-    lang === "fa" ? "مقدار کردیت موردنظرت رو همینجا بفرست" : "Send your custom credit amount in this chat",
+      ? "مقدار موجودی دلاری که می‌خواهی اضافه شود را بفرست؛ مثلاً <code>0.50</code>"
+      : "Send the USD balance amount you want to add, for example <code>0.50</code>",
   ].join("\n");
 }
 
@@ -30,12 +30,12 @@ export function customStarsInvoiceText(pack, state = {}) {
   return [
     lang === "fa" ? "⭐ <b>فاکتور استارز تلگرام</b>" : "⭐ <b>Telegram Stars invoice</b>",
     "",
-    `Credits: <b>${formatNumber(pack.totalCredits)}</b>`,
-    `Estimated value: <b>$${formatUsd(pack.usd)}</b>`,
+    lang === "fa"
+      ? `موجودی قابل افزودن: <b>${formatUsdBalanceFromCredits(pack.totalCredits)}</b>`
+      : `Balance to add: <b>${formatUsdBalanceFromCredits(pack.totalCredits)}</b>`,
     starsAmountLine(pack, lang),
     "",
-    lang === "fa" ? `نرخ: <b>هر ۱٬۰۰۰ کردیت = ۱۲ ⭐️</b>` : `Rate: <b>1,000 credits = 12 ⭐️</b>`,
-    lang === "fa" ? "حداقل خرید: <b>۸۰ ⭐️</b>" : "Minimum purchase: <b>80 ⭐️</b>",
+    lang === "fa" ? "حداقل پرداخت: <b>۸۰ ⭐️</b>" : "Minimum payment: <b>80 ⭐️</b>",
     lang === "fa" ? "برای دریافت فاکتور پرداخت تایید کن" : "Confirm to receive the payment invoice",
   ].join("\n");
 }
@@ -69,12 +69,14 @@ export function starsPackagesKeyboard(state = {}) {
 
 export function starsPackageInvoiceText(pack, state = {}) {
   const lang = state.language || "en";
-  const audioLine = starPackageAudioLine(lang);
+  const balanceLine = lang === "fa"
+    ? `موجودی قابل افزودن: <b>${formatUsdBalanceFromCredits(pack.totalCredits)}</b>`
+    : `Balance to add: <b>${formatUsdBalanceFromCredits(pack.totalCredits)}</b>`;
   const paymentLine = starsPaymentLine(pack, lang);
 
   return [
     `⭐ <b>${pack.description}</b>`,
-    audioLine,
+    balanceLine,
     "",
     paymentLine,
   ].join("\n");
@@ -103,27 +105,12 @@ function starsAmountLine(pack, lang) {
 function starsPaymentLine(pack, lang) {
   if (Number(pack.discountPercent || 0) > 0) {
     return lang === "fa"
-      ? `پرداخت <s>${formatNumber(pack.originalStars)} ⭐️</s> → <b>${formatNumber(pack.stars)} ⭐️</b> برای اضافه شدن کردیت‌ها (تخفیف گردونه، اعتبار ۲۴ ساعت)`
-      : `Pay <s>${formatNumber(pack.originalStars)} ⭐️</s> → <b>${formatNumber(pack.stars)} ⭐️</b> to add credits (24-hour wheel discount)`;
+      ? `پرداخت <s>${formatNumber(pack.originalStars)} ⭐️</s> → <b>${formatNumber(pack.stars)} ⭐️</b> برای افزایش موجودی (تخفیف گردونه، اعتبار ۲۴ ساعت)`
+      : `Pay <s>${formatNumber(pack.originalStars)} ⭐️</s> → <b>${formatNumber(pack.stars)} ⭐️</b> to add balance (24-hour wheel discount)`;
   }
-  return lang === "fa" ? `پرداخت <b>${pack.stars} ⭐️</b> برای اضافه شدن کردیت‌ها` : `Pay <b>${pack.stars} ⭐️</b> to add credits`;
-}
-
-function starPackageAudioLine(lang) {
-  return lang === "fa"
-    ? `نرخ TTS: <b>$0.00017 برای هر کاراکتر</b>`
-    : `TTS rate: <b>$0.00017 per character</b>`;
+  return lang === "fa" ? `پرداخت <b>${pack.stars} ⭐️</b> برای افزایش موجودی` : `Pay <b>${pack.stars} ⭐️</b> to add balance`;
 }
 
 function formatNumber(value) {
   return Number(value).toLocaleString("en-US");
-}
-
-function formatUsd(value) {
-  const displayValue = Math.floor((Number(value) + Number.EPSILON) * 100) / 100;
-  return displayValue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
-
-function formatUsdRate(value) {
-  return Number(value).toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
