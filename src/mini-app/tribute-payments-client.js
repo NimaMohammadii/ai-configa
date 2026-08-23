@@ -29,6 +29,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function q(id){return document.getElementById(id)}
   function number(value){return Math.max(0,Math.floor(Number(value)||0)).toLocaleString('en-US')}
+  function syncBalance(value){var balance=Math.max(0,Number(value)||0);try{window.dispatchEvent(new CustomEvent('vexa:credits-balance',{detail:{balance:balance,source:'tribute'}}))}catch(error){}}
   function toast(message){var node=q('toast');if(!node)return;node.textContent=String(message||'').replace(/[.!]+$/,'');node.classList.remove('show');void node.offsetWidth;node.classList.add('show');setTimeout(function(){node.classList.remove('show')},3200)}
   function haptic(kind){if(!tg||!tg.HapticFeedback)return;try{if(kind==='success'&&tg.HapticFeedback.notificationOccurred)tg.HapticFeedback.notificationOccurred('success');else if(kind==='error'&&tg.HapticFeedback.notificationOccurred)tg.HapticFeedback.notificationOccurred('error');else if(tg.HapticFeedback.impactOccurred)tg.HapticFeedback.impactOccurred(kind||'light')}catch(error){}}
   function api(path,payload){return fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({initData:initData},payload||{}))}).then(async function(response){var data=await response.json().catch(function(){return{}});if(!response.ok)throw new Error(data.error||'Card payment error');return data})}
@@ -237,7 +238,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     try{
       var data=await api('/mini-app/api/tribute-status',{orderUuid:pending.orderUuid});
       if(data.status==='paid'&&data.credited){
-        storageRemove(PENDING_KEY);var balance=Math.max(0,Number(data.balance)||0),credits=Math.max(0,Number(data.credits)||Number(pending.credits)||0);var mainBalance=q('balance'),pageBalance=q('creditsPageBalance');if(mainBalance)mainBalance.textContent=number(balance);if(pageBalance)pageBalance.textContent=number(balance);
+        storageRemove(PENDING_KEY);var balance=Math.max(0,Number(data.balance)||0),credits=Math.max(0,Number(data.credits)||Number(pending.credits)||0);syncBalance(balance);
         haptic('success');storageSet(SUCCESS_KEY,{balance:balance,credits:credits,at:Date.now()});renderProducts();setTimeout(function(){window.location.reload()},950)
       }else if(data.status==='refunded'){
         storageRemove(PENDING_KEY);renderProducts();toast('Payment refunded');haptic('error')
@@ -247,7 +248,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function restoreSuccessAfterReload(){
     var success=storageGet(SUCCESS_KEY);if(!success)return;storageRemove(SUCCESS_KEY);
-    setTimeout(function(){var pill=q('creditPill');if(pill&&typeof pill.click==='function')pill.click();setTimeout(function(){activateCardMode();toast(number(success.credits||0)+' credits added');var mainBalance=q('balance'),pageBalance=q('creditsPageBalance');if(mainBalance)mainBalance.textContent=number(success.balance||0);if(pageBalance)pageBalance.textContent=number(success.balance||0)},90)},520)
+    setTimeout(function(){var pill=q('creditPill');if(pill&&typeof pill.click==='function')pill.click();setTimeout(function(){activateCardMode();toast(number(success.credits||0)+' credits added');syncBalance(success.balance||0)},90)},520)
   }
 
   document.body.addEventListener('click',function(event){
