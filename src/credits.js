@@ -20,6 +20,26 @@ export function creditsForTtsCharacters(value) {
   return creditsForUsdMicros(characters * TTS_USD_MICROS_PER_CHARACTER);
 }
 
+export function usdForCredits(value) {
+  return Math.max(0, Number(value) || 0) * USD_PER_CREDIT;
+}
+
+export function formatUsdBalanceFromCredits(value) {
+  return "$" + usdForCredits(value).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+export function formatUsdChargeFromCredits(value) {
+  const usd = usdForCredits(value);
+  const maximumFractionDigits = usd > 0 && usd < 0.01 ? 6 : usd < 1 ? 4 : 2;
+  return "$" + usd.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits,
+  });
+}
+
 export async function getBalance(env, userId) {
   requireDb(env);
 
@@ -127,6 +147,57 @@ export async function spendCredits(env, userId, amount, reason = "tts", metadata
   return { ok: true, balance: await getBalance(env, userId), spent: needed };
 }
 
+export async function refundCredits(env, userId, amount, reason = "refund", metadata = null, refundKey = null) {
+  requireDb(env);
+  await ensureBalanceRow(env, userId);
+
+  const credits = Number(amount || 0);
+  if (!Number.isFinite(credits) || credits <= 0) {
+    return { ok: true, balance: await getBalance(env, userId), refunded: 0 };
+  }
+
+  await ensureCreditUsageLogTable(env);
+  await ensureCreditRefundTable(env);
+
+  const user = String(userId);
+  const rawKey = String(refundKey || crypto.randomUUID());
+  const key = await sha256Hex(`${user}\n${rawKey}`);
+  const serializedMetadata = metadata == null ? null : JSON.stringify(metadata);
+
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO credit_refund_idempotency " +
+      "(idempotency_key, user_id, credits, reason, metadata, status, balance_before, balance_after, created_at, updated_at) " +
+      "SELECT ?, ?, ?, ?, ?, 'pending', credits, credits + ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP " +
+      "FROM user_credits WHERE user_id = ?"
+    ).bind(key, user, credits, String(reason || "refund"), serializedMetadata, credits, user),
+    env.DB.prepare(
+      "UPDATE user_credits SET credits = credits + ?, updated_at = CURRENT_TIMESTAMP " +
+      "WHERE user_id = ? AND EXISTS (" +
+      "SELECT 1 FROM credit_refund_idempotency WHERE idempotency_key = ? AND user_id = ? AND status = 'pending')"
+    ).bind(credits, user, key, user),
+    env.DB.prepare(
+      "UPDATE credit_refund_idempotency SET status = 'refunded', balance_after = (SELECT credits FROM user_credits WHERE user_id = ?), " +
+      "updated_at = CURRENT_TIMESTAMP WHERE idempotency_key = ? AND user_id = ? AND status = 'pending'"
+    ).bind(user, key, user),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO credit_usage_log (id, user_id, credits, reason, metadata, created_at) " +
+      "SELECT 'refund:' || idempotency_key, user_id, -credits, reason, metadata, CURRENT_TIMESTAMP " +
+      "FROM credit_refund_idempotency WHERE idempotency_key = ? AND user_id = ? AND status = 'refunded'"
+    ).bind(key, user),
+  ]);
+
+  const saved = await env.DB.prepare(
+    "SELECT status, credits, balance_after FROM credit_refund_idempotency WHERE idempotency_key = ? AND user_id = ?"
+  ).bind(key, user).first();
+  const balance = Math.max(0, Number(saved?.balance_after ?? await getBalance(env, userId)));
+  return {
+    ok: String(saved?.status || "") === "refunded",
+    balance,
+    refunded: String(saved?.status || "") === "refunded" ? Number(saved?.credits || credits) : 0,
+  };
+}
+
 async function spendCreditsIdempotently(env, userId, needed, reason, metadata, rawIdempotencyKey) {
   await ensureCreditUsageLogTable(env);
   await ensureCreditIdempotencyTable(env);
@@ -178,6 +249,18 @@ async function ensureCreditIdempotencyTable(env) {
   ).run();
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS idx_credit_spend_idempotency_user_created ON credit_spend_idempotency (user_id, created_at DESC)"
+  ).run();
+}
+
+async function ensureCreditRefundTable(env) {
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS credit_refund_idempotency (" +
+      "idempotency_key TEXT PRIMARY KEY, user_id TEXT NOT NULL, credits INTEGER NOT NULL, reason TEXT NOT NULL, metadata TEXT, " +
+      "status TEXT NOT NULL, balance_before INTEGER NOT NULL, balance_after INTEGER NOT NULL, " +
+      "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+  ).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_credit_refund_idempotency_user_created ON credit_refund_idempotency (user_id, created_at DESC)"
   ).run();
 }
 
