@@ -34,10 +34,6 @@ import {
 } from "./mini-app/vexa-live/youtube-live-persistence.js";
 import { appendVexaLiveLandingRuntime } from "./mini-app/vexa-live/vexa-live-landing.js";
 
-const VEXA_BALANCE_USD_PER_1000_CREDITS = 0.178;
-const MINI_APP_BALANCE_SCRIPT_PATH = "/mini-app/app.js";
-const MINI_APP_BALANCE_HTML_PATHS = new Set(["/mini-app", "/mini-app/"]);
-
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export { VexaMediaContainerV3, VexaSubtitleContainer, VexaDownloadProgressHub };
 
@@ -71,7 +67,6 @@ export default {
       response = await appendVexaLiveLandingRuntime(request, response);
       response = await appendVexaCustomPlayerRuntime(request, response);
       response = await appendVexaLiveSubtitlesRuntime(request, response);
-      response = await applyMiniAppUsdBalanceUi(request, response);
       return response;
     } catch (error) {
       console.error("Vexa YouTube request failed", error?.stack || error);
@@ -79,65 +74,6 @@ export default {
     }
   },
 };
-
-async function applyMiniAppUsdBalanceUi(request, response) {
-  if (!response?.ok || request.method !== "GET") return response;
-
-  const path = new URL(request.url).pathname;
-  const isScript = path === MINI_APP_BALANCE_SCRIPT_PATH;
-  const isHtml = MINI_APP_BALANCE_HTML_PATHS.has(path);
-  if (!isScript && !isHtml) return response;
-
-  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
-
-  if (isScript) {
-    if (!contentType.includes("javascript")) return response;
-
-    let source = await response.text();
-    const balanceFunction =
-      "  function updateCreditsBalanceUi(value){availableCredits=Math.max(0,Number(value)||0);var label=availableCredits.toLocaleString('en-US');setText('balance',label);setText('creditsPageBalance',label)}";
-
-    if (!source.includes(balanceFunction)) {
-      console.error("Mini App USD balance target missing", "balance formatter");
-      return cloneTextResponse(response, source);
-    }
-
-    const usdBalanceFunction =
-      "  function formatUsdBalanceFromCredits(value){var usd=Math.max(0,Number(value)||0)*" +
-      VEXA_BALANCE_USD_PER_1000_CREDITS +
-      "/1000;return '$'+usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}" +
-      String.fromCharCode(10) +
-      "  function updateCreditsBalanceUi(value){availableCredits=Math.max(0,Number(value)||0);var label=formatUsdBalanceFromCredits(availableCredits);setText('balance',label);setText('creditsPageBalance',label)}";
-
-    source = source.replace(balanceFunction, usdBalanceFunction);
-
-    const directBalanceWrite = "setText('balance',availableCredits.toLocaleString('en-US'))";
-    source = source.split(directBalanceWrite).join("updateCreditsBalanceUi(availableCredits)");
-
-    return cloneTextResponse(response, source);
-  }
-
-  if (!contentType.includes("text/html")) return response;
-
-  let source = await response.text();
-  source = source.replace(
-    '<strong id="creditsPageBalance">—</strong><span>credits</span>',
-    '<strong id="creditsPageBalance">—</strong><span>USD</span>',
-  );
-  return cloneTextResponse(response, source);
-}
-
-function cloneTextResponse(response, text) {
-  const headers = new Headers(response.headers);
-  headers.delete("Content-Length");
-  headers.delete("Content-Encoding");
-  headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
-  return new Response(text, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
 
 function publicError(error) {
   const message = String(error?.message || "Request failed");
