@@ -94,7 +94,7 @@ function voiceResultHtml() {
     <h2 class="title" id="title">Generated voice</h2>
     <div class="details">
       <span class="badge" id="voice">Voice</span>
-      <span class="badge" id="credits">Credits</span>
+      <span class="badge" id="cost">Cost</span>
       <span class="badge" id="balance">Balance</span>
     </div>
     <audio id="audio" controls preload="metadata"></audio>
@@ -105,7 +105,7 @@ function voiceResultHtml() {
   <script>
     const titleElement = document.getElementById("title");
     const voiceElement = document.getElementById("voice");
-    const creditsElement = document.getElementById("credits");
+    const costElement = document.getElementById("cost");
     const balanceElement = document.getElementById("balance");
     const audioElement = document.getElementById("audio");
     const downloadElement = document.getElementById("download");
@@ -114,6 +114,11 @@ function voiceResultHtml() {
     function text(value, fallback) {
       const cleanValue = String(value ?? "").trim();
       return cleanValue || fallback;
+    }
+
+    function usd(value) {
+      const amount = Math.max(0, Number(value) || 0);
+      return "$" + amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: amount > 0 && amount < .01 ? 6 : amount < 1 ? 4 : 2 });
     }
 
     function safeAudioUrl(value) {
@@ -133,8 +138,8 @@ function voiceResultHtml() {
       const audioUrl = safeAudioUrl(output.audio_url);
       titleElement.textContent = text(output.filename, "Generated voice");
       voiceElement.textContent = "Voice: " + text(output.voice, "Unknown");
-      creditsElement.textContent = "Used: " + Number(output.credits_used || 0).toLocaleString();
-      balanceElement.textContent = "Balance: " + Number(output.balance || 0).toLocaleString();
+      costElement.textContent = "Used: " + usd(output.cost_usd);
+      balanceElement.textContent = "Balance: " + usd(output.balance);
 
       if (!audioUrl) {
         audioElement.hidden = true;
