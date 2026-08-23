@@ -77,4 +77,11 @@ MINI_APP_JS_WITH_HISTORY = replaceMiniAppSource(
   "history details button"
 );
 
-export const MINI_APP_JS = MINI_APP_JS_WITH_HISTORY.replace("(function(){", "(function(){\n" + HISTORY_UI_PATCH + PURCHASE_DISCOUNT_PATCH);
+const MINI_APP_JS_WITH_USD_BALANCE = replaceMiniAppSource(
+  MINI_APP_JS_WITH_HISTORY,
+  "function setText(id,value){var node=q(id);if(node)node.textContent=value}",
+  "function formatBalanceUsd(value){var credits=Math.max(0,Number(String(value).split(',').join(''))||0);return String.fromCharCode(36)+(credits*.000178).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}\n  function setText(id,value){var node=q(id);if(!node)return;if(id==='balance'||id==='creditsPageBalance'){node.textContent=formatBalanceUsd(value);var unit=node.nextElementSibling;if(unit)unit.textContent='USD';return}node.textContent=value}",
+  "USD balance"
+);
+
+export const MINI_APP_JS = MINI_APP_JS_WITH_USD_BALANCE.replace("(function(){", "(function(){\n" + HISTORY_UI_PATCH + PURCHASE_DISCOUNT_PATCH);
