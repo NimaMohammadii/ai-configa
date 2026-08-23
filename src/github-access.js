@@ -1,4 +1,4 @@
-import { getBalance } from "./credits.js";
+import { formatUsdBalanceFromCredits, getBalance } from "./credits.js";
 
 export const GITHUB_MINIMUM_CREDITS = 10_000;
 
@@ -26,5 +26,5 @@ export async function requireGitHubCreditAccess(env, userId, purpose = "use GitH
 export function githubCreditAccessMessage(access = {}, purpose = "use GitHub") {
   const required = Math.max(0, Number(access.requiredCredits || GITHUB_MINIMUM_CREDITS));
   const balance = Math.max(0, Number(access.balance || 0));
-  return `You need at least ${required.toLocaleString("en-US")} credits to ${purpose}. Your balance is ${balance.toLocaleString("en-US")} credits.`;
+  return `You need at least ${formatUsdBalanceFromCredits(required)} to ${purpose}. Your USD balance is ${formatUsdBalanceFromCredits(balance)}.`;
 }

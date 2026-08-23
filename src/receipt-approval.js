@@ -29,7 +29,7 @@ export async function handleReceiptPhoto(message, env) {
   if (!pending || !pendingPackage(pending)) {
     const menu = await sendMessage(env, chatId, startText(state), await userMainKeyboard(env, userId, state));
     await setMenuMessageId(env, userId, menu?.message_id || null);
-    await notifyUser(env, chatId, "⚠️ <b>Screenshot received</b>\n\nPlease choose a credit package first", "⚠️ Screenshot received\n\nPlease choose a credit package first");
+    await notifyUser(env, chatId, "⚠️ <b>Screenshot received</b>\n\nPlease choose a USD balance package first", "⚠️ Screenshot received\n\nPlease choose a USD balance package first");
     return true;
   }
 
@@ -54,7 +54,7 @@ export async function handleReceiptPhoto(message, env) {
   await setMenuMessageId(env, userId, menu?.message_id || null);
 
   if (sentToAdmin > 0) {
-    await notifyUser(env, chatId, "✅ <b>Payment receipt received</b>\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance", "✅ Payment receipt received\n\nYour receipt was sent for admin review. After approval, credits will be added to your balance");
+    await notifyUser(env, chatId, "✅ <b>Payment receipt received</b>\n\nYour receipt was sent for admin review. After approval, the USD amount will be added to your balance", "✅ Payment receipt received\n\nYour receipt was sent for admin review. After approval, the USD amount will be added to your balance");
   } else {
     await notifyUser(env, chatId, "⚠️ <b>Payment receipt received</b>\n\nAdmin chat is not configured yet. Please contact support", "⚠️ Payment receipt received\n\nAdmin chat is not configured yet. Please contact support");
   }

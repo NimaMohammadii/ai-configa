@@ -1,4 +1,5 @@
 import { requireDb } from "./state.js";
+import { formatUsdChargeFromCredits } from "./credits.js";
 
 const HISTORY_LIMIT = 8;
 const EXPORT_LIMIT = 5000;
@@ -230,7 +231,7 @@ export function buildTtsHistoryFile(userId, rows) {
     "Generated at: " + new Date().toISOString(),
     "Total texts: " + rows.length,
     "Total characters: " + totalCharacters,
-    "Total consumed credits: " + totalCredits,
+    "Total consumed USD: " + formatUsdChargeFromCredits(totalCredits),
     "",
   ];
 
@@ -243,7 +244,7 @@ export function buildTtsHistoryFile(userId, rows) {
       "Language: " + (item.language || "-"),
       "Source: " + ttsSourceLabel(item.source),
       "Characters: " + Array.from(text).length,
-      "Consumed credits: " + Number(item.credits || 0),
+      "Consumed USD: " + formatUsdChargeFromCredits(item.credits),
       "Text:",
       text,
       "",
@@ -293,7 +294,7 @@ export function ttsHistoryItemText(item) {
     "Voice: <b>" + escapeHtml(item.voice || "-") + "</b>",
     "Language: <b>" + escapeHtml(item.language || "-") + "</b>",
     "Source: <b>" + escapeHtml(ttsSourceLabel(item.source)) + "</b>",
-    "Credits: <b>" + Number(item.credits || 0).toLocaleString("en-US") + "</b>",
+    "USD cost: <b>" + formatUsdChargeFromCredits(item.credits) + "</b>",
     "Date: <b>" + escapeHtml(item.created_at || "-") + "</b>",
     "",
     "<b>Text:</b>",
@@ -317,7 +318,7 @@ export function ttsAudioCaption(item) {
     "User ID: <code>" + escapeHtml(item.user_id) + "</code>",
     "Voice: <b>" + escapeHtml(item.voice || "-") + "</b>",
     "Source: <b>" + escapeHtml(ttsSourceLabel(item.source)) + "</b>",
-    "Credits: <b>" + Number(item.credits || 0).toLocaleString("en-US") + "</b>",
+    "USD cost: <b>" + formatUsdChargeFromCredits(item.credits) + "</b>",
   ].join("\n");
 }
 

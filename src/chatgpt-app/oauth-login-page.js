@@ -17,7 +17,7 @@ export function renderTelegramLoginPage(input) {
   });
   const scopeLabels = input.scopes.map((scope) => {
     return scope === OAUTH_SCOPES.generate
-      ? "ساخت فایل صوتی و کم‌کردن اعتبار"
+      ? "ساخت فایل صوتی و کم‌کردن موجودی دلاری"
       : "مشاهده صداها، موجودی و تاریخچه";
   });
 

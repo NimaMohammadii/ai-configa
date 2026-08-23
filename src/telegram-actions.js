@@ -91,7 +91,7 @@ export function answerPreCheckout(env, preCheckoutQueryId, ok = true, errorMessa
 export function sendStarsInvoice(env, chatId, pack, payload = null) {
   return tgJson(env, "sendInvoice", {
     chat_id: chatId,
-    title: "Vexa Credits",
+    title: "Vexa USD Balance",
     description: pack.description,
     payload: payload || "stars:" + pack.id,
     provider_token: "",

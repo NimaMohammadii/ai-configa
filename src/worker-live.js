@@ -149,7 +149,7 @@ async function handleScribeTokenBilling(request, env, ctx) {
   const balance = await getBalance(env, user.id);
   if (balance < credits) {
     return json({
-      error: "Not enough credits",
+      error: "Not enough USD balance",
       balance,
       needed: credits,
       creditsPerMinute: STT_CREDITS_PER_MINUTE,
@@ -172,7 +172,7 @@ async function handleScribeTokenBilling(request, env, ctx) {
 
   if (!spent.ok) {
     return json({
-      error: "Not enough credits",
+      error: "Not enough USD balance",
       balance: spent.balance,
       needed: credits,
       creditsPerMinute: STT_CREDITS_PER_MINUTE,
@@ -326,7 +326,7 @@ async function handleVoiceProxy(request, env, ctx) {
   const balance = await getBalance(env, userId);
   if (balance <= 0) {
     await markProxySession(env, sessionId, "insufficient", 0, true).catch(() => null);
-    return new Response("Not enough credits", { status: 402 });
+    return new Response("Not enough USD balance", { status: 402 });
   }
 
   const claimed = await env.DB.prepare(
@@ -463,7 +463,7 @@ function attachVoiceProxy({ server, upstream, env, ctx, sessionId, userId, start
           "UPDATE vexa_voice_proxy_sessions SET charged_credits = ?, status = 'insufficient', signed_url = '', updated_at_ms = ? WHERE id = ?"
         ).bind(chargedCredits, now, sessionId).run().catch(() => null);
 
-        closeBoth(4002, "Not enough credits");
+        closeBoth(4002, "Not enough USD balance");
         return false;
       }
 
@@ -478,7 +478,7 @@ function attachVoiceProxy({ server, upstream, env, ctx, sessionId, userId, start
 
     if (!finalize && balance <= 0) {
       await markProxySession(env, sessionId, "insufficient", chargedCredits, true).catch(() => null);
-      closeBoth(4002, "Not enough credits");
+      closeBoth(4002, "Not enough USD balance");
       return false;
     }
     if (!finalize && elapsedMs >= VOICE_MAX_SESSION_MS) {

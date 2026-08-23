@@ -6,16 +6,16 @@ export const VOICE_INTRO_REFERRAL_UI_PATCH = String.raw`
     var voiceIntroBaseFetch=window.fetch.bind(window);
 
     var voiceCopies={
-      en:{title:'Vexa Voice Agent',body:'Talk naturally with Vexa in real time. It listens, understands, and replies by voice.',price:'800 credits / minute',okay:'Got it',never:'Don’t show again',close:'Close',dir:'ltr'},
-      fa:{title:'ایجنت صوتی وکسا',body:'زنده و طبیعی با وکسا صحبت کن؛ صدایت را می‌شنود، می‌فهمد و صوتی پاسخ می‌دهد.',price:'۸۰۰ کردیت / دقیقه',okay:'باشه',never:'دیگر نشانم نده',close:'بستن',dir:'rtl'},
-      ru:{title:'Голосовой агент Vexa',body:'Говорите с Vexa в реальном времени. Он слушает, понимает и отвечает голосом.',price:'800 кредитов / минута',okay:'Понятно',never:'Больше не показывать',close:'Закрыть',dir:'ltr'},
-      de:{title:'Vexa Sprachagent',body:'Sprich in Echtzeit ganz natürlich mit Vexa. Vexa hört zu, versteht und antwortet per Stimme.',price:'800 Credits / Minute',okay:'Verstanden',never:'Nicht mehr anzeigen',close:'Schließen',dir:'ltr'},
-      tr:{title:'Vexa Sesli Asistan',body:'Vexa ile gerçek zamanlı ve doğal konuş. Seni dinler, anlar ve sesli yanıt verir.',price:'Dakikada 800 kredi',okay:'Tamam',never:'Bir daha gösterme',close:'Kapat',dir:'ltr'},
-      ar:{title:'وكيل Vexa الصوتي',body:'تحدث مع Vexa بشكل طبيعي وفوري. يستمع إليك ويفهمك ويرد بصوت.',price:'٨٠٠ رصيد / دقيقة',okay:'حسنًا',never:'لا تظهرها مجددًا',close:'إغلاق',dir:'rtl'},
-      es:{title:'Agente de voz Vexa',body:'Habla con Vexa de forma natural y en tiempo real. Te escucha, entiende y responde por voz.',price:'800 créditos / minuto',okay:'Entendido',never:'No volver a mostrar',close:'Cerrar',dir:'ltr'},
-      hi:{title:'Vexa वॉइस एजेंट',body:'Vexa से रियल टाइम में स्वाभाविक रूप से बात करें। यह सुनता, समझता और आवाज़ में जवाब देता है।',price:'800 क्रेडिट / मिनट',okay:'ठीक है',never:'फिर न दिखाएँ',close:'बंद करें',dir:'ltr'},
-      zh:{title:'Vexa 语音助手',body:'与 Vexa 实时自然对话。它会聆听、理解并用语音回复。',price:'800 积分 / 分钟',okay:'知道了',never:'不再显示',close:'关闭',dir:'ltr'},
-      ja:{title:'Vexa ボイスエージェント',body:'Vexa とリアルタイムで自然に会話できます。音声を聞き取り、理解して声で返答します。',price:'800 クレジット / 分',okay:'了解',never:'今後表示しない',close:'閉じる',dir:'ltr'}
+      en:{title:'Vexa Voice Agent',body:'Talk naturally with Vexa in real time. It listens, understands, and replies by voice.',price:'$0.14 USD / minute',okay:'Got it',never:'Don’t show again',close:'Close',dir:'ltr'},
+      fa:{title:'ایجنت صوتی وکسا',body:'زنده و طبیعی با وکسا صحبت کن؛ صدایت را می‌شنود، می‌فهمد و صوتی پاسخ می‌دهد.',price:'$0.14 USD / minute',okay:'باشه',never:'دیگر نشانم نده',close:'بستن',dir:'rtl'},
+      ru:{title:'Голосовой агент Vexa',body:'Говорите с Vexa в реальном времени. Он слушает, понимает и отвечает голосом.',price:'$0.14 USD / minute',okay:'Понятно',never:'Больше не показывать',close:'Закрыть',dir:'ltr'},
+      de:{title:'Vexa Sprachagent',body:'Sprich in Echtzeit ganz natürlich mit Vexa. Vexa hört zu, versteht und antwortet per Stimme.',price:'$0.14 USD / minute',okay:'Verstanden',never:'Nicht mehr anzeigen',close:'Schließen',dir:'ltr'},
+      tr:{title:'Vexa Sesli Asistan',body:'Vexa ile gerçek zamanlı ve doğal konuş. Seni dinler, anlar ve sesli yanıt verir.',price:'$0.14 USD / minute',okay:'Tamam',never:'Bir daha gösterme',close:'Kapat',dir:'ltr'},
+      ar:{title:'وكيل Vexa الصوتي',body:'تحدث مع Vexa بشكل طبيعي وفوري. يستمع إليك ويفهمك ويرد بصوت.',price:'$0.14 USD / minute',okay:'حسنًا',never:'لا تظهرها مجددًا',close:'إغلاق',dir:'rtl'},
+      es:{title:'Agente de voz Vexa',body:'Habla con Vexa de forma natural y en tiempo real. Te escucha, entiende y responde por voz.',price:'$0.14 USD / minute',okay:'Entendido',never:'No volver a mostrar',close:'Cerrar',dir:'ltr'},
+      hi:{title:'Vexa वॉइस एजेंट',body:'Vexa से रियल टाइम में स्वाभाविक रूप से बात करें। यह सुनता, समझता और आवाज़ में जवाब देता है।',price:'$0.14 USD / minute',okay:'ठीक है',never:'फिर न दिखाएँ',close:'बंद करें',dir:'ltr'},
+      zh:{title:'Vexa 语音助手',body:'与 Vexa 实时自然对话。它会聆听、理解并用语音回复。',price:'$0.14 USD / minute',okay:'知道了',never:'不再显示',close:'关闭',dir:'ltr'},
+      ja:{title:'Vexa ボイスエージェント',body:'Vexa とリアルタイムで自然に会話できます。音声を聞き取り、理解して声で返答します。',price:'$0.14 USD / minute',okay:'了解',never:'今後表示しない',close:'閉じる',dir:'ltr'}
     };
 
     function normalizeVoiceLanguage(value){

@@ -258,7 +258,7 @@ export const MINI_APP_HTML = `<!doctype html>
     <section id="flow" class="view active">
       <div class="tts-page">
         <div class="tts-head">
-          <div class="credit-tools"><div id="creditPill" class="credit-pill" role="button" tabindex="0" aria-label="Buy credits"><span id="balance">—</span><span>credits</span></div><button id="wheelOpenButton" class="wheel-open-button" data-action="open-wheel" type="button" aria-label="Open daily reward wheel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.75v4.1M12 16.15v4.1M3.75 12h4.1M16.15 12h4.1M6.16 6.16l2.9 2.9M14.94 14.94l2.9 2.9M17.84 6.16l-2.9 2.9M9.06 14.94l-2.9 2.9" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/><circle cx="12" cy="12" r="2.15" fill="currentColor"/></svg><span class="wheel-ready-dot" aria-hidden="true"></span></button><span id="editModeIndicator" class="edit-mode-indicator" aria-hidden="true">EDIT MODE</span></div>
+          <div class="credit-tools"><div id="creditPill" class="credit-pill" role="button" tabindex="0" aria-label="Add USD balance"><span id="balance">—</span><span>USD</span></div><button id="wheelOpenButton" class="wheel-open-button" data-action="open-wheel" type="button" aria-label="Open daily reward wheel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.75v4.1M12 16.15v4.1M3.75 12h4.1M16.15 12h4.1M6.16 6.16l2.9 2.9M14.94 14.94l2.9 2.9M17.84 6.16l-2.9 2.9M9.06 14.94l-2.9 2.9" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/><circle cx="12" cy="12" r="2.15" fill="currentColor"/></svg><span class="wheel-ready-dot" aria-hidden="true"></span></button><span id="editModeIndicator" class="edit-mode-indicator" aria-hidden="true">EDIT MODE</span></div>
           <div class="mode-tools"><div id="voiceWrap" class="voice-wrap">
             <button class="voice-btn" data-action="toggle-voice" type="button">
               <span id="voiceButtonAvatar" class="voice-button-avatar" aria-hidden="true"></span>
@@ -327,7 +327,7 @@ export const MINI_APP_HTML = `<!doctype html>
           <audio id="historyAudio" class="tts-hidden-audio"></audio>
         </div>
         <section id="imageWorkspace" class="image-workspace" aria-hidden="true">
-          <header class="image-intro"><div class="image-kicker-row"><span class="image-kicker">CREATE</span><span id="imageCreditNote" class="image-credit-note">188 credits per image</span></div><h1>Imagine anything</h1><p>Describe a new image, or add one and tell us exactly what to change</p></header>
+          <header class="image-intro"><div class="image-kicker-row"><span class="image-kicker">CREATE</span><span id="imageCreditNote" class="image-credit-note">$0.03 per image</span></div><h1>Imagine anything</h1><p>Describe a new image, or add one and tell us exactly what to change</p></header>
           <div class="image-composer">
             <label class="image-prompt-label" for="imagePrompt">Prompt</label>
             <textarea id="imagePrompt" maxlength="2000" placeholder="Describe the image you want to create"></textarea>
@@ -380,8 +380,8 @@ export const MINI_APP_HTML = `<!doctype html>
   <section id="creditsPage" class="credits-page" aria-hidden="true">
     <div class="credits-page-scroll">
       <header class="credits-page-head">
-        <div><span>TELEGRAM STARS</span><h2>Buy credits</h2><p>Top up instantly and keep creating.</p></div>
-        <div class="credits-balance"><small>YOUR BALANCE</small><strong id="creditsPageBalance">—</strong><span>credits</span></div>
+        <div><span>TELEGRAM STARS</span><h2>Add USD balance</h2><p>Top up instantly and keep creating.</p></div>
+        <div class="credits-balance"><small>YOUR BALANCE</small><strong id="creditsPageBalance">—</strong><span>USD</span></div>
       </header>
       <div id="creditsPaymentSwitch" class="credits-payment-switch" aria-hidden="true">
         <button class="active" data-action="set-credit-payment" data-payment-mode="stars" type="button" aria-pressed="true"><span>★</span>Telegram Stars</button>
@@ -389,19 +389,19 @@ export const MINI_APP_HTML = `<!doctype html>
       </div>
       <div id="creditsStarsMode" class="credits-payment-mode active">
       <section class="credits-custom">
-        <div class="credits-section-copy"><div><span>FLEXIBLE AMOUNT</span><h3>Choose your amount</h3></div><small>1,000 credits = 12 Stars</small></div>
-        <label class="credits-amount-field" for="customCreditsInput"><input id="customCreditsInput" type="number" inputmode="numeric" min="1" max="1000000" step="1" value="1000" autocomplete="off"/><span>credits</span></label>
-        <input id="customCreditsRange" class="credits-amount-range" type="range" min="1000" max="100000" step="1000" value="1000" aria-label="Credit amount"/>
+        <div class="credits-section-copy"><div><span>FLEXIBLE AMOUNT</span><h3>Choose your amount</h3></div><small>$0.18 balance = 12 Stars</small></div>
+        <label class="credits-amount-field" for="customCreditsInput"><input id="customCreditsInput" type="number" inputmode="decimal" min="0.01" max="178" step="0.01" value="0.18" autocomplete="off"/><span>USD</span></label>
+        <input id="customCreditsRange" class="credits-amount-range" type="range" min="0.18" max="17.80" step="0.18" value="0.18" aria-label="USD amount"/>
         <div class="credits-custom-summary"><div><strong id="customStarsValue">12 Stars</strong><small>Telegram Stars</small></div><div><strong id="customUsdValue">$0.17</strong><small>estimated value</small></div></div>
         <button id="customCreditsBuy" class="credits-primary-button" data-action="buy-custom-credits" type="button"><span>Continue with 12 Stars</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </section>
       <section class="credits-packs-section">
-        <div class="credits-packs-head"><div><span>READY TO BUY</span><h3>Credit packs</h3></div><small>Bonus included</small></div>
+        <div class="credits-packs-head"><div><span>READY TO BUY</span><h3>USD balance packages</h3></div><small>Bonus included</small></div>
         <div class="credits-pack-list">
-          <button class="credits-pack" data-action="buy-credit-package" data-package-id="mini_3000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>3,000</strong><small>credits</small></span><span class="credits-pack-total">3,000 total credits</span></span><span class="credits-pack-price"><strong>36 <i>★</i></strong><small>$0.5</small></span></button>
-          <button class="credits-pack featured" data-action="buy-credit-package" data-package-id="mini_10000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>10,000 <b>+ 600</b></strong><em>600 BONUS</em></span><span class="credits-pack-total">10,600 total credits</span></span><span class="credits-pack-price"><strong>118 <i>★</i></strong><small>$1.6</small></span></button>
-          <button class="credits-pack" data-action="buy-credit-package" data-package-id="mini_18000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>18,000 <b>+ 2,200</b></strong><em>2,200 BONUS</em></span><span class="credits-pack-total">20,200 total credits</span></span><span class="credits-pack-price"><strong>216 <i>★</i></strong><small>$3.2</small></span></button>
-          <button class="credits-pack" data-action="buy-credit-package" data-package-id="mini_30000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>30,000 <b>+ 6,000</b></strong><em>6,000 BONUS</em></span><span class="credits-pack-total">36,000 total credits</span></span><span class="credits-pack-price"><strong>360 <i>★</i></strong><small>$5.3</small></span></button>
+          <button class="credits-pack" data-action="buy-credit-package" data-package-id="mini_3000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>$0.53</strong><small>USD balance</small></span><span class="credits-pack-total">$0.53 total balance</span></span><span class="credits-pack-price"><strong>36 <i>★</i></strong><small>$0.5</small></span></button>
+          <button class="credits-pack featured" data-action="buy-credit-package" data-package-id="mini_10000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>$1.89</strong><em>$0.11 BONUS</em></span><span class="credits-pack-total">$1.89 total balance</span></span><span class="credits-pack-price"><strong>118 <i>★</i></strong><small>$1.6</small></span></button>
+          <button class="credits-pack" data-action="buy-credit-package" data-package-id="mini_18000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>$3.60</strong><em>$0.39 BONUS</em></span><span class="credits-pack-total">$3.60 total balance</span></span><span class="credits-pack-price"><strong>216 <i>★</i></strong><small>$3.2</small></span></button>
+          <button class="credits-pack" data-action="buy-credit-package" data-package-id="mini_30000" type="button"><span class="credits-pack-main"><span class="credits-pack-title"><strong>$6.41</strong><em>$1.07 BONUS</em></span><span class="credits-pack-total">$6.41 total balance</span></span><span class="credits-pack-price"><strong>360 <i>★</i></strong><small>$5.3</small></span></button>
         </div>
       </section>
       <p class="credits-footnote"><span>★</span> Secure payment powered by Telegram Stars</p>
@@ -410,26 +410,26 @@ export const MINI_APP_HTML = `<!doctype html>
         <div id="tomanCheckout" class="credits-custom toman-checkout" data-step="amount">
           <div class="toman-stage">
             <div id="tomanAmountPanel" class="toman-panel toman-amount-panel">
-              <div class="credits-section-copy toman-section-copy"><div><span>مقدار دلخواه</span><h3>چقدر کردیت می‌خوای؟</h3></div><small>1,000 کردیت = 39,000 تومان</small></div>
-              <label class="credits-amount-field toman-amount-field" for="tomanCreditsInput"><input id="tomanCreditsInput" type="number" inputmode="numeric" min="1" max="1000000" step="1" value="7000" autocomplete="off" dir="ltr"/><span>کردیت</span></label>
-              <input id="tomanCreditsRange" class="credits-amount-range toman-amount-range" type="range" min="1000" max="100000" step="1000" value="7000" dir="ltr" aria-label="مقدار کردیت"/>
+              <div class="credits-section-copy toman-section-copy"><div><span>مقدار دلخواه</span><h3>چند دلار موجودی می‌خوای؟</h3></div><small>هر $0.18 موجودی = 39,000 تومان</small></div>
+              <label class="credits-amount-field toman-amount-field" for="tomanCreditsInput"><input id="tomanCreditsInput" type="number" inputmode="decimal" min="0.01" max="178" step="0.01" value="1.25" autocomplete="off" dir="ltr"/><span>USD</span></label>
+              <input id="tomanCreditsRange" class="credits-amount-range toman-amount-range" type="range" min="0.18" max="17.80" step="0.18" value="1.25" dir="ltr" aria-label="مقدار موجودی دلاری"/>
               <div class="credits-custom-summary toman-payment-summary"><div><strong id="tomanAmountValue">273,000 تومان</strong><small>جمع پرداختی</small></div><div><span id="tomanDiscountBadge" aria-hidden="true"></span><small>پرداخت با کارت بانکی</small></div></div>
               <p id="tomanMinimumNote" class="toman-minimum-note">حداقل خرید 260,000 تومانه.</p>
               <button id="tomanContinueButton" class="credits-primary-button" data-action="continue-toman-payment" type="button"><span>ادامه</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 6-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
             <div id="tomanReceiptPanel" class="toman-panel toman-receipt-panel" aria-hidden="true">
               <button class="toman-back" data-action="reset-toman-payment" type="button" aria-label="برگشت"><svg viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-              <div class="credits-section-copy toman-step-head"><div><span>پرداخت</span><h3>کارت‌به‌کارت کن</h3></div><small><b id="tomanOrderCredits">7,000 کردیت</b><br/><b id="tomanOrderAmount">273,000 تومان</b></small></div>
+              <div class="credits-section-copy toman-step-head"><div><span>پرداخت</span><h3>کارت‌به‌کارت کن</h3></div><small><b id="tomanOrderCredits">$1.25</b><br/><b id="tomanOrderAmount">273,000 تومان</b></small></div>
               <button id="tomanCardButton" class="toman-card" data-action="copy-toman-card" type="button"><small>شماره کارت — برای کپی بزن</small><strong id="tomanCardNumber" dir="ltr">•••• •••• •••• ••••</strong><span>کپی شد ✓</span></button>
               <input id="tomanReceiptInput" type="file" accept="image/jpeg,image/png,image/webp" hidden/>
               <button id="tomanReceiptPicker" class="toman-receipt-picker" data-action="pick-toman-receipt" type="button"><span class="toman-upload-icon"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V5m0 0L8 9m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="toman-upload-copy"><strong>عکس رسید رو انتخاب کن</strong><small id="tomanReceiptName">JPG، PNG یا WebP</small></span><span class="toman-upload-check">✓</span></button>
               <button id="tomanSubmitReceipt" class="credits-primary-button toman-submit-button" data-action="submit-toman-receipt" type="button" disabled><span>ارسال رسید</span></button>
-              <p class="toman-review-note">تأیید بشه، کردیت خودش میاد تو حسابت.</p>
+              <p class="toman-review-note">تأیید بشه، مبلغ دلاری خودش میاد تو حسابت.</p>
             </div>
             <div id="tomanSuccessPanel" class="toman-panel toman-success-panel" aria-hidden="true">
               <div class="toman-success-mark"><svg viewBox="0 0 24 24" fill="none"><path d="m7 12.5 3.2 3.2L17.5 8.5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-              <span>ارسال شد</span><h3>رسیدت رسید</h3><p>ادمین چکش می‌کنه.<br/>تأیید بشه، کردیت خودش میاد تو حسابت.</p>
-              <div class="toman-success-order"><span id="tomanSuccessCredits">7,000 کردیت</span><strong id="tomanSuccessAmount">273,000 تومان</strong></div>
+              <span>ارسال شد</span><h3>رسیدت رسید</h3><p>ادمین چکش می‌کنه.<br/>تأیید بشه، مبلغ دلاری خودش میاد تو حسابت.</p>
+              <div class="toman-success-order"><span id="tomanSuccessCredits">$1.25</span><strong id="tomanSuccessAmount">273,000 تومان</strong></div>
             </div>
           </div>
         </div>

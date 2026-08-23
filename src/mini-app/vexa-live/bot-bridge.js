@@ -555,52 +555,52 @@ function botReferralCopy(language) {
 
 const BOT_REFERRAL_COPY = Object.freeze({
   en: {
-    offer: "Buy credits, or invite <b>3 friends</b> and get <b>300 free credits</b>.",
+    offer: "Add USD balance, or invite <b>3 friends</b> and get <b>$0.05 free</b>.",
     invite: "Invite friends",
     shareText: "🎙 Try Vexa — turn any text into a natural AI voice in seconds 👇",
   },
   fa: {
-    offer: "یا کردیت بخر، یا <b>۳ تا از دوستاتو دعوت کن</b> و <b>۳۰۰ کردیت رایگان</b> بگیر.",
+    offer: "موجودی دلاری اضافه کن، یا <b>۳ دوست</b> دعوت کن و <b>$0.05 رایگان</b> بگیر.",
     invite: "دعوت از دوستا",
     shareText: "🎙 وکسا رو امتحان کن — هر متنی رو تو چند ثانیه به صدای طبیعی AI تبدیل می‌کنه 👇",
   },
   ru: {
-    offer: "Купи кредиты или пригласи <b>3 друзей</b> и получи <b>300 бесплатных кредитов</b>.",
+    offer: "Add USD balance, or invite <b>3 friends</b> and get <b>$0.05 free</b>.",
     invite: "Пригласить друзей",
     shareText: "🎙 Попробуй Vexa — превращай любой текст в естественную AI-озвучку за секунды 👇",
   },
   de: {
-    offer: "Kaufe Credits oder lade <b>3 Freunde</b> ein und erhalte <b>300 kostenlose Credits</b>.",
+    offer: "Add USD balance, or invite <b>3 friends</b> and get <b>$0.05 free</b>.",
     invite: "Freunde einladen",
     shareText: "🎙 Probier Vexa aus — verwandle jeden Text in Sekunden in eine natürliche KI-Stimme 👇",
   },
   tr: {
-    offer: "Kredi satın al veya <b>3 arkadaşını davet et</b> ve <b>300 ücretsiz kredi</b> kazan.",
+    offer: "Add USD balance, or invite <b>3 friends</b> and get <b>$0.05 free</b>.",
     invite: "Arkadaş davet et",
     shareText: "🎙 Vexa'yı dene — istediğin metni saniyeler içinde doğal bir AI sesine dönüştür 👇",
   },
   ar: {
-    offer: "اشترِ رصيدًا أو ادعُ <b>3 أصدقاء</b> واحصل على <b>300 رصيد مجاني</b>.",
+    offer: "Add USD balance, or invite <b>3 friends</b> and get <b>$0.05 free</b>.",
     invite: "دعوة أصدقاء",
     shareText: "🎙 جرّب Vexa — حوّل أي نص إلى صوت AI طبيعي خلال ثوانٍ 👇",
   },
   zh: {
-    offer: "购买积分，或邀请 <b>3 位好友</b>，获得 <b>300 免费积分</b>。",
+    offer: "Add USD balance, or invite <b>3 friends</b> and get <b>$0.05 free</b>.",
     invite: "邀请好友",
     shareText: "🎙 试试 Vexa — 几秒钟把任意文字变成自然的 AI 语音 👇",
   },
   ja: {
-    offer: "クレジットを購入するか、<b>友達を3人招待</b>して<b>300無料クレジット</b>を獲得できます。",
+    offer: "Add USD balance, or invite <b>3 friends</b> and get <b>$0.05 free</b>.",
     invite: "友達を招待",
     shareText: "🎙 Vexaを試してみて — テキストを数秒で自然なAI音声に変換できるよ 👇",
   },
   es: {
-    offer: "Compra créditos o invita a <b>3 amigos</b> y recibe <b>300 créditos gratis</b>.",
+    offer: "Add USD balance, or invite <b>3 friends</b> and get <b>$0.05 free</b>.",
     invite: "Invitar amigos",
     shareText: "🎙 Prueba Vexa — convierte cualquier texto en una voz IA natural en segundos 👇",
   },
   hi: {
-    offer: "Credits खरीदो, या <b>3 दोस्तों को invite करो</b> और <b>300 free credits</b> पाओ।",
+    offer: "Add USD balance, or invite <b>3 friends</b> and get <b>$0.05 free</b>.",
     invite: "दोस्तों को invite करें",
     shareText: "🎙 Vexa try करो — किसी भी text को seconds में natural AI voice में बदलो 👇",
   },

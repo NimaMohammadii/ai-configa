@@ -270,7 +270,7 @@ async function handleEventBilledVoiceProxy(request, env, ctx) {
   const balance = await getBalance(env, userId);
   if (balance < VOICE_MINIMUM_BALANCE) {
     await markProxySession(env, sessionId, "insufficient", 0, true).catch(() => null);
-    return new Response("Not enough credits", { status: 402 });
+    return new Response("Not enough USD balance", { status: 402 });
   }
 
   const claimed = await env.DB.prepare(
@@ -434,7 +434,7 @@ function attachEventBilledVoiceProxy({ server, upstream, env, ctx, sessionId, us
         closed = true;
         if (sessionLimitTimer) clearTimeout(sessionLimitTimer);
         sessionLimitTimer = 0;
-        closeBoth(4002, "Not enough credits");
+        closeBoth(4002, "Not enough USD balance");
       }
       return false;
     }
@@ -448,7 +448,7 @@ function attachEventBilledVoiceProxy({ server, upstream, env, ctx, sessionId, us
       if (sessionLimitTimer) clearTimeout(sessionLimitTimer);
       sessionLimitTimer = 0;
       await markProxySession(env, sessionId, "insufficient", chargedCredits, true).catch(() => null);
-      closeBoth(4002, "Not enough credits");
+      closeBoth(4002, "Not enough USD balance");
       return false;
     }
     return true;

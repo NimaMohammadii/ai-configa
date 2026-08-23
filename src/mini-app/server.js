@@ -113,13 +113,13 @@ export async function handleMiniAppRequest(request, env) {
     } else {
       const credits = Number(body.credits);
       if (!Number.isSafeInteger(credits) || credits < 1 || credits > 1_000_000) {
-        return json({ error: "Choose a credit amount between 1 and 1,000,000." }, 400);
+        return json({ error: "Choose a USD balance amount between $0.01 and $178.00." }, 400);
       }
       pack = createCustomStarPackage(credits, discount);
     }
 
     const invoiceUrl = await tgJson(env, "createInvoiceLink", {
-      title: "Vexa Credits",
+      title: "Vexa USD Balance",
       description: pack.description,
       payload: starInvoicePayload(pack),
       provider_token: "",
@@ -294,12 +294,12 @@ function applyUsagePricedImageUi(source) {
       "function updateImagePricing(data){if(data&&String(data.mode||'')==='api_usage'){imagePricing={mode:'api_usage',baseCost:1,activeCost:1,lastCost:Math.max(0,Number(data.lastCost||data.cost)||0),markupRate:Number(data.markupRate)||.30,discountEnabled:false,discountCost:0,discountUntil:0,serverNow:Number(data.serverNow)||Math.floor(Date.now()/1000),discountPercent:0};imageOfferClockOffset=imagePricing.serverNow-Date.now()/1000}else if(!imagePricing||imagePricing.mode!=='api_usage'){imagePricing={mode:'api_usage',baseCost:1,activeCost:1,lastCost:0,markupRate:.30,discountEnabled:false,discountCost:0,discountUntil:0,serverNow:Math.floor(Date.now()/1000),discountPercent:0}}updateImageCreditNote();stopImageOfferTimer()}",
     ],
     [
-      "function updateImageCreditNote(){var node=q('imageCreditNote');if(!node)return;node.dir='ltr';var base=Number(imagePricing.baseCost)||188,active=Number(imagePricing.activeCost)||base,remaining=imageOfferRemaining();if(imagePricing.discountEnabled&&(Number(imagePricing.discountUntil)<=0||remaining>0)&&active<base){var percent=Number(imagePricing.discountPercent)||Math.round((base-active)/base*100),countdown=Number(imagePricing.discountUntil)>0?'<span class=\"discount-countdown\"><small>Ends in</small><strong>'+formatOfferTime(remaining)+'</strong></span>':'';node.classList.add('has-discount');node.innerHTML='<span class=\"discount-badge\">LIMITED RATE</span><span class=\"old-price\">'+base.toLocaleString('en-US')+'</span><strong>'+active.toLocaleString('en-US')+' credits</strong><span class=\"discount-percent\">-'+percent+'%</span>'+countdown}else{if(imagePricing.discountEnabled&&Number(imagePricing.discountUntil)>0&&remaining<=0)endImageOffer();node.classList.remove('has-discount');node.textContent=base.toLocaleString('en-US')+' credits per image'}}",
-      "function updateImageCreditNote(){var node=q('imageCreditNote');if(!node)return;node.dir='ltr';node.classList.remove('has-discount');var last=Math.max(0,Number(imagePricing&&imagePricing.lastCost)||0);node.textContent=last?last.toLocaleString('en-US')+' credits used':''}",
+      "function updateImageCreditNote(){var node=q('imageCreditNote');if(!node)return;node.dir='ltr';var base=Number(imagePricing.baseCost)||188,active=Number(imagePricing.activeCost)||base,remaining=imageOfferRemaining();if(imagePricing.discountEnabled&&(Number(imagePricing.discountUntil)<=0||remaining>0)&&active<base){var percent=Number(imagePricing.discountPercent)||Math.round((base-active)/base*100),countdown=Number(imagePricing.discountUntil)>0?'<span class=\"discount-countdown\"><small>Ends in</small><strong>'+formatOfferTime(remaining)+'</strong></span>':'';node.classList.add('has-discount');node.innerHTML='<span class=\"discount-badge\">LIMITED RATE</span><span class=\"old-price\">'+base.toLocaleString('en-US')+'</span><strong>'+formatBalanceUsd(active)+'</strong><span class=\"discount-percent\">-'+percent+'%</span>'+countdown}else{if(imagePricing.discountEnabled&&Number(imagePricing.discountUntil)>0&&remaining<=0)endImageOffer();node.classList.remove('has-discount');node.textContent=formatBalanceUsd(base)+' per image'}}",
+      "function updateImageCreditNote(){var node=q('imageCreditNote');if(!node)return;node.dir='ltr';node.classList.remove('has-discount');var last=Math.max(0,Number(imagePricing&&imagePricing.lastCost)||0);node.textContent=last?formatBalanceUsd(last)+' used':''}",
     ],
     [
-      "var imageCost=Number(imagePricing.activeCost)||188;if(availableCredits!==null&&availableCredits<imageCost)return toast('Not enough credits · Image creation costs '+imageCost+' credits');",
-      "if(availableCredits!==null&&availableCredits<1)return toast('Not enough credits');",
+      "var imageCost=Number(imagePricing.activeCost)||188;if(availableCredits!==null&&availableCredits<imageCost)return toast('Not enough USD balance · Image creation costs '+formatBalanceUsd(imageCost));",
+      "if(availableCredits!==null&&availableCredits<1)return toast('Not enough USD balance');",
     ],
   ];
 

@@ -52,7 +52,7 @@ export async function handleMiniAppVoiceTransformRequest(request, env) {
 
     const lang = normalizeLang(state?.language || user?.language_code || "en");
     const startingBalance = await getBalance(env, user.id);
-    if (startingBalance <= 0) return json({ error: "Not enough credits." }, 402);
+    if (startingBalance <= 0) return json({ error: "Not enough USD balance." }, 402);
 
     const buffer = await audio.arrayBuffer();
     await saveMiniAppAudioUpload(env, user.id, buffer, {
@@ -73,7 +73,7 @@ export async function handleMiniAppVoiceTransformRequest(request, env) {
         const currentBalance = await getBalance(env, user.id);
         if (currentBalance < chargeCredits) {
           throw httpError(
-            "Not enough credits · Voice creation needs " + chargeCredits.toLocaleString("en-US") +
+            "Not enough USD balance · Voice creation needs " + chargeCredits.toLocaleString("en-US") +
               " credits · Balance " + currentBalance.toLocaleString("en-US") + " credits",
             402,
           );
@@ -88,7 +88,7 @@ export async function handleMiniAppVoiceTransformRequest(request, env) {
       sourceType: "microphone",
       duration: durationMs > 0 ? Math.round(durationMs / 1000) : null,
     });
-    if (!spent?.ok) return json({ error: "Not enough credits." }, 402);
+    if (!spent?.ok) return json({ error: "Not enough USD balance." }, 402);
 
     const sequence = await getNextTtsFileSequence(env, user.id);
     const filename = buildTtsAudioFileName(sequence);

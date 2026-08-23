@@ -158,7 +158,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     var symbol=currencyInfo(code).symbol||'';
     var amount=code==='usd'&&product.usdPer1000!=null?Number(product.usdPer1000):(Math.max(0,Number(product.amountMinor)||0)/100)/(total/1000);
     var digits=code==='rub'?1:2;
-    return symbol+amount.toLocaleString('en-US',{minimumFractionDigits:digits,maximumFractionDigits:digits})+' / 1K credits';
+    return symbol+amount.toLocaleString('en-US',{minimumFractionDigits:digits,maximumFractionDigits:digits})+' per $0.18 balance';
   }
 
   function titleMarkup(product){

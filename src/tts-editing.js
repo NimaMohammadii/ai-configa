@@ -98,7 +98,7 @@ export async function regenerateTtsSelection(env, input) {
 
   const cost = replacementChars.length + 50;
   const balance = await getBalance(env, userId);
-  if (balance < cost) throw httpError("Not enough credits.", 402);
+  if (balance < cost) throw httpError("Not enough USD balance.", 402);
 
   const voiceId = String(input.voiceId || "");
   if (!voiceId) throw httpError("Voice not found.", 404);
@@ -135,7 +135,7 @@ export async function regenerateTtsSelection(env, input) {
     regenerationStart: windowStart,
     regenerationEnd: windowEnd,
   });
-  if (!spent?.ok) throw httpError("Not enough credits.", 402);
+  if (!spent?.ok) throw httpError("Not enough USD balance.", 402);
 
   const token = crypto.randomUUID();
   await env.DB.prepare(
