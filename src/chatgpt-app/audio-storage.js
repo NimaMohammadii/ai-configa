@@ -200,38 +200,6 @@ export async function handleChatGptAudioRequest(request, env) {
   });
 }
 
-export async function refundChatGptCredits(env, userId, amount, metadata = null) {
-  requireDb(env);
-
-  const credits = Number(amount || 0);
-  if (!Number.isFinite(credits) || credits <= 0) {
-    return;
-  }
-
-  const refundId = crypto.randomUUID();
-  const metadataJson = JSON.stringify({
-    ...(metadata || {}),
-    refund: true,
-  });
-
-  await env.DB.batch([
-    env.DB.prepare(
-      "UPDATE user_credits SET credits = credits + ?, updated_at = CURRENT_TIMESTAMP " +
-      "WHERE user_id = ?"
-    ).bind(credits, String(userId)),
-    env.DB.prepare(
-      "INSERT INTO credit_usage_log (" +
-        "id, user_id, credits, reason, metadata, created_at" +
-      ") VALUES (?, ?, ?, 'chatgpt_tts_refund', ?, CURRENT_TIMESTAMP)"
-    ).bind(
-      refundId,
-      String(userId),
-      -credits,
-      metadataJson,
-    ),
-  ]);
-}
-
 function buildStorageKey(userId, historyId) {
   const safeUserId = encodeURIComponent(String(userId));
   return `chatgpt-audio/${safeUserId}/${historyId}.mp3`;
