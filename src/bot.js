@@ -134,7 +134,7 @@ import {
   tryAdminLogin,
 } from "./admin.js";
 import { AI_CHAT_MODELS, setAiChatModel } from "./ai-chat-model.js";
-import { addCredits, creditsForTtsCharacters, creditsForUsd, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
+import { addCredits, creditsForTtsCharacters, creditsForUsd, ensureBalanceRow, formatUsdBalanceFromCredits, getBalance, removeCredits, spendCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { storeTelegramExploreMedia } from "./explore-media.js";
 import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
@@ -211,7 +211,7 @@ export async function handleMessage(message, env) {
     return;
   }
 
-  if (await handleTomanCreditInput(env, chatId, userId, messageId, text, state)) {
+  if (await handleTomanUsdInput(env, chatId, userId, messageId, text, state)) {
     return;
   }
 
@@ -1295,7 +1295,7 @@ export async function handleCallback(query, env) {
     const pending = await getPendingPayment(env, userId);
     const pack = pendingPackage(pending);
     if (!pack) {
-      await answerCallback(env, query.id, state.language === "fa" ? "اول مقدار کردیت را بفرست" : "Send a credit amount first", true);
+      await answerCallback(env, query.id, state.language === "fa" ? "اول مقدار موجودی دلاری را بفرست" : "Send a USD balance amount first", true);
       return;
     }
     await answerCallback(env, query.id);
@@ -1867,21 +1867,23 @@ async function denyCallback(env, callbackQueryId, state = {}) {
 }
 
 
-async function handleTomanCreditInput(env, chatId, userId, messageId, text, state) {
+async function handleTomanUsdInput(env, chatId, userId, messageId, text, state) {
   const pending = await getPendingPayment(env, userId);
   const pendingPackageId = String(pending?.package_id || "");
   const isAwaitingCustomTomanInput = pendingPackageId.startsWith("input") || pendingPackageId.startsWith("custom:");
   if (!pending || !isAwaitingCustomTomanInput) return false;
 
-  const credits = parseTomanCreditAmount(text);
+  const usdAmount = parseTomanUsdAmount(text);
+  const credits = usdAmount ? creditsForUsd(usdAmount) : 0;
+  const validCredits = Number.isSafeInteger(credits) && credits <= 1_000_000 ? credits : 0;
   await deleteMessage(env, chatId, messageId).catch(() => null);
 
-  if (!credits) {
-    await editCurrentMenu(env, chatId, userId, state.menuMessageId, tomanPackagesText(state) + "\n\n" + (state.language === "fa" ? "لطفاً یک عدد مثبت مثل <code>1000</code> بفرست" : "Please send a positive number like <code>1000</code>"), tomanPackagesKeyboard(state));
+  if (!validCredits) {
+    await editCurrentMenu(env, chatId, userId, state.menuMessageId, tomanPackagesText(state) + "\n\n" + (state.language === "fa" ? "لطفاً یک مبلغ دلاری مثبت مثل <code>1.50</code> بفرست" : "Please send a positive USD amount like <code>1.50</code>"), tomanPackagesKeyboard(state));
     return true;
   }
 
-  const pack = createCustomTomanPackage(credits, await getActiveWheelPurchaseDiscount(env, userId));
+  const pack = createCustomTomanPackage(validCredits, await getActiveWheelPurchaseDiscount(env, userId));
   await setPendingPayment(env, userId, customTomanPaymentId(pack));
   await editCurrentMenu(env, chatId, userId, state.menuMessageId, customTomanPreviewText(pack, state), customTomanConfirmKeyboard(state));
   return true;
@@ -1892,7 +1894,7 @@ function customTomanPreviewText(pack, state = {}) {
   const lines = [
     lang === "fa" ? "🇮🇷 <b>پرداخت با تومان</b>" : t(lang, "buyTomanTitle"),
     "",
-    `${t(lang, "package")}: <b>${Number(pack.credits).toLocaleString("en-US")} credits</b>`,
+    `${t(lang, "package")}: <b>${formatUsdBalanceFromCredits(pack.credits)}</b>`,
     customTomanAmountLine(pack, lang),
   ];
 
@@ -1939,14 +1941,15 @@ function pendingPackage(pending) {
   return null;
 }
 
-function parseTomanCreditAmount(text) {
+function parseTomanUsdAmount(text) {
   const normalized = String(text || "")
     .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
     .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
-    .replace(/[,_\s]/g, "");
-  if (!/^\d+$/.test(normalized)) return null;
-  const value = Number.parseInt(normalized, 10);
-  if (!Number.isSafeInteger(value) || value <= 0) return null;
+    .replace(/[٫،]/g, ".")
+    .replace(/[$\s]/g, "");
+  if (!/^\d+(?:\.\d{1,6})?$/.test(normalized)) return null;
+  const value = Number(normalized);
+  if (!Number.isFinite(value) || value <= 0) return null;
   return value;
 }
 
