@@ -1754,13 +1754,13 @@ async function getReturnUsersPage(env, threshold, page = 0, limit = 8) {
 
 export function adminCreditPromptText() {
   return [
-    "✏️ <b>Change Credits</b>",
+    "✏️ <b>Change USD Balance</b>",
     "",
     "Send the amount you want:",
     "",
     "Examples:",
-    "<code>+2500</code>",
-    "<code>-700</code>",
+    "<code>+1.25</code>",
+    "<code>-$0.50</code>",
     "",
     "Your message will be deleted after processing."
   ].join("\n");
