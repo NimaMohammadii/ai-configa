@@ -15,6 +15,15 @@ export function creditsForUsdMicros(value) {
   return usdMicros > 0 ? Math.max(1, Math.ceil((usdMicros / USD_MICROS_PER_CREDIT) - 1e-12)) : 0;
 }
 
+// The database keeps the balance in small, integer ledger units so deductions stay
+// atomic.  USD is the public unit; all human/API boundaries should convert through
+// these helpers instead of treating the ledger value as a dollar amount.
+export function creditsForUsd(value) {
+  const usd = Number(value);
+  if (!Number.isFinite(usd) || usd <= 0) return 0;
+  return creditsForUsdMicros(Math.round(usd * 1_000_000));
+}
+
 export function creditsForTtsCharacters(value) {
   const characters = Math.max(0, Math.floor(Number(value) || 0));
   return creditsForUsdMicros(characters * TTS_USD_MICROS_PER_CHARACTER);

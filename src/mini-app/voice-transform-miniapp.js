@@ -209,7 +209,7 @@ const VOICE_TRANSFORM_RESULT_BRIDGE = String.raw`
     availableCredits=Math.max(0,Number(data.balance)||0);
     currentLanguage=String(data.language||currentLanguage||'en');
     updateImageCreditNote();
-    setText('balance',availableCredits.toLocaleString('en-US'));
+    setText('balance','$'+(availableCredits*.000178).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));
     generatedFileName=String(data.filename||'vexa-voice.mp3');
     var audio=q('ttsAudio');
     var player=q('wavePlayer');

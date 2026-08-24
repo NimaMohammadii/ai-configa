@@ -134,7 +134,7 @@ import {
   tryAdminLogin,
 } from "./admin.js";
 import { AI_CHAT_MODELS, setAiChatModel } from "./ai-chat-model.js";
-import { addCredits, creditsForTtsCharacters, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
+import { addCredits, creditsForTtsCharacters, creditsForUsd, ensureBalanceRow, getBalance, removeCredits, spendCredits } from "./credits.js";
 import { getDemoAudio, saveDemoAudio } from "./demo-cache.js";
 import { storeTelegramExploreMedia } from "./explore-media.js";
 import { grantInitialStartBonusOnce, initialStartBonusText, setInitialStartCredits } from "./start-bonus.js";
@@ -1725,9 +1725,9 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
   }
 
   if (action.action === "credit") {
-    const amount = parseCreditAmount(text);
+    const amount = parseUsdBalanceAdjustment(text);
     if (!amount) {
-      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminCreditPromptText() + "\n\nInvalid amount. Use +2500 or -700", adminCancelKeyboard("admin_user:" + action.target_user_id + ":" + (action.page || 0)));
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminCreditPromptText() + "\n\nInvalid amount. Use +1.25 or -0.50", adminCancelKeyboard("admin_user:" + action.target_user_id + ":" + (action.page || 0)));
       return true;
     }
 
@@ -1826,12 +1826,12 @@ function escapeForAdminError(error) {
   return String(error?.message || error).replace(/[<>&]/g, (char) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[char]));
 }
 
-function parseCreditAmount(text) {
-  const match = String(text).trim().match(/^([+-])(\d+)$/);
+function parseUsdBalanceAdjustment(text) {
+  const match = String(text).trim().replace(/[$,\s]/g, "").match(/^([+-])(\d+(?:\.\d{1,6})?)$/);
   if (!match) return null;
 
-  const value = Number(match[2]);
-  if (!Number.isFinite(value) || value <= 0) return null;
+  const value = creditsForUsd(match[2]);
+  if (!value) return null;
 
   return match[1] === "+" ? value : -value;
 }
