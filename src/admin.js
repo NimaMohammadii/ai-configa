@@ -1,4 +1,4 @@
-import { ensureCreditUsageLogTable, getBalance } from "./credits.js";
+import { ensureCreditUsageLogTable, formatUsdBalanceFromCredits, formatUsdChargeFromCredits, getBalance } from "./credits.js";
 import { LANGUAGES, normalizeLang } from "./i18n.js";
 import { requireDb } from "./state.js";
 import { getInitialStartCredits } from "./start-bonus.js";
@@ -143,10 +143,10 @@ export async function adminMainText(env = null) {
   if (stats) {
     lines.push(
       "📊 <b>Usage</b>",
-      "24h: <b>" + formatNumber(stats.credits24h) + " credits</b> / " + formatNumber(stats.requests24h) + " requests",
-      "3 days: <b>" + formatNumber(stats.credits3d) + " credits</b> / " + formatNumber(stats.requests3d) + " requests",
-      "7 days: <b>" + formatNumber(stats.credits7d) + " credits</b> / " + formatNumber(stats.requests7d) + " requests",
-      "30 days: <b>" + formatNumber(stats.credits30d) + " credits</b> / " + formatNumber(stats.requests30d) + " requests",
+      "24h: <b>" + formatUsdChargeFromCredits(stats.credits24h) + "</b> / " + formatNumber(stats.requests24h) + " requests",
+      "3 days: <b>" + formatUsdChargeFromCredits(stats.credits3d) + "</b> / " + formatNumber(stats.requests3d) + " requests",
+      "7 days: <b>" + formatUsdChargeFromCredits(stats.credits7d) + "</b> / " + formatNumber(stats.requests7d) + " requests",
+      "30 days: <b>" + formatUsdChargeFromCredits(stats.credits30d) + "</b> / " + formatNumber(stats.requests30d) + " requests",
       "",
       "🟢 <b>Online users</b>",
       "24h: <b>" + formatNumber(stats.online24h) + "</b>",
@@ -306,8 +306,8 @@ export async function adminImagePricingText(env) {
   const lines = [
     "💸 <b>Image Credit Pricing</b>",
     "",
-    "Base price: <b>" + formatNumber(settings.baseCost) + " credits</b>",
-    "Active price: <b>" + formatNumber(settings.activeCost) + " credits</b>",
+    "Base price: <b>" + formatUsdChargeFromCredits(settings.baseCost) + "</b>",
+    "Active price: <b>" + formatUsdChargeFromCredits(settings.activeCost) + "</b>",
   ];
   if (settings.discountEnabled) {
     lines.push("Discount: <b>ON</b> · <b>" + settings.discountPercent + "% OFF</b>");
@@ -364,7 +364,7 @@ export async function adminInitialStartText(env) {
   return [
     "🆕 <b>Initial Start Credits</b>",
     "",
-    "Current new-user gift: <b>" + formatNumber(credits) + " credits</b>",
+    "Current new-user gift: <b>" + formatUsdBalanceFromCredits(credits) + "</b>",
     "",
     "This gift is sent exactly once to every new user, regardless of their selected language.",
     "Persian users receive the same gift after completing the channel-join step.",
@@ -778,10 +778,10 @@ export async function adminStatsText(env) {
   return [
     "📊 <b>Usage Stats</b>",
     "",
-    "Credits used in 24h: <b>" + formatNumber(stats.credits24h) + "</b>",
-    "Credits used in 3 days: <b>" + formatNumber(stats.credits3d) + "</b>",
-    "Credits used in 7 days: <b>" + formatNumber(stats.credits7d) + "</b>",
-    "Credits used in 30 days: <b>" + formatNumber(stats.credits30d) + "</b>",
+    "USD used in 24h: <b>" + formatUsdChargeFromCredits(stats.credits24h) + "</b>",
+    "USD used in 3 days: <b>" + formatUsdChargeFromCredits(stats.credits3d) + "</b>",
+    "USD used in 7 days: <b>" + formatUsdChargeFromCredits(stats.credits7d) + "</b>",
+    "USD used in 30 days: <b>" + formatUsdChargeFromCredits(stats.credits30d) + "</b>",
     "TTS requests in 24h: <b>" + formatNumber(stats.requests24h) + "</b>",
     "TTS requests in 3 days: <b>" + formatNumber(stats.requests3d) + "</b>",
     "TTS requests in 7 days: <b>" + formatNumber(stats.requests7d) + "</b>",
@@ -1283,7 +1283,7 @@ export async function adminWheelUsersText(env, page = 0) {
     "",
     "Users spun wheel: <b>" + formatNumber(data.total) + "</b>",
     "This page spins: <b>" + formatNumber(pageSpins) + "</b>",
-    "This page rewards: <b>" + formatNumber(pageRewards) + " credits</b>",
+    "This page rewards: <b>" + formatUsdBalanceFromCredits(pageRewards) + "</b>",
     "Page: <b>" + (data.page + 1) + "</b>",
     "",
     data.users.length ? "Select a user from the buttons below (latest wheel activity first):" : "No wheel spins have been recorded yet."
@@ -1304,7 +1304,7 @@ export async function adminWheelUsersKeyboard(env, page = 0) {
 function wheelUserLabel(user) {
   const prize = Number(user.reward_discount_percent || 0) > 0
     ? formatNumber(user.reward_discount_percent) + "% OFF"
-    : formatNumber(user.reward || 0) + " credits";
+    : formatUsdBalanceFromCredits(user.reward || 0);
   return userLabel(user) + " • 🎡 #" + formatNumber(user.spin_count || 0) + " • 🏆 " + prize;
 }
 
@@ -1401,7 +1401,7 @@ export async function adminBuyersText(env, page = 0) {
     "",
     "Total buyers: <b>" + formatNumber(data.total) + "</b>",
     "Page: <b>" + (data.page + 1) + "</b>",
-    "This page bought: <b>" + formatNumber(totals.credits) + " credits</b>",
+    "This page bought: <b>" + formatUsdBalanceFromCredits(totals.credits) + "</b>",
     "This page paid: <b>" + formatToman(totals.toman) + "</b> / <b>" + formatStars(totals.stars) + "</b>",
     "",
     data.users.length ? "Select a buyer (Toman / Stars shown on each row):" : "No buyers yet."
@@ -1602,23 +1602,23 @@ export async function adminUserText(env, userId) {
     "Username: <b>" + escapeHtml(username) + "</b>",
     "ID: <code>" + escapeHtml(user.user_id) + "</code>",
     "Language: <b>" + escapeHtml(formatLanguage(user.language)) + "</b>",
-    "Balance: <b>" + Number(user.balance || 0).toLocaleString("en-US") + " credits</b>",
+    "Balance: <b>" + formatUsdBalanceFromCredits(user.balance) + "</b>",
     "Referral invites: <b>" + Number(user.referralCount || 0).toLocaleString("en-US") + "</b>",
     "",
     "💳 <b>Purchases</b>",
     "Approved receipts: <b>" + Number(purchases.approvedReceipts || 0).toLocaleString("en-US") + "</b>",
     "Total paid: <b>" + formatToman(purchases.totalPaidToman || 0) + "</b>",
-    "Bought credits: <b>" + Number(purchases.totalBoughtCredits || 0).toLocaleString("en-US") + " credits</b>",
+    "Bought balance: <b>" + formatUsdBalanceFromCredits(purchases.totalBoughtCredits) + "</b>",
     "Stars payments: <b>" + Number(purchases.starPayments || 0).toLocaleString("en-US") + "</b>",
     "Stars paid: <b>" + Number(purchases.totalPaidStars || 0).toLocaleString("en-US") + " XTR</b>",
-    "Stars credits: <b>" + Number(purchases.totalStarCredits || 0).toLocaleString("en-US") + " credits</b>",
+    "Stars balance: <b>" + formatUsdBalanceFromCredits(purchases.totalStarCredits) + "</b>",
     "",
     "📊 <b>Usage</b>",
-    "Total used: <b>" + Number(usage.totalCredits || 0).toLocaleString("en-US") + " credits</b>",
+    "Total used: <b>" + formatUsdChargeFromCredits(usage.totalCredits) + "</b>",
     "Requests: <b>" + Number(usage.totalRequests || 0).toLocaleString("en-US") + "</b>",
-    "24h: <b>" + Number(usage.credits24h || 0).toLocaleString("en-US") + " credits</b>",
-    "7 days: <b>" + Number(usage.credits7d || 0).toLocaleString("en-US") + " credits</b>",
-    "30 days: <b>" + Number(usage.credits30d || 0).toLocaleString("en-US") + " credits</b>",
+    "24h: <b>" + formatUsdChargeFromCredits(usage.credits24h) + "</b>",
+    "7 days: <b>" + formatUsdChargeFromCredits(usage.credits7d) + "</b>",
+    "30 days: <b>" + formatUsdChargeFromCredits(usage.credits30d) + "</b>",
     "Last TTS: <b>" + escapeHtml(formatTehranTime(usage.lastTtsAt)) + "</b>",
     "",
     "Returns to bot: <b>" + Number(user.return_count || 0).toLocaleString("en-US") + "</b>",
@@ -1627,8 +1627,8 @@ export async function adminUserText(env, userId) {
     "Last mini app open: <b>" + escapeHtml(formatTehranTime(user.last_mini_app_opened_at)) + "</b>",
     "Section opens: <b>" + escapeHtml(formatMiniAppSectionOpenSummary(user.sectionOpens)) + "</b>",
     "Wheel spins: <b>" + Number(user.wheel_spin_count || 0).toLocaleString("en-US") + "</b>",
-    "Last wheel prize: <b>" + (Number(user.wheel_last_discount_percent || 0) > 0 ? Number(user.wheel_last_discount_percent).toLocaleString("en-US") + "% OFF" : Number(user.wheel_last_reward || 0).toLocaleString("en-US") + " credits") + "</b>",
-    "Total wheel prizes: <b>" + Number(user.wheel_total_reward || 0).toLocaleString("en-US") + " credits</b>",
+    "Last wheel prize: <b>" + (Number(user.wheel_last_discount_percent || 0) > 0 ? Number(user.wheel_last_discount_percent).toLocaleString("en-US") + "% OFF" : formatUsdBalanceFromCredits(user.wheel_last_reward)) + "</b>",
+    "Total wheel prizes: <b>" + formatUsdBalanceFromCredits(user.wheel_total_reward) + "</b>",
     "Last wheel spin: <b>" + escapeHtml(formatUnixTehranTime(user.wheel_last_spin_at)) + "</b>",
     "Last seen: <b>" + escapeHtml(formatTehranTime(user.last_seen_at)) + "</b>",
     "Created: <b>" + escapeHtml(formatTehranTime(user.created_at)) + "</b>",
@@ -2563,12 +2563,12 @@ async function getHeavyUsageUsers(env, modifier, limit) {
 
 function formatHeavyUsers(users) {
   if (!users.length) return "No usage yet.";
-  return users.map((user, index) => (index + 1) + ". " + escapeHtml(compactUserName(user)) + " — <b>" + formatNumber(user.credits) + "</b> credits / " + formatNumber(user.requests) + " requests").join("\n");
+  return users.map((user, index) => (index + 1) + ". " + escapeHtml(compactUserName(user)) + " — <b>" + formatUsdChargeFromCredits(user.credits) + "</b> / " + formatNumber(user.requests) + " requests").join("\n");
 }
 
 function buyerLabel(user) {
   const totalCredits = Number(user.total_receipt_credits || 0) + Number(user.total_star_credits || 0);
-  return userLabel(user) + " • " + formatNumber(totalCredits) + " cr • " + formatToman(user.total_paid_toman) + " • " + formatStars(user.total_paid_stars);
+  return userLabel(user) + " • " + formatUsdBalanceFromCredits(totalCredits) + " • " + formatToman(user.total_paid_toman) + " • " + formatStars(user.total_paid_stars);
 }
 
 function compactUserName(user) {

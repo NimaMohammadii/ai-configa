@@ -29,6 +29,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function q(id){return document.getElementById(id)}
   function number(value){return Math.max(0,Math.floor(Number(value)||0)).toLocaleString('en-US')}
+  function formatUsd(credits){return '$'+(Math.max(0,Number(credits)||0)*.000178).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
   function syncBalance(value){var balance=Math.max(0,Number(value)||0);try{window.dispatchEvent(new CustomEvent('vexa:credits-balance',{detail:{balance:balance,source:'tribute'}}))}catch(error){}}
   function toast(message){var node=q('toast');if(!node)return;node.textContent=String(message||'').replace(/[.!]+$/,'');node.classList.remove('show');void node.offsetWidth;node.classList.add('show');setTimeout(function(){node.classList.remove('show')},3200)}
   function haptic(kind){if(!tg||!tg.HapticFeedback)return;try{if(kind==='success'&&tg.HapticFeedback.notificationOccurred)tg.HapticFeedback.notificationOccurred('success');else if(kind==='error'&&tg.HapticFeedback.notificationOccurred)tg.HapticFeedback.notificationOccurred('error');else if(tg.HapticFeedback.impactOccurred)tg.HapticFeedback.impactOccurred(kind||'light')}catch(error){}}
@@ -162,13 +163,14 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   }
 
   function titleMarkup(product){
+    var total=Math.max(0,Number(product.totalCredits||0)||Number(product.credits||0)+Number(product.bonus||0));
     if(Number(product.bonus||0)>0){
-      return '<span class="credits-pack-title"><strong>'+number(product.credits)+' <b>+ '+number(product.bonus)+'</b></strong><em>'+number(product.bonus)+' BONUS</em></span>';
+      return '<span class="credits-pack-title"><strong>'+formatUsd(total)+'</strong><em>'+formatUsd(product.bonus)+' BONUS</em></span>';
     }
     if(Number(product.discountPercent||0)>0){
-      return '<span class="credits-pack-title"><strong>'+number(product.credits)+'</strong><em>'+number(product.discountPercent)+'% OFF</em></span>';
+      return '<span class="credits-pack-title"><strong>'+formatUsd(total)+'</strong><em>'+number(product.discountPercent)+'% OFF</em></span>';
     }
-    return '<span class="credits-pack-title"><strong>'+number(product.credits)+'</strong><small>credits</small></span>';
+    return '<span class="credits-pack-title"><strong>'+formatUsd(total)+'</strong><small>USD balance</small></span>';
   }
 
   function priceMarkup(product){

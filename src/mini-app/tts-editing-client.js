@@ -923,7 +923,7 @@ export const TTS_EDITING_JS = `
     if(!node)return;
     var cost=editCreditCost();
     var changed=node.getAttribute('data-value')!==String(cost);
-    node.textContent=cost.toLocaleString('en-US');
+    node.textContent=formatBalanceUsd(cost);
     node.setAttribute('data-value',String(cost));
     var generate=generateButton();
     if(generate&&state.active)generate.setAttribute('aria-label','Regenerate edited text · '+formatBalanceUsd(cost));
