@@ -32,9 +32,9 @@ export const AI_CHAT_HTML = `<!doctype html>
         <button id="aiChatMenuButton" class="ai-chat-menu-button" type="button" aria-label="Open AI settings" aria-controls="aiChatMenuPanel" aria-expanded="false">
           <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
         </button>
-        <div id="aiChatCreditPill" class="credit-pill" aria-label="Credits">
+        <div id="aiChatCreditPill" class="credit-pill" aria-label="USD balance">
           <span id="aiChatBalance">—</span>
-          <span>credits</span>
+          <span>USD</span>
         </div>
       </div>
       <div class="mode-tools">
