@@ -96,14 +96,18 @@ export const REFERRAL_UI_PATCH = String.raw`
     if(data.imagePricing&&Number.isFinite(Number(data.imagePricing.activeCost)))referralImageCost=Math.max(1,Number(data.imagePricing.activeCost));
   }
 
-  function referralObserveBalanceNodes(){
-    if(typeof MutationObserver!=='function')return;
-    ['balance','creditsPageBalance','aiChatBalance'].forEach(function(id){
-      var node=document.getElementById(id);if(!node)return;
-      var sync=function(){var raw=String(node.textContent||'').replace(/,/g,'');var match=raw.match(/\d+(?:\.\d+)?/);if(!match)return;var value=Number(match[0]);if(Number.isFinite(value))referralBalance=Math.max(0,value)};
-      sync();
-      new MutationObserver(sync).observe(node,{childList:true,characterData:true,subtree:true});
-    });
+  function referralCurrentBalance(){
+    var value=typeof availableCredits!=='undefined'?Number(availableCredits):NaN;
+    if(Number.isFinite(value))return Math.max(0,value);
+    value=Number(referralBalance);
+    return Number.isFinite(value)?Math.max(0,value):null;
+  }
+
+  function referralTtsCostForCharacters(count){
+    if(typeof ttsCostForCharacters==='function'){
+      try{var canonical=Number(ttsCostForCharacters(count));if(Number.isFinite(canonical))return Math.max(0,canonical)}catch(e){}
+    }
+    return Math.max(0,Math.ceil((Math.max(0,Number(count)||0)*170/178)-1e-12));
   }
 
   function referralSetOpen(open,section){
@@ -262,20 +266,21 @@ export const REFERRAL_UI_PATCH = String.raw`
   };
 
   document.body.addEventListener('click',function(event){
-    if(referralBalance===null)return;
+    var currentBalance=referralCurrentBalance();
+    if(currentBalance===null)return;
     var imageButton=event.target&&event.target.closest?event.target.closest('[data-action="generate-image"]'):null;
-    if(imageButton&&referralBalance<referralImageCost){
+    if(imageButton&&currentBalance<referralImageCost){
       event.preventDefault();event.stopImmediatePropagation();
       var exploreSelected=!!document.querySelector('.image-composer.explore-selected,#exploreReferenceChip.show');
       referralSetOpen(true,exploreSelected?'explore':'image');return;
     }
     var ttsButton=event.target&&event.target.closest?event.target.closest('#convertButton,[data-action="generate-tts"]'):null;if(!ttsButton)return;
     var count=0;document.querySelectorAll('[data-dialogue-text]').forEach(function(input){count+=Array.from(String(input.value||'')).length});
-    if(count>referralBalance){event.preventDefault();event.stopImmediatePropagation();referralSetOpen(true,'tts')}
+    var cost=referralTtsCostForCharacters(count);
+    if(cost>currentBalance){event.preventDefault();event.stopImmediatePropagation();referralSetOpen(true,'tts')}
   },true);
 
   referralInstallUi();
   referralInstallAiChatMessageHook();
-  referralObserveBalanceNodes();
   referralApplyBuyCreditsLaunch();
 `;
