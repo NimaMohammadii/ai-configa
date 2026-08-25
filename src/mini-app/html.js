@@ -105,7 +105,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
     style.id='vexaLiquidMetalStyles';
     style.textContent=[
       'button.vexa-liquid-metal-button{position:relative!important;background:transparent!important;border:0!important;outline:0!important;box-shadow:none!important;overflow:visible!important;border-radius:100px!important;color:#666!important;font-size:14px!important;font-weight:400!important;text-shadow:0 1px 2px rgba(0,0,0,.5)!important;opacity:1!important;transform:none!important;perspective:1000px!important;perspective-origin:50% 50%!important;transform-style:preserve-3d!important;isolation:isolate!important}',
-      'button.vexa-liquid-metal-button#convertButton,button.vexa-liquid-metal-button#generateImageButton{width:142px!important;min-width:142px!important;max-width:142px!important;height:46px!important;min-height:46px!important;max-height:46px!important;flex:0 0 46px!important;margin-left:auto!important;margin-right:auto!important;padding:0!important;cursor:pointer!important}',
+      'button.vexa-liquid-metal-button#convertButton,button.vexa-liquid-metal-button#generateImageButton{width:100%!important;min-width:0!important;max-width:none!important;height:46px!important;min-height:46px!important;max-height:46px!important;flex:0 0 46px!important;align-self:stretch!important;margin:0!important;padding:0!important;cursor:pointer!important}',
       'button.vexa-liquid-metal-button.empty,button.vexa-liquid-metal-button:disabled{opacity:1!important}',
       'button.vexa-liquid-metal-button:active{transform:none!important}',
       'button.vexa-liquid-metal-button::before{content:none!important;display:none!important}',
