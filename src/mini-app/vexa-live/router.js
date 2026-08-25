@@ -82,7 +82,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       "body." + SHARED_MESH_CLASS + " .credits-page{background:transparent!important}" +
       "body." + SHARED_MESH_CLASS + " .credits-page .credits-page-head,body." + SHARED_MESH_CLASS + " .credits-page.toman-payment-active .credits-page-head,body." + SHARED_MESH_CLASS + " .credits-page.tribute-payment-active .credits-page-head{background-color:transparent!important;background-image:none!important}" +
       "body." + SHARED_MESH_CLASS + " .credits-page .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page .credits-page-head:after,body." + SHARED_MESH_CLASS + " .credits-page.toman-payment-active .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page.toman-payment-active .credits-page-head:after,body." + SHARED_MESH_CLASS + " .credits-page.tribute-payment-active .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page.tribute-payment-active .credits-page-head:after{background:transparent!important}" +
-      "#" + BUTTON_ID + "{display:grid!important;place-items:center!important}" +
+      "#" + BUTTON_ID + "{place-items:center!important}" +
       "#" + BUTTON_ID + " svg{display:block!important;position:static!important;inset:auto!important;width:19px!important;height:19px!important;transform:none!important;transition:none!important;overflow:visible!important}" +
       "#" + BUTTON_ID + "[aria-pressed=\"true\"] .vexa-media-play{opacity:0}" +
       "#" + BUTTON_ID + "[aria-pressed=\"true\"] .vexa-media-mic{opacity:1}" +
@@ -271,6 +271,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     button.className = "mode-toggle vexa-live-media-toggle";
     button.setAttribute("aria-label", "Open Vexa Live");
     button.setAttribute("aria-pressed", "false");
+    button.setAttribute("aria-hidden", document.body.classList.contains("ai-chat-admin") ? "false" : "true");
     button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><g class="vexa-media-play"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><path d="M10 8.7 15.6 12 10 15.3V8.7Z" fill="currentColor"/></g><g class="vexa-media-mic"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></g></svg>';
     button.addEventListener("click", function (event) {
       event.preventDefault();
