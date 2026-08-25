@@ -150,8 +150,10 @@ async function handleYouTubeLinkMessage(message, env) {
     console.warn("bot media initial status failed", error?.message || error);
   }
 
-  await trackUser(env, message.from).catch(() => null);
-  await ensureBalanceRow(env, userId).catch(() => null);
+  const bookkeeping = Promise.all([
+    trackUser(env, message.from).catch(() => null),
+    ensureBalanceRow(env, userId).catch(() => null),
+  ]);
 
   try {
     const prepared = await getTelegramYouTubeOptions(env, userId, sourceUrl);
@@ -190,6 +192,7 @@ async function handleYouTubeLinkMessage(message, env) {
       await sendMessage(env, chatId, errorText);
     }
   }
+  await bookkeeping.catch(() => null);
   return true;
 }
 
@@ -275,18 +278,9 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
   }
 
   const progressEditor = createProgressEditor(env, chatId, messageId);
-  const carriedDuration = positiveProgressNumber(payload?.prepared?.selected?.duration);
-  const carriedOverall = carriedDuration
-    ? clampPercent((startSeconds / carriedDuration) * 100)
-    : 0;
 
   try {
-    await progressEditor.update({
-      phase: "preparing",
-      partNumber,
-      percent: 0,
-      overallPercent: carriedOverall,
-    }, copy, true);
+    await progressEditor.update({ phase: "preparing", percent: 0 }, copy, true);
     const prepared = await prepareTelegramYouTubeMedia(
       env,
       userId,
@@ -296,29 +290,12 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
     );
     const workflowPrepared = snapshotTelegramYouTubeMedia(prepared);
     if (!workflowPrepared) throw new Error("Prepared media state is invalid");
-    const totalDuration = positiveProgressNumber(prepared?.selected?.duration);
 
-    let lastPrepareOverall = totalDuration
-      ? clampPercent((startSeconds / totalDuration) * 100)
-      : 0;
-    const prepareProgress = async (progress) => {
-      const partPercent = clampPercent(progress?.percent);
-      const progressDuration = positiveProgressNumber(progress?.durationSeconds);
-      const estimatedPartEnd = totalDuration && progressDuration
-        ? Math.min(totalDuration, startSeconds + progressDuration)
-        : startSeconds;
-      const candidateOverall = totalDuration && estimatedPartEnd > startSeconds
-        ? ((startSeconds / totalDuration) * 100) +
-          (((estimatedPartEnd - startSeconds) / totalDuration) * partPercent) / 100
-        : lastPrepareOverall;
-      const overallPercent = Math.max(lastPrepareOverall, clampPercent(candidateOverall));
-      lastPrepareOverall = overallPercent;
-      await progressEditor.update({
-        phase: progress?.phase === "adjusting" ? "adjusting" : "preparing",
-        partNumber,
-        percent: partPercent,
-        overallPercent,
-      }, copy);
+    const prepareProgress = (progress) => {
+      progressEditor.update({
+        phase: "preparing",
+        percent: clampPercent(progress?.percent),
+      }, copy).catch(() => null);
     };
 
     const media = await downloadTelegramYouTubeMediaPart(
@@ -330,48 +307,14 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
       prepareProgress,
     );
 
-    const partEnd = Number(media?.nextStart || 0);
-    const uploadedOverallBase = totalDuration
-      ? clampPercent((startSeconds / totalDuration) * 100)
-      : 0;
-    const uploadedOverallEnd = totalDuration && partEnd > startSeconds
-      ? clampPercent((partEnd / totalDuration) * 100)
-      : 100;
-
-    await progressEditor.update({
-      phase: "uploading",
-      partNumber: media.partNumber,
-      percent: 0,
-      overallPercent: uploadedOverallBase,
-      sentBytes: 0,
-      totalBytes: media.sizeBytes,
-    }, copy, true);
-
-    await sendTelegramMediaStream(env, chatId, media, async (upload) => {
-      const uploadPercent = clampPercent(upload?.percent);
-      const overallPercent = uploadedOverallBase +
-        ((uploadedOverallEnd - uploadedOverallBase) * uploadPercent / 100);
-      await progressEditor.update({
-        phase: "uploading",
-        partNumber: media.partNumber,
-        percent: uploadPercent,
-        overallPercent,
-        sentBytes: upload?.sentBytes,
-        totalBytes: upload?.totalBytes || media.sizeBytes,
-      }, copy);
-    });
+    await progressEditor.update({ phase: "preparing", percent: 100 }, copy, true);
+    await sendTelegramMediaStream(env, chatId, media);
 
     if (!media.done) {
       const nextStart = Number(media.nextStart || 0);
       if (!env.AI_CODING_WORKFLOW || !Number.isFinite(nextStart) || nextStart <= startSeconds) {
         throw new Error("Could not continue the Telegram video download");
       }
-      await progressEditor.update({
-        phase: "sent",
-        partNumber: media.partNumber,
-        percent: 100,
-        overallPercent: uploadedOverallEnd,
-      }, copy, true);
       const workflowId = "yt-" + crypto.randomUUID();
       await env.AI_CODING_WORKFLOW.create({
         id: workflowId,
@@ -392,13 +335,7 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
       return { ok: true, label: media.label, part: media.partNumber, continued: true };
     }
 
-    await progressEditor.update({
-      phase: "complete",
-      partNumber: media.partNumber,
-      percent: 100,
-      overallPercent: 100,
-      label: media.label,
-    }, copy, true);
+    await progressEditor.update({ phase: "complete", percent: 100 }, copy, true);
     return { ok: true, label: media.label, parts: media.partNumber || 1 };
   } catch (error) {
     console.error("bot YouTube workflow download failed", error?.stack || error);
@@ -410,7 +347,7 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
   }
 }
 
-async function sendTelegramMediaStream(env, chatId, media, onProgress = null) {
+async function sendTelegramMediaStream(env, chatId, media) {
   const method = media.kind === "audio" ? "sendAudio" : "sendVideo";
   const fileField = media.kind === "audio" ? "audio" : "video";
   const boundary = "----Vexa" + crypto.randomUUID().replace(/-/g, "");
@@ -459,11 +396,6 @@ async function sendTelegramMediaStream(env, chatId, media, onProgress = null) {
       if (!next.done) {
         if (next.value?.byteLength) {
           sentBytes += next.value.byteLength;
-          const totalBytes = positiveProgressNumber(media.sizeBytes);
-          if (typeof onProgress === "function" && totalBytes > 0) {
-            const percent = Math.min(99, (sentBytes / totalBytes) * 100);
-            Promise.resolve(onProgress({ percent, sentBytes, totalBytes })).catch(() => null);
-          }
           if (sentBytes > maxBytes) {
             try { await source.cancel("telegram_file_limit"); } catch (error) {}
             controller.error(new Error("This download is too large for Telegram"));
@@ -523,10 +455,6 @@ async function sendTelegramMediaStream(env, chatId, media, onProgress = null) {
       throw new Error(description
         ? "Telegram media upload failed: " + description
         : "Telegram media upload failed (HTTP " + response.status + ", " + sentBytes + " bytes sent)");
-    }
-    if (typeof onProgress === "function") {
-      const totalBytes = positiveProgressNumber(media.sizeBytes) || sentBytes;
-      await onProgress({ percent: 100, sentBytes: totalBytes, totalBytes });
     }
     return data.result;
   } catch (error) {
@@ -596,7 +524,7 @@ function youtubeDownloadCopy(language) {
 }
 
 function linkInspectStatusText(copy) {
-  return "🔗 " + escapeHtml(copy.received) + "\n🔎 " + escapeHtml(copy.inspecting);
+  return "🔎 " + escapeHtml(copy.inspecting);
 }
 
 function createProgressEditor(env, chatId, messageId) {
@@ -629,65 +557,17 @@ function createProgressEditor(env, chatId, messageId) {
 }
 
 function downloadProgressText(copy, state = {}) {
-  const phase = String(state.phase || "preparing");
-  const partNumber = Math.max(1, Math.floor(Number(state.partNumber || 1)));
-  const percent = clampPercent(state.percent);
-  const overallPercent = clampPercent(state.overallPercent);
-  const remainingPercent = Math.max(0, 100 - Math.round(overallPercent));
-  let header;
-  if (phase === "uploading") {
-    header = "📤 " + copy.uploadingPart + " " + partNumber;
-  } else if (phase === "adjusting") {
-    header = "♻️ " + copy.adjustingPart + " " + partNumber;
-  } else if (phase === "sent") {
-    header = "✅ " + copy.partSent + " " + partNumber;
-  } else if (phase === "complete") {
-    const label = state.label ? " · " + escapeHtml(state.label) : "";
-    return "✅ " + escapeHtml(copy.sent) + label + "\n" +
-      progressBar(100) + " 100%";
-  } else {
-    header = "⚙️ " + copy.preparingPart + " " + partNumber;
+  if (String(state.phase || "") === "complete") {
+    return "✅ " + escapeHtml(copy.sent);
   }
-
-  const lines = [
-    escapeHtml(header),
-    progressBar(percent) + " " + Math.round(percent) + "%",
-  ];
-  if (phase === "uploading") {
-    const transferred = formatTransferredMegabytes(state.sentBytes, state.totalBytes);
-    if (transferred) lines.push(transferred);
-  }
-  lines.push(
-    escapeHtml(copy.overall) + ": " + Math.round(overallPercent) + "%",
-    escapeHtml(copy.remaining) + ": " + remainingPercent + "%",
-  );
-  return lines.join("\n");
-}
-
-function progressBar(percent) {
-  const filled = Math.max(0, Math.min(10, Math.round(clampPercent(percent) / 10)));
-  return "█".repeat(filled) + "░".repeat(10 - filled);
+  const percent = Math.round(clampPercent(state.percent));
+  return "⏳ " + escapeHtml(copy.preparing) + " " + percent + "%";
 }
 
 function clampPercent(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 0;
   return Math.max(0, Math.min(100, number));
-}
-
-function positiveProgressNumber(value) {
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? number : 0;
-}
-
-function formatTransferredMegabytes(sentBytes, totalBytes) {
-  const sent = positiveProgressNumber(sentBytes);
-  const total = positiveProgressNumber(totalBytes);
-  if (!total) return "";
-  const sentMb = sent / (1024 * 1024);
-  const totalMb = total / (1024 * 1024);
-  return sentMb.toFixed(sentMb >= 10 ? 1 : 2) + " MB / " +
-    totalMb.toFixed(totalMb >= 10 ? 1 : 2) + " MB";
 }
 
 function formatMegabytes(bytes) {
