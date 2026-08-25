@@ -28,6 +28,8 @@ const FFMPEG_INPUT_ARGS =
 const FFMPEG_OUTPUT_ARGS =
   "ffmpeg_o:-f mp4 -movflags +frag_keyframe+empty_moov+default_base_moof";
 const FFMPEG_FILE_OUTPUT_ARGS = "ffmpeg_o:-movflags +faststart";
+const FFMPEG_FILE_PROGRESS_ARGS =
+  "ffmpeg_o:-movflags +faststart -progress pipe:2 -stats_period 1";
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
@@ -295,7 +297,6 @@ export class VexaMediaContainerV3 extends Container {
     startSeconds,
     durationSeconds,
     maxBytes = TELEGRAM_SAFE_FILE_BYTES,
-    source = null,
     onProgress = null,
   ) {
     const provider = mediaProviderForStrategy(strategyId);
@@ -307,7 +308,6 @@ export class VexaMediaContainerV3 extends Container {
       startSeconds,
       durationSeconds,
       maxBytes,
-      source,
       onProgress,
     );
     return {
@@ -436,15 +436,9 @@ export class VexaMediaContainerV3 extends Container {
     startSeconds,
     durationSeconds,
     maxBytes,
-    source,
     onProgress = null,
   ) {
     const provider = mediaProviderForStrategy(strategyId);
-    const directSource = sanitizeDirectMediaSource(source);
-    if (!directSource?.video) {
-      throw new Error("Telegram video source is unavailable");
-    }
-
     const start = Math.max(0, Number(startSeconds || 0));
     let seconds = Math.max(TELEGRAM_PART_MIN_SECONDS, Number(durationSeconds || TELEGRAM_PART_MIN_SECONDS));
     const limit = Math.max(1, Number(maxBytes || TELEGRAM_SAFE_FILE_BYTES));
@@ -460,11 +454,15 @@ export class VexaMediaContainerV3 extends Container {
           durationSeconds: seconds,
         });
 
-        const downloadProcess = await this.startDirectTelegramPartProcess(
-          directSource,
-          start,
-          seconds,
+        const section = "*" + formatSectionTime(start) + "-" + formatSectionTime(start + seconds);
+        const downloadProcess = await this.startVideoProcess(
+          url,
+          strategyId,
+          formatId,
+          transport,
           tempPath,
+          section,
+          true,
         );
         const stderrPromise = collectFfmpegProgress(
           downloadProcess.stderr,
@@ -473,13 +471,15 @@ export class VexaMediaContainerV3 extends Container {
           attempt + 1,
           start,
         );
+        const stdoutPromise = collectText(downloadProcess.stdout, 4096);
         const [exitCode, detail] = await Promise.all([
           downloadProcess.exitCode.catch(() => -1),
           stderrPromise,
+          stdoutPromise,
         ]);
 
         if (exitCode !== 0) {
-          if (detail) console.error("ffmpeg Telegram part download failed", detail.slice(-4000));
+          if (detail) console.error("yt-dlp Telegram part download failed", detail.slice(-4000));
           throw publicContainerError(detail || "download failed", provider);
         }
 
@@ -519,54 +519,6 @@ export class VexaMediaContainerV3 extends Container {
     throw new Error("Could not fit this video part within Telegram file limits");
   }
 
-  async startDirectTelegramPartProcess(source, startSeconds, durationSeconds, outputPath) {
-    const directSource = sanitizeDirectMediaSource(source);
-    if (!directSource?.video) throw new Error("Telegram video source is unavailable");
-
-    const args = [
-      "-nostdin",
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-stats_period",
-      "1",
-      "-progress",
-      "pipe:2",
-      "-y",
-    ];
-
-    appendFfmpegHttpInput(args, directSource.video, startSeconds);
-    if (directSource.audio) {
-      appendFfmpegHttpInput(args, directSource.audio, startSeconds);
-    }
-
-    args.push(
-      "-t",
-      formatSectionTime(durationSeconds),
-      "-map",
-      "0:v:0",
-    );
-    if (directSource.audio) {
-      args.push("-map", "1:a:0");
-    } else {
-      args.push("-map", "0:a:0?");
-    }
-    args.push(
-      "-c",
-      "copy",
-      "-avoid_negative_ts",
-      "make_zero",
-      "-movflags",
-      "+faststart",
-      outputPath,
-    );
-
-    if (!this.ctx.container.running) {
-      await this.start();
-    }
-    return this.ctx.container.exec(["ffmpeg", ...args]);
-  }
-
   async readFileSize(path) {
     const sizeProcess = await this.ctx.container.exec([
       "sh",
@@ -601,7 +553,7 @@ export class VexaMediaContainerV3 extends Container {
     } catch (error) {}
   }
 
-  async startVideoProcess(url, strategyId, formatId, transport = "", outputPath = "-", downloadSection = "") {
+  async startVideoProcess(url, strategyId, formatId, transport = "", outputPath = "-", downloadSection = "", showProgress = false) {
     const strategy = clientStrategy(strategyId);
     if (!strategy) throw new Error("Media client strategy is invalid");
     const selectedFormat = String(formatId || "").trim() || FORMAT_SELECTOR;
@@ -623,7 +575,11 @@ export class VexaMediaContainerV3 extends Container {
         "--downloader-args",
         FFMPEG_INPUT_ARGS,
         "--downloader-args",
-        outputPath === "-" ? FFMPEG_OUTPUT_ARGS : FFMPEG_FILE_OUTPUT_ARGS,
+        outputPath === "-"
+          ? FFMPEG_OUTPUT_ARGS
+          : showProgress
+            ? FFMPEG_FILE_PROGRESS_ARGS
+            : FFMPEG_FILE_OUTPUT_ARGS,
       );
     }
     return this.execYtDlp([
@@ -783,7 +739,6 @@ export async function downloadTelegramYouTubeMediaPart(
       start,
       requestedSeconds,
       TELEGRAM_SAFE_FILE_BYTES,
-      selected.source || null,
       onProgress,
     );
     const nextStart = Math.min(totalDuration, start + Number(part.durationSeconds || requestedSeconds));
@@ -974,10 +929,6 @@ function buildTelegramCatalog(data, strategyId) {
         : defaultAudio;
     if (!hasAudio && !pairedAudio) continue;
 
-    const videoSource = directFormatSource(format);
-    const audioSource = pairedAudio ? directFormatSource(pairedAudio.format) : null;
-    if (!videoSource || (!hasAudio && !audioSource)) continue;
-
     const videoSize = formatSizeBytes(format, duration);
     if (!videoSize) continue;
     const totalSize = hasAudio ? videoSize : videoSize + pairedAudio.size;
@@ -1003,10 +954,6 @@ function buildTelegramCatalog(data, strategyId) {
       mimeType: "video/mp4",
       filename: prefix + height + "p.mp4",
       label: height + "p",
-      source: {
-        video: videoSource,
-        audio: audioSource,
-      },
       score: provider === "pornhub" ? pornHubVideoScore(format) : videoScore(format),
     };
     const current = byHeight.get(height);
@@ -1034,45 +981,6 @@ function buildTelegramCatalog(data, strategyId) {
   return { title, strategyId, provider, options };
 }
 
-function directFormatSource(format) {
-  return sanitizeDirectFormatSource({
-    url: format?.url,
-    headers: format?.http_headers,
-  });
-}
-
-function sanitizeDirectMediaSource(source) {
-  const video = sanitizeDirectFormatSource(source?.video);
-  const audio = source?.audio ? sanitizeDirectFormatSource(source.audio) : null;
-  if (!video || (source?.audio && !audio)) return null;
-  return { video, audio };
-}
-
-function sanitizeDirectFormatSource(source) {
-  const rawUrl = String(source?.url || "").trim();
-  if (!rawUrl || rawUrl.length > 16_384) return null;
-
-  let url;
-  try {
-    url = new URL(rawUrl);
-  } catch (error) {
-    return null;
-  }
-  if (url.protocol !== "https:" || url.username || url.password) return null;
-
-  const headers = {};
-  const entries = Object.entries(source?.headers || {}).slice(0, 32);
-  for (const [rawName, rawValue] of entries) {
-    const name = String(rawName || "").trim();
-    const value = String(rawValue ?? "").trim();
-    if (!/^[A-Za-z0-9-]{1,80}$/.test(name) || !value || value.length > 2048) continue;
-    if (/[\r\n]/.test(value)) continue;
-    if (/^(?:host|content-length|range|connection|transfer-encoding|accept-encoding)$/i.test(name)) continue;
-    headers[name] = value;
-  }
-  return { url: url.toString(), headers };
-}
-
 function sanitizeTelegramSelectedOption(option) {
   const key = String(option?.key || "");
   const kind = String(option?.kind || "");
@@ -1094,8 +1002,7 @@ function sanitizeTelegramSelectedOption(option) {
     selected.width = positiveInteger(option?.width);
     selected.height = positiveInteger(option?.height);
     selected.duration = positiveNumber(option?.duration);
-    selected.source = sanitizeDirectMediaSource(option?.source);
-    if (!selected.height || !selected.duration || !selected.source?.video) return null;
+    if (!selected.height || !selected.duration) return null;
   }
   return selected;
 }
@@ -1121,41 +1028,6 @@ function restoreTelegramPreparedMedia(snapshot, value, optionKey) {
   };
 }
 
-function appendFfmpegHttpInput(args, source, startSeconds) {
-  const sanitized = sanitizeDirectFormatSource(source);
-  if (!sanitized) throw new Error("Telegram video source is unavailable");
-
-  args.push(
-    "-rw_timeout",
-    "15000000",
-    "-reconnect",
-    "1",
-    "-reconnect_on_network_error",
-    "1",
-    "-reconnect_on_http_error",
-    "5xx",
-    "-reconnect_streamed",
-    "1",
-    "-reconnect_delay_max",
-    "2",
-    "-reconnect_max_retries",
-    "1",
-  );
-
-  const start = Math.max(0, Number(startSeconds || 0));
-  if (start > 0) args.push("-ss", formatSectionTime(start));
-
-  const headerBlock = ffmpegHeaderBlock(sanitized.headers);
-  if (headerBlock) args.push("-headers", headerBlock);
-  args.push("-i", sanitized.url);
-}
-
-function ffmpegHeaderBlock(headers) {
-  return Object.entries(headers || {})
-    .map(([name, value]) => name + ": " + value + "\r\n")
-    .join("");
-}
-
 async function collectFfmpegProgress(stream, durationSeconds, onProgress, attempt, startSeconds) {
   if (!stream) return "";
   const reader = stream.getReader();
@@ -1170,9 +1042,14 @@ async function collectFfmpegProgress(stream, durationSeconds, onProgress, attemp
     if (!line) return;
     detail = (detail + line + "\n").slice(-16_384);
 
+    let elapsed = NaN;
     if (line.startsWith("out_time=")) {
-      const elapsed = parseFfmpegProgressTime(line.slice("out_time=".length));
-      if (!Number.isFinite(elapsed)) return;
+      elapsed = parseFfmpegProgressTime(line.slice("out_time=".length));
+    } else {
+      const stats = line.match(/\btime=(\d+:\d{2}:\d{2}(?:\.\d+)?)\b/u);
+      if (stats) elapsed = parseFfmpegProgressTime(stats[1]);
+    }
+    if (Number.isFinite(elapsed)) {
       const percent = Math.max(0, Math.min(99, Math.floor((elapsed / duration) * 100)));
       if (percent <= lastPercent) return;
       lastPercent = percent;
@@ -1632,7 +1509,6 @@ const PUBLIC_MEDIA_ERRORS = new Set([
   "This YouTube video cannot be downloaded without additional access",
   "This video does not expose a direct MP4 download format",
   "This video does not expose a Telegram-compatible download format",
-  "Telegram video source is unavailable",
   "This download is too large for Telegram",
   "This download option is no longer available",
   "Enter a valid YouTube link",
