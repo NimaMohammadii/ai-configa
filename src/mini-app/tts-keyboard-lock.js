@@ -164,14 +164,17 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
   scheduleViewportRecovery();
 })();
 
-(function installAdminOnlyAiChatEntry(){
+(function installAdminOnlyPrimaryEntries(){
   var baseFetch=window.fetch.bind(window);
+  var entryIds=['aiChatOpen','vexaLiveOpen'];
 
   function applyAdminState(value){
     var allowed=!!value;
     if(document.body)document.body.classList.toggle('ai-chat-admin',allowed);
-    var button=document.getElementById('aiChatOpen');
-    if(button)button.setAttribute('aria-hidden',allowed?'false':'true');
+    entryIds.forEach(function(id){
+      var button=document.getElementById(id);
+      if(button)button.setAttribute('aria-hidden',allowed?'false':'true');
+    });
   }
 
   applyAdminState(false);
