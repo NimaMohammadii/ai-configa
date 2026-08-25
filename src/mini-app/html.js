@@ -117,11 +117,9 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
       'button.vexa-liquid-metal-button>.vexa-lm-ripple-layer{z-index:40!important;border-radius:100px!important;overflow:hidden!important}',
       'button.vexa-liquid-metal-button>:not(.vexa-lm-shader-layer):not(.vexa-lm-inner-layer):not(.vexa-lm-ripple-layer){position:relative!important;z-index:30!important;translate:0 0 20px;color:#666!important;text-shadow:0 1px 2px rgba(0,0,0,.5)!important}',
       'button.vexa-liquid-metal-button .vexa-lm-inner{position:absolute!important;inset:2px!important;border-radius:100px!important;background:linear-gradient(180deg,#202020 0%,#000 100%)!important;box-shadow:none!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),width .4s ease,height .4s ease,box-shadow .15s cubic-bezier(.4,0,.2,1)!important}',
-      'button.vexa-liquid-metal-button .vexa-lm-shader-frame{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;border-radius:100px!important;background:rgb(0 0 0 / 0)!important;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 36px 14px rgba(0,0,0,.02),0 20px 12px rgba(0,0,0,.08),0 9px 9px rgba(0,0,0,.12),0 2px 5px rgba(0,0,0,.15)!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),width .4s ease,height .4s ease,box-shadow .15s cubic-bezier(.4,0,.2,1)!important}',
+      'button.vexa-liquid-metal-button .vexa-lm-shader-frame{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;border-radius:100px!important;background:linear-gradient(180deg,#b4b4b4 0%,#707070 46%,#303030 100%)!important;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 36px 14px rgba(0,0,0,.02),0 20px 12px rgba(0,0,0,.08),0 9px 9px rgba(0,0,0,.12),0 2px 5px rgba(0,0,0,.15)!important;transition:all .8s cubic-bezier(.34,1.56,.64,1),width .4s ease,height .4s ease,box-shadow .15s cubic-bezier(.4,0,.2,1)!important;overflow:hidden!important}',
       'button.vexa-liquid-metal-button .vexa-lm-shader-host{position:absolute!important;inset:0!important;width:100%!important;max-width:100%!important;height:100%!important;border-radius:100px!important;overflow:hidden!important;transition:width .4s ease,height .4s ease!important}',
       'button.vexa-liquid-metal-button .vexa-lm-shader-host canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;display:block!important;border-radius:100px!important}',
-      'button.vexa-liquid-metal-button#convertButton .vexa-lm-shader-frame,button.vexa-liquid-metal-button#generateImageButton .vexa-lm-shader-frame{overflow:hidden!important}',
-      'button.vexa-liquid-metal-button#convertButton .vexa-lm-shader-host,button.vexa-liquid-metal-button#generateImageButton .vexa-lm-shader-host{inset:-2px!important;width:calc(100% + 4px)!important;max-width:none!important;height:calc(100% + 4px)!important}',
       'button.vexa-liquid-metal-button.vexa-lm-hover .vexa-lm-shader-frame{box-shadow:0 0 0 1px rgba(0,0,0,.4),0 12px 6px rgba(0,0,0,.05),0 8px 5px rgba(0,0,0,.1),0 4px 4px rgba(0,0,0,.15),0 1px 2px rgba(0,0,0,.2)!important}',
       'button.vexa-liquid-metal-button.vexa-lm-pressed>.vexa-lm-inner-layer{transform:translateZ(10px) translateY(1px) scale(.98)!important}',
       'button.vexa-liquid-metal-button.vexa-lm-pressed>.vexa-lm-shader-layer{transform:translateZ(0) translateY(1px) scale(.98)!important}',
@@ -180,16 +178,16 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
         u_shape:0,
         u_offsetX:.1,
         u_offsetY:-.1
-      },undefined,.6);
+      },undefined,.16);
       mounts.set(button,{mount:shaderMount});
 
       button.addEventListener('mouseenter',function(){
         button.classList.add('vexa-lm-hover');
-        if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(1);
+        if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(.24);
       });
       button.addEventListener('mouseleave',function(){
         button.classList.remove('vexa-lm-hover','vexa-lm-pressed');
-        if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(.6);
+        if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(.16);
       });
       button.addEventListener('pointerdown',function(){
         if(!button.disabled)button.classList.add('vexa-lm-pressed');
@@ -200,9 +198,9 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
       button.addEventListener('click',function(event){
         if(button.disabled)return;
         if(shaderMount&&shaderMount.setSpeed){
-          shaderMount.setSpeed(2.4);
+          shaderMount.setSpeed(.55);
           setTimeout(function(){
-            if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(button.classList.contains('vexa-lm-hover')?1:.6);
+            if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(button.classList.contains('vexa-lm-hover')?.24:.16);
           },300);
         }
         var rect=button.getBoundingClientRect();
