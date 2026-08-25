@@ -19,6 +19,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   var directLaunchObserver=null;
   var tributeConfigResolved=false;
   var directLaunchApplied=false;
+  var restoredSuccess=null;
 
   var CARD_CATALOG=[
     {id:'card_2',credits:11236,bonus:0,giftPercent:0,prices:{usd:{amountMinor:200},eur:{amountMinor:199},rub:{amountMinor:17000}}},
@@ -200,13 +201,19 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     return String(raw||'').trim().toLowerCase()==='bank_card';
   }
 
+  function showRestoredSuccess(){
+    var success=restoredSuccess;if(!success)return;
+    restoredSuccess=null;
+    toast(formatUsd(success.credits||0)+' balance added');syncBalance(success.balance||0);
+  }
+
   function maybeActivateDirectCardLaunch(){
     if(!directCardLaunch||directLaunchApplied||!tributeConfigResolved)return;
     var page=q('creditsPage');
     if(!page||!page.classList.contains('show'))return;
     directLaunchApplied=true;
     if(directLaunchObserver){directLaunchObserver.disconnect();directLaunchObserver=null}
-    activateCardMode();
+    activateCardMode();showRestoredSuccess();
   }
 
   function watchDirectCardLaunch(){
@@ -274,6 +281,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function restoreSuccessAfterReload(){
     var success=storageGet(SUCCESS_KEY);if(!success)return;storageRemove(SUCCESS_KEY);
+    if(directCardLaunch){restoredSuccess=success;maybeActivateDirectCardLaunch();if(cardModeActive)showRestoredSuccess();return}
     setTimeout(function(){var pill=q('creditPill');if(pill&&typeof pill.click==='function')pill.click();setTimeout(function(){activateCardMode();toast(formatUsd(success.credits||0)+' balance added');syncBalance(success.balance||0)},90)},520)
   }
 
