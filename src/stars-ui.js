@@ -20,8 +20,8 @@ export function customStarsPromptText(state = {}) {
     t(lang, "audioCreditRule"),
     "",
     lang === "fa"
-      ? "مقدار موجودی دلاری که می‌خواهی اضافه شود را بفرست؛ مثلاً <code>0.50</code>"
-      : "Send the USD balance amount you want to add, for example <code>0.50</code>",
+      ? "مقدار موجودی دلاری را بفرست؛ حداقل <code>1.00</code> دلار"
+      : "Send the USD balance amount you want to add; minimum <code>1.00</code> USD",
   ].join("\n");
 }
 
@@ -35,7 +35,7 @@ export function customStarsInvoiceText(pack, state = {}) {
       : `Balance to add: <b>${formatUsdBalanceFromCredits(pack.totalCredits)}</b>`,
     starsAmountLine(pack, lang),
     "",
-    lang === "fa" ? "حداقل پرداخت: <b>۸۰ ⭐️</b>" : "Minimum payment: <b>80 ⭐️</b>",
+    lang === "fa" ? "حداقل خرید: <b>$1.00</b>" : "Minimum purchase: <b>$1.00</b>",
     lang === "fa" ? "برای دریافت فاکتور پرداخت تایید کن" : "Confirm to receive the payment invoice",
   ].join("\n");
 }
