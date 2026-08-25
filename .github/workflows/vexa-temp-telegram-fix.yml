@@ -1,0 +1,48 @@
+name: Vexa temporary Telegram multipart fix
+
+on:
+  push:
+    branches:
+      - vexa/tmp-telegram-multipart-fix
+    paths:
+      - '.vexa-tmp/**'
+      - '.github/workflows/vexa-temp-telegram-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Materialize exact tested files
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .vexa-tmp/youtube.gz.b64 | gzip -dc > src/mini-app/vexa-live/youtube-download-exec.js
+          base64 -d .vexa-tmp/bot.gz.b64 | gzip -dc > src/mini-app/vexa-live/bot-bridge.js
+          base64 -d .vexa-tmp/workflow.gz.b64 | gzip -dc > src/ai-background-workflow-v2.js
+
+          test "$(git hash-object src/mini-app/vexa-live/youtube-download-exec.js)" = "8b5b8b31c74ec0fbaeb78b17ba2c0db38cf2374e"
+          test "$(git hash-object src/mini-app/vexa-live/bot-bridge.js)" = "0a7b0e88ab4eaa6b80dec38022e762c8a8eba949"
+          test "$(git hash-object src/ai-background-workflow-v2.js)" = "54ee0606de9f9418b31b05716ba48feaa1a9302f"
+
+          node --check src/mini-app/vexa-live/youtube-download-exec.js
+          node --check src/mini-app/vexa-live/bot-bridge.js
+          node --check src/ai-background-workflow-v2.js
+
+      - name: Commit verified target files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .vexa-tmp
+          rm -f .github/workflows/vexa-temp-telegram-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Materialize verified Telegram multipart fix"
+          git push origin HEAD:vexa/tmp-telegram-multipart-fix
