@@ -10,19 +10,13 @@ html body .credits-page .credits-page-head p{display:none!important}
 html body .credits-page .tribute-section-copy>div>span{display:none!important}
 html body .credits-page .tribute-section-copy>div>h3{margin-top:0!important}
 html body .credits-page .credits-pack{
-  position:relative!important;overflow:hidden!important;isolation:isolate!important;border:0!important;box-shadow:none!important;
-  background:linear-gradient(145deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,.075) 34%,rgba(255,255,255,.035) 62%,rgba(255,255,255,.095) 100%)!important;
-  backdrop-filter:blur(3px) saturate(1.12)!important;-webkit-backdrop-filter:blur(3px) saturate(1.12)!important
+  position:relative!important;overflow:hidden!important;isolation:isolate!important;
+  border:0!important;background:transparent!important;box-shadow:none!important;
+  backdrop-filter:blur(3px)!important;-webkit-backdrop-filter:blur(3px)!important
 }
-html body .credits-page .credits-pack::before{
-  content:""!important;position:absolute!important;z-index:0!important;inset:0!important;border-radius:inherit!important;pointer-events:none!important;
-  transform:none!important;transition:none!important;opacity:1!important;
-  background:radial-gradient(120% 90% at 8% 0%,rgba(255,255,255,.19) 0%,rgba(255,255,255,.07) 28%,rgba(255,255,255,0) 55%),linear-gradient(118deg,rgba(255,255,255,.12) 0%,rgba(255,255,255,.035) 22%,rgba(255,255,255,0) 47%,rgba(255,255,255,.04) 74%,rgba(255,255,255,0) 100%)!important
-}
-html body .credits-page .credits-pack>*{position:relative!important;z-index:1!important}
+html body .credits-page .credits-pack::before{content:none!important;display:none!important}
 html body .credits-page .credits-pack:active{
-  border:0!important;box-shadow:none!important;
-  background:linear-gradient(145deg,rgba(255,255,255,.18) 0%,rgba(255,255,255,.09) 36%,rgba(255,255,255,.045) 66%,rgba(255,255,255,.11) 100%)!important
+  border:0!important;background:transparent!important;box-shadow:none!important
 }
 
 /* Stars hero: keep the original 1440x680 asset, only scale it slightly and move it down. */
