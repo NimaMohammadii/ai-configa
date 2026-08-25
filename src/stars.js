@@ -26,26 +26,26 @@ export const MINI_APP_STAR_PACKAGES = Object.freeze({
 // Bank-card catalog. Payment links are intentionally kept separate so package
 // pricing can be finalized before Tribute/card checkout links are attached.
 export const CARD_CREDIT_PACKAGES = Object.freeze({
-  card_6000: createCardCreditPackage("card_6000", 6000, 0, {
+  card_2: createCardCreditPackage("card_2", 11236, 0, {
     usd: { amountMinor: 200 },
     eur: { amountMinor: 199 },
     rub: { amountMinor: 17000 },
-  }, { usdPer1000: 0.34 }),
-  card_40000: createCardCreditPackage("card_40000", 40000, 0, {
-    usd: { amountMinor: 700, originalAmountMinor: 1000 },
-    eur: { amountMinor: 699, originalAmountMinor: 999 },
-    rub: { amountMinor: 59500, originalAmountMinor: 85000 },
-  }, { discountPercent: 30 }),
-  card_120000: createCardCreditPackage("card_120000", 120000, 10000, {
-    usd: { amountMinor: 1900 },
-    eur: { amountMinor: 1899 },
-    rub: { amountMinor: 161500 },
-  }),
-  card_350000: createCardCreditPackage("card_350000", 350000, 0, {
-    usd: { amountMinor: 4900 },
-    eur: { amountMinor: 4899 },
-    rub: { amountMinor: 416500 },
-  }, { usdPer1000: 0.14 }),
+  }, { giftPercent: 0 }),
+  card_5: createCardCreditPackage("card_5", 28090, 2809, {
+    usd: { amountMinor: 500 },
+    eur: { amountMinor: 499 },
+    rub: { amountMinor: 42500 },
+  }, { giftPercent: 10 }),
+  card_10: createCardCreditPackage("card_10", 56180, 11236, {
+    usd: { amountMinor: 1000 },
+    eur: { amountMinor: 999 },
+    rub: { amountMinor: 85000 },
+  }, { giftPercent: 20 }),
+  card_20: createCardCreditPackage("card_20", 112360, 28090, {
+    usd: { amountMinor: 2000 },
+    eur: { amountMinor: 1999 },
+    rub: { amountMinor: 170000 },
+  }, { giftPercent: 25 }),
 });
 
 export function getStarPackage(id) {
@@ -204,8 +204,7 @@ function createCardCreditPackage(id, credits, bonus, prices, options = {}) {
     bonus: Number(bonus || 0),
     totalCredits,
     prices: cleanPrices,
-    discountPercent: Math.max(0, Math.floor(Number(options.discountPercent || 0))),
-    usdPer1000: options.usdPer1000 == null ? null : Number(options.usdPer1000),
+    giftPercent: Math.max(0, Math.floor(Number(options.giftPercent || 0))),
   });
 }
 
