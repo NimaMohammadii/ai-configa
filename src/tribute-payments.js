@@ -14,6 +14,10 @@ const DEFAULT_VEXA_PRODUCT_LINKS = Object.freeze([
   "https://web.tribute.tg/p/CM3",
   "https://web.tribute.tg/p/CM4",
   "https://web.tribute.tg/p/CM5",
+  "https://web.tribute.tg/p/CMa",
+  "https://web.tribute.tg/p/CMd",
+  "https://web.tribute.tg/p/CMe",
+  "https://web.tribute.tg/p/CMf",
 ]);
 
 let productCache = null;
@@ -495,6 +499,10 @@ function creditsForProduct(row, amountMinor, currency) {
   if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM3")) return 30899;
   if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM4")) return 67416;
   if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM5")) return 140450;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CMa")) return 11236;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CMd")) return 30899;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CMe")) return 67416;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CMf")) return 140450;
 
   const explicit = parseCredits(`${row?.name || ""} ${row?.description || ""}`);
   if (explicit) return explicit;
