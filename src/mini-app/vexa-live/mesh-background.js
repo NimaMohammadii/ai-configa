@@ -5,8 +5,8 @@ export const VEXA_MESH_FRAGMENT_SHADER = String.raw`// "Mesh drift" — made wit
 //   u_colors[8] (first 4 used)
 //   vec3(0.020, 0.010, 0.035)
 //   vec3(0.120, 0.045, 0.210)
-//   vec3(0.310, 0.160, 0.480)
-//   vec3(0.520, 0.390, 0.670)
+//   vec3(0.240, 0.125, 0.375)
+//   vec3(0.405, 0.305, 0.525)
 //   u_scene = vec4(canvas width, canvas height, seconds * 0.73, 4.0)
 //   u_shape = vec4(1.16, 0.34, 0.50, 0.00)
 //   u_surface = vec4(2.40, 1.16, 0.00, 1.00)
@@ -354,8 +354,8 @@ export function createVexaMeshRendererSource(canvasExpression, { autoStart = tru
       gl.uniform3fv(gl.getUniformLocation(program,'u_colors[0]'),new Float32Array([
         .020,.010,.035,
         .120,.045,.210,
-        .310,.160,.480,
-        .520,.390,.670,
+        .240,.125,.375,
+        .405,.305,.525,
         0,0,0,0,0,0,0,0,0,0,0,0
       ]));
       gl.uniform4f(gl.getUniformLocation(program,'u_shape'),1.16,.34,.50,0.00);
