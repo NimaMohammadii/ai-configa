@@ -1,15 +1,27 @@
 export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
 (function installTtsKeyboardLayoutLock(){
+  var telegramApp=window.Telegram&&window.Telegram.WebApp;
+  var originalExpand=null;
+  var originalDisableVerticalSwipes=null;
   var locked=false;
   var focused=false;
   var baselineViewportHeight=0;
   var bottomNode=null;
-  var viewportRecoveryTimers=[];
-  var viewportRecoveryFrame=0;
+
+  if(telegramApp){
+    originalExpand=typeof telegramApp.expand==='function'?telegramApp.expand:null;
+    originalDisableVerticalSwipes=typeof telegramApp.disableVerticalSwipes==='function'?telegramApp.disableVerticalSwipes:null;
+    if(originalExpand)telegramApp.expand=function(){};
+    if(originalDisableVerticalSwipes)telegramApp.disableVerticalSwipes=function(){};
+    queueMicrotask(function(){
+      if(originalExpand)telegramApp.expand=originalExpand;
+      if(originalDisableVerticalSwipes)telegramApp.disableVerticalSwipes=originalDisableVerticalSwipes;
+      if(typeof telegramApp.enableVerticalSwipes==='function')try{telegramApp.enableVerticalSwipes()}catch(error){}
+    });
+  }
 
   function viewportHeight(){
-    var viewport=window.visualViewport;
-    var height=Number(viewport&&viewport.height||window.innerHeight||0);
+    var height=Number(telegramApp&&(telegramApp.viewportHeight||telegramApp.viewportStableHeight)||0);
     return Number.isFinite(height)&&height>0?height:0;
   }
 
@@ -19,68 +31,6 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
 
   function isDialogueInput(target){
     return !!(target&&target.matches&&target.matches('[data-dialogue-text]'));
-  }
-
-  function keyboardIsActive(){
-    var active=document.activeElement;
-    return !!(
-      focused||
-      isTextInput(active)||
-      (document.body&&document.body.classList.contains('keyboard-open'))
-    );
-  }
-
-  function shellViewportHeight(){
-    var root=document.documentElement;
-    var inner=Number(window.innerHeight||0);
-    var client=Number(root&&root.clientHeight||0);
-    var visual=Number(window.visualViewport&&window.visualViewport.height||0);
-    var telegram=Number(window.Telegram&&window.Telegram.WebApp&&window.Telegram.WebApp.viewportHeight||0);
-    var height=0;
-
-    if(Number.isFinite(inner)&&inner>=320)height=Math.max(height,inner);
-    if(Number.isFinite(client)&&client>=320)height=Math.max(height,client);
-
-    if(!height){
-      if(Number.isFinite(visual)&&visual>=320)height=Math.max(height,visual);
-      if(Number.isFinite(telegram)&&telegram>=320)height=Math.max(height,telegram);
-      return height;
-    }
-
-    if(Number.isFinite(visual)&&visual>=320&&Math.abs(visual-height)<=120){
-      height=Math.max(height,visual);
-    }
-    if(Number.isFinite(telegram)&&telegram>=320&&Math.abs(telegram-height)<=120){
-      height=Math.max(height,telegram);
-    }
-    return height;
-  }
-
-  function syncShellViewport(){
-    if(keyboardIsActive())return;
-    var height=shellViewportHeight();
-    if(!Number.isFinite(height)||height<320)return;
-    document.documentElement.style.setProperty('--app-viewport-height',Math.round(height)+'px');
-  }
-
-  function clearViewportRecovery(){
-    if(viewportRecoveryFrame){
-      cancelAnimationFrame(viewportRecoveryFrame);
-      viewportRecoveryFrame=0;
-    }
-    viewportRecoveryTimers.forEach(function(timer){clearTimeout(timer)});
-    viewportRecoveryTimers=[];
-  }
-
-  function scheduleViewportRecovery(){
-    clearViewportRecovery();
-    viewportRecoveryFrame=requestAnimationFrame(function(){
-      viewportRecoveryFrame=0;
-      syncShellViewport();
-    });
-    [70,180,360,700,1100].forEach(function(delay){
-      viewportRecoveryTimers.push(setTimeout(syncShellViewport,delay));
-    });
   }
 
   function lock(){
@@ -116,12 +66,7 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
   function releaseIfRecovered(){
     if(!locked||focused)return;
     var height=viewportHeight();
-    if(!baselineViewportHeight||height>=Math.max(320,baselineViewportHeight-24))release();
-  }
-
-  function onViewportMutation(){
-    releaseIfRecovered();
-    scheduleViewportRecovery();
+    if(!baselineViewportHeight||!height||height>=Math.max(320,baselineViewportHeight-24))release();
   }
 
   document.addEventListener('pointerdown',function(event){
@@ -138,30 +83,14 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
   document.addEventListener('focusout',function(event){
     if(!isDialogueInput(event.target))return;
     focused=false;
-    requestAnimationFrame(function(){
-      releaseIfRecovered();
-      scheduleViewportRecovery();
-    });
+    requestAnimationFrame(releaseIfRecovered);
   },true);
 
-  var viewportSource=window.visualViewport;
-  if(viewportSource){
-    viewportSource.addEventListener('resize',onViewportMutation,{passive:true});
-  }
-  window.addEventListener('resize',onViewportMutation,{passive:true});
-  window.addEventListener('orientationchange',scheduleViewportRecovery,{passive:true});
-  window.addEventListener('pageshow',scheduleViewportRecovery,{passive:true});
-  window.addEventListener('pagehide',function(){
-    clearViewportRecovery();
-    release();
-  },{passive:true});
-
-  var tg=window.Telegram&&window.Telegram.WebApp;
-  if(tg&&tg.onEvent){
-    try{tg.onEvent('viewportChanged',onViewportMutation)}catch(error){}
+  if(telegramApp&&telegramApp.onEvent){
+    try{telegramApp.onEvent('viewportChanged',releaseIfRecovered)}catch(error){}
   }
 
-  scheduleViewportRecovery();
+  window.addEventListener('pagehide',release,{passive:true});
 })();
 
 (function installAdminOnlyPrimaryEntries(){
@@ -202,7 +131,7 @@ export const TTS_KEYBOARD_LOCK_PATCH = String.raw`
   var style=document.createElement('style');
   style.id='primarySectionCoordinatorStyle';
   style.textContent=
-    'html body.vexa-mesh-surface .credits-page .credits-page-scroll{padding:calc(40px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom))!important}'+
+    'html body.vexa-mesh-surface .credits-page .credits-page-scroll{padding:calc(40px + var(--vexa-tg-safe-top,0px)) 18px calc(28px + var(--vexa-tg-safe-bottom,0px))!important}'+
     'html body.vexa-mesh-surface .credits-page .credits-page-head>div{display:block!important}'+
     'html body.vexa-mesh-surface .credits-page .credits-page-head p{display:block!important}'+
     '@media(max-width:620px){html body.vexa-mesh-surface .credits-page .credits-page-head{padding-right:50px!important}}'+

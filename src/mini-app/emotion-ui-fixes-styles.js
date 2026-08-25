@@ -1,4 +1,5 @@
 export const EMOTION_UI_FIXES_CSS = String.raw`
+:root{--vexa-tg-safe-top:max(var(--tg-safe-area-inset-top,0px),var(--tg-content-safe-area-inset-top,0px));--vexa-tg-safe-bottom:max(var(--tg-safe-area-inset-bottom,0px),var(--tg-content-safe-area-inset-bottom,0px));--vexa-tg-safe-left:max(var(--tg-safe-area-inset-left,0px),var(--tg-content-safe-area-inset-left,0px));--vexa-tg-safe-right:max(var(--tg-safe-area-inset-right,0px),var(--tg-content-safe-area-inset-right,0px));--app-viewport-height:var(--tg-viewport-height,100dvh)!important}
 .player-history-row{position:relative}
 .emotion-trigger,.player-history-row>.emotion-trigger{position:absolute!important;z-index:4;right:0!important;top:-54px!important;bottom:auto!important;width:46px!important;min-width:46px!important;height:46px!important;flex:0 0 46px!important;border-radius:50%!important;padding:0!important;display:grid!important;place-items:center!important;gap:0!important;background:rgba(255,255,255,.055)!important;color:rgba(255,255,255,.88)!important;border:1px solid rgba(255,255,255,.15)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 14px 34px rgba(0,0,0,.4)!important;animation:emotionButtonLift .34s cubic-bezier(.16,.9,.22,1)}
 .emotion-trigger-icon{display:none!important}
@@ -7,7 +8,7 @@ export const EMOTION_UI_FIXES_CSS = String.raw`
 body.emotion-audio-ready:not(.keyboard-open):not(.image-mode) .player-history-row .emotion-trigger{right:0!important;top:-54px!important;width:46px!important;min-width:46px!important;height:46px!important}
 .emotion-head{display:none!important}
 .emotion-backdrop{background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
-.emotion-card{left:24px!important;right:24px!important;max-width:410px!important;max-height:min(42dvh,350px)!important;bottom:calc(108px + env(safe-area-inset-bottom))!important;border-radius:22px!important;padding:7px 9px 9px!important}
+.emotion-card{left:24px!important;right:24px!important;max-width:410px!important;max-height:min(42dvh,350px)!important;bottom:calc(108px + var(--vexa-tg-safe-bottom))!important;border-radius:22px!important;padding:7px 9px 9px!important}
 .emotion-handle{margin-bottom:8px!important}.emotion-search{height:37px!important;flex-basis:37px!important}.emotion-categories{padding-top:7px!important;padding-bottom:6px!important}.emotion-list{gap:5px!important}.emotion-tag{min-height:46px!important;padding:7px 8px!important;border-radius:13px!important}
 body.keyboard-open .emotion-panel{display:none!important}
 .tts-area{position:relative}
@@ -34,11 +35,14 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 .demo-language-button-avatar .demo-language-flag{display:block!important;width:28px!important;height:18px!important;flex:0 0 28px!important;border:0!important;border-radius:0!important;outline:0!important;box-shadow:none!important;filter:none!important}
 @media(max-width:390px){.demo-language-wrap .voice-btn{min-width:112px!important;max-width:124px!important;padding:0 8px!important;gap:6px!important;font-size:12px!important}.demo-language-wrap .voice-menu{width:min(230px,calc(100vw - 32px))!important}}
 
-/* Shared top spacing. */
-.app{padding-top:calc(41px + env(safe-area-inset-top))!important}
-.tts-head:before{top:calc(-41px - env(safe-area-inset-top))!important}
+/* Shared top spacing follows Telegram's own content-safe geometry. */
+.app{padding-top:calc(41px + var(--vexa-tg-safe-top))!important}
+.tts-head:before{top:calc(-41px - var(--vexa-tg-safe-top))!important}
 .voices-page{padding-top:24px!important}
-.credits-page-scroll{padding-top:20px!important}
+.voices-page-head{padding-top:calc(18px + var(--vexa-tg-safe-top))!important}
+.explore-page-head{padding-top:calc(18px + var(--vexa-tg-safe-top))!important}
+.credits-page-scroll{padding-top:calc(20px + var(--vexa-tg-safe-top))!important}
+.vexa-app-settings-scroll{padding-top:calc(62px + var(--vexa-tg-safe-top))!important}
 
 /* Credits hero fine positioning. */
 .credits-page-head{background-position:center calc(50% + 12px)!important}
