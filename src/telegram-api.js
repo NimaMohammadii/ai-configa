@@ -8,6 +8,10 @@ export function botMethodUrl(env, method) {
 }
 
 export async function tgJson(env, method, payload = {}) {
+  if (String(method) === "setChatMenuButton") {
+    return true;
+  }
+
   const res = await fetchWithTimeout(botMethodUrl(env, method), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
