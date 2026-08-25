@@ -190,6 +190,12 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     syncSwitchIndicator();renderCurrencies();renderProducts();haptic('light');
   }
 
+  function bankCardLaunchRequested(){
+    var raw='';try{raw=tg&&tg.initDataUnsafe&&tg.initDataUnsafe.start_param||''}catch(error){}
+    if(!raw)try{var params=new URLSearchParams(window.location.search);raw=params.get('tgWebAppStartParam')||params.get('startapp')||params.get('section')||''}catch(error){}
+    return String(raw||'').trim().toLowerCase()==='bank_card';
+  }
+
   function deactivateCardMode(next){
     if(!cardModeActive){setTimeout(syncSwitchIndicator,0);return}cardModeActive=false;var page=q('creditsPage'),tribute=q('creditsTributeMode');if(page)page.classList.remove('tribute-payment-active');if(tribute){tribute.classList.remove('active');tribute.setAttribute('aria-hidden','true')}var switcher=q('creditsPaymentSwitch');if(switcher)switcher.setAttribute('data-mode',next||'stars');setTimeout(syncSwitchIndicator,0);
   }
@@ -265,7 +271,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   function boot(attempt){
     if(!installUi()){if(attempt<30)setTimeout(function(){boot(attempt+1)},80);return}
     api('/mini-app/api/tribute-config',{}).then(function(data){
-      applyConfig(data);setTimeout(syncPaymentSwitcher,850);restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(verifyPendingAfterReturn,1100)
+      applyConfig(data);if(bankCardLaunchRequested())activateCardMode();setTimeout(syncPaymentSwitcher,850);restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(verifyPendingAfterReturn,1100)
     }).catch(function(){
       applyConfig({configured:false,available:false,products:[],currencies:CURRENCIES});setTimeout(syncPaymentSwitcher,250)
     })
