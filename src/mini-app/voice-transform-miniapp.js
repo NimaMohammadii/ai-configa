@@ -283,7 +283,8 @@ ${VEXA_VOICE_ORB_SOURCE}
       button.setAttribute('aria-label','Transform your voice');
       button.setAttribute('aria-pressed','false');
       button.innerHTML='<span class="vexa-vt-icon vexa-vt-icon-mic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></span><span class="vexa-vt-icon vexa-vt-icon-close" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7.4 7.4 16.6 16.6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M16.6 7.4 7.4 16.6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
-      tools.insertBefore(button,tools.firstChild);
+      var enhance=q('enhanceButton');
+      tools.insertBefore(button,enhance&&enhance.nextSibling);
       button.addEventListener('click',function(){
         if(state.active){cancelRecording();return}
         openRecorder().catch(function(error){fail(error);setTimeout(closeOverlay,1500)})
