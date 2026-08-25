@@ -1272,7 +1272,7 @@ export async function handleCallback(query, env) {
 
   if (data === "buy_credits") {
     await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, buyCreditsText(state), localizedBuyCreditsKeyboard(state));
+    await editCurrentMenu(env, chatId, userId, messageId, buyCreditsText(state), buyCreditsKeyboard(state));
     return;
   }
 
@@ -1280,7 +1280,7 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id);
     await deleteMessage(env, chatId, messageId).catch(() => null);
     state.menuMessageId = null;
-    await replaceMenu(env, chatId, userId, state, buyCreditsText(state), localizedBuyCreditsKeyboard(state));
+    await replaceMenu(env, chatId, userId, state, buyCreditsText(state), buyCreditsKeyboard(state));
     return;
   }
 
@@ -2140,18 +2140,6 @@ async function editCurrentMenu(env, chatId, userId, messageId, text, keyboard) {
 
 function isMessageNotModifiedError(error) {
   return String(error?.message || error).toLowerCase().includes("message is not modified");
-}
-
-function localizedBuyCreditsKeyboard(state = {}) {
-  const lang = state.language || "en";
-  if (lang === "fa") return buyCreditsKeyboard(state);
-
-  return {
-    inline_keyboard: [
-      [{ text: t(lang, "telegramStars"), callback_data: "buy_stars" }],
-      [{ text: t(lang, "back"), callback_data: "back_main" }],
-    ],
-  };
 }
 
 function insufficientCreditsText(state, cost, balance) {

@@ -93,13 +93,16 @@ export function buyCreditsText(state = {}) {
 
 export function buyCreditsKeyboard(state = {}) {
   const lang = state.language || "en";
+  const paymentRows = [
+    [{ text: "Bank card", web_app: { url: MINI_APP_BANK_CARD_URL } }],
+  ];
+  if (lang === "fa") paymentRows.push([{ text: t(lang, "buyToman"), callback_data: "buy_toman" }]);
+  paymentRows.push(
+    [{ text: t(lang, "telegramStars"), callback_data: "buy_stars" }],
+    [{ text: t(lang, "back"), callback_data: "back_main" }],
+  );
   return {
-    inline_keyboard: [
-      [{ text: "Bank card", web_app: { url: MINI_APP_BANK_CARD_URL } }],
-      [{ text: t(lang, "buyToman"), callback_data: "buy_toman" }],
-      [{ text: t(lang, "telegramStars"), callback_data: "buy_stars" }],
-      [{ text: t(lang, "back"), callback_data: "back_main" }],
-    ],
+    inline_keyboard: paymentRows,
   };
 }
 
