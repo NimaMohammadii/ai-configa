@@ -9,6 +9,11 @@ html body .credits-page .credits-page-head{margin-bottom:32px!important}
 html body .credits-page .credits-page-head p{display:none!important}
 html body .credits-page .tribute-section-copy>div>span{display:none!important}
 html body .credits-page .tribute-section-copy>div>h3{margin-top:0!important}
+html body .credits-page .credits-pack,
+html body .credits-page .credits-pack:active{
+  border:0!important;background:transparent!important;box-shadow:none!important;
+  backdrop-filter:blur(3px)!important;-webkit-backdrop-filter:blur(3px)!important
+}
 
 /* Stars hero: keep the original 1440x680 asset, only scale it slightly and move it down. */
 html body .credits-page:not(.toman-payment-active):not(.tribute-payment-active) .credits-page-head{
