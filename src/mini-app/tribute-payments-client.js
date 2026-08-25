@@ -15,6 +15,10 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   var MAX_CARD_PACKS=6;
   var PENDING_KEY='vexa_tribute_pending_v3';
   var SUCCESS_KEY='vexa_tribute_success_v2';
+  var directCardLaunch=bankCardLaunchRequested();
+  var directLaunchObserver=null;
+  var tributeConfigResolved=false;
+  var directLaunchApplied=false;
 
   var CARD_CATALOG=[
     {id:'card_2',credits:11236,bonus:0,giftPercent:0,prices:{usd:{amountMinor:200},eur:{amountMinor:199},rub:{amountMinor:17000}}},
@@ -187,13 +191,30 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     if(page){page.classList.remove('toman-payment-active');page.classList.add('tribute-payment-active')}if(stars)stars.classList.remove('active');if(toman){toman.classList.remove('active');toman.setAttribute('aria-hidden','true')}if(tribute){tribute.classList.add('active');tribute.setAttribute('aria-hidden','false')}if(switcher)switcher.setAttribute('data-mode','card');
     document.querySelectorAll('[data-action="set-credit-payment"]').forEach(function(button){var active=button.getAttribute('data-payment-mode')==='card';button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false')});
     var head=page&&page.querySelector('.credits-page-head>div:first-child');if(head){var title=head.querySelector('h2');if(title)title.textContent='Add USD balance';head.setAttribute('dir','ltr')}
-    syncSwitchIndicator();renderCurrencies();renderProducts();haptic('light');
+    syncPaymentSwitcher();renderCurrencies();renderProducts();haptic('light');
   }
 
   function bankCardLaunchRequested(){
     var raw='';try{raw=tg&&tg.initDataUnsafe&&tg.initDataUnsafe.start_param||''}catch(error){}
     if(!raw)try{var params=new URLSearchParams(window.location.search);raw=params.get('tgWebAppStartParam')||params.get('startapp')||params.get('section')||''}catch(error){}
     return String(raw||'').trim().toLowerCase()==='bank_card';
+  }
+
+  function maybeActivateDirectCardLaunch(){
+    if(!directCardLaunch||directLaunchApplied||!tributeConfigResolved)return;
+    var page=q('creditsPage');
+    if(!page||!page.classList.contains('show'))return;
+    directLaunchApplied=true;
+    if(directLaunchObserver){directLaunchObserver.disconnect();directLaunchObserver=null}
+    activateCardMode();
+  }
+
+  function watchDirectCardLaunch(){
+    if(!directCardLaunch||directLaunchObserver||directLaunchApplied)return;
+    var page=q('creditsPage');if(!page)return;
+    directLaunchObserver=new MutationObserver(maybeActivateDirectCardLaunch);
+    directLaunchObserver.observe(page,{attributes:true,attributeFilter:['class']});
+    maybeActivateDirectCardLaunch();
   }
 
   function deactivateCardMode(next){
@@ -270,10 +291,11 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function boot(attempt){
     if(!installUi()){if(attempt<30)setTimeout(function(){boot(attempt+1)},80);return}
+    watchDirectCardLaunch();
     api('/mini-app/api/tribute-config',{}).then(function(data){
-      applyConfig(data);if(bankCardLaunchRequested())activateCardMode();setTimeout(syncPaymentSwitcher,850);restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(verifyPendingAfterReturn,1100)
+      applyConfig(data);tributeConfigResolved=true;maybeActivateDirectCardLaunch();restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(verifyPendingAfterReturn,1100)
     }).catch(function(){
-      applyConfig({configured:false,available:false,products:[],currencies:CURRENCIES});setTimeout(syncPaymentSwitcher,250)
+      applyConfig({configured:false,available:false,products:[],currencies:CURRENCIES});tributeConfigResolved=true;maybeActivateDirectCardLaunch()
     })
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){boot(0)},{once:true});else boot(0);
