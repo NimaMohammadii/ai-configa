@@ -17,8 +17,12 @@ export async function handleMessage(message, env) {
   const userId = message?.from?.id;
   protectStartMessage(chatId, message?.message_id);
 
+  const normalizedMessage = text === "/start"
+    ? message
+    : { ...message, text: "/start" };
+
   try {
-    return await handleBaseMessage(message, env);
+    return await handleBaseMessage(normalizedMessage, env);
   } catch (error) {
     console.error("start flow failed, restoring menu", error?.stack || error);
     if (!chatId || !userId) throw error;
