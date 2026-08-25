@@ -1,24 +1,28 @@
 import { getBalance } from "./credits.js";
-import { MINI_APP_STAR_PACKAGES, CUSTOM_STARS_USD_PER_1000_CREDITS } from "./stars.js";
 import { getState, requireDb } from "./state.js";
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
 
 const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
 const PRODUCT_CACHE_TTL_MS = 60 * 1000;
-const DEFAULT_VEXA_PRODUCT_LINKS = Object.freeze([
-  "https://web.tribute.tg/p/CLV",
-  "https://web.tribute.tg/p/CLX",
-  "https://web.tribute.tg/p/CM0",
-  "https://web.tribute.tg/p/CM1",
-  "https://web.tribute.tg/p/CM2",
-  "https://web.tribute.tg/p/CM3",
-  "https://web.tribute.tg/p/CM4",
-  "https://web.tribute.tg/p/CM5",
-  "https://web.tribute.tg/p/CMa",
-  "https://web.tribute.tg/p/CMd",
-  "https://web.tribute.tg/p/CMe",
-  "https://web.tribute.tg/p/CMf",
+
+export const VEXA_TRIBUTE_PRODUCTS = Object.freeze([
+  Object.freeze({ link: "https://web.tribute.tg/p/CLV", currency: "usd", amountMinor: 200, credits: 11236 }),
+  Object.freeze({ link: "https://web.tribute.tg/p/CLX", currency: "usd", amountMinor: 500, credits: 30899 }),
+  Object.freeze({ link: "https://web.tribute.tg/p/CM0", currency: "usd", amountMinor: 1000, credits: 67416 }),
+  Object.freeze({ link: "https://web.tribute.tg/p/CM1", currency: "usd", amountMinor: 2000, credits: 140450 }),
+  Object.freeze({ link: "https://web.tribute.tg/p/CM2", currency: "eur", amountMinor: 199, credits: 11236 }),
+  Object.freeze({ link: "https://web.tribute.tg/p/CM3", currency: "eur", amountMinor: 499, credits: 30899 }),
+  Object.freeze({ link: "https://web.tribute.tg/p/CM4", currency: "eur", amountMinor: 999, credits: 67416 }),
+  Object.freeze({ link: "https://web.tribute.tg/p/CM5", currency: "eur", amountMinor: 1999, credits: 140450 }),
+  Object.freeze({ link: "https://web.tribute.tg/p/CMa", currency: "rub", amountMinor: 17000, credits: 11236 }),
+  Object.freeze({ link: "https://web.tribute.tg/p/CMd", currency: "rub", amountMinor: 42500, credits: 30899 }),
+  Object.freeze({ link: "https://web.tribute.tg/p/CMe", currency: "rub", amountMinor: 85000, credits: 67416 }),
+  Object.freeze({ link: "https://web.tribute.tg/p/CMf", currency: "rub", amountMinor: 170000, credits: 140450 }),
 ]);
+
+const VEXA_TRIBUTE_PRODUCT_BY_LINK = new Map(
+  VEXA_TRIBUTE_PRODUCTS.map((product) => [normalizeUrl(product.link), product])
+);
 
 let productCache = null;
 
@@ -291,14 +295,31 @@ async function applyDigitalProductRefund(env, payload) {
   const userId = normalizePositiveId(payload?.telegram_user_id);
   if (!purchaseId || !productId || !userId) throw httpError("Invalid Tribute refund webhook.", 400);
 
-  const product = await getVexaProductById(env, productId);
-  verifyDigitalProductPayload(product, payload);
-
   const existing = await env.DB.prepare(
     "SELECT * FROM tribute_digital_purchases WHERE purchase_id = ? LIMIT 1"
   ).bind(purchaseId).first();
 
-  if (!existing) {
+  if (existing) {
+    verifyStoredRefund(existing, payload, userId, productId);
+    if (!existing.refunded_at) {
+      await env.DB.batch([
+        env.DB.prepare(
+          "INSERT OR IGNORE INTO user_credits (user_id, credits, updated_at, created_at) VALUES (?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        ).bind(userId),
+        env.DB.prepare(
+          "UPDATE user_credits SET credits = MAX(credits - COALESCE((" +
+          "SELECT credits FROM tribute_digital_purchases WHERE purchase_id = ? AND credited_at IS NOT NULL AND refunded_at IS NULL" +
+          "), 0), 0), updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+        ).bind(purchaseId, userId),
+        env.DB.prepare(
+          "UPDATE tribute_digital_purchases SET status = 'refunded', refunded_at = COALESCE(refunded_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP " +
+          "WHERE purchase_id = ? AND refunded_at IS NULL"
+        ).bind(purchaseId),
+      ]);
+    }
+  } else {
+    const product = await getVexaProductById(env, productId);
+    verifyDigitalProductPayload(product, payload);
     await env.DB.prepare(
       "INSERT OR IGNORE INTO tribute_digital_purchases " +
       "(purchase_id, transaction_id, product_id, user_id, product_name, credits, amount, currency, status, refunded_at, purchase_created_at, created_at, updated_at) " +
@@ -314,22 +335,6 @@ async function applyDigitalProductRefund(env, payload) {
       product.currency,
       String(payload?.purchase_created_at || "") || null
     ).run();
-  } else if (!existing.refunded_at) {
-    verifyStoredPurchase(existing, product, userId);
-    await env.DB.batch([
-      env.DB.prepare(
-        "INSERT OR IGNORE INTO user_credits (user_id, credits, updated_at, created_at) VALUES (?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
-      ).bind(userId),
-      env.DB.prepare(
-        "UPDATE user_credits SET credits = MAX(credits - COALESCE((" +
-        "SELECT credits FROM tribute_digital_purchases WHERE purchase_id = ? AND credited_at IS NOT NULL AND refunded_at IS NULL" +
-        "), 0), 0), updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-      ).bind(purchaseId, userId),
-      env.DB.prepare(
-        "UPDATE tribute_digital_purchases SET status = 'refunded', refunded_at = COALESCE(refunded_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP " +
-        "WHERE purchase_id = ? AND refunded_at IS NULL"
-      ).bind(purchaseId),
-    ]);
   }
 
   await linkPurchaseToLatestIntent(env, userId, productId, purchaseId, "refunded");
@@ -381,12 +386,14 @@ function verifyDigitalProductPayload(product, payload) {
   }
 }
 
-function verifyStoredPurchase(row, product, userId) {
-  if (String(row.user_id) !== String(userId) || Number(row.product_id) !== Number(product.productId)) {
-    throw httpError("Tribute purchase identity mismatch.", 400);
+function verifyStoredRefund(row, payload, userId, productId) {
+  const amount = Number(payload?.amount);
+  const currency = String(payload?.currency || "").trim().toLowerCase();
+  if (String(row.user_id) !== String(userId) || Number(row.product_id) !== Number(productId)) {
+    throw httpError("Tribute refund identity mismatch.", 400);
   }
-  if (Number(row.amount) !== Number(product.amountMinor) || String(row.currency).toLowerCase() !== product.currency) {
-    throw httpError("Tribute purchase data mismatch.", 400);
+  if (!Number.isSafeInteger(amount) || amount !== Number(row.amount) || currency !== String(row.currency || "").toLowerCase()) {
+    throw httpError("Tribute refund data mismatch.", 400);
   }
 }
 
@@ -400,7 +407,6 @@ async function getVexaProductById(env, productId) {
 async function getVexaCardProducts(env, options = {}) {
   const rows = await getTributeProducts(env, options);
   return rows
-    .filter((row) => isEligibleVexaProduct(row, env))
     .map((row) => toCardProduct(row))
     .filter(Boolean)
     .sort((a, b) => a.amountMinor - b.amountMinor || a.credits - b.credits);
@@ -440,111 +446,37 @@ async function getTributeProducts(env, options = {}) {
   return rows;
 }
 
-function isEligibleVexaProduct(row, env) {
-  if (!row || String(row.type || "").toLowerCase() !== "digital") return false;
-  if (row.acceptCards !== true) return false;
-
-  const webLink = safeTributePaymentUrl(row.webLink);
-  if (!webLink) return false;
-
-  const status = String(row.status || "").toLowerCase();
-  const allowedLinks = new Set(configuredVexaProductLinks(env));
-  const configuredLink = allowedLinks.has(normalizeUrl(webLink));
-
-  if (configuredLink) return status === "approved" || status === "new";
-  if (status !== "approved") return false;
-
-  const text = `${row.name || ""} ${row.description || ""}`.toLowerCase();
-  return text.includes("vexa") && text.includes("credit");
-}
-
-function configuredVexaProductLinks(env) {
-  const extra = String(env?.TRIBUTE_DIGITAL_PRODUCT_LINKS || env?.TRIBUTE_PRODUCT_LINKS || "")
-    .split(/[\s,;]+/)
-    .map((value) => normalizeUrl(value))
-    .filter(Boolean);
-  return [...new Set([...DEFAULT_VEXA_PRODUCT_LINKS.map(normalizeUrl), ...extra])];
-}
-
 function toCardProduct(row) {
+  if (!row || String(row.type || "").toLowerCase() !== "digital") return null;
+  if (String(row.status || "").toLowerCase() !== "approved") return null;
+  if (row.acceptCards !== true) return null;
+
+  const paymentUrl = safeTributePaymentUrl(row.webLink);
+  const spec = VEXA_TRIBUTE_PRODUCT_BY_LINK.get(normalizeUrl(paymentUrl));
+  if (!paymentUrl || !spec) return null;
+
   const productId = normalizePositiveId(row?.id);
   const amountMinor = Math.floor(Number(row?.amount || 0));
   const currency = normalizeCurrency(row?.currency);
-  const paymentUrl = safeTributePaymentUrl(row?.webLink);
   const telegramLink = safeTributeTelegramUrl(row?.link);
-  if (!productId || !amountMinor || !currency || !paymentUrl) return null;
-
-  const credits = creditsForProduct(row, amountMinor, currency);
-  if (!credits) return null;
+  if (!productId || amountMinor !== spec.amountMinor || currency !== spec.currency) return null;
 
   return {
     productId: Number(productId),
     name: String(row?.name || "Vexa USD Balance").slice(0, 120),
     description: String(row?.description || "").slice(0, 240),
-    credits,
-    amountMinor,
-    currency,
+    credits: spec.credits,
+    amountMinor: spec.amountMinor,
+    currency: spec.currency,
     paymentUrl,
     telegramLink,
   };
 }
 
-function creditsForProduct(row, amountMinor, currency) {
-  const paymentUrl = normalizeUrl(safeTributePaymentUrl(row?.webLink));
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CLV")) return 11236;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CLX")) return 30899;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM0")) return 67416;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM1")) return 140450;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM2")) return 11236;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM3")) return 30899;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM4")) return 67416;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM5")) return 140450;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CMa")) return 11236;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CMd")) return 30899;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CMe")) return 67416;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CMf")) return 140450;
-
-  const explicit = parseCredits(`${row?.name || ""} ${row?.description || ""}`);
-  if (explicit) return explicit;
-
-  if (currency === "usd") {
-    const packageMatch = Object.values(MINI_APP_STAR_PACKAGES).find((pack) =>
-      Math.round(Number(pack?.usd || 0) * 100) === amountMinor
-    );
-    if (packageMatch) return Number(packageMatch.totalCredits || 0);
-
-    const usd = amountMinor / 100;
-    const rawCredits = (usd / CUSTOM_STARS_USD_PER_1000_CREDITS) * 1000;
-    return Math.max(1000, Math.round(rawCredits / 1000) * 1000);
-  }
-
-  return 0;
-}
-
-function parseCredits(text) {
-  const clean = String(text || "").replace(/\u00a0/g, " ");
-  const match = clean.match(/([0-9][0-9\s,.]{0,14})\s*(?:vexa\s*)?credits?\b/i);
-  if (!match) return 0;
-  const digits = match[1].replace(/[^0-9]/g, "");
-  const value = Number(digits);
-  return Number.isSafeInteger(value) && value > 0 && value <= 10000000 ? value : 0;
-}
-
 function resolveRequestedProduct(products, body) {
   const productId = normalizePositiveId(body?.productId);
-  if (productId) return products.find((item) => Number(item.productId) === Number(productId)) || null;
-
-  const currency = normalizeCurrency(body?.currency) || "usd";
-  const requestedCredits = Math.floor(Number(body?.credits || 0));
-  if (requestedCredits > 0) {
-    return products.find((item) => item.currency === currency && item.credits === requestedCredits) || null;
-  }
-  const packageId = String(body?.packageId || "").trim();
-  if (packageId && MINI_APP_STAR_PACKAGES[packageId]) {
-    const credits = Number(MINI_APP_STAR_PACKAGES[packageId].totalCredits || 0);
-    return products.find((item) => item.currency === currency && item.credits === credits) || null;
-  }
-  return null;
+  if (!productId) return null;
+  return products.find((item) => Number(item.productId) === Number(productId)) || null;
 }
 
 function uniqueCurrencies(products) {
