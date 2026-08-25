@@ -160,22 +160,19 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     return usageText(total);
   }
 
-  function titleMarkup(product){
-    var total=Math.max(0,Number(product.totalCredits||0)||Number(product.credits||0)+Number(product.bonus||0));
-    if(Number(product.bonus||0)>0){
-      return '<span class="credits-pack-title"><strong>'+formatUsd(total)+'</strong><em>'+formatUsd(product.bonus)+' BONUS</em></span>';
-    }
-    if(Number(product.discountPercent||0)>0){
-      return '<span class="credits-pack-title"><strong>'+formatUsd(total)+'</strong><em>'+number(product.discountPercent)+'% OFF</em></span>';
-    }
-    return '<span class="credits-pack-title"><strong>'+formatUsd(total)+'</strong></span>';
+  function priceMarkup(product){
+    return money(product.amountMinor,product.currency);
   }
 
-  function priceMarkup(product){
-    var current=money(product.amountMinor,product.currency);
-    var old=product.originalAmountMinor!=null?money(product.originalAmountMinor,product.currency):'';
-    if(!old)return current;
-    return '<span class="purchase-price-pair"><span class="purchase-price-original">'+old+'</span><span class="purchase-price-final">'+current+'</span></span>';
+  function titleMarkup(product){
+    var price=priceMarkup(product);
+    if(Number(product.bonus||0)>0){
+      return '<span class="credits-pack-title"><strong>'+price+'</strong><em>BONUS INCLUDED</em></span>';
+    }
+    if(Number(product.discountPercent||0)>0){
+      return '<span class="credits-pack-title"><strong>'+price+'</strong><em>'+number(product.discountPercent)+'% OFF</em></span>';
+    }
+    return '<span class="credits-pack-title"><strong>'+price+'</strong></span>';
   }
 
   function renderProducts(){
@@ -187,7 +184,6 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
       var action=isPending?'open-tribute-checkout':(product.checkoutReady?'buy-tribute-product':'catalog-tribute-product');
       return '<button class="credits-pack" type="button" data-action="'+action+'" data-product-id="'+String(product.productId||'')+'" data-catalog-id="'+String(product.catalogId||'')+'">'+
         '<span class="credits-pack-main">'+titleMarkup(product)+'<span class="credits-pack-total">'+usageLabel(product)+'</span></span>'+
-        '<span class="credits-pack-price"><strong>'+priceMarkup(product)+'</strong></span>'+
       '</button>';
     }).join('');
   }
