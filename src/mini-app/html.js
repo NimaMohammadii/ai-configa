@@ -165,7 +165,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
       button.classList.add('vexa-liquid-metal-button');
 
       var shaderMount=new library.ShaderMount(shaderHost,library.liquidMetalFragmentShader,{
-        u_repetition:4,
+        u_repetition:1,
         u_softness:.5,
         u_shiftRed:.3,
         u_shiftBlue:.3,
