@@ -1,6 +1,7 @@
 import { getImageExploreItems, getMiniAppAccessSettings, isAdmin } from "./admin.js";
 import { AI_CHAT_USD_PER_CREDIT } from "./ai-chat-model.js";
 import { ensureBalanceRow, ensureCreditUsageLogTable, getBalance } from "./credits.js";
+import { handleExploreMediaRequest } from "./explore-media.js";
 import { saveImageHistory } from "./image-history.js";
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
 import { tgForm, tgJson } from "./telegram-api.js";
@@ -79,15 +80,31 @@ export async function handleUsagePricedImageRequest(request, env) {
 
     if (exploreId) {
       const explore = (await getImageExploreItems(env)).find((item) => item.id === exploreId);
-      if (!explore?.fileId) return errorResponse("Explore reference not found.", 404);
-      const telegramFile = await tgJson(env, "getFile", { file_id: explore.fileId });
-      if (!telegramFile?.file_path) return errorResponse("Explore reference is unavailable.", 404);
-      const referenceResponse = await fetch("https://api.telegram.org/file/bot" + env.BOT_TOKEN + "/" + telegramFile.file_path);
-      if (!referenceResponse.ok) return errorResponse("Explore reference is unavailable.", 502);
+      if (!explore || explore.mediaType === "video" || (!explore.fileId && !explore.storageKey)) {
+        return errorResponse("Explore reference not found.", 404);
+      }
+
+      const referenceRequest = new Request(
+        new URL("/mini-app/api/explore-image/" + encodeURIComponent(explore.id), request.url),
+        { method: "GET" },
+      );
+      const referenceResponse = await handleExploreMediaRequest(referenceRequest, env).catch((error) => {
+        console.error("load Explore image reference failed", error?.message || error);
+        return null;
+      });
+      if (!referenceResponse?.ok) {
+        return errorResponse(
+          "Explore reference is unavailable.",
+          referenceResponse?.status === 404 ? 404 : 502,
+        );
+      }
+
+      const referenceMime = normalizeMime(referenceResponse.headers.get("Content-Type"), "explore-reference");
+      const referenceExtension = referenceMime === "image/png" ? ".png" : referenceMime === "image/webp" ? ".webp" : ".jpg";
       sources.push({
         buffer: await referenceResponse.arrayBuffer(),
-        filename: "explore-reference.jpg",
-        mimeType: referenceResponse.headers.get("Content-Type") || "image/jpeg",
+        filename: "explore-reference" + referenceExtension,
+        mimeType: referenceMime,
       });
       effectivePrompt = EXPLORE_EDIT_PROMPT;
     }
