@@ -19,6 +19,9 @@ const PORNHUB_MINI_APP_SELECTOR =
   "bv[ext=mp4][protocol^=m3u8]+ba[protocol^=m3u8]/b[ext=mp4]";
 const TELEGRAM_SAFE_FILE_BYTES = 45_000_000;
 const TELEGRAM_UPLOAD_FILE_BYTES = 49_000_000;
+const TELEGRAM_PART_TARGET_BYTES = 42_000_000;
+const TELEGRAM_PART_MIN_SECONDS = 3;
+const TELEGRAM_PART_MAX_ATTEMPTS = 6;
 const FFMPEG_INPUT_ARGS =
   "ffmpeg_i:-rw_timeout 15000000 -reconnect 1 -reconnect_on_network_error 1 " +
   "-reconnect_on_http_error 5xx -reconnect_streamed 1 -reconnect_delay_max 2 -reconnect_max_retries 1";
@@ -278,16 +281,38 @@ export class VexaMediaContainerV3 extends Container {
 
   async streamVideo(url, strategyId, formatId, transport = "", maxFinalizedBytes = TELEGRAM_UPLOAD_FILE_BYTES) {
     const provider = mediaProviderForStrategy(strategyId);
+    const process = provider === "pornhub"
+      ? await this.startFinalizedPornHubProcess(url, strategyId, formatId, transport, maxFinalizedBytes)
+      : await this.startVideoProcess(url, strategyId, formatId, transport);
+    return this.streamProcess(process, provider);
+  }
+
+  async streamVideoPart(url, strategyId, formatId, transport, startSeconds, durationSeconds, maxBytes = TELEGRAM_SAFE_FILE_BYTES) {
+    const provider = mediaProviderForStrategy(strategyId);
+    const prepared = await this.startTelegramPartProcess(
+      url,
+      strategyId,
+      formatId,
+      transport,
+      startSeconds,
+      durationSeconds,
+      maxBytes,
+    );
+    return {
+      stream: await this.streamProcess(prepared.process, provider),
+      sizeBytes: prepared.sizeBytes,
+      durationSeconds: prepared.durationSeconds,
+    };
+  }
+
+  async streamProcess(process, provider) {
     const timeoutMessage = provider === "pornhub"
       ? "PornHub stream did not start in time"
       : "YouTube stream did not start in time";
     const invalidStreamMessage = provider === "pornhub"
       ? "PornHub returned an invalid MP4 stream"
       : "YouTube returned an invalid MP4 stream";
-    const process = provider === "pornhub"
-      ? await this.startFinalizedPornHubProcess(url, strategyId, formatId, transport, maxFinalizedBytes)
-      : await this.startVideoProcess(url, strategyId, formatId, transport);
-    if (!process.stdout) throw new Error(provider === "pornhub"
+    if (!process?.stdout) throw new Error(provider === "pornhub"
       ? "Could not start the PornHub download"
       : "Could not start the YouTube download");
 
@@ -379,48 +404,120 @@ export class VexaMediaContainerV3 extends Container {
         throw publicContainerError(detail || "download failed", "pornhub");
       }
 
-      const sizeProcess = await this.ctx.container.exec([
-        "sh",
-        "-c",
-        'wc -c < "$1"',
-        "vexa-pornhub-size",
-        tempPath,
-      ]);
-      const sizeOutput = await sizeProcess.output();
-      const sizeText = new TextDecoder().decode(sizeOutput.stdout).trim();
-      const fileSize = Number.parseInt(sizeText, 10);
-      if (sizeOutput.exitCode !== 0 || !Number.isSafeInteger(fileSize) || fileSize <= 0) {
-        throw new Error("PornHub returned an empty video stream");
-      }
+      const fileSize = await this.readFileSize(tempPath);
       if (Number(maxBytes) > 0 && fileSize > Number(maxBytes)) {
         throw new Error("This download is too large for Telegram");
       }
 
-      return await this.ctx.container.exec([
-        "sh",
-        "-c",
-        'exec 3<"$1" || exit 1; rm -f "$1" "$1.part"; cat <&3',
-        "vexa-pornhub-stream",
-        tempPath,
-      ]);
+      return await this.openAndUnlinkFile(tempPath, "vexa-pornhub-stream");
     } catch (error) {
-      try {
-        const cleanup = await this.ctx.container.exec(["rm", "-f", tempPath, tempPath + ".part"]);
-        cleanup.output().catch(() => null);
-      } catch (ignore) {}
+      await this.removeTempFile(tempPath);
       throw error;
     }
   }
 
-  async startVideoProcess(url, strategyId, formatId, transport = "", outputPath = "-") {
+  async startTelegramPartProcess(url, strategyId, formatId, transport, startSeconds, durationSeconds, maxBytes) {
+    const provider = mediaProviderForStrategy(strategyId);
+    const start = Math.max(0, Number(startSeconds || 0));
+    let seconds = Math.max(TELEGRAM_PART_MIN_SECONDS, Number(durationSeconds || TELEGRAM_PART_MIN_SECONDS));
+    const limit = Math.max(1, Number(maxBytes || TELEGRAM_SAFE_FILE_BYTES));
+
+    for (let attempt = 0; attempt < TELEGRAM_PART_MAX_ATTEMPTS; attempt += 1) {
+      const tempPath = "/tmp/vexa-telegram-part-" + crypto.randomUUID() + ".mp4";
+      try {
+        const section = "*" + formatSectionTime(start) + "-" + formatSectionTime(start + seconds);
+        const downloadProcess = await this.startVideoProcess(
+          url,
+          strategyId,
+          formatId,
+          transport,
+          tempPath,
+          section,
+        );
+        const output = await downloadProcess.output();
+        const decoder = new TextDecoder();
+        const detail = decoder.decode(output.stderr).trim();
+        if (output.exitCode !== 0) {
+          if (detail) console.error("yt-dlp Telegram part download failed", detail.slice(-4000));
+          throw publicContainerError(detail || "download failed", provider);
+        }
+
+        const fileSize = await this.readFileSize(tempPath);
+        if (fileSize <= limit) {
+          return {
+            process: await this.openAndUnlinkFile(tempPath, "vexa-telegram-part-stream"),
+            sizeBytes: fileSize,
+            durationSeconds: seconds,
+          };
+        }
+
+        await this.removeTempFile(tempPath);
+        const ratio = limit / fileSize;
+        const nextSeconds = Math.max(
+          TELEGRAM_PART_MIN_SECONDS,
+          Math.floor(seconds * ratio * 0.9 * 1000) / 1000,
+        );
+        if (nextSeconds >= seconds - 0.01) {
+          seconds = Math.max(TELEGRAM_PART_MIN_SECONDS, seconds * 0.75);
+        } else {
+          seconds = nextSeconds;
+        }
+      } catch (error) {
+        await this.removeTempFile(tempPath);
+        throw error;
+      }
+    }
+
+    throw new Error("Could not fit this video part within Telegram file limits");
+  }
+
+  async readFileSize(path) {
+    const sizeProcess = await this.ctx.container.exec([
+      "sh",
+      "-c",
+      'wc -c < "$1"',
+      "vexa-media-size",
+      path,
+    ]);
+    const sizeOutput = await sizeProcess.output();
+    const sizeText = new TextDecoder().decode(sizeOutput.stdout).trim();
+    const fileSize = Number.parseInt(sizeText, 10);
+    if (sizeOutput.exitCode !== 0 || !Number.isSafeInteger(fileSize) || fileSize <= 0) {
+      throw new Error("Media returned an empty video stream");
+    }
+    return fileSize;
+  }
+
+  async openAndUnlinkFile(path, label) {
+    return this.ctx.container.exec([
+      "sh",
+      "-c",
+      'exec 3<"$1" || exit 1; rm -f "$1" "$1.part"; cat <&3',
+      label,
+      path,
+    ]);
+  }
+
+  async removeTempFile(path) {
+    try {
+      const cleanup = await this.ctx.container.exec(["rm", "-f", path, path + ".part"]);
+      await cleanup.output().catch(() => null);
+    } catch (error) {}
+  }
+
+  async startVideoProcess(url, strategyId, formatId, transport = "", outputPath = "-", downloadSection = "") {
     const strategy = clientStrategy(strategyId);
     if (!strategy) throw new Error("Media client strategy is invalid");
     const selectedFormat = String(formatId || "").trim() || FORMAT_SELECTOR;
     const forceFfmpeg = String(transport || "") === "ffmpeg";
-    const needsFfmpegOutput = selectedFormat.includes("+") || forceFfmpeg;
+    const section = String(downloadSection || "").trim();
+    const needsFfmpegOutput = selectedFormat.includes("+") || forceFfmpeg || Boolean(section);
     const processingArgs = [];
     if (forceFfmpeg) {
       processingArgs.push("--downloader", "m3u8:ffmpeg");
+    }
+    if (section) {
+      processingArgs.push("--download-sections", section);
     }
     if (selectedFormat.includes("+")) {
       processingArgs.push("--merge-output-format", "mp4");
@@ -494,7 +591,7 @@ export async function getTelegramYouTubeOptions(env, userId, value) {
     const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(userId));
     const catalog = await container.getTelegramDownloadCatalog(normalized.url);
     if (!catalog.options?.length) {
-      throw new Error("This download is too large for Telegram");
+      throw new Error("This video does not expose a Telegram-compatible download format");
     }
     return { ...catalog, sourceUrl: normalized.url, provider: normalized.provider };
   } catch (error) {
@@ -503,31 +600,85 @@ export async function getTelegramYouTubeOptions(env, userId, value) {
   }
 }
 
-export async function downloadTelegramYouTubeMedia(env, userId, value, optionKey) {
+export async function prepareTelegramYouTubeMedia(env, userId, value, optionKey) {
   const prepared = await getTelegramYouTubeOptions(env, userId, value);
   const selected = prepared.options.find((option) => option.key === String(optionKey || ""));
   if (!selected) throw new Error("This download option is no longer available");
+  return { ...prepared, selected };
+}
+
+export async function downloadTelegramYouTubeMediaPart(env, userId, prepared, startSeconds = 0, partNumber = 1) {
+  const selected = prepared?.selected;
+  if (!selected) throw new Error("This download option is no longer available");
 
   const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(userId));
-  let stream;
+  const start = Math.max(0, Number(startSeconds || 0));
+  const totalDuration = positiveNumber(selected.duration);
+  const totalSize = positiveNumber(selected.sizeBytes);
+  const currentPart = Math.max(1, Math.floor(Number(partNumber || 1)));
+
   try {
-    stream = await container.streamVideo(
+    if (selected.kind !== "video" || (start <= 0 && totalSize <= TELEGRAM_SAFE_FILE_BYTES)) {
+      const stream = await container.streamVideo(
+        prepared.sourceUrl,
+        prepared.strategyId,
+        selected.selector,
+        selected.transport || "",
+      );
+      return {
+        kind: selected.kind,
+        title: prepared.title,
+        label: selected.label,
+        filename: selected.filename,
+        mimeType: selected.mimeType,
+        sizeBytes: selected.sizeBytes,
+        width: selected.width,
+        height: selected.height,
+        duration: selected.duration,
+        stream,
+        partNumber: currentPart,
+        done: true,
+        nextStart: totalDuration || 0,
+      };
+    }
+
+    if (!totalDuration || !totalSize || start >= totalDuration) {
+      throw new Error("Video duration is unavailable for Telegram splitting");
+    }
+
+    const remaining = totalDuration - start;
+    const bytesPerSecond = totalSize / totalDuration;
+    const estimatedSeconds = TELEGRAM_PART_TARGET_BYTES / Math.max(1, bytesPerSecond);
+    const requestedSeconds = Math.min(
+      remaining,
+      Math.max(TELEGRAM_PART_MIN_SECONDS, estimatedSeconds),
+    );
+    const part = await container.streamVideoPart(
       prepared.sourceUrl,
       prepared.strategyId,
       selected.selector,
       selected.transport || "",
+      start,
+      requestedSeconds,
+      TELEGRAM_SAFE_FILE_BYTES,
     );
+    const nextStart = Math.min(totalDuration, start + Number(part.durationSeconds || requestedSeconds));
+    const done = nextStart >= totalDuration - 0.25;
+
     return {
       kind: selected.kind,
       title: prepared.title,
       label: selected.label,
-      filename: selected.filename,
+      filename: partFilename(selected.filename, currentPart),
       mimeType: selected.mimeType,
-      sizeBytes: selected.sizeBytes,
+      sizeBytes: Number(part.sizeBytes || 0),
       width: selected.width,
       height: selected.height,
-      duration: selected.duration,
-      stream,
+      duration: Math.max(1, Math.round(Number(part.durationSeconds || requestedSeconds))),
+      stream: part.stream,
+      partNumber: currentPart,
+      done,
+      nextStart,
     };
   } catch (error) {
     const message = publicMediaError(error, prepared.provider);
@@ -669,7 +820,7 @@ function buildTelegramCatalog(data, strategyId) {
       format,
       size: formatSizeBytes(format, duration) || (provider === "pornhub" ? estimatedAudioSize(duration) : 0),
     }))
-    .filter((item) => item.size > 0 && item.size <= TELEGRAM_SAFE_FILE_BYTES)
+    .filter((item) => item.size > 0)
     .sort((a, b) => audioScore(b.format) - audioScore(a.format));
   const defaultAudio = audioCandidates[0] || null;
 
@@ -700,7 +851,6 @@ function buildTelegramCatalog(data, strategyId) {
     const videoSize = formatSizeBytes(format, duration);
     if (!videoSize) continue;
     const totalSize = hasAudio ? videoSize : videoSize + pairedAudio.size;
-    if (totalSize > TELEGRAM_SAFE_FILE_BYTES) continue;
 
     const selector = hasAudio
       ? formatId
@@ -734,7 +884,7 @@ function buildTelegramCatalog(data, strategyId) {
     .slice(0, 7)
     .map(({ score, ...option }) => option);
 
-  if (defaultAudio) {
+  if (defaultAudio && defaultAudio.size <= TELEGRAM_SAFE_FILE_BYTES) {
     options.push({
       key: "a",
       kind: "audio",
@@ -1046,6 +1196,18 @@ function looksLikeMp4(chunk) {
   return chunk[4] === 0x66 && chunk[5] === 0x74 && chunk[6] === 0x79 && chunk[7] === 0x70;
 }
 
+function formatSectionTime(value) {
+  const seconds = Math.max(0, Number(value || 0));
+  return (Math.round(seconds * 1000) / 1000).toFixed(3);
+}
+
+function partFilename(filename, partNumber) {
+  const value = String(filename || "Vexa-video.mp4");
+  const index = value.lastIndexOf(".");
+  const suffix = "-part-" + String(Math.max(1, Number(partNumber || 1))).padStart(3, "0");
+  return index > 0 ? value.slice(0, index) + suffix + value.slice(index) : value + suffix + ".mp4";
+}
+
 function downloadHeaders() {
   return {
     "Content-Type": "video/mp4",
@@ -1138,6 +1300,7 @@ const PUBLIC_MEDIA_ERRORS = new Set([
   "This YouTube video is unavailable",
   "This YouTube video cannot be downloaded without additional access",
   "This video does not expose a direct MP4 download format",
+  "This video does not expose a Telegram-compatible download format",
   "This download is too large for Telegram",
   "This download option is no longer available",
   "Enter a valid YouTube link",

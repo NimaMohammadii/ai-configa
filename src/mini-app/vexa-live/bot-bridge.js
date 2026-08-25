@@ -39,9 +39,10 @@ import {
   setVexaLiveAccessSettings,
 } from "./access.js";
 import {
-  downloadTelegramYouTubeMedia,
+  downloadTelegramYouTubeMediaPart,
   extractYouTubeUrl,
   getTelegramYouTubeOptions,
+  prepareTelegramYouTubeMedia,
 } from "./youtube-download-exec.js";
 
 const SECTION_KEY = "live";
@@ -228,6 +229,8 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
   const sourceUrl = extractYouTubeUrl(payload?.sourceUrl || "");
   const optionKey = String(payload?.optionKey || "").trim();
   const language = normalizeLang(payload?.language || "en");
+  const startSeconds = Math.max(0, Number(payload?.startSeconds || 0));
+  const partNumber = Math.max(1, Math.floor(Number(payload?.partNumber || 1)));
   const copy = youtubeDownloadCopy(language);
 
   if (
@@ -237,21 +240,62 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
     !chatId ||
     messageId <= 0 ||
     !sourceUrl ||
-    !/^(?:a|v\d{2,4})$/u.test(optionKey)
+    !/^(?:a|v\d{2,4})$/u.test(optionKey) ||
+    !Number.isFinite(startSeconds) ||
+    !Number.isSafeInteger(partNumber)
   ) {
     throw new Error("YouTube download workflow payload is invalid");
   }
 
   try {
-    const media = await downloadTelegramYouTubeMedia(env, userId, sourceUrl, optionKey);
+    const prepared = await prepareTelegramYouTubeMedia(env, userId, sourceUrl, optionKey);
+    const media = await downloadTelegramYouTubeMediaPart(
+      env,
+      userId,
+      prepared,
+      startSeconds,
+      partNumber,
+    );
     await sendTelegramMediaStream(env, chatId, media);
+
+    if (!media.done) {
+      const nextStart = Number(media.nextStart || 0);
+      if (!env.AI_CODING_WORKFLOW || !Number.isFinite(nextStart) || nextStart <= startSeconds) {
+        throw new Error("Could not continue the Telegram video download");
+      }
+      const workflowId = "yt-" + crypto.randomUUID();
+      await env.AI_CODING_WORKFLOW.create({
+        id: workflowId,
+        params: {
+          kind: YOUTUBE_WORKFLOW_KIND,
+          userId,
+          chatId,
+          messageId,
+          sourceUrl,
+          optionKey,
+          language,
+          startSeconds: nextStart,
+          partNumber: media.partNumber + 1,
+        },
+        retention: { successRetention: "1 day", errorRetention: "1 day" },
+      });
+      await editMessage(
+        env,
+        chatId,
+        messageId,
+        "⏳ " + escapeHtml(copy.preparing) + " · Part " + media.partNumber + " sent",
+      ).catch(() => null);
+      return { ok: true, label: media.label, part: media.partNumber, continued: true };
+    }
+
+    const partsText = media.partNumber > 0 ? " · " + media.partNumber + " parts" : "";
     await editMessage(
       env,
       chatId,
       messageId,
-      "✅ " + escapeHtml(copy.sent) + " · " + escapeHtml(media.label),
+      "✅ " + escapeHtml(copy.sent) + " · " + escapeHtml(media.label) + partsText,
     ).catch(() => null);
-    return { ok: true, label: media.label };
+    return { ok: true, label: media.label, parts: media.partNumber || 1 };
   } catch (error) {
     console.error("bot YouTube workflow download failed", error?.stack || error);
     await editMessage(
@@ -282,7 +326,8 @@ async function sendTelegramMediaStream(env, chatId, media) {
     if (Number.isSafeInteger(width) && width > 0) fields.push(["width", String(width)]);
     if (Number.isSafeInteger(height) && height > 0) fields.push(["height", String(height)]);
     if (Number.isSafeInteger(duration) && duration > 0) fields.push(["duration", String(duration)]);
-    fields.push(["caption", String(media.title || "YouTube video").slice(0, 1024)]);
+    const partLabel = Number(media.partNumber || 0) > 0 ? "\nPart " + Number(media.partNumber) : "";
+    fields.push(["caption", (String(media.title || "YouTube video") + partLabel).slice(0, 1024)]);
   }
 
   let prefix = "";
