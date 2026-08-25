@@ -3,6 +3,21 @@ export const GITHUB_CLIENT_JS = `
   if(window.__vexaGithubClientLoaded)return;
   window.__vexaGithubClientLoaded=true;
   var tg=window.Telegram&&window.Telegram.WebApp;
+  if(tg){
+    var originalExpand=typeof tg.expand==='function'?tg.expand:null;
+    var originalDisableVerticalSwipes=typeof tg.disableVerticalSwipes==='function'?tg.disableVerticalSwipes:null;
+    try{
+      if(originalExpand)tg.expand=function(){};
+      if(originalDisableVerticalSwipes)tg.disableVerticalSwipes=function(){};
+    }catch(error){}
+    window.addEventListener('load',function(){
+      try{
+        if(originalExpand)tg.expand=originalExpand;
+        if(originalDisableVerticalSwipes)tg.disableVerticalSwipes=originalDisableVerticalSwipes;
+        if(typeof tg.enableVerticalSwipes==='function')tg.enableVerticalSwipes();
+      }catch(error){}
+    },{once:true});
+  }
   var initData=(tg&&tg.initData)||'';
   var state={connected:false,login:'',repository:null,repositories:[],authorizeUrl:'',pendingConnect:false,busy:false};
   function q(id){return document.getElementById(id)}
