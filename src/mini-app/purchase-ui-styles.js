@@ -10,11 +10,17 @@ html body .credits-page .credits-page-head p{display:none!important}
 html body .credits-page .tribute-section-copy>div>span{display:none!important}
 html body .credits-page .tribute-section-copy>div>h3{margin-top:0!important}
 html body .credits-page .credits-pack{
-  border:0!important;background:rgba(255,255,255,.045)!important;box-shadow:none!important;
-  backdrop-filter:blur(3px)!important;-webkit-backdrop-filter:blur(3px)!important
+  position:relative!important;overflow:hidden!important;isolation:isolate!important;border:0!important;box-shadow:none!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.115) 0%,rgba(255,255,255,.055) 34%,rgba(255,255,255,.026) 64%,rgba(255,255,255,.072) 100%)!important;
+  backdrop-filter:blur(3px) saturate(1.1)!important;-webkit-backdrop-filter:blur(3px) saturate(1.1)!important
+}
+html body .credits-page .credits-pack::before{
+  content:""!important;position:absolute!important;inset:0!important;border-radius:inherit!important;pointer-events:none!important;
+  background:linear-gradient(125deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,.055) 18%,rgba(255,255,255,0) 39%,rgba(255,255,255,.035) 63%,rgba(255,255,255,0) 82%)!important
 }
 html body .credits-page .credits-pack:active{
-  border:0!important;background:rgba(255,255,255,.065)!important;box-shadow:none!important
+  border:0!important;box-shadow:none!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.135) 0%,rgba(255,255,255,.07) 36%,rgba(255,255,255,.035) 66%,rgba(255,255,255,.085) 100%)!important
 }
 
 /* Stars hero: keep the original 1440x680 asset, only scale it slightly and move it down. */
@@ -116,7 +122,7 @@ html body .credits-page .tribute-currency-picker{
   backdrop-filter:blur(10px) saturate(1.12)!important;-webkit-backdrop-filter:blur(10px) saturate(1.12)!important
 }
 html body .credits-page .tribute-currency-picker[hidden]{display:none!important}
-html body .credits-page .tribute-currency-picker:before{content:""!important;position:absolute!important;z-index:0!important;left:3px!important;top:3px!important;bottom:3px!important;width:calc((100% - 6px)/var(--tribute-currency-count))!important;border-radius:13px!important;background:rgba(255,255,255,.92)!important;box-shadow:0 2px 9px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.88)!important;transform:translateX(var(--tribute-currency-shift))!important;transition:transform .42s cubic-bezier(.16,1,.3,1)!important}
+html body .credits-page .tribute-currency-picker:before{content:""!important;position:absolute!important;z-index:0!important;left:3px!important;top:3px!important;bottom:3px!important;width:calc((100% - 6px)/var(--tribute-currency-count))!important;border-radius:13px!important;background:rgba(255,255,255,.92)!important;box-shadow:0 2px 9px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.88)!important;transform:translateX(var(--tribute-shift))!important;transition:transform .42s cubic-bezier(.16,1,.3,1)!important}
 html body .credits-page .tribute-currency-picker button{position:relative!important;z-index:1!important;height:34px!important;padding:0 8px!important;border:0!important;border-radius:13px!important;background:transparent!important;color:rgba(255,255,255,.48)!important;font-size:9.5px!important;font-weight:760!important;transition:color .24s ease,transform .2s cubic-bezier(.16,1,.3,1)!important}
 html body .credits-page .tribute-currency-picker button.active{color:#101114!important}
 html body .credits-page .tribute-currency-picker button:active{transform:scale(.97)!important}
