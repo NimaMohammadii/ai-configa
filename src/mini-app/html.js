@@ -105,7 +105,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
     style.id='vexaLiquidMetalStyles';
     style.textContent=[
       'button.vexa-liquid-metal-button{position:relative!important;background:transparent!important;border:0!important;outline:0!important;box-shadow:none!important;overflow:visible!important;border-radius:100px!important;color:#666!important;font-size:14px!important;font-weight:400!important;text-shadow:0 1px 2px rgba(0,0,0,.5)!important;opacity:1!important;transform:none!important;perspective:1000px!important;perspective-origin:50% 50%!important;transform-style:preserve-3d!important;isolation:isolate!important}',
-      'button.vexa-liquid-metal-button#convertButton,button.vexa-liquid-metal-button#generateImageButton{width:100%!important;min-width:0!important;max-width:none!important;align-self:stretch!important;margin:0!important;padding:0!important;cursor:pointer!important}',
+      'button.vexa-liquid-metal-button#convertButton,button.vexa-liquid-metal-button#generateImageButton{width:100%!important;min-width:0!important;max-width:none!important;align-self:stretch!important;margin:0!important;padding:0!important;cursor:pointer!important;perspective:none!important;transform-style:flat!important}',
       'button.vexa-liquid-metal-button#convertButton{height:42px!important;min-height:42px!important;max-height:42px!important;flex:0 0 42px!important}',
       'button.vexa-liquid-metal-button#generateImageButton{height:46px!important;min-height:46px!important;max-height:46px!important;flex:0 0 46px!important}',
       'button.vexa-liquid-metal-button.empty,button.vexa-liquid-metal-button:disabled{opacity:1!important}',
@@ -151,6 +151,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
     loadLibrary().then(function(library){
       if(!button.isConnected){mounts.delete(button);return}
       var doc=button.ownerDocument;
+      var view=doc.defaultView||window;
       ensureStyles(doc);
       var shaderLayer=layer(doc,'vexa-lm-shader-layer');
       var shaderFrame=layer(doc,'vexa-lm-shader-frame');
@@ -178,16 +179,34 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
         u_shape:0,
         u_offsetX:.1,
         u_offsetY:-.1
-      },undefined,.16);
+      },undefined,.3);
       mounts.set(button,{mount:shaderMount});
+      var motionSpeed=.3;
+      var speedRaf=0;
+      function setMotionSpeed(target,duration){
+        if(!shaderMount||!shaderMount.setSpeed)return;
+        if(speedRaf)view.cancelAnimationFrame(speedRaf);
+        var from=motionSpeed;
+        var start=view.performance&&view.performance.now?view.performance.now():Date.now();
+        var span=Math.max(0,Number(duration)||0);
+        if(!span){motionSpeed=target;shaderMount.setSpeed(target);return}
+        function step(now){
+          var progress=Math.min(1,(now-start)/span);
+          var eased=progress<.5?2*progress*progress:1-Math.pow(-2*progress+2,2)/2;
+          motionSpeed=from+(target-from)*eased;
+          shaderMount.setSpeed(motionSpeed);
+          if(progress<1)speedRaf=view.requestAnimationFrame(step);else speedRaf=0;
+        }
+        speedRaf=view.requestAnimationFrame(step);
+      }
 
       button.addEventListener('mouseenter',function(){
         button.classList.add('vexa-lm-hover');
-        if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(.24);
+        setMotionSpeed(.4,220);
       });
       button.addEventListener('mouseleave',function(){
         button.classList.remove('vexa-lm-hover','vexa-lm-pressed');
-        if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(.16);
+        setMotionSpeed(.3,260);
       });
       button.addEventListener('pointerdown',function(){
         if(!button.disabled)button.classList.add('vexa-lm-pressed');
@@ -197,12 +216,10 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
       button.addEventListener('pointercancel',release);
       button.addEventListener('click',function(event){
         if(button.disabled)return;
-        if(shaderMount&&shaderMount.setSpeed){
-          shaderMount.setSpeed(.55);
-          setTimeout(function(){
-            if(shaderMount&&shaderMount.setSpeed)shaderMount.setSpeed(button.classList.contains('vexa-lm-hover')?.24:.16);
-          },300);
-        }
+        setMotionSpeed(.75,180);
+        setTimeout(function(){
+          setMotionSpeed(button.classList.contains('vexa-lm-hover')?.4:.3,320);
+        },300);
         var rect=button.getBoundingClientRect();
         var ripple=layer(doc,'vexa-lm-ripple');
         var x=Number(event.clientX),y=Number(event.clientY);
