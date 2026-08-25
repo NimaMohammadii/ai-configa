@@ -15,6 +15,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   var MAX_CARD_PACKS=6;
   var PENDING_KEY='vexa_tribute_pending_v3';
   var SUCCESS_KEY='vexa_tribute_success_v2';
+  var directCardLaunch=bankCardLaunchRequested();
 
   var CARD_CATALOG=[
     {id:'card_2',credits:11236,bonus:0,giftPercent:0,prices:{usd:{amountMinor:200},eur:{amountMinor:199},rub:{amountMinor:17000}}},
@@ -181,10 +182,20 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     }).join('');
   }
 
+  function openDirectCardPage(){
+    if(!directCardLaunch)return;
+    document.body.classList.add('bank-card-launch');
+    var page=q('creditsPage');
+    if(page&&!page.classList.contains('show')){
+      var trigger=q('creditPill');
+      if(trigger&&typeof trigger.click==='function')trigger.click();
+    }
+  }
+
   function activateCardMode(){
     cardModeActive=true;
     var page=q('creditsPage'),stars=q('creditsStarsMode'),toman=q('creditsTomanMode'),tribute=q('creditsTributeMode'),switcher=q('creditsPaymentSwitch');
-    if(page){page.classList.remove('toman-payment-active');page.classList.add('tribute-payment-active')}if(stars)stars.classList.remove('active');if(toman){toman.classList.remove('active');toman.setAttribute('aria-hidden','true')}if(tribute){tribute.classList.add('active');tribute.setAttribute('aria-hidden','false')}if(switcher)switcher.setAttribute('data-mode','card');
+    if(page){page.classList.remove('toman-payment-active');page.classList.add('tribute-payment-active');page.classList.toggle('bank-card-direct',directCardLaunch)}if(stars){stars.classList.remove('active');stars.setAttribute('aria-hidden','true')}if(toman){toman.classList.remove('active');toman.setAttribute('aria-hidden','true')}if(tribute){tribute.classList.add('active');tribute.setAttribute('aria-hidden','false')}if(switcher)switcher.setAttribute('data-mode','card');
     document.querySelectorAll('[data-action="set-credit-payment"]').forEach(function(button){var active=button.getAttribute('data-payment-mode')==='card';button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false')});
     var head=page&&page.querySelector('.credits-page-head>div:first-child');if(head){var title=head.querySelector('h2');if(title)title.textContent='Add USD balance';head.setAttribute('dir','ltr')}
     syncSwitchIndicator();renderCurrencies();renderProducts();haptic('light');
@@ -270,8 +281,9 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function boot(attempt){
     if(!installUi()){if(attempt<30)setTimeout(function(){boot(attempt+1)},80);return}
+    if(directCardLaunch){openDirectCardPage();activateCardMode()}
     api('/mini-app/api/tribute-config',{}).then(function(data){
-      applyConfig(data);if(bankCardLaunchRequested())activateCardMode();setTimeout(syncPaymentSwitcher,850);restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(verifyPendingAfterReturn,1100)
+      applyConfig(data);if(directCardLaunch)activateCardMode();setTimeout(syncPaymentSwitcher,850);restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(verifyPendingAfterReturn,1100)
     }).catch(function(){
       applyConfig({configured:false,available:false,products:[],currencies:CURRENCIES});setTimeout(syncPaymentSwitcher,250)
     })

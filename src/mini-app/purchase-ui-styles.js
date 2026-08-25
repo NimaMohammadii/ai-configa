@@ -61,6 +61,13 @@ html body .credits-page .credits-payment-switch.tribute-switch button[hidden]{di
 
 html body .credits-page .credits-tribute-mode{width:100%!important;max-width:540px!important;margin:0 auto!important;padding:0 15px calc(env(safe-area-inset-bottom,0px) + 22px)!important}
 html body .credits-page .credits-tribute-mode.active{display:block!important;animation:tributeModeIn .48s cubic-bezier(.16,1,.3,1) both!important}
+/* The bot's Bank Card shortcut is a focused checkout, not the full multi-payment page. */
+html body.bank-card-launch .credits-page.bank-card-direct .credits-page-head,
+html body.bank-card-launch .credits-page.bank-card-direct .credits-payment-switch,
+html body.bank-card-launch .credits-page.bank-card-direct #creditsStarsMode,
+html body.bank-card-launch .credits-page.bank-card-direct #creditsTomanMode{display:none!important}
+html body.bank-card-launch .credits-page.bank-card-direct .credits-page-scroll{padding-top:calc(26px + env(safe-area-inset-top))!important}
+html body.bank-card-launch .credits-page.bank-card-direct .credits-tribute-mode{display:block!important;margin:0 auto!important;padding-top:0!important}
 html body .credits-page .tribute-card-shell{position:relative!important;overflow:visible!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
 html body .credits-page .tribute-card-head{display:flex!important;align-items:flex-end!important;justify-content:space-between!important;gap:12px!important;margin:0 1px 12px!important;padding:0!important}
 html body .credits-page .tribute-card-head span{display:block!important;color:rgba(255,255,255,.32)!important;font-size:8px!important;font-weight:800!important;letter-spacing:.12em!important}
