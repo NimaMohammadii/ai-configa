@@ -97,7 +97,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
       var mode=document.createElement('section');
       mode.id='creditsTributeMode';mode.className='credits-payment-mode credits-tribute-mode';mode.setAttribute('aria-hidden','true');
       mode.innerHTML='<section class="tribute-card-shell">'+
-        '<div class="tribute-card-head"><div><span>BANK CARD</span><h3>Choose your amount</h3></div><small>One-time payment</small></div>'+
+        '<div class="tribute-card-head"><div><h3>Choose your amount</h3></div></div>'+
         '<div id="tributeCurrencyPicker" class="tribute-currency-picker"></div>'+
         '<div id="tributeProductList" class="credits-pack-list"></div>'+
       '</section><p class="tribute-footnote"><span>●</span> Secure card checkout</p>';
@@ -185,7 +185,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     var page=q('creditsPage'),stars=q('creditsStarsMode'),toman=q('creditsTomanMode'),tribute=q('creditsTributeMode'),switcher=q('creditsPaymentSwitch');
     if(page){page.classList.remove('toman-payment-active');page.classList.add('tribute-payment-active')}if(stars)stars.classList.remove('active');if(toman){toman.classList.remove('active');toman.setAttribute('aria-hidden','true')}if(tribute){tribute.classList.add('active');tribute.setAttribute('aria-hidden','false')}if(switcher)switcher.setAttribute('data-mode','card');
     document.querySelectorAll('[data-action="set-credit-payment"]').forEach(function(button){var active=button.getAttribute('data-payment-mode')==='card';button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false')});
-    var head=page&&page.querySelector('.credits-page-head>div:first-child');if(head){var kicker=head.querySelector('span'),title=head.querySelector('h2');if(kicker)kicker.textContent='BANK CARD';if(title)title.textContent='Add USD balance';head.setAttribute('dir','ltr')}
+    var head=page&&page.querySelector('.credits-page-head>div:first-child');if(head){var title=head.querySelector('h2');if(title)title.textContent='Add USD balance';head.setAttribute('dir','ltr')}
     syncSwitchIndicator();renderCurrencies();renderProducts();haptic('light');
   }
 
