@@ -1,6 +1,6 @@
 import { formatUsdBalanceFromCredits, USD_PER_CREDIT } from "./credits.js";
 import { trackUser } from "./admin.js";
-import { getStarPackage, applySuccessfulStarsPayment, createCustomStarPackage, getStarPackageFromPayload, starInvoicePayload, applyStarPackageDiscount } from "./stars.js";
+import { getStarPackage, applySuccessfulStarsPayment, createCustomStarPackage, CUSTOM_STARS_MIN_USD, getStarPackageFromPayload, starInvoicePayload, applyStarPackageDiscount } from "./stars.js";
 import { getActiveWheelPurchaseDiscount } from "./reward-wheel.js";
 import { starsPackageInvoiceText, starsPackagesKeyboard, starsPackagesText, buyCreditsTextClean, customStarsPromptText, customStarsCancelKeyboard, customStarsInvoiceText, customStarsInvoiceKeyboard } from "./stars-ui.js";
 import { getState } from "./state.js";
@@ -90,7 +90,7 @@ export async function handleStarsTextInput(message, env) {
   await deleteMessage(env, chatId, message.message_id).catch(() => null);
 
   if (!credits) {
-    await editOrSend(env, chatId, Number(pending.message_id), customStarsPromptText(state) + "\n\nPlease send a positive USD amount like <code>0.50</code>", customStarsCancelKeyboard(state));
+    await editOrSend(env, chatId, Number(pending.message_id), customStarsPromptText(state) + "\n\nPlease send at least <code>1.00</code> USD", customStarsCancelKeyboard(state));
     return true;
   }
 
@@ -189,7 +189,7 @@ function parseUsdBalanceAmountToCredits(text) {
   normalized = normalized.replace(/,/g, "");
   if (!/^\d+(?:\.\d{1,6})?$/.test(normalized)) return null;
   const usd = Number(normalized);
-  if (!Number.isFinite(usd) || usd <= 0) return null;
+  if (!Number.isFinite(usd) || usd < CUSTOM_STARS_MIN_USD) return null;
   const credits = Math.max(1, Math.round(usd / USD_PER_CREDIT));
   if (!Number.isSafeInteger(credits) || credits > 1_000_000) return null;
   return credits;
