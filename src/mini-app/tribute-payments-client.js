@@ -30,6 +30,8 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   function q(id){return document.getElementById(id)}
   function number(value){return Math.max(0,Math.floor(Number(value)||0)).toLocaleString('en-US')}
   function formatUsd(credits){return '$'+(Math.max(0,Number(credits)||0)*.000178).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+  function usageEstimate(credits){var usd=Math.round(Math.max(0,Number(credits)||0)*.000178*100)/100;return{voiceMinutes:usd>0?Math.ceil(usd/.17):0,images:usd>0?Math.ceil(usd/.01-1e-9):0}}
+  function usageText(credits){var usage=usageEstimate(credits);return '≈'+number(usage.voiceMinutes)+' min voice · ≈'+number(usage.images)+' images'}
   function syncBalance(value){var balance=Math.max(0,Number(value)||0);try{window.dispatchEvent(new CustomEvent('vexa:credits-balance',{detail:{balance:balance,source:'tribute'}}))}catch(error){}}
   function toast(message){var node=q('toast');if(!node)return;node.textContent=String(message||'').replace(/[.!]+$/,'');node.classList.remove('show');void node.offsetWidth;node.classList.add('show');setTimeout(function(){node.classList.remove('show')},3200)}
   function haptic(kind){if(!tg||!tg.HapticFeedback)return;try{if(kind==='success'&&tg.HapticFeedback.notificationOccurred)tg.HapticFeedback.notificationOccurred('success');else if(kind==='error'&&tg.HapticFeedback.notificationOccurred)tg.HapticFeedback.notificationOccurred('error');else if(tg.HapticFeedback.impactOccurred)tg.HapticFeedback.impactOccurred(kind||'light')}catch(error){}}
@@ -97,7 +99,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
       var mode=document.createElement('section');
       mode.id='creditsTributeMode';mode.className='credits-payment-mode credits-tribute-mode';mode.setAttribute('aria-hidden','true');
       mode.innerHTML='<section class="tribute-card-shell">'+
-        '<div class="tribute-card-head"><div><span>CARD CHECKOUT</span><h3>Choose a credit pack</h3></div><small>One-time payment</small></div>'+
+        '<div class="tribute-card-head"><div><span>BANK CARD</span><h3>Choose your amount</h3></div><small>One-time payment</small></div>'+
         '<div id="tributeCurrencyPicker" class="tribute-currency-picker"></div>'+
         '<div id="tributeProductList" class="credits-pack-list"></div>'+
       '</section><p class="tribute-footnote"><span>●</span> Secure card checkout</p>';
@@ -153,13 +155,9 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function setCurrency(code){selectedCurrency=String(code||'usd').toLowerCase();renderCurrencies();renderProducts();haptic('light')}
 
-  function perThousandLabel(product){
-    var total=Math.max(1,Number(product.totalCredits||product.credits||0));
-    var code=String(product.currency||selectedCurrency||'usd').toLowerCase();
-    var symbol=currencyInfo(code).symbol||'';
-    var amount=code==='usd'&&product.usdPer1000!=null?Number(product.usdPer1000):(Math.max(0,Number(product.amountMinor)||0)/100)/(total/1000);
-    var digits=code==='rub'?1:2;
-    return symbol+amount.toLocaleString('en-US',{minimumFractionDigits:digits,maximumFractionDigits:digits})+' per $0.18 balance';
+  function usageLabel(product){
+    var total=Math.max(0,Number(product.totalCredits||0)||Number(product.credits||0)+Number(product.bonus||0));
+    return usageText(total);
   }
 
   function titleMarkup(product){
@@ -170,7 +168,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     if(Number(product.discountPercent||0)>0){
       return '<span class="credits-pack-title"><strong>'+formatUsd(total)+'</strong><em>'+number(product.discountPercent)+'% OFF</em></span>';
     }
-    return '<span class="credits-pack-title"><strong>'+formatUsd(total)+'</strong><small>USD balance</small></span>';
+    return '<span class="credits-pack-title"><strong>'+formatUsd(total)+'</strong></span>';
   }
 
   function priceMarkup(product){
@@ -188,8 +186,8 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
       var isPending=!!(pending&&String(pending.productId||'')===String(product.productId||'')&&product.productId);
       var action=isPending?'open-tribute-checkout':(product.checkoutReady?'buy-tribute-product':'catalog-tribute-product');
       return '<button class="credits-pack" type="button" data-action="'+action+'" data-product-id="'+String(product.productId||'')+'" data-catalog-id="'+String(product.catalogId||'')+'">'+
-        '<span class="credits-pack-main">'+titleMarkup(product)+'<span class="credits-pack-total">'+perThousandLabel(product)+'</span></span>'+
-        '<span class="credits-pack-price"><strong>'+priceMarkup(product)+'</strong><small>'+String(product.currency||'').toUpperCase()+' · card</small></span>'+
+        '<span class="credits-pack-main">'+titleMarkup(product)+'<span class="credits-pack-total">'+usageLabel(product)+'</span></span>'+
+        '<span class="credits-pack-price"><strong>'+priceMarkup(product)+'</strong></span>'+
       '</button>';
     }).join('');
   }
@@ -199,7 +197,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     var page=q('creditsPage'),stars=q('creditsStarsMode'),toman=q('creditsTomanMode'),tribute=q('creditsTributeMode'),switcher=q('creditsPaymentSwitch');
     if(page){page.classList.remove('toman-payment-active');page.classList.add('tribute-payment-active')}if(stars)stars.classList.remove('active');if(toman){toman.classList.remove('active');toman.setAttribute('aria-hidden','true')}if(tribute){tribute.classList.add('active');tribute.setAttribute('aria-hidden','false')}if(switcher)switcher.setAttribute('data-mode','card');
     document.querySelectorAll('[data-action="set-credit-payment"]').forEach(function(button){var active=button.getAttribute('data-payment-mode')==='card';button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false')});
-    var head=page&&page.querySelector('.credits-page-head>div:first-child');if(head){var kicker=head.querySelector('span'),title=head.querySelector('h2');if(kicker)kicker.textContent='BANK CARD';if(title)title.textContent='Buy credits';head.setAttribute('dir','ltr')}
+    var head=page&&page.querySelector('.credits-page-head>div:first-child');if(head){var kicker=head.querySelector('span'),title=head.querySelector('h2');if(kicker)kicker.textContent='BANK CARD';if(title)title.textContent='Add USD balance';head.setAttribute('dir','ltr')}
     syncSwitchIndicator();renderCurrencies();renderProducts();haptic('light');
   }
 
@@ -250,7 +248,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function restoreSuccessAfterReload(){
     var success=storageGet(SUCCESS_KEY);if(!success)return;storageRemove(SUCCESS_KEY);
-    setTimeout(function(){var pill=q('creditPill');if(pill&&typeof pill.click==='function')pill.click();setTimeout(function(){activateCardMode();toast(number(success.credits||0)+' credits added');syncBalance(success.balance||0)},90)},520)
+    setTimeout(function(){var pill=q('creditPill');if(pill&&typeof pill.click==='function')pill.click();setTimeout(function(){activateCardMode();toast(formatUsd(success.credits||0)+' balance added');syncBalance(success.balance||0)},90)},520)
   }
 
   document.body.addEventListener('click',function(event){
