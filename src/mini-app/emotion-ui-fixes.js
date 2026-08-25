@@ -4,7 +4,6 @@ export const EMOTION_UI_FIXES_JS = String.raw`
   if(telegramApp){
     try{
       telegramApp.setHeaderColor&&telegramApp.setHeaderColor('#000000');
-      if(telegramApp.requestFullscreen&&(!telegramApp.isVersionAtLeast||telegramApp.isVersionAtLeast('8.0'))&&!telegramApp.isFullscreen)telegramApp.requestFullscreen();
     }catch(error){}
   }
 
