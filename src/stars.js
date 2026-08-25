@@ -1,9 +1,11 @@
-import { addCredits, formatUsdBalanceFromCredits, USD_PER_1000_CREDITS } from "./credits.js";
+import { creditsForUsd, addCredits, formatUsdBalanceFromCredits, USD_PER_1000_CREDITS } from "./credits.js";
 import { requireDb } from "./state.js";
 
 const STAR_USD_PER_50 = 0.76;
 export const CUSTOM_STARS_CREDITS_PER_STAR = 1000 / 12;
 export const CUSTOM_STARS_USD_PER_1000_CREDITS = USD_PER_1000_CREDITS;
+export const CUSTOM_STARS_MIN_USD = 1;
+export const CUSTOM_STARS_MIN_CREDITS = creditsForUsd(CUSTOM_STARS_MIN_USD);
 
 export const STAR_PACKAGES = {
   s400: createStarPackage("s400", 400, 0, 0.0712, 5),
@@ -11,8 +13,11 @@ export const STAR_PACKAGES = {
   s33000: createStarPackage("s33000", 33000, 11000, 7.832, 528),
 };
 
-export const MINI_APP_STAR_PACKAGES = Object.freeze({
+const LEGACY_MINI_APP_STAR_PACKAGES = Object.freeze({
   mini_3000: createStarPackage("mini_3000", 3000, 0, 0.5, 36),
+});
+
+export const MINI_APP_STAR_PACKAGES = Object.freeze({
   mini_10000: createStarPackage("mini_10000", 10000, 600, 1.6, 118),
   mini_18000: createStarPackage("mini_18000", 18000, 2200, 3.2, 216),
   mini_30000: createStarPackage("mini_30000", 30000, 6000, 5.3, 360),
@@ -44,11 +49,12 @@ export const CARD_CREDIT_PACKAGES = Object.freeze({
 });
 
 export function getStarPackage(id) {
-  return STAR_PACKAGES[id] || MINI_APP_STAR_PACKAGES[id] || null;
+  return STAR_PACKAGES[id] || MINI_APP_STAR_PACKAGES[id] || LEGACY_MINI_APP_STAR_PACKAGES[id] || null;
 }
 
-export function createCustomStarPackage(credits, discount = null) {
-  const cleanCredits = Math.max(1, Math.floor(Number(credits || 0)));
+export function createCustomStarPackage(credits, discount = null, options = {}) {
+  const minimumCredits = options.allowLegacyBelowMinimum ? 1 : CUSTOM_STARS_MIN_CREDITS;
+  const cleanCredits = Math.max(minimumCredits, Math.floor(Number(credits || 0)));
   const baseStars = Math.max(80, Math.ceil(cleanCredits / CUSTOM_STARS_CREDITS_PER_STAR));
   const discountPercent = normalizeDiscountPercent(discount?.percent);
   const stars = discountPercent > 0 ? discountedStars(baseStars, discountPercent) : baseStars;
@@ -78,7 +84,11 @@ export function getStarPackageFromPayload(payload) {
     const [, credits, stars, percentRaw] = value.split(":");
     const paidStars = Number(stars);
     const percent = normalizeDiscountPercent(percentRaw);
-    const pack = createCustomStarPackage(credits, percent > 0 ? { percent } : null);
+    const pack = createCustomStarPackage(
+      credits,
+      percent > 0 ? { percent } : null,
+      { allowLegacyBelowMinimum: true }
+    );
     if (!Number.isSafeInteger(paidStars) || paidStars <= 0 || paidStars !== Number(pack.stars)) return null;
     return pack;
   }
