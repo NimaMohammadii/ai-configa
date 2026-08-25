@@ -25,7 +25,7 @@ export async function handleStarsCallback(query, env) {
   if (data === "buy_credits") {
     await clearPendingCustomStars(env, userId);
     await answerCallback(env, query.id);
-    await editOrSend(env, chatId, messageId, buyCreditsTextClean(state), localizedBuyCreditsKeyboard(state));
+    await editOrSend(env, chatId, messageId, buyCreditsTextClean(state), buyCreditsKeyboard(state));
     return;
   }
 
@@ -39,7 +39,7 @@ export async function handleStarsCallback(query, env) {
   if (data === "stars_cancel") {
     await clearPendingCustomStars(env, userId);
     await answerCallback(env, query.id);
-    await editOrSend(env, chatId, messageId, buyCreditsTextClean(state), localizedBuyCreditsKeyboard(state));
+    await editOrSend(env, chatId, messageId, buyCreditsTextClean(state), buyCreditsKeyboard(state));
     return;
   }
 
@@ -134,18 +134,6 @@ export async function handleStarsPayment(message, env) {
     await userMainKeyboard(env, userId, state)
   );
   return true;
-}
-
-function localizedBuyCreditsKeyboard(state = {}) {
-  const lang = state.language || "en";
-  if (lang === "fa") return buyCreditsKeyboard(state);
-
-  return {
-    inline_keyboard: [
-      [{ text: t(lang, "telegramStars"), callback_data: "buy_stars" }],
-      [{ text: t(lang, "back"), callback_data: "back_main" }],
-    ],
-  };
 }
 
 async function editOrSend(env, chatId, messageId, text, keyboard) {
