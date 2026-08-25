@@ -10,6 +10,15 @@ export const TOMAN_MIN_PURCHASE_CREDITS = Math.ceil((TOMAN_MIN_PURCHASE_AMOUNT /
 export const MINI_APP_BANK_CARD_URL = "https://ai-configa.vexaagent.workers.dev/mini-app?section=bank_card";
 export const MINIMAL_MIC_ICON = "🪼";
 
+const MINI_APP_ROOT = "https://ai-configa.vexaagent.workers.dev/mini-app";
+const PRIMARY_MODE_CONFIG = Object.freeze({
+  image: { title: "🎨 <b>Vexa Image</b>", button: "🎨 Create Image", section: "image" },
+  explore: { title: "✨ <b>Vexa Explore</b>", button: "✨ Explore Prompts", section: "explore" },
+  ai_chat: { title: "🤖 <b>Vexa AI Chat</b>", button: "🤖 Open AI Chat", section: "ai_chat" },
+  stt: { title: "📝 <b>Speech to Text</b>", button: "📝 Open Speech to Text", section: "stt" },
+  live: { title: "▶️ <b>Vexa Live</b>", button: "▶️ Open Vexa Live", section: "live" },
+});
+
 export const TOMAN_PACKAGES = {
   vexa_test: { credits: 400, bonus: 0, amount: "50,000", label: `🧪 Vexa Test — ${formatUsdBalanceFromCredits(400)}` },
   starter: { credits: 2000, bonus: 100, amount: "160,000", label: `⚡ Starter — ${formatUsdBalanceFromCredits(2100)} 🎁` },
@@ -34,6 +43,11 @@ export function languageKeyboard() {
 }
 
 export function startText(state) {
+  const mode = String(state?.appMode || "tts");
+  if (mode !== "tts" && PRIMARY_MODE_CONFIG[mode]) {
+    return [PRIMARY_MODE_CONFIG[mode].title, "", "Your main Vexa workspace is ready below."].join("\n");
+  }
+
   const lang = state.language || "en";
   const selectedVoice = state.voice || "none";
   return [
@@ -47,6 +61,11 @@ export function startText(state) {
 }
 
 export function mainKeyboard(state) {
+  const mode = String(state?.appMode || "tts");
+  if (mode !== "tts" && PRIMARY_MODE_CONFIG[mode]) {
+    return modeMainKeyboard(state, PRIMARY_MODE_CONFIG[mode]);
+  }
+
   const lang = state.language || "en";
   const selectedVoice = state.voice || "Nora";
   const voices = normalizeMenuVoices(state.savedVoices, selectedVoice);
@@ -58,23 +77,39 @@ export function mainKeyboard(state) {
     rows.push(row);
   }
 
-  rows.push([{ text: `${MINIMAL_MIC_ICON} ${t(lang, "moreVoices")}`, web_app: { url: "https://ai-configa.vexaagent.workers.dev/mini-app?section=voices" } }]);
+  rows.push([{ text: `${MINIMAL_MIC_ICON} ${t(lang, "moreVoices")}`, web_app: { url: `${MINI_APP_ROOT}?section=voices` } }]);
 
   rows.push([{ text: t(lang, "demo"), callback_data: "demo" }]);
   rows.push([
     { text: t(lang, "balance"), callback_data: "balance" },
     { text: t(lang, "buyCredits"), callback_data: "buy_credits" },
   ]);
-  rows.push([{ text: "Open Mini App 🐙", web_app: { url: "https://ai-configa.vexaagent.workers.dev/mini-app" } }]);
+  rows.push([{ text: "Open Mini App 🐙", web_app: { url: MINI_APP_ROOT } }]);
   return { inline_keyboard: rows };
 }
 
 export async function userMainKeyboard(env, userId, state) {
+  const mode = String(state?.appMode || "tts");
+  if (mode !== "tts") return mainKeyboard(state);
+
   let savedVoices = [];
   try {
     savedVoices = await getUserVoices(env, userId, state.voice || "Nora");
   } catch {}
   return mainKeyboard({ ...state, savedVoices });
+}
+
+function modeMainKeyboard(state, config) {
+  const lang = state.language || "en";
+  return {
+    inline_keyboard: [
+      [{ text: config.button, web_app: { url: `${MINI_APP_ROOT}?section=${encodeURIComponent(config.section)}` } }],
+      [
+        { text: t(lang, "balance"), callback_data: "balance" },
+        { text: t(lang, "buyCredits"), callback_data: "buy_credits" },
+      ],
+    ],
+  };
 }
 
 function normalizeMenuVoices(savedVoices, selectedVoice) {
