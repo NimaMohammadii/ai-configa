@@ -43,6 +43,7 @@ import {
   extractYouTubeUrl,
   getTelegramYouTubeOptions,
   prepareTelegramYouTubeMedia,
+  snapshotTelegramYouTubeMedia,
 } from "./youtube-download-exec.js";
 
 const SECTION_KEY = "live";
@@ -50,6 +51,7 @@ const SECTION_LABEL = "Vexa Live";
 const LOCK_ACTION = "vexa_live_lock_minutes";
 const YOUTUBE_CALLBACK_PREFIX = "ytdl:";
 const YOUTUBE_WORKFLOW_KIND = "youtube_download";
+const PROGRESS_EDIT_MIN_INTERVAL_MS = 1_100;
 
 let botUsernameCache = "";
 
@@ -139,34 +141,54 @@ async function handleYouTubeLinkMessage(message, env) {
     if (!member) return false;
   }
 
+  const copy = youtubeDownloadCopy(state.language);
+  let statusMessageId = 0;
+  try {
+    const status = await sendMessage(env, chatId, linkInspectStatusText(copy));
+    statusMessageId = Number(status?.message_id || 0);
+  } catch (error) {
+    console.warn("bot media initial status failed", error?.message || error);
+  }
+
   await trackUser(env, message.from).catch(() => null);
   await ensureBalanceRow(env, userId).catch(() => null);
 
-  const copy = youtubeDownloadCopy(state.language);
   try {
     const prepared = await getTelegramYouTubeOptions(env, userId, sourceUrl);
     const keyboard = youtubeDownloadKeyboard(prepared.options, copy);
     const details = prepared.options.length
       ? prepared.options.map((option) => option.label + " " + formatMegabytes(option.sizeBytes)).join(" · ")
       : "";
-    await sendMessage(
-      env,
-      chatId,
-      [
-        "<b>" + escapeHtml(copy.title) + "</b>",
-        "",
-        escapeHtml(prepared.title),
-        details ? escapeHtml(details) : "",
-        "",
-        escapeHtml(copy.choose),
-        "",
-        "<code>" + escapeHtml(prepared.sourceUrl) + "</code>",
-      ].filter(Boolean).join("\n"),
-      keyboard,
-    );
+    const resultText = [
+      "<b>" + escapeHtml(copy.title) + "</b>",
+      "",
+      escapeHtml(prepared.title),
+      details ? escapeHtml(details) : "",
+      "",
+      escapeHtml(copy.choose),
+      "",
+      "<code>" + escapeHtml(prepared.sourceUrl) + "</code>",
+    ].filter(Boolean).join("\n");
+
+    if (statusMessageId) {
+      const edited = await editMessage(env, chatId, statusMessageId, resultText, keyboard)
+        .then(() => true)
+        .catch(() => false);
+      if (!edited) await sendMessage(env, chatId, resultText, keyboard);
+    } else {
+      await sendMessage(env, chatId, resultText, keyboard);
+    }
   } catch (error) {
     console.error("bot YouTube inspect failed", error?.stack || error);
-    await sendMessage(env, chatId, "⚠️ " + escapeHtml(publicYouTubeMessage(error, copy.failed)));
+    const errorText = "⚠️ " + escapeHtml(publicYouTubeMessage(error, copy.failed));
+    if (statusMessageId) {
+      const edited = await editMessage(env, chatId, statusMessageId, errorText)
+        .then(() => true)
+        .catch(() => false);
+      if (!edited) await sendMessage(env, chatId, errorText);
+    } else {
+      await sendMessage(env, chatId, errorText);
+    }
   }
   return true;
 }
@@ -189,7 +211,12 @@ async function handleYouTubeDownloadCallback(query, env) {
     env,
     context.chatId,
     context.messageId,
-    "⏳ " + escapeHtml(copy.preparing) + "\n\n<code>" + escapeHtml(sourceUrl) + "</code>",
+    downloadProgressText(copy, {
+      phase: "preparing",
+      partNumber: 1,
+      percent: 0,
+      overallPercent: 0,
+    }),
     { inline_keyboard: [] },
   ).catch(() => null);
 
@@ -247,22 +274,104 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
     throw new Error("YouTube download workflow payload is invalid");
   }
 
+  const progressEditor = createProgressEditor(env, chatId, messageId);
+  const carriedDuration = positiveProgressNumber(payload?.prepared?.selected?.duration);
+  const carriedOverall = carriedDuration
+    ? clampPercent((startSeconds / carriedDuration) * 100)
+    : 0;
+
   try {
-    const prepared = await prepareTelegramYouTubeMedia(env, userId, sourceUrl, optionKey);
+    await progressEditor.update({
+      phase: "preparing",
+      partNumber,
+      percent: 0,
+      overallPercent: carriedOverall,
+    }, copy, true);
+    const prepared = await prepareTelegramYouTubeMedia(
+      env,
+      userId,
+      sourceUrl,
+      optionKey,
+      payload?.prepared || null,
+    );
+    const workflowPrepared = snapshotTelegramYouTubeMedia(prepared);
+    if (!workflowPrepared) throw new Error("Prepared media state is invalid");
+    const totalDuration = positiveProgressNumber(prepared?.selected?.duration);
+
+    let lastPrepareOverall = totalDuration
+      ? clampPercent((startSeconds / totalDuration) * 100)
+      : 0;
+    const prepareProgress = async (progress) => {
+      const partPercent = clampPercent(progress?.percent);
+      const progressDuration = positiveProgressNumber(progress?.durationSeconds);
+      const estimatedPartEnd = totalDuration && progressDuration
+        ? Math.min(totalDuration, startSeconds + progressDuration)
+        : startSeconds;
+      const candidateOverall = totalDuration && estimatedPartEnd > startSeconds
+        ? ((startSeconds / totalDuration) * 100) +
+          (((estimatedPartEnd - startSeconds) / totalDuration) * partPercent) / 100
+        : lastPrepareOverall;
+      const overallPercent = Math.max(lastPrepareOverall, clampPercent(candidateOverall));
+      lastPrepareOverall = overallPercent;
+      await progressEditor.update({
+        phase: progress?.phase === "adjusting" ? "adjusting" : "preparing",
+        partNumber,
+        percent: partPercent,
+        overallPercent,
+      }, copy);
+    };
+
     const media = await downloadTelegramYouTubeMediaPart(
       env,
       userId,
       prepared,
       startSeconds,
       partNumber,
+      prepareProgress,
     );
-    await sendTelegramMediaStream(env, chatId, media);
+
+    const partEnd = Number(media?.nextStart || 0);
+    const uploadedOverallBase = totalDuration
+      ? clampPercent((startSeconds / totalDuration) * 100)
+      : 0;
+    const uploadedOverallEnd = totalDuration && partEnd > startSeconds
+      ? clampPercent((partEnd / totalDuration) * 100)
+      : 100;
+
+    await progressEditor.update({
+      phase: "uploading",
+      partNumber: media.partNumber,
+      percent: 0,
+      overallPercent: uploadedOverallBase,
+      sentBytes: 0,
+      totalBytes: media.sizeBytes,
+    }, copy, true);
+
+    await sendTelegramMediaStream(env, chatId, media, async (upload) => {
+      const uploadPercent = clampPercent(upload?.percent);
+      const overallPercent = uploadedOverallBase +
+        ((uploadedOverallEnd - uploadedOverallBase) * uploadPercent / 100);
+      await progressEditor.update({
+        phase: "uploading",
+        partNumber: media.partNumber,
+        percent: uploadPercent,
+        overallPercent,
+        sentBytes: upload?.sentBytes,
+        totalBytes: upload?.totalBytes || media.sizeBytes,
+      }, copy);
+    });
 
     if (!media.done) {
       const nextStart = Number(media.nextStart || 0);
       if (!env.AI_CODING_WORKFLOW || !Number.isFinite(nextStart) || nextStart <= startSeconds) {
         throw new Error("Could not continue the Telegram video download");
       }
+      await progressEditor.update({
+        phase: "sent",
+        partNumber: media.partNumber,
+        percent: 100,
+        overallPercent: uploadedOverallEnd,
+      }, copy, true);
       const workflowId = "yt-" + crypto.randomUUID();
       await env.AI_CODING_WORKFLOW.create({
         id: workflowId,
@@ -276,39 +385,32 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
           language,
           startSeconds: nextStart,
           partNumber: media.partNumber + 1,
+          prepared: workflowPrepared,
         },
         retention: { successRetention: "1 day", errorRetention: "1 day" },
       });
-      await editMessage(
-        env,
-        chatId,
-        messageId,
-        "⏳ " + escapeHtml(copy.preparing) + " · Part " + media.partNumber + " sent",
-      ).catch(() => null);
       return { ok: true, label: media.label, part: media.partNumber, continued: true };
     }
 
-    const partsText = media.partNumber > 0 ? " · " + media.partNumber + " parts" : "";
-    await editMessage(
-      env,
-      chatId,
-      messageId,
-      "✅ " + escapeHtml(copy.sent) + " · " + escapeHtml(media.label) + partsText,
-    ).catch(() => null);
+    await progressEditor.update({
+      phase: "complete",
+      partNumber: media.partNumber,
+      percent: 100,
+      overallPercent: 100,
+      label: media.label,
+    }, copy, true);
     return { ok: true, label: media.label, parts: media.partNumber || 1 };
   } catch (error) {
     console.error("bot YouTube workflow download failed", error?.stack || error);
-    await editMessage(
-      env,
-      chatId,
-      messageId,
+    await progressEditor.editRaw(
       "⚠️ " + escapeHtml(publicYouTubeMessage(error, copy.failed)),
+      true,
     ).catch(() => null);
     throw error;
   }
 }
 
-async function sendTelegramMediaStream(env, chatId, media) {
+async function sendTelegramMediaStream(env, chatId, media, onProgress = null) {
   const method = media.kind === "audio" ? "sendAudio" : "sendVideo";
   const fileField = media.kind === "audio" ? "audio" : "video";
   const boundary = "----Vexa" + crypto.randomUUID().replace(/-/g, "");
@@ -357,6 +459,11 @@ async function sendTelegramMediaStream(env, chatId, media) {
       if (!next.done) {
         if (next.value?.byteLength) {
           sentBytes += next.value.byteLength;
+          const totalBytes = positiveProgressNumber(media.sizeBytes);
+          if (typeof onProgress === "function" && totalBytes > 0) {
+            const percent = Math.min(99, (sentBytes / totalBytes) * 100);
+            Promise.resolve(onProgress({ percent, sentBytes, totalBytes })).catch(() => null);
+          }
           if (sentBytes > maxBytes) {
             try { await source.cancel("telegram_file_limit"); } catch (error) {}
             controller.error(new Error("This download is too large for Telegram"));
@@ -417,6 +524,10 @@ async function sendTelegramMediaStream(env, chatId, media) {
         ? "Telegram media upload failed: " + description
         : "Telegram media upload failed (HTTP " + response.status + ", " + sentBytes + " bytes sent)");
     }
+    if (typeof onProgress === "function") {
+      const totalBytes = positiveProgressNumber(media.sizeBytes) || sentBytes;
+      await onProgress({ percent: 100, sentBytes: totalBytes, totalBytes });
+    }
     return data.result;
   } catch (error) {
     if (controller.signal.aborted) throw new Error("Telegram media upload timed out");
@@ -456,6 +567,14 @@ function youtubeDownloadCopy(language) {
       preparing: "در حال آماده‌سازی فایل…",
       sent: "فایل آماده شد",
       failed: "دانلود یوتیوب فعلاً انجام نشد",
+      received: "لینک دریافت شد",
+      inspecting: "در حال بررسی ویدیو…",
+      preparingPart: "در حال آماده‌سازی بخش",
+      adjustingPart: "در حال تنظیم اندازه بخش",
+      uploadingPart: "در حال ارسال بخش",
+      partSent: "بخش ارسال شد",
+      overall: "کل ویدیو",
+      remaining: "باقی‌مانده",
     };
   }
   return {
@@ -465,7 +584,110 @@ function youtubeDownloadCopy(language) {
     preparing: "Preparing the file…",
     sent: "File ready",
     failed: "YouTube download is temporarily unavailable",
+    received: "Link received",
+    inspecting: "Checking video…",
+    preparingPart: "Preparing part",
+    adjustingPart: "Adjusting part size",
+    uploadingPart: "Sending part",
+    partSent: "Part sent",
+    overall: "Whole video",
+    remaining: "Remaining",
   };
+}
+
+function linkInspectStatusText(copy) {
+  return "🔗 " + escapeHtml(copy.received) + "\n🔎 " + escapeHtml(copy.inspecting);
+}
+
+function createProgressEditor(env, chatId, messageId) {
+  let lastEditAt = 0;
+  let lastText = "";
+  let queue = Promise.resolve();
+
+  const editRaw = (text, force = false) => {
+    const value = String(text || "");
+    const now = Date.now();
+    if (!force && (value === lastText || now - lastEditAt < PROGRESS_EDIT_MIN_INTERVAL_MS)) {
+      return queue;
+    }
+    lastText = value;
+    lastEditAt = now;
+    queue = queue
+      .catch(() => null)
+      .then(() => editMessage(env, chatId, messageId, value).catch((error) => {
+        console.warn("bot media progress edit failed", error?.message || error);
+      }));
+    return queue;
+  };
+
+  return {
+    update(state, copy, force = false) {
+      return editRaw(downloadProgressText(copy, state), force);
+    },
+    editRaw,
+  };
+}
+
+function downloadProgressText(copy, state = {}) {
+  const phase = String(state.phase || "preparing");
+  const partNumber = Math.max(1, Math.floor(Number(state.partNumber || 1)));
+  const percent = clampPercent(state.percent);
+  const overallPercent = clampPercent(state.overallPercent);
+  const remainingPercent = Math.max(0, 100 - Math.round(overallPercent));
+  let header;
+  if (phase === "uploading") {
+    header = "📤 " + copy.uploadingPart + " " + partNumber;
+  } else if (phase === "adjusting") {
+    header = "♻️ " + copy.adjustingPart + " " + partNumber;
+  } else if (phase === "sent") {
+    header = "✅ " + copy.partSent + " " + partNumber;
+  } else if (phase === "complete") {
+    const label = state.label ? " · " + escapeHtml(state.label) : "";
+    return "✅ " + escapeHtml(copy.sent) + label + "\n" +
+      progressBar(100) + " 100%";
+  } else {
+    header = "⚙️ " + copy.preparingPart + " " + partNumber;
+  }
+
+  const lines = [
+    escapeHtml(header),
+    progressBar(percent) + " " + Math.round(percent) + "%",
+  ];
+  if (phase === "uploading") {
+    const transferred = formatTransferredMegabytes(state.sentBytes, state.totalBytes);
+    if (transferred) lines.push(transferred);
+  }
+  lines.push(
+    escapeHtml(copy.overall) + ": " + Math.round(overallPercent) + "%",
+    escapeHtml(copy.remaining) + ": " + remainingPercent + "%",
+  );
+  return lines.join("\n");
+}
+
+function progressBar(percent) {
+  const filled = Math.max(0, Math.min(10, Math.round(clampPercent(percent) / 10)));
+  return "█".repeat(filled) + "░".repeat(10 - filled);
+}
+
+function clampPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(0, Math.min(100, number));
+}
+
+function positiveProgressNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function formatTransferredMegabytes(sentBytes, totalBytes) {
+  const sent = positiveProgressNumber(sentBytes);
+  const total = positiveProgressNumber(totalBytes);
+  if (!total) return "";
+  const sentMb = sent / (1024 * 1024);
+  const totalMb = total / (1024 * 1024);
+  return sentMb.toFixed(sentMb >= 10 ? 1 : 2) + " MB / " +
+    totalMb.toFixed(totalMb >= 10 ? 1 : 2) + " MB";
 }
 
 function formatMegabytes(bytes) {
