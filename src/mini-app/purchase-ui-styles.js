@@ -10,6 +10,11 @@ html body .credits-page .credits-page-head p{display:none!important}
 html body .credits-page .tribute-section-copy>div>span{display:none!important}
 html body .credits-page .tribute-section-copy>div>h3{margin-top:0!important}
 
+/* Telegram Stars accents restored from the original purchase UI. */
+html body .credits-page #creditsStarsMode .credits-pack-price strong i,
+html body .credits-page #creditsStarsMode .credits-footnote span{color:#ffc52e!important;text-shadow:0 0 14px rgba(255,184,29,.34)!important}
+html body .credits-page #creditsStarsMode .credits-pack.featured .credits-pack-title em{background:linear-gradient(135deg,#ffe77a,#ffb313)!important;color:#1d1200!important}
+
 /* Premium custom-credit slider. */
 @property --credits-range-progress{syntax:"<percentage>";inherits:false;initial-value:0%}
 html body .credits-page .credits-amount-range{
