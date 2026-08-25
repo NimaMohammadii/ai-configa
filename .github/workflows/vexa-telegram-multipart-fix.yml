@@ -1,0 +1,46 @@
+name: Apply Telegram multipart fix
+
+on:
+  push:
+    branches:
+      - vexa/tmp-telegram-multipart-fix
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply tested multipart files to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_main="4e155c4813dc2519da960c6dbce0fa7e0dceb22c"
+          cp .vexa-tmp/youtube-download-exec.js.gz.b64 /tmp/youtube.b64
+          cp .vexa-tmp/bot-bridge.js.gz.b64 /tmp/bot.b64
+          cp .vexa-tmp/ai-background-workflow-v2.js.gz.b64 /tmp/workflow.b64
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$expected_main"
+          git checkout -B main origin/main
+          base64 -d /tmp/youtube.b64 | gzip -dc > src/mini-app/vexa-live/youtube-download-exec.js
+          base64 -d /tmp/bot.b64 | gzip -dc > src/mini-app/vexa-live/bot-bridge.js
+          base64 -d /tmp/workflow.b64 | gzip -dc > src/ai-background-workflow-v2.js
+          node --check src/mini-app/vexa-live/youtube-download-exec.js
+          node --check src/mini-app/vexa-live/bot-bridge.js
+          node --check src/ai-background-workflow-v2.js
+          actual="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' src/ai-background-workflow-v2.js src/mini-app/vexa-live/bot-bridge.js src/mini-app/vexa-live/youtube-download-exec.js | sort)"
+          test "$actual" = "$expected"
+          test "$(git hash-object src/mini-app/vexa-live/youtube-download-exec.js)" = "8b5b8b31c74ec0fbaeb78b17ba2c0db38cf2374e"
+          test "$(git hash-object src/mini-app/vexa-live/bot-bridge.js)" = "0a7b0e88ab4eaa6b80dec38022e762c8a8eba949"
+          test "$(git hash-object src/ai-background-workflow-v2.js)" = "54ee0606de9f9418b31b05716ba48feaa1a9302f"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ai-background-workflow-v2.js src/mini-app/vexa-live/bot-bridge.js src/mini-app/vexa-live/youtube-download-exec.js
+          git commit -m "Fix Telegram multipart continuation and real progress"
+          git push origin HEAD:main
