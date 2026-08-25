@@ -105,6 +105,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
     style.id='vexaLiquidMetalStyles';
     style.textContent=[
       'button.vexa-liquid-metal-button{position:relative!important;background:transparent!important;border:0!important;outline:0!important;box-shadow:none!important;overflow:visible!important;border-radius:100px!important;color:#666!important;font-size:14px!important;font-weight:400!important;text-shadow:0 1px 2px rgba(0,0,0,.5)!important;opacity:1!important;transform:none!important;perspective:1000px!important;perspective-origin:50% 50%!important;transform-style:preserve-3d!important;isolation:isolate!important}',
+      'button.vexa-liquid-metal-button#convertButton,button.vexa-liquid-metal-button#generateImageButton{width:142px!important;min-width:142px!important;max-width:142px!important;height:46px!important;min-height:46px!important;max-height:46px!important;flex:0 0 46px!important;margin-left:auto!important;margin-right:auto!important;padding:0!important;cursor:pointer!important}',
       'button.vexa-liquid-metal-button.empty,button.vexa-liquid-metal-button:disabled{opacity:1!important}',
       'button.vexa-liquid-metal-button:active{transform:none!important}',
       'button.vexa-liquid-metal-button::before{content:none!important;display:none!important}',
@@ -164,7 +165,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
       button.classList.add('vexa-liquid-metal-button');
 
       var shaderMount=new library.ShaderMount(shaderHost,library.liquidMetalFragmentShader,{
-        u_repetition:1,
+        u_repetition:4,
         u_softness:.5,
         u_shiftRed:.3,
         u_shiftBlue:.3,
@@ -172,7 +173,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
         u_contour:0,
         u_angle:45,
         u_scale:8,
-        u_shape:0,
+        u_shape:1,
         u_offsetX:.1,
         u_offsetY:-.1
       },undefined,.6);
@@ -353,7 +354,7 @@ export const MINI_APP_HTML = `<!doctype html>
           </div>
           <input id="imageFile" class="image-file-input" type="file" accept="image/jpeg,image/png,image/webp" multiple/>
           <div id="imageSources" class="image-sources" aria-hidden="true"><div class="image-sources-head"><span id="imageSourcesCount">0 selected</span><small>Up to 4 photos</small></div><div id="imageSourcesGrid" class="image-sources-grid"></div></div>
-          <button id="generateImageButton" class="image-generate" data-action="generate-image" type="button"><span id="generateImageLabel">Generate image</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button id="generateImageButton" class="image-generate" data-action="generate-image" type="button"><span id="generateImageLabel">Generate image</span></button>
           <section id="imageExplore" class="image-explore" aria-hidden="true"><div class="image-explore-head"><button class="image-explore-title" data-action="open-explore-page" type="button">Explore</button><small id="imageExploreCount">0 cards</small></div><div id="imageExploreGrid" class="image-explore-grid"></div></section>
           <div id="imageResult" class="image-result" aria-hidden="true"><div class="image-result-frame"><img id="imageResultPreview" alt="Generated image"/><div class="image-result-shine" aria-hidden="true"></div></div><div class="image-result-actions"><button data-action="share-image" type="button"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 15.5V4m0 0L7.8 8.2M12 4l4.2 4.2M5.5 13.5v4A2.5 2.5 0 0 0 8 20h8a2.5 2.5 0 0 0 2.5-2.5v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Share</span></button><button data-action="delete-image" type="button" aria-label="Delete image"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M5.5 7.5h13M9.5 7.5V5.8c0-.72.58-1.3 1.3-1.3h2.4c.72 0 1.3.58 1.3 1.3v1.7m-7.1 0 .72 11.1c.06.92.82 1.64 1.74 1.64h4.78c.92 0 1.68-.72 1.74-1.64l.72-11.1M10.2 11v5.8m3.6-5.8v5.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Delete</span></button></div></div>
           <section id="imageHistorySection" class="image-history-section" aria-hidden="true"><div class="image-history-head"><span>CREATIONS</span><small id="imageHistoryCount">0</small></div><div id="imageHistoryGrid" class="image-history-grid"></div></section>
