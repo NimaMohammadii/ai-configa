@@ -1,7 +1,7 @@
 export const PURCHASE_UI_CSS = String.raw`
-/* Admin-only AI chat entry: fail closed until the authenticated session confirms admin. */
-html body #aiChatOpen{display:none!important}
-html body.ai-chat-admin #aiChatOpen{display:grid!important}
+/* Admin-only primary entries: fail closed until the authenticated session confirms admin. */
+html body #aiChatOpen,html body #vexaLiveOpen{display:none!important}
+html body.ai-chat-admin #aiChatOpen,html body.ai-chat-admin #vexaLiveOpen{display:grid!important}
 
 /* Buy Credits refinements */
 html body .credits-page .credits-page-head>div{display:none!important}
