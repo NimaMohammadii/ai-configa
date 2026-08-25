@@ -17,7 +17,6 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   var SUCCESS_KEY='vexa_tribute_success_v2';
   var directCardLaunch=bankCardLaunchRequested();
   var directLaunchObserver=null;
-  var tributeConfigResolved=false;
   var directLaunchApplied=false;
   var restoredSuccess=null;
 
@@ -208,7 +207,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   }
 
   function maybeActivateDirectCardLaunch(){
-    if(!directCardLaunch||directLaunchApplied||!tributeConfigResolved)return;
+    if(!directCardLaunch||directLaunchApplied)return;
     var page=q('creditsPage');
     if(!page||!page.classList.contains('show'))return;
     directLaunchApplied=true;
@@ -301,9 +300,9 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     if(!installUi()){if(attempt<30)setTimeout(function(){boot(attempt+1)},80);return}
     watchDirectCardLaunch();
     api('/mini-app/api/tribute-config',{}).then(function(data){
-      applyConfig(data);tributeConfigResolved=true;maybeActivateDirectCardLaunch();restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(verifyPendingAfterReturn,1100)
+      applyConfig(data);maybeActivateDirectCardLaunch();restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(verifyPendingAfterReturn,1100)
     }).catch(function(){
-      applyConfig({configured:false,available:false,products:[],currencies:CURRENCIES});tributeConfigResolved=true;maybeActivateDirectCardLaunch()
+      applyConfig({configured:false,available:false,products:[],currencies:CURRENCIES});maybeActivateDirectCardLaunch()
     })
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){boot(0)},{once:true});else boot(0);
