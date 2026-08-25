@@ -23,12 +23,6 @@ import { handlePreCheckout, handleStarsCallback, handleStarsPayment, handleStars
 import { handleSupportMessage } from "./support-flow-strict.js";
 import { handleVoiceTransformMessage } from "./voice-transform.js";
 import { handleExploreMediaRequest, isExploreMediaRequest } from "./explore-media.js";
-import {
-  handlePaymentHeroAdminCallback,
-  handlePaymentHeroAdminMessage,
-  isPaymentHeroAdminCallback,
-  refreshPaymentHeroAdminMain,
-} from "./payment-hero.js";
 
 export default {
   async scheduled(event, env, ctx) {
@@ -101,8 +95,6 @@ export default {
         ctx.waitUntil(handleDemoCallback(update.callback_query, env).catch(logError));
       } else if (isStarsCallback(update.callback_query.data)) {
         ctx.waitUntil(handleStarsCallback(update.callback_query, env).catch(logError));
-      } else if (isPaymentHeroAdminCallback(update.callback_query.data)) {
-        ctx.waitUntil(handlePaymentHeroAdminCallback(update.callback_query, env).catch(logError));
       } else {
         ctx.waitUntil(handleCallbackAndPin(update.callback_query, env).catch(logError));
       }
@@ -118,8 +110,6 @@ async function processScheduledJobs(env) {
 }
 
 async function handleMessageWithSupport(message, env) {
-  if (await handlePaymentHeroAdminMessage(message, env)) return;
-
   if (message.text?.trim() === "/support" && await isAdmin(env, message.from?.id)) {
     await handleMessageAndPin(message, env);
     return;
@@ -161,7 +151,6 @@ function isAdminPhotoAction(action) {
 
 async function handleMessageAndPin(message, env) {
   await handleMessage(message, env);
-  await refreshPaymentHeroAdminMain(message, env).catch(logError);
 
   const text = message.text ? message.text.trim() : "";
   if (text !== "/start") return;
