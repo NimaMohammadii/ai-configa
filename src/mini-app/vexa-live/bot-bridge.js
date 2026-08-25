@@ -291,11 +291,18 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
     const workflowPrepared = snapshotTelegramYouTubeMedia(prepared);
     if (!workflowPrepared) throw new Error("Prepared media state is invalid");
 
-    const prepareProgress = (progress) => {
+    let shownPercent = 0;
+    const updatePercent = (value) => {
+      const percent = Math.min(99, Math.round(clampPercent(value)));
+      if (percent <= shownPercent) return;
+      shownPercent = percent;
       progressEditor.update({
         phase: "preparing",
-        percent: clampPercent(progress?.percent),
+        percent: shownPercent,
       }, copy).catch(() => null);
+    };
+    const prepareProgress = (progress) => {
+      updatePercent(progress?.percent);
     };
 
     const media = await downloadTelegramYouTubeMediaPart(
@@ -307,18 +314,23 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
       prepareProgress,
     );
 
+    await sendTelegramMediaStream(env, chatId, media, (upload) => {
+      updatePercent(upload?.percent);
+    });
+    shownPercent = 100;
     await progressEditor.update({ phase: "preparing", percent: 100 }, copy, true);
-    await sendTelegramMediaStream(env, chatId, media);
 
     if (!media.done) {
       const nextStart = Number(media.nextStart || 0);
-      if (!env.AI_CODING_WORKFLOW || !Number.isFinite(nextStart) || nextStart <= startSeconds) {
+      if (!Number.isFinite(nextStart) || nextStart <= startSeconds) {
         throw new Error("Could not continue the Telegram video download");
       }
-      const workflowId = "yt-" + crypto.randomUUID();
-      await env.AI_CODING_WORKFLOW.create({
-        id: workflowId,
-        params: {
+      return {
+        ok: true,
+        label: media.label,
+        part: media.partNumber,
+        continued: true,
+        nextPayload: {
           kind: YOUTUBE_WORKFLOW_KIND,
           userId,
           chatId,
@@ -330,9 +342,7 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
           partNumber: media.partNumber + 1,
           prepared: workflowPrepared,
         },
-        retention: { successRetention: "1 day", errorRetention: "1 day" },
-      });
-      return { ok: true, label: media.label, part: media.partNumber, continued: true };
+      };
     }
 
     await progressEditor.update({ phase: "complete", percent: 100 }, copy, true);
@@ -347,7 +357,7 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
   }
 }
 
-async function sendTelegramMediaStream(env, chatId, media) {
+async function sendTelegramMediaStream(env, chatId, media, onProgress = null) {
   const method = media.kind === "audio" ? "sendAudio" : "sendVideo";
   const fileField = media.kind === "audio" ? "audio" : "video";
   const boundary = "----Vexa" + crypto.randomUUID().replace(/-/g, "");
@@ -396,6 +406,11 @@ async function sendTelegramMediaStream(env, chatId, media) {
       if (!next.done) {
         if (next.value?.byteLength) {
           sentBytes += next.value.byteLength;
+          const totalBytes = Number(media.sizeBytes || 0);
+          if (typeof onProgress === "function" && Number.isFinite(totalBytes) && totalBytes > 0) {
+            const percent = Math.min(99, (sentBytes / totalBytes) * 100);
+            Promise.resolve(onProgress({ percent, sentBytes, totalBytes })).catch(() => null);
+          }
           if (sentBytes > maxBytes) {
             try { await source.cancel("telegram_file_limit"); } catch (error) {}
             controller.error(new Error("This download is too large for Telegram"));
@@ -455,6 +470,14 @@ async function sendTelegramMediaStream(env, chatId, media) {
       throw new Error(description
         ? "Telegram media upload failed: " + description
         : "Telegram media upload failed (HTTP " + response.status + ", " + sentBytes + " bytes sent)");
+    }
+    if (typeof onProgress === "function") {
+      const totalBytes = Number(media.sizeBytes || 0);
+      await onProgress({
+        percent: 100,
+        sentBytes: Number.isFinite(totalBytes) && totalBytes > 0 ? totalBytes : sentBytes,
+        totalBytes: Number.isFinite(totalBytes) && totalBytes > 0 ? totalBytes : sentBytes,
+      });
     }
     return data.result;
   } catch (error) {
