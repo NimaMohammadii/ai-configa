@@ -11,20 +11,20 @@ html body .credits-page .tribute-section-copy>div>span{display:none!important}
 html body .credits-page .tribute-section-copy>div>h3{margin-top:0!important}
 html body .credits-page .credits-pack{
   position:relative!important;overflow:hidden!important;isolation:isolate!important;
-  border:1px solid rgba(255,255,255,.07)!important;background:rgba(255,255,255,.042)!important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 10px 28px rgba(0,0,0,.20)!important;
+  min-height:74px!important;padding:14px 15px!important;
+  border:1px solid rgba(255,255,255,.065)!important;border-radius:14px!important;
+  background:#111114!important;box-shadow:none!important;
   backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
-  transition:transform .22s cubic-bezier(.16,1,.3,1),background-color .22s ease,border-color .22s ease,box-shadow .22s ease!important
+  transition:transform .18s cubic-bezier(.16,1,.3,1),background-color .2s ease,border-color .2s ease!important
 }
 html body .credits-page .credits-pack::before{content:none!important;display:none!important}
+html body .credits-page .credits-pack.featured{border-color:rgba(255,255,255,.075)!important;background:#121217!important}
 html body .credits-page .credits-pack:active{
-  transform:scale(.987)!important;border-color:rgba(255,255,255,.11)!important;background:rgba(255,255,255,.06)!important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 6px 18px rgba(0,0,0,.18)!important
+  transform:translateY(1px) scale(.992)!important;border-color:rgba(255,255,255,.10)!important;background:#0e0e11!important;box-shadow:none!important
 }
 @media(hover:hover){
   html body .credits-page .credits-pack:hover{
-    transform:translateY(-1px)!important;border-color:rgba(255,255,255,.09)!important;background:rgba(255,255,255,.05)!important;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.052),0 14px 32px rgba(0,0,0,.23)!important
+    transform:none!important;border-color:rgba(255,255,255,.095)!important;background:#15151a!important;box-shadow:none!important
   }
 }
 
