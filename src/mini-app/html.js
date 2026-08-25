@@ -104,7 +104,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
     var style=doc.createElement('style');
     style.id='vexaLiquidMetalStyles';
     style.textContent=[
-      'button.vexa-liquid-metal-button{position:relative!important;width:142px!important;min-width:142px!important;max-width:142px!important;height:46px!important;min-height:46px!important;flex:0 0 142px!important;margin-left:auto!important;margin-right:auto!important;padding:0!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;background:transparent!important;border:0!important;outline:0!important;box-shadow:none!important;overflow:visible!important;border-radius:100px!important;color:#666!important;font-size:14px!important;font-weight:400!important;text-shadow:0 1px 2px rgba(0,0,0,.5)!important;opacity:1!important;transform:none!important;perspective:1000px!important;perspective-origin:50% 50%!important;transform-style:preserve-3d!important;isolation:isolate!important;cursor:pointer!important}',
+      'button.vexa-liquid-metal-button{position:relative!important;background:transparent!important;border:0!important;outline:0!important;box-shadow:none!important;overflow:visible!important;border-radius:100px!important;color:#666!important;font-size:14px!important;font-weight:400!important;text-shadow:0 1px 2px rgba(0,0,0,.5)!important;opacity:1!important;transform:none!important;perspective:1000px!important;perspective-origin:50% 50%!important;transform-style:preserve-3d!important;isolation:isolate!important}',
       'button.vexa-liquid-metal-button.empty,button.vexa-liquid-metal-button:disabled{opacity:1!important}',
       'button.vexa-liquid-metal-button:active{transform:none!important}',
       'button.vexa-liquid-metal-button::before{content:none!important;display:none!important}',
@@ -164,7 +164,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
       button.classList.add('vexa-liquid-metal-button');
 
       var shaderMount=new library.ShaderMount(shaderHost,library.liquidMetalFragmentShader,{
-        u_repetition:4,
+        u_repetition:1,
         u_softness:.5,
         u_shiftRed:.3,
         u_shiftBlue:.3,
@@ -172,7 +172,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
         u_contour:0,
         u_angle:45,
         u_scale:8,
-        u_shape:1,
+        u_shape:0,
         u_offsetX:.1,
         u_offsetY:-.1
       },undefined,.6);
