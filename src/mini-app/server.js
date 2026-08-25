@@ -7,7 +7,6 @@ import { buildPreparedReferralShare, getReferralLanguage, getReferralStatus, par
 import { MINI_APP_STAR_PACKAGES, createCustomStarPackage, applyStarPackageDiscount, starInvoicePayload } from "../stars.js";
 import { getActiveWheelPurchaseDiscount } from "../reward-wheel.js";
 import { tgForm, tgJson } from "../telegram-api.js";
-import { handlePaymentHeroImageRequest, isPaymentHeroImageRequest } from "../payment-hero.js";
 import { dynamicPricingPayload, handleUsagePricedImageRequest, isUsagePricedImageRequest } from "../image-usage-pricing.js";
 import { PURCHASE_UI_CSS } from "./purchase-ui-styles.js";
 import { REFERRAL_UI_PATCH } from "./referral-ui.js";
@@ -20,10 +19,6 @@ export { isMiniAppRequest };
 
 export async function handleMiniAppRequest(request, env) {
   const url = new URL(request.url);
-
-  if (isPaymentHeroImageRequest(request)) {
-    return handlePaymentHeroImageRequest(request, env);
-  }
 
   if (isUsagePricedImageRequest(request)) {
     return handleUsagePricedImageRequest(request, env);
