@@ -9,24 +9,6 @@ html body .credits-page .credits-page-head{margin-bottom:32px!important}
 html body .credits-page .credits-page-head p{display:none!important}
 html body .credits-page .tribute-section-copy>div>span{display:none!important}
 html body .credits-page .tribute-section-copy>div>h3{margin-top:0!important}
-html body .credits-page .credits-pack{
-  position:relative!important;overflow:hidden!important;isolation:isolate!important;
-  min-height:74px!important;padding:14px 15px!important;
-  border:1px solid rgba(255,255,255,.065)!important;border-radius:14px!important;
-  background:#111114!important;box-shadow:none!important;
-  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
-  transition:transform .18s cubic-bezier(.16,1,.3,1),background-color .2s ease,border-color .2s ease!important
-}
-html body .credits-page .credits-pack::before{content:none!important;display:none!important}
-html body .credits-page .credits-pack.featured{border-color:rgba(255,255,255,.075)!important;background:#121217!important}
-html body .credits-page .credits-pack:active{
-  transform:translateY(1px) scale(.992)!important;border-color:rgba(255,255,255,.10)!important;background:#0e0e11!important;box-shadow:none!important
-}
-@media(hover:hover){
-  html body .credits-page .credits-pack:hover{
-    transform:none!important;border-color:rgba(255,255,255,.095)!important;background:#15151a!important;box-shadow:none!important
-  }
-}
 
 /* Premium custom-credit slider. */
 @property --credits-range-progress{syntax:"<percentage>";inherits:false;initial-value:0%}
