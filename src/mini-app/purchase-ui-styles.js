@@ -95,54 +95,11 @@ html body .credits-page .tribute-card-head span{display:block!important;color:rg
 html body .credits-page .tribute-card-head h3{margin:4px 0 0!important;font-size:19px!important;font-weight:720!important;letter-spacing:-.045em!important}
 html body .credits-page .tribute-card-head small{padding-bottom:2px!important;color:rgba(255,255,255,.34)!important;font-size:8px!important;white-space:nowrap!important}
 
-/* Bank Card tiers: quiet material, crisp hierarchy, restrained color. */
-html body .credits-page #tributeProductList{gap:9px!important}
-html body .credits-page .credits-tribute-mode .credits-pack{
-  --tier-rgb:185,191,200;
-  position:relative!important;width:100%!important;min-height:78px!important;padding:14px 15px!important;overflow:hidden!important;
-  border:1px solid rgba(255,255,255,.085)!important;border-radius:16px!important;
-  background:linear-gradient(180deg,rgba(255,255,255,.026),rgba(255,255,255,.009)),#111214!important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.055),inset 0 -1px 0 rgba(255,255,255,.015),0 7px 18px rgba(0,0,0,.18)!important;
-  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
-  text-align:left!important;-webkit-tap-highlight-color:transparent;transform:translateZ(0);will-change:transform,background,border-color;
-  transition:transform .2s cubic-bezier(.16,1,.3,1),background .2s ease,border-color .2s ease!important
-}
-html body .credits-page .credits-tribute-mode .credits-pack:before{
-  content:""!important;position:absolute!important;left:14px!important;top:0!important;width:34px!important;height:1px!important;
-  background:rgba(var(--tier-rgb),.72)!important;opacity:.7!important;pointer-events:none!important
-}
-html body .credits-page .credits-tribute-mode .credits-pack-main{display:flex!important;width:100%!important;min-width:0!important;flex-direction:column!important;align-items:stretch!important;gap:7px!important}
-html body .credits-page .credits-tribute-mode .credits-pack-title{display:flex!important;width:100%!important;min-width:0!important;align-items:center!important;justify-content:space-between!important;gap:12px!important}
-html body .credits-page .credits-tribute-mode .credits-pack-title strong{color:#f7f7f8!important;font-size:19px!important;font-weight:720!important;line-height:1!important;letter-spacing:-.04em!important;font-variant-numeric:tabular-nums!important;text-shadow:none!important}
-html body .credits-page .credits-tribute-mode .credits-pack-title em{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:21px!important;padding:0 8px!important;border:1px solid rgba(var(--tier-rgb),.17)!important;border-radius:999px!important;background:rgba(var(--tier-rgb),.065)!important;color:rgba(var(--tier-rgb),.96)!important;box-shadow:none!important;font-size:8px!important;font-style:normal!important;font-weight:760!important;line-height:1!important;letter-spacing:.045em!important;white-space:nowrap!important}
-html body .credits-page .credits-tribute-mode .credits-pack-title em:before{content:""!important;width:4px!important;height:4px!important;margin-right:5px!important;border-radius:50%!important;background:rgb(var(--tier-rgb))!important;box-shadow:0 0 0 2px rgba(var(--tier-rgb),.08)!important}
-html body .credits-page .credits-tribute-mode .credits-pack-total{display:block!important;margin:0!important;color:rgba(255,255,255,.42)!important;font-size:9.5px!important;font-weight:540!important;line-height:1.35!important;letter-spacing:0!important}
-
-html body .credits-page .credits-tribute-mode .credits-pack[data-catalog-id="card_2"]{--tier-rgb:184,190,200}
-html body .credits-page .credits-tribute-mode .credits-pack[data-catalog-id="card_5"]{--tier-rgb:84,164,220}
-html body .credits-page .credits-tribute-mode .credits-pack[data-catalog-id="card_10"]{--tier-rgb:154,122,218}
-html body .credits-page .credits-tribute-mode .credits-pack[data-catalog-id="card_20"]{
-  --tier-rgb:188,150,222;
-  border-color:rgba(255,255,255,.11)!important;
-  background:linear-gradient(180deg,rgba(255,255,255,.032),rgba(255,255,255,.01)),#121216!important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.065),inset 0 -1px 0 rgba(255,255,255,.016),0 8px 20px rgba(0,0,0,.19)!important
-}
-html body .credits-page .credits-tribute-mode .credits-pack[data-catalog-id="card_20"]:before{
-  width:52px!important;background:linear-gradient(90deg,rgba(82,162,218,.85),rgba(155,124,218,.88) 52%,rgba(216,164,112,.82))!important
-}
-html body .credits-page .credits-tribute-mode .credits-pack[data-catalog-id="card_20"] .credits-pack-title em{
-  border-color:rgba(255,255,255,.12)!important;
-  background:linear-gradient(105deg,rgba(82,162,218,.06),rgba(155,124,218,.075) 52%,rgba(216,164,112,.055))!important;
-  color:rgba(244,241,248,.9)!important
-}
-html body .credits-page .credits-tribute-mode .credits-pack[data-catalog-id="card_20"] .credits-pack-title em:before{
-  background:linear-gradient(135deg,rgb(82,162,218),rgb(155,124,218) 55%,rgb(216,164,112))!important;box-shadow:none!important
-}
-html body .credits-page .credits-tribute-mode .credits-pack:focus-visible{outline:0!important;border-color:rgba(var(--tier-rgb),.28)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 0 0 2px rgba(var(--tier-rgb),.075),0 8px 20px rgba(0,0,0,.19)!important}
-html body .credits-page .credits-tribute-mode .credits-pack:active{transform:scale(.988)!important;background:linear-gradient(180deg,rgba(255,255,255,.032),rgba(255,255,255,.012)),#121315!important}
-@media(hover:hover){
-  html body .credits-page .credits-tribute-mode .credits-pack:hover{transform:translateY(-1px)!important;border-color:rgba(255,255,255,.12)!important;background:linear-gradient(180deg,rgba(255,255,255,.034),rgba(255,255,255,.011)),#121315!important}
-}
+/* Gift badges only: preserve the shared package-card styling. */
+html body .credits-page .credits-tribute-mode .credits-pack[data-catalog-id="card_2"] .credits-pack-title em{color:#d7dce3!important;background:rgba(215,220,227,.09)!important;border-color:rgba(215,220,227,.16)!important}
+html body .credits-page .credits-tribute-mode .credits-pack[data-catalog-id="card_5"] .credits-pack-title em{color:#7fc3ff!important;background:rgba(86,166,235,.10)!important;border-color:rgba(86,166,235,.18)!important}
+html body .credits-page .credits-tribute-mode .credits-pack[data-catalog-id="card_10"] .credits-pack-title em{color:#c39aff!important;background:rgba(171,118,240,.10)!important;border-color:rgba(171,118,240,.18)!important}
+html body .credits-page .credits-tribute-mode .credits-pack[data-catalog-id="card_20"] .credits-pack-title em{color:#fff!important;background:linear-gradient(105deg,rgba(77,160,235,.13),rgba(174,116,236,.14) 52%,rgba(230,166,99,.12))!important;border-color:rgba(255,255,255,.16)!important}
 
 html body .credits-page .tribute-currency-picker{
   --tribute-currency-count:1;--tribute-currency-shift:0%;position:relative!important;display:grid!important;grid-template-columns:repeat(var(--tribute-currency-count),minmax(0,1fr))!important;
@@ -170,8 +127,7 @@ html body .credits-page .tribute-footnote span{color:#fff!important}
   html body .credits-page .credits-amount-range::-moz-range-thumb,
   html body .credits-page .tribute-currency-picker:before,
   html body .credits-page .tribute-currency-picker button,
-  html body .credits-page .credits-tribute-mode,
-  html body .credits-page .credits-tribute-mode .credits-pack{animation:none!important;transition:none!important}
+  html body .credits-page .credits-tribute-mode{animation:none!important;transition:none!important}
 }
 
 @media(max-width:370px){
@@ -180,8 +136,6 @@ html body .credits-page .tribute-footnote span{color:#fff!important}
   html body .credits-page .tribute-currency-picker{width:min(82%,260px)!important}
   html body .credits-page .credits-tribute-mode{padding-left:12px!important;padding-right:12px!important}
   html body .credits-page .credits-payment-switch.tribute-switch button{font-size:9px!important;padding:0 5px!important}
-  html body .credits-page .credits-tribute-mode .credits-pack{min-height:74px!important;padding:13px 14px!important;border-radius:15px!important}
-  html body .credits-page .credits-tribute-mode .credits-pack-title strong{font-size:18px!important}
 }
 
 /* Reward wheel: keep the Buy Credits DOM and controls untouched. */
