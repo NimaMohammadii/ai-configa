@@ -22,14 +22,13 @@ const TELEGRAM_UPLOAD_FILE_BYTES = 49_000_000;
 const TELEGRAM_PART_TARGET_BYTES = 42_000_000;
 const TELEGRAM_PART_MIN_SECONDS = 3;
 const TELEGRAM_PART_MAX_ATTEMPTS = 6;
+const TELEGRAM_CATALOG_CACHE_TTL_MS = 2 * 60 * 1000;
 const FFMPEG_INPUT_ARGS =
   "ffmpeg_i:-rw_timeout 15000000 -reconnect 1 -reconnect_on_network_error 1 " +
   "-reconnect_on_http_error 5xx -reconnect_streamed 1 -reconnect_delay_max 2 -reconnect_max_retries 1";
 const FFMPEG_OUTPUT_ARGS =
   "ffmpeg_o:-f mp4 -movflags +frag_keyframe+empty_moov+default_base_moof";
 const FFMPEG_FILE_OUTPUT_ARGS = "ffmpeg_o:-movflags +faststart";
-const FFMPEG_FILE_PROGRESS_ARGS =
-  "ffmpeg_o:-movflags +faststart -progress pipe:2 -stats_period 1";
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
@@ -197,11 +196,29 @@ export class VexaMediaContainerV3 extends Container {
   }
 
   async getTelegramDownloadCatalog(url) {
+    const normalized = normalizeBotMediaUrl(url);
+    const cacheKey = normalized?.url || String(url || "");
+    const now = Date.now();
+    const cached = this.telegramCatalogCache?.get(cacheKey);
+    if (cached && now - cached.createdAt <= TELEGRAM_CATALOG_CACHE_TTL_MS) {
+      return cached.catalog;
+    }
+
     let lastError = null;
     const strategies = mediaStrategies(url);
     for (const strategy of strategies) {
       try {
-        return await this.getTelegramDownloadCatalogForStrategy(url, strategy);
+        const catalog = await this.getTelegramDownloadCatalogForStrategy(url, strategy);
+        if (!this.telegramCatalogCache) this.telegramCatalogCache = new Map();
+        this.telegramCatalogCache.set(cacheKey, { createdAt: now, catalog });
+        if (this.telegramCatalogCache.size > 8) {
+          for (const [key, value] of this.telegramCatalogCache) {
+            if (now - Number(value?.createdAt || 0) > TELEGRAM_CATALOG_CACHE_TTL_MS) {
+              this.telegramCatalogCache.delete(key);
+            }
+          }
+        }
+        return catalog;
       } catch (error) {
         lastError = error;
         console.warn("Vexa Telegram media catalog failed", strategy.id, error?.message || error);
@@ -454,33 +471,38 @@ export class VexaMediaContainerV3 extends Container {
           durationSeconds: seconds,
         });
 
+        const progressChannel = await this.openFfmpegProgressChannel();
         const section = "*" + formatSectionTime(start) + "-" + formatSectionTime(start + seconds);
-        const downloadProcess = await this.startVideoProcess(
-          url,
-          strategyId,
-          formatId,
-          transport,
-          tempPath,
-          section,
-          true,
-        );
-        const stderrPromise = collectFfmpegProgress(
-          downloadProcess.stderr,
-          seconds,
-          onProgress,
-          attempt + 1,
-          start,
-        );
-        const stdoutPromise = collectText(downloadProcess.stdout, 4096);
-        const [exitCode, detail] = await Promise.all([
-          downloadProcess.exitCode.catch(() => -1),
-          stderrPromise,
-          stdoutPromise,
-        ]);
+        let downloadProcess = null;
+        try {
+          downloadProcess = await this.startVideoProcess(
+            url,
+            strategyId,
+            formatId,
+            transport,
+            tempPath,
+            section,
+            progressChannel.path,
+          );
+          const progressPromise = collectFfmpegProgress(
+            progressChannel.process.stdout,
+            seconds,
+            onProgress,
+            attempt + 1,
+            start,
+          );
+          const stderrPromise = collectText(downloadProcess.stderr, 16_384);
+          const stdoutPromise = collectText(downloadProcess.stdout, 4096);
+          const exitCode = await downloadProcess.exitCode.catch(() => -1);
+          const [detail] = await Promise.all([stderrPromise, stdoutPromise]);
+          await settleWithin(progressPromise, PROCESS_SETTLE_TIMEOUT_MS, "");
 
-        if (exitCode !== 0) {
-          if (detail) console.error("yt-dlp Telegram part download failed", detail.slice(-4000));
-          throw publicContainerError(detail || "download failed", provider);
+          if (exitCode !== 0) {
+            if (detail) console.error("yt-dlp Telegram part download failed", detail.slice(-4000));
+            throw publicContainerError(detail || "download failed", provider);
+          }
+        } finally {
+          await this.closeFfmpegProgressChannel(progressChannel);
         }
 
         const fileSize = await this.readFileSize(tempPath);
@@ -553,7 +575,27 @@ export class VexaMediaContainerV3 extends Container {
     } catch (error) {}
   }
 
-  async startVideoProcess(url, strategyId, formatId, transport = "", outputPath = "-", downloadSection = "", showProgress = false) {
+  async openFfmpegProgressChannel() {
+    const path = "/tmp/vexa-ffmpeg-progress-" + crypto.randomUUID();
+    const create = await this.ctx.container.exec(["mkfifo", path]);
+    const output = await create.output();
+    if (output.exitCode !== 0) {
+      throw new Error("Could not create media progress channel");
+    }
+    const process = await this.ctx.container.exec(["cat", path]);
+    return { path, process };
+  }
+
+  async closeFfmpegProgressChannel(channel) {
+    if (!channel) return;
+    try { channel.process?.kill?.(); } catch (error) {}
+    try {
+      const cleanup = await this.ctx.container.exec(["rm", "-f", String(channel.path || "")]);
+      await cleanup.output().catch(() => null);
+    } catch (error) {}
+  }
+
+  async startVideoProcess(url, strategyId, formatId, transport = "", outputPath = "-", downloadSection = "", progressPath = "") {
     const strategy = clientStrategy(strategyId);
     if (!strategy) throw new Error("Media client strategy is invalid");
     const selectedFormat = String(formatId || "").trim() || FORMAT_SELECTOR;
@@ -577,8 +619,8 @@ export class VexaMediaContainerV3 extends Container {
         "--downloader-args",
         outputPath === "-"
           ? FFMPEG_OUTPUT_ARGS
-          : showProgress
-            ? FFMPEG_FILE_PROGRESS_ARGS
+          : progressPath
+            ? ffmpegFileProgressArgs(progressPath)
             : FFMPEG_FILE_OUTPUT_ARGS,
       );
     }
@@ -1407,6 +1449,14 @@ function looksLikeMp4(chunk) {
 function formatSectionTime(value) {
   const seconds = Math.max(0, Number(value || 0));
   return (Math.round(seconds * 1000) / 1000).toFixed(3);
+}
+
+function ffmpegFileProgressArgs(path) {
+  const value = String(path || "").trim();
+  if (!/^\/tmp\/vexa-ffmpeg-progress-[A-Fa-f0-9-]{36}$/u.test(value)) {
+    throw new Error("Media progress path is invalid");
+  }
+  return "ffmpeg_o:-movflags +faststart -progress " + value + " -stats_period 0.5";
 }
 
 function partFilename(filename, partNumber) {

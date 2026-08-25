@@ -13,6 +13,7 @@ const MAX_TASK_RESULT_CHARS = 500000;
 const PHASE_TIMEOUT = "10 minutes";
 const YOUTUBE_WORKFLOW_KIND = "youtube_download";
 const YOUTUBE_DOWNLOAD_TIMEOUT = "10 minutes";
+const YOUTUBE_MAX_PARTS = 512;
 
 export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
   async run(event, step) {
@@ -160,11 +161,24 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
     }
 
     try {
-      return await step.do(
-        "download and deliver YouTube media",
-        { retries: { limit: 0, delay: "1 second" }, timeout: YOUTUBE_DOWNLOAD_TIMEOUT },
-        async () => runYouTubeDownloadWorkflowJob(this.env, payload),
-      );
+      let currentPayload = payload;
+      for (let index = 1; index <= YOUTUBE_MAX_PARTS; index += 1) {
+        const partNumber = Math.max(1, Math.floor(Number(currentPayload?.partNumber || index)));
+        const result = await step.do(
+          `download and deliver YouTube media part ${partNumber}`,
+          { retries: { limit: 0, delay: "1 second" }, timeout: YOUTUBE_DOWNLOAD_TIMEOUT },
+          async () => runYouTubeDownloadWorkflowJob(this.env, currentPayload),
+        );
+
+        if (!result?.continued) return result;
+        const nextPayload = result?.nextPayload;
+        const nextPart = Math.max(0, Math.floor(Number(nextPayload?.partNumber || 0)));
+        if (!nextPayload || nextPart <= partNumber) {
+          throw new Error("YouTube download workflow did not advance to the next part.");
+        }
+        currentPayload = nextPayload;
+      }
+      throw new Error("YouTube download exceeded the multipart safety limit.");
     } catch (error) {
       throw new NonRetryableError(
         String(error?.message || "YouTube download workflow failed.").slice(0, MAX_TASK_ERROR_CHARS)
