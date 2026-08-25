@@ -1,7 +1,7 @@
 import { creditsForUsd, addCredits, formatUsdBalanceFromCredits, USD_PER_1000_CREDITS } from "./credits.js";
 import { requireDb } from "./state.js";
 
-const STAR_USD_PER_50 = 0.76;
+const STAR_USD_PER_50 = 0.75;
 export const CUSTOM_STARS_CREDITS_PER_STAR = 1000 / 12;
 export const CUSTOM_STARS_USD_PER_1000_CREDITS = USD_PER_1000_CREDITS;
 export const CUSTOM_STARS_MIN_USD = 1;
@@ -55,10 +55,12 @@ export function getStarPackage(id) {
 export function createCustomStarPackage(credits, discount = null, options = {}) {
   const minimumCredits = options.allowLegacyBelowMinimum ? 1 : CUSTOM_STARS_MIN_CREDITS;
   const cleanCredits = Math.max(minimumCredits, Math.floor(Number(credits || 0)));
-  const baseStars = Math.max(80, Math.ceil(cleanCredits / CUSTOM_STARS_CREDITS_PER_STAR));
+  const usd = (cleanCredits / 1000) * CUSTOM_STARS_USD_PER_1000_CREDITS;
+  const baseStars = options.legacyPricing
+    ? Math.max(80, Math.ceil(cleanCredits / CUSTOM_STARS_CREDITS_PER_STAR))
+    : Math.max(1, Math.ceil((usd / STAR_USD_PER_50) * 50));
   const discountPercent = normalizeDiscountPercent(discount?.percent);
   const stars = discountPercent > 0 ? discountedStars(baseStars, discountPercent) : baseStars;
-  const usd = (cleanCredits / 1000) * CUSTOM_STARS_USD_PER_1000_CREDITS;
   const balanceLabel = formatUsdBalanceFromCredits(cleanCredits);
   return {
     id: `custom_${cleanCredits}_${stars}`,
@@ -84,13 +86,15 @@ export function getStarPackageFromPayload(payload) {
     const [, credits, stars, percentRaw] = value.split(":");
     const paidStars = Number(stars);
     const percent = normalizeDiscountPercent(percentRaw);
-    const pack = createCustomStarPackage(
-      credits,
-      percent > 0 ? { percent } : null,
-      { allowLegacyBelowMinimum: true }
-    );
-    if (!Number.isSafeInteger(paidStars) || paidStars <= 0 || paidStars !== Number(pack.stars)) return null;
-    return pack;
+    if (!Number.isSafeInteger(paidStars) || paidStars <= 0) return null;
+    const discount = percent > 0 ? { percent } : null;
+    const pack = createCustomStarPackage(credits, discount, { allowLegacyBelowMinimum: true });
+    if (paidStars === Number(pack.stars)) return pack;
+    const legacyPack = createCustomStarPackage(credits, discount, {
+      allowLegacyBelowMinimum: true,
+      legacyPricing: true,
+    });
+    return paidStars === Number(legacyPack.stars) ? legacyPack : null;
   }
 
   if (value.startsWith("stars:")) {
