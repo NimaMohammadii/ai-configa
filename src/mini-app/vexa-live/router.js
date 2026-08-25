@@ -262,8 +262,8 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   function installButton() {
     const existing = document.getElementById(BUTTON_ID);
     if (existing) return existing;
-    const wheel = document.getElementById("wheelOpenButton");
-    if (!wheel || !wheel.parentElement) return null;
+    const anchor = document.getElementById("creditPill");
+    if (!anchor || !anchor.parentElement) return null;
     installParentStyle();
     const button = document.createElement("button");
     button.id = BUTTON_ID;
@@ -278,7 +278,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       haptic("light");
       setMediaOpen(!mediaOpen);
     });
-    wheel.insertAdjacentElement("afterend", button);
+    anchor.insertAdjacentElement("afterend", button);
     return button;
   }
 
