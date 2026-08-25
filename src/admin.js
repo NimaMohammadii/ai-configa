@@ -1696,6 +1696,8 @@ export async function adminReturnUsersText(env, threshold = null, page = 0) {
     return [
       "↩️ <b>Return Users</b>",
       "",
+      "Users returned at least once: <b>" + formatNumber(stats.gt0) + "</b>",
+      "Users returned at least twice: <b>" + formatNumber(stats.gt1) + "</b>",
       "Users returned more than 3 times: <b>" + formatNumber(stats.gt3) + "</b>",
       "Users returned more than 4 times: <b>" + formatNumber(stats.gt4) + "</b>",
       "Users returned more than 6 times: <b>" + formatNumber(stats.gt6) + "</b>",
@@ -1717,6 +1719,7 @@ export async function adminReturnUsersText(env, threshold = null, page = 0) {
 export async function adminReturnUsersKeyboard(env, threshold = null, page = 0) {
   if (threshold == null) {
     return { inline_keyboard: [
+      [{ text: "At least 1 return", callback_data: "admin_returns:0:0" }, { text: "At least 2 returns", callback_data: "admin_returns:1:0" }],
       [{ text: "> 3 returns", callback_data: "admin_returns:3:0" }, { text: "> 4 returns", callback_data: "admin_returns:4:0" }],
       [{ text: "> 6 returns", callback_data: "admin_returns:6:0" }, { text: "← Back", callback_data: "admin_main" }],
     ] };
@@ -1734,11 +1737,13 @@ export async function adminReturnUsersKeyboard(env, threshold = null, page = 0) 
 async function getReturnUserStats(env) {
   requireDb(env);
   const row = await env.DB.prepare(
-    "SELECT SUM(CASE WHEN COALESCE(return_count, 0) > 3 THEN 1 ELSE 0 END) AS gt3, " +
+    "SELECT SUM(CASE WHEN COALESCE(return_count, 0) > 0 THEN 1 ELSE 0 END) AS gt0, " +
+    "SUM(CASE WHEN COALESCE(return_count, 0) > 1 THEN 1 ELSE 0 END) AS gt1, " +
+    "SUM(CASE WHEN COALESCE(return_count, 0) > 3 THEN 1 ELSE 0 END) AS gt3, " +
     "SUM(CASE WHEN COALESCE(return_count, 0) > 4 THEN 1 ELSE 0 END) AS gt4, " +
     "SUM(CASE WHEN COALESCE(return_count, 0) > 6 THEN 1 ELSE 0 END) AS gt6 FROM bot_users"
   ).first();
-  return { gt3: Number(row?.gt3 || 0), gt4: Number(row?.gt4 || 0), gt6: Number(row?.gt6 || 0) };
+  return { gt0: Number(row?.gt0 || 0), gt1: Number(row?.gt1 || 0), gt3: Number(row?.gt3 || 0), gt4: Number(row?.gt4 || 0), gt6: Number(row?.gt6 || 0) };
 }
 
 async function getReturnUsersPage(env, threshold, page = 0, limit = 8) {
