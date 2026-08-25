@@ -7,6 +7,7 @@ import { VOICE_NAMES } from "./voices.js";
 export const TOMAN_PRICE_PER_1000 = 38000;
 export const TOMAN_MIN_PURCHASE_AMOUNT = 260000;
 export const TOMAN_MIN_PURCHASE_CREDITS = Math.ceil((TOMAN_MIN_PURCHASE_AMOUNT / TOMAN_PRICE_PER_1000) * 1000);
+export const MINI_APP_BANK_CARD_URL = "https://ai-configa.vexaagent.workers.dev/mini-app?section=bank_card";
 export const MINIMAL_MIC_ICON = "🪼";
 
 export const TOMAN_PACKAGES = {
@@ -92,7 +93,14 @@ export function buyCreditsText(state = {}) {
 
 export function buyCreditsKeyboard(state = {}) {
   const lang = state.language || "en";
-  return { inline_keyboard: [[{ text: t(lang, "buyToman"), callback_data: "buy_toman" }], [{ text: t(lang, "telegramStars"), callback_data: "buy_stars" }], [{ text: t(lang, "back"), callback_data: "back_main" }]] };
+  return {
+    inline_keyboard: [
+      [{ text: "Bank card", web_app: { url: MINI_APP_BANK_CARD_URL } }],
+      [{ text: t(lang, "buyToman"), callback_data: "buy_toman" }],
+      [{ text: t(lang, "telegramStars"), callback_data: "buy_stars" }],
+      [{ text: t(lang, "back"), callback_data: "back_main" }],
+    ],
+  };
 }
 
 export function tomanPackagesText(state = {}) {
