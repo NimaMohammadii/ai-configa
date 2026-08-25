@@ -10,6 +10,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   var cardBusy=false;
   var pendingCheckBusy=false;
   var lastPendingCheckAt=0;
+  var pendingReturnCheckTimer=0;
   var selectedCurrency='usd';
   var MAX_CARD_PACKS=6;
   var PENDING_KEY='vexa_tribute_pending_v3';
@@ -234,6 +235,16 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     }catch(error){if(force)toast(error.message||'Could not check payment')}finally{pendingCheckBusy=false}
   }
 
+  function verifyPendingAfterReturn(){
+    if(!storageGet(PENDING_KEY))return;
+    checkPending(false);
+    if(pendingReturnCheckTimer)clearTimeout(pendingReturnCheckTimer);
+    pendingReturnCheckTimer=setTimeout(function(){
+      pendingReturnCheckTimer=0;
+      if(storageGet(PENDING_KEY))checkPending(false)
+    },2200)
+  }
+
   function restoreSuccessAfterReload(){
     var success=storageGet(SUCCESS_KEY);if(!success)return;storageRemove(SUCCESS_KEY);
     setTimeout(function(){var pill=q('creditPill');if(pill&&typeof pill.click==='function')pill.click();setTimeout(function(){activateCardMode();toast(formatUsd(success.credits||0)+' balance added');syncBalance(success.balance||0)},90)},520)
@@ -249,12 +260,12 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
     if(action==='open-tribute-checkout'){event.preventDefault();event.stopImmediatePropagation();openPendingCheckout();return}
   },true);
 
-  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')checkPending(false)});window.addEventListener('focus',function(){checkPending(false)},{passive:true});
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')verifyPendingAfterReturn()});window.addEventListener('focus',function(){verifyPendingAfterReturn()},{passive:true});
 
   function boot(attempt){
     if(!installUi()){if(attempt<30)setTimeout(function(){boot(attempt+1)},80);return}
     api('/mini-app/api/tribute-config',{}).then(function(data){
-      applyConfig(data);setTimeout(syncPaymentSwitcher,850);restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(function(){checkPending(false)},1100)
+      applyConfig(data);setTimeout(syncPaymentSwitcher,850);restoreSuccessAfterReload();if(storageGet(PENDING_KEY))setTimeout(verifyPendingAfterReturn,1100)
     }).catch(function(){
       applyConfig({configured:false,available:false,products:[],currencies:CURRENCIES});setTimeout(syncPaymentSwitcher,250)
     })
