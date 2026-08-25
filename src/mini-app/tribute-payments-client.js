@@ -16,10 +16,10 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
   var SUCCESS_KEY='vexa_tribute_success_v2';
 
   var CARD_CATALOG=[
-    {id:'card_6000',credits:6000,bonus:0,discountPercent:0,usdPer1000:0.34,prices:{usd:{amountMinor:200},eur:{amountMinor:199},rub:{amountMinor:17000}}},
-    {id:'card_40000',credits:40000,bonus:0,discountPercent:30,prices:{usd:{amountMinor:700,originalAmountMinor:1000},eur:{amountMinor:699,originalAmountMinor:999},rub:{amountMinor:59500,originalAmountMinor:85000}}},
-    {id:'card_120000',credits:120000,bonus:10000,discountPercent:0,prices:{usd:{amountMinor:1900},eur:{amountMinor:1899},rub:{amountMinor:161500}}},
-    {id:'card_350000',credits:350000,bonus:0,discountPercent:0,usdPer1000:0.14,prices:{usd:{amountMinor:4900},eur:{amountMinor:4899},rub:{amountMinor:416500}}}
+    {id:'card_2',credits:11236,bonus:0,giftPercent:0,prices:{usd:{amountMinor:200},eur:{amountMinor:199},rub:{amountMinor:17000}}},
+    {id:'card_5',credits:28090,bonus:2809,giftPercent:10,prices:{usd:{amountMinor:500},eur:{amountMinor:499},rub:{amountMinor:42500}}},
+    {id:'card_10',credits:56180,bonus:11236,giftPercent:20,prices:{usd:{amountMinor:1000},eur:{amountMinor:999},rub:{amountMinor:85000}}},
+    {id:'card_20',credits:112360,bonus:28090,giftPercent:25,prices:{usd:{amountMinor:2000},eur:{amountMinor:1999},rub:{amountMinor:170000}}}
   ];
   var CURRENCIES=[
     {code:'usd',label:'USD',symbol:'$'},
@@ -71,10 +71,8 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
         bonus:Number(pack.bonus||0),
         totalCredits:Number(pack.credits||0)+Number(pack.bonus||0),
         amountMinor:Number(price.amountMinor||0),
-        originalAmountMinor:price.originalAmountMinor==null?null:Number(price.originalAmountMinor||0),
         currency:currency,
-        discountPercent:Number(pack.discountPercent||0),
-        usdPer1000:pack.usdPer1000==null?null:Number(pack.usdPer1000),
+        giftPercent:Number(pack.giftPercent||0),
         checkoutReady:!!(live&&live.productId)
       };
     }).filter(Boolean).slice(0,MAX_CARD_PACKS);
@@ -166,13 +164,7 @@ export const TRIBUTE_PAYMENTS_INTEGRATION_JS = String.raw`
 
   function titleMarkup(product){
     var price=priceMarkup(product);
-    if(Number(product.bonus||0)>0){
-      return '<span class="credits-pack-title"><strong>'+price+'</strong><em>BONUS INCLUDED</em></span>';
-    }
-    if(Number(product.discountPercent||0)>0){
-      return '<span class="credits-pack-title"><strong>'+price+'</strong><em>'+number(product.discountPercent)+'% OFF</em></span>';
-    }
-    return '<span class="credits-pack-title"><strong>'+price+'</strong></span>';
+    return '<span class="credits-pack-title"><strong>'+price+'</strong><em>'+number(product.giftPercent)+'% GIFT</em></span>';
   }
 
   function renderProducts(){
