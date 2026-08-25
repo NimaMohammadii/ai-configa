@@ -6,9 +6,14 @@ import { authenticateMiniAppPayload } from "./mini-app/auth.js";
 const TRIBUTE_PRODUCTS_API = "https://tribute.tg/api/v1/products";
 const PRODUCT_CACHE_TTL_MS = 60 * 1000;
 const DEFAULT_VEXA_PRODUCT_LINKS = Object.freeze([
-  "https://web.tribute.tg/p/CcQ",
-  "https://web.tribute.tg/p/Cdn",
-  "https://web.tribute.tg/p/Cdq",
+  "https://web.tribute.tg/p/CLV",
+  "https://web.tribute.tg/p/CLX",
+  "https://web.tribute.tg/p/CM0",
+  "https://web.tribute.tg/p/CM1",
+  "https://web.tribute.tg/p/CM2",
+  "https://web.tribute.tg/p/CM3",
+  "https://web.tribute.tg/p/CM4",
+  "https://web.tribute.tg/p/CM5",
 ]);
 
 let productCache = null;
@@ -482,8 +487,14 @@ function toCardProduct(row) {
 
 function creditsForProduct(row, amountMinor, currency) {
   const paymentUrl = normalizeUrl(safeTributePaymentUrl(row?.webLink));
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/Cdn")) return 20000;
-  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/Cdq")) return 100000;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CLV")) return 11236;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CLX")) return 30899;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM0")) return 67416;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM1")) return 140450;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM2")) return 11236;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM3")) return 30899;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM4")) return 67416;
+  if (paymentUrl === normalizeUrl("https://web.tribute.tg/p/CM5")) return 140450;
 
   const explicit = parseCredits(`${row?.name || ""} ${row?.description || ""}`);
   if (explicit) return explicit;
