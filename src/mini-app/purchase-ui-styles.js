@@ -28,38 +28,6 @@ html body .credits-page .credits-pack:active{
   }
 }
 
-/* Stars hero: keep the original 1440x680 asset, only scale it slightly and move it down. */
-html body .credits-page:not(.toman-payment-active):not(.tribute-payment-active) .credits-page-head{
-  background-size:106% auto!important;
-  background-position:58% calc(50% + 8px)!important
-}
-
-/* Payment-specific heroes reuse the same header framing. */
-html body .credits-page.toman-payment-active .credits-page-head{
-  background-color:#000!important;
-  background-image:url("/mini-app/payment-hero/toman")!important;
-  background-position:center calc(50% + 8px)!important;
-  background-size:100% auto!important;
-  background-repeat:no-repeat!important
-}
-html body .credits-page.tribute-payment-active .credits-page-head{
-  background-color:#000!important;
-  background-image:url("/mini-app/payment-hero/card")!important;
-  background-position:center calc(50% + 8px)!important;
-  background-size:100% auto!important;
-  background-repeat:no-repeat!important
-}
-html body .credits-page.toman-payment-active .credits-page-head:before,
-html body .credits-page.tribute-payment-active .credits-page-head:before{
-  content:""!important;display:block!important;position:absolute!important;z-index:-1!important;inset:0!important;opacity:1!important;filter:none!important;
-  background:transparent!important
-}
-html body .credits-page.toman-payment-active .credits-page-head:after,
-html body .credits-page.tribute-payment-active .credits-page-head:after{
-  content:""!important;display:block!important;position:absolute!important;z-index:-1!important;left:0!important;right:0!important;bottom:-1px!important;height:50px!important;
-  background:linear-gradient(180deg,transparent,#000)!important
-}
-
 /* Premium custom-credit slider. */
 @property --credits-range-progress{syntax:"<percentage>";inherits:false;initial-value:0%}
 html body .credits-page .credits-amount-range{
@@ -103,7 +71,6 @@ html body .credits-page .credits-payment-switch.tribute-switch{--tribute-count:2
 html body .credits-page .credits-payment-switch.tribute-switch:before{left:3px!important;right:auto!important;width:calc((100% - 6px)/var(--tribute-count))!important;transform:translateX(var(--tribute-shift))!important;transition:transform .44s cubic-bezier(.22,1,.36,1),width .32s ease!important}
 html body .credits-page .credits-payment-switch.tribute-switch button{min-width:0!important;white-space:nowrap!important}
 html body .credits-page .credits-payment-switch.tribute-switch button[hidden]{display:none!important}
-html body .credits-page.tribute-payment-active .credits-balance{bottom:8px!important}
 
 html body .credits-page .credits-tribute-mode{width:100%!important;max-width:540px!important;margin:0 auto!important;padding:0 15px calc(env(safe-area-inset-bottom,0px) + 22px)!important}
 html body .credits-page .credits-tribute-mode.active{display:block!important;animation:tributeModeIn .48s cubic-bezier(.16,1,.3,1) both!important}
@@ -149,8 +116,6 @@ html body .credits-page .tribute-footnote span{color:#fff!important}
 }
 
 @media(max-width:370px){
-  html body .credits-page.toman-payment-active .credits-page-head{background-position:center calc(50% + 8px)!important;background-size:100% auto!important}
-  html body .credits-page.tribute-payment-active .credits-page-head{background-position:center calc(50% + 8px)!important;background-size:100% auto!important}
   html body .credits-page .tribute-currency-picker{width:min(82%,260px)!important}
   html body .credits-page .credits-tribute-mode{padding-left:12px!important;padding-right:12px!important}
   html body .credits-page .credits-payment-switch.tribute-switch button{font-size:9px!important;padding:0 5px!important}
