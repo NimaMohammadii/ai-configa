@@ -4,6 +4,11 @@ import { CARD_NUMBER } from "../payment-card.js";
 import { getAllAdminIds } from "../receipt-admins.js";
 import { applyWheelPurchaseDiscountToAmount, getActiveWheelPurchaseDiscount } from "../reward-wheel.js";
 import { setPendingPayment } from "../payments.js";
+import {
+  createPaymentReceipt,
+  markPaymentReceiptDeliveryFailed,
+  savePaymentReceiptAdminMessage,
+} from "../payment-receipts.js";
 import { getState, requireDb } from "../state.js";
 import { tgForm } from "../telegram-api.js";
 import {
@@ -71,7 +76,14 @@ export async function submitMiniAppTomanReceipt(env, user, payload = {}) {
     ? `mini:${pack.id}:${pack.amountValue}`
     : `custom:${pack.credits}:${pack.amountValue}`;
   const totalCredits = Number(pack.credits || 0) + Number(pack.bonus || 0);
-  const receiptId = await createReceipt(env, user, storedPackageId, pack.amount, totalCredits);
+  const receiptId = await createPaymentReceipt(env, user, {
+    packageId: storedPackageId,
+    amount: pack.amount,
+    credits: totalCredits,
+  });
+  if (!receiptId) {
+    throw httpError("یک رسید پرداخت جدید در حال بررسی است؛ تا مشخص شدن نتیجه، رسید دیگری نفرست.", 409);
+  }
   await setPendingPayment(env, user.id, storedPackageId);
 
   const caption = receiptCaption({ user, amount: pack.amount, credits: totalCredits });
@@ -80,7 +92,7 @@ export async function submitMiniAppTomanReceipt(env, user, payload = {}) {
     try {
       const message = await sendReceiptPhoto(env, adminId, receipt, caption, receiptId);
       sentToAdmin += 1;
-      await saveReceiptAdminMessage(env, receiptId, adminId, message.message_id, caption).catch((error) => {
+      await savePaymentReceiptAdminMessage(env, receiptId, adminId, message.message_id, caption).catch((error) => {
         console.error("save mini app receipt admin message failed", adminId, error?.message || error);
       });
     } catch (error) {
@@ -89,7 +101,7 @@ export async function submitMiniAppTomanReceipt(env, user, payload = {}) {
   }
 
   if (!sentToAdmin) {
-    await markReceiptDeliveryFailed(env, receiptId);
+    await markPaymentReceiptDeliveryFailed(env, receiptId);
     throw httpError("ارسال رسید انجام نشد؛ چند لحظه دیگر دوباره امتحان کن.", 502);
   }
 
@@ -157,48 +169,6 @@ async function sendReceiptPhoto(env, adminId, receipt, caption, receiptId) {
   form.append("disable_notification", "false");
   form.append("reply_markup", JSON.stringify(receiptKeyboard(receiptId)));
   return tgForm(env, "sendPhoto", form);
-}
-
-async function createReceipt(env, user, packageId, amount, credits) {
-  requireDb(env);
-  const id = crypto.randomUUID();
-  const result = await env.DB.prepare(
-    "INSERT INTO payment_receipts (id, user_id, username, first_name, last_name, package_id, amount, credits, status, created_at) " +
-      "SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP " +
-      "WHERE NOT EXISTS (SELECT 1 FROM payment_receipts WHERE user_id = ? AND status = 'pending')"
-  ).bind(
-    id,
-    String(user.id),
-    user.username || null,
-    user.first_name || null,
-    user.last_name || null,
-    packageId,
-    String(amount),
-    Number(credits),
-    String(user.id),
-  ).run();
-  if (changedRows(result) !== 1) {
-    throw httpError("یک رسید پرداخت هنوز در حال بررسی است؛ تا مشخص شدن نتیجه، رسید جدید نفرست.", 409);
-  }
-  return id;
-}
-
-async function saveReceiptAdminMessage(env, receiptId, adminId, messageId, caption) {
-  requireDb(env);
-  await env.DB.prepare(
-    "INSERT INTO payment_receipt_messages (receipt_id, admin_id, message_id, caption, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)"
-  ).bind(String(receiptId), String(adminId), Number(messageId), caption).run();
-}
-
-async function markReceiptDeliveryFailed(env, receiptId) {
-  requireDb(env);
-  await env.DB.prepare(
-    "UPDATE payment_receipts SET status = 'delivery_failed', reviewed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'"
-  ).bind(String(receiptId)).run();
-}
-
-function changedRows(result) {
-  return Number(result?.meta?.changes ?? result?.changes ?? 0) || 0;
 }
 
 function receiptKeyboard(receiptId) {

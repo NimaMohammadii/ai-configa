@@ -2,6 +2,11 @@ import { isAdmin, trackUser } from "./admin.js";
 import { formatUsdBalanceFromCredits } from "./credits.js";
 import { getAllAdminIds } from "./receipt-admins.js";
 import { clearPendingPayment, getPendingPayment } from "./payments.js";
+import {
+  createPaymentReceipt,
+  markPaymentReceiptDeliveryFailed,
+  savePaymentReceiptAdminMessage,
+} from "./payment-receipts.js";
 import { requireDb } from "./state.js";
 import { answerCallback, copyMessage, deleteMessage, editMessageCaption, sendMessage, sendPlainMessage } from "./telegram-actions.js";
 import { createCustomTomanPackage, userMainKeyboard, startText, TOMAN_PACKAGES } from "./ui.js";
@@ -35,15 +40,19 @@ export async function handleReceiptPhoto(message, env) {
 
   const pack = pendingPackage(pending);
   const totalCredits = Number(pack.credits || 0) + Number(pack.bonus || 0);
-  const receiptId = await createReceipt(env, user, pending.package_id, pack.amount, totalCredits);
+  const receiptId = await createPaymentReceipt(env, user, {
+    packageId: pending.package_id,
+    amount: pack.amount,
+    credits: totalCredits,
+  });
   if (!receiptId) {
     const menu = await sendMessage(env, chatId, startText(state), await userMainKeyboard(env, userId, state));
     await setMenuMessageId(env, userId, menu?.message_id || null);
     await notifyUser(
       env,
       chatId,
-      "⏳ <b>رسید قبلی هنوز در حال بررسی است</b>\n\nتا مشخص شدن نتیجه، رسید جدید نفرست.",
-      "⏳ رسید قبلی هنوز در حال بررسی است\n\nتا مشخص شدن نتیجه، رسید جدید نفرست.",
+      "⏳ <b>رسید جدیدت در حال بررسی است</b>\n\nتا مشخص شدن نتیجه، رسید دیگری نفرست.",
+      "⏳ رسید جدیدت در حال بررسی است\n\nتا مشخص شدن نتیجه، رسید دیگری نفرست.",
     );
     return true;
   }
@@ -56,7 +65,7 @@ export async function handleReceiptPhoto(message, env) {
     try {
       const copied = await copyMessage(env, adminId, chatId, message.message_id, caption, receiptKeyboard(receiptId));
       sentToAdmin++;
-      await saveReceiptAdminMessage(env, receiptId, adminId, copied.message_id, caption).catch((error) => {
+      await savePaymentReceiptAdminMessage(env, receiptId, adminId, copied.message_id, caption).catch((error) => {
         console.error("save receipt admin message failed", adminId, error && error.message ? error.message : error);
       });
     } catch (error) {
@@ -70,7 +79,7 @@ export async function handleReceiptPhoto(message, env) {
   if (sentToAdmin > 0) {
     await notifyUser(env, chatId, "✅ <b>Payment receipt received</b>\n\nYour receipt was sent for admin review. After approval, the USD amount will be added to your balance", "✅ Payment receipt received\n\nYour receipt was sent for admin review. After approval, the USD amount will be added to your balance");
   } else {
-    await markReceiptDeliveryFailed(env, receiptId);
+    await markPaymentReceiptDeliveryFailed(env, receiptId);
     await notifyUser(env, chatId, "⚠️ <b>Payment receipt received</b>\n\nAdmin chat is not configured yet. Please contact support", "⚠️ Payment receipt received\n\nAdmin chat is not configured yet. Please contact support");
   }
 
@@ -313,27 +322,6 @@ async function notifyUser(env, chatId, htmlText, plainText) {
   }
 }
 
-async function createReceipt(env, user, packageId, amount, credits) {
-  requireDb(env);
-  const id = crypto.randomUUID();
-  const result = await env.DB.prepare(
-    "INSERT INTO payment_receipts (id, user_id, username, first_name, last_name, package_id, amount, credits, status, created_at) " +
-      "SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP " +
-      "WHERE NOT EXISTS (SELECT 1 FROM payment_receipts WHERE user_id = ? AND status = 'pending')"
-  ).bind(
-    id,
-    String(user.id),
-    user.username || null,
-    user.first_name || null,
-    user.last_name || null,
-    packageId,
-    String(amount),
-    Number(credits),
-    String(user.id),
-  ).run();
-  return changedRows(result) === 1 ? id : null;
-}
-
 async function getReceipt(env, id) {
   requireDb(env);
   return await env.DB.prepare("SELECT * FROM payment_receipts WHERE id = ?").bind(String(id)).first();
@@ -371,23 +359,10 @@ async function markReceipt(env, id, status, adminId) {
   return changedRows(result) === 1;
 }
 
-async function markReceiptDeliveryFailed(env, receiptId) {
-  requireDb(env);
-  await env.DB.prepare(
-    "UPDATE payment_receipts SET status = 'delivery_failed', reviewed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'"
-  ).bind(String(receiptId)).run();
-}
-
 function changedRows(result) {
   return Number(result?.meta?.changes ?? result?.changes ?? 0) || 0;
 }
 
-async function saveReceiptAdminMessage(env, receiptId, adminId, messageId, caption) {
-  requireDb(env);
-  await env.DB.prepare(
-    "INSERT INTO payment_receipt_messages (receipt_id, admin_id, message_id, caption, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)"
-  ).bind(String(receiptId), String(adminId), Number(messageId), caption).run();
-}
 
 async function updateClickedReceiptCaption(env, query, status) {
   const chatId = query.message?.chat?.id;
