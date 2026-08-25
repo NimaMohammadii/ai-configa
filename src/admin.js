@@ -2070,9 +2070,9 @@ async function saveImageExploreItems(env, items) {
 
 export async function addImageExplorePrompt(env, prompt) {
   const clean = String(prompt || "").trim();
-  const items = await readImageExploreItems(env);
+  const items = (await readImageExploreItems(env)).sort((a, b) => a.order - b.order);
   const id = String(Date.now());
-  items.push({ id, prompt: clean, fileId: "", storageKey: "", posterFileId: "", posterStorageKey: "", mediaType: "image", voice: "", size: "1024x1024", tags: [], order: items.length + 1 });
+  items.unshift({ id, prompt: clean, fileId: "", storageKey: "", posterFileId: "", posterStorageKey: "", mediaType: "image", voice: "", size: "1024x1024", tags: [], order: 1 });
   await saveImageExploreItems(env, items);
   return id;
 }
