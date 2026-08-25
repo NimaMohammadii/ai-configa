@@ -14,7 +14,7 @@ const MINI_APP_ROOT = "https://ai-configa.vexaagent.workers.dev/mini-app";
 const PRIMARY_MODE_CONFIG = Object.freeze({
   image: { title: "🎨 <b>Vexa Image</b>", button: "🎨 Create Image", section: "image" },
   explore: { title: "✨ <b>Vexa Explore</b>", button: "✨ Explore Prompts", section: "explore" },
-  ai_chat: { title: "🤖 <b>Vexa AI Chat</b>", button: "🤖 Open AI Chat", section: "ai_chat" },
+  ai_chat: { title: "🐙 <b>Vexa AI Chat</b>", button: "🐙 Open AI Chat", section: "ai_chat" },
   stt: { title: "📝 <b>Speech to Text</b>", button: "📝 Open Speech to Text", section: "stt" },
   live: { title: "▶️ <b>Vexa Live</b>", button: "▶️ Open Vexa Live", section: "live" },
 });
