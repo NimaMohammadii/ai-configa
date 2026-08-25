@@ -173,7 +173,7 @@ const LIQUID_METAL_RUNTIME = String.raw`<script>
         u_contour:0,
         u_angle:45,
         u_scale:8,
-        u_shape:1,
+        u_shape:0,
         u_offsetX:.1,
         u_offsetY:-.1
       },undefined,.6);
