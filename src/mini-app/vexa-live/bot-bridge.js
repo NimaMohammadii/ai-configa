@@ -280,7 +280,7 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
   const progressEditor = createProgressEditor(env, chatId, messageId);
 
   try {
-    await progressEditor.update({ phase: "preparing", percent: 0 }, copy, true);
+    await progressEditor.update({ phase: "preparing", partNumber, percent: 0 }, copy, true);
     const prepared = await prepareTelegramYouTubeMedia(
       env,
       userId,
@@ -298,6 +298,7 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
       shownPercent = percent;
       progressEditor.update({
         phase: "preparing",
+        partNumber,
         percent: shownPercent,
       }, copy).catch(() => null);
     };
@@ -314,17 +315,34 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
       prepareProgress,
     );
 
+    await progressEditor.update({
+      phase: "uploading",
+      partNumber: media.partNumber,
+      percent: 0,
+    }, copy, true);
     await sendTelegramMediaStream(env, chatId, media, (upload) => {
-      updatePercent(upload?.percent);
+      return progressEditor.update({
+        phase: "uploading",
+        partNumber: media.partNumber,
+        percent: clampPercent(upload?.percent),
+      }, copy);
     });
-    shownPercent = 100;
-    await progressEditor.update({ phase: "preparing", percent: 100 }, copy, true);
+    await progressEditor.update({
+      phase: "uploading",
+      partNumber: media.partNumber,
+      percent: 100,
+    }, copy, true);
 
     if (!media.done) {
       const nextStart = Number(media.nextStart || 0);
       if (!Number.isFinite(nextStart) || nextStart <= startSeconds) {
         throw new Error("Could not continue the Telegram video download");
       }
+      await progressEditor.update({
+        phase: "preparing",
+        partNumber: media.partNumber + 1,
+        percent: 0,
+      }, copy, true);
       return {
         ok: true,
         label: media.label,
@@ -345,7 +363,7 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
       };
     }
 
-    await progressEditor.update({ phase: "complete", percent: 100 }, copy, true);
+    await progressEditor.update({ phase: "complete", partNumber: media.partNumber, percent: 100 }, copy, true);
     return { ok: true, label: media.label, parts: media.partNumber || 1 };
   } catch (error) {
     console.error("bot YouTube workflow download failed", error?.stack || error);
@@ -520,10 +538,10 @@ function youtubeDownloadCopy(language) {
       failed: "دانلود یوتیوب فعلاً انجام نشد",
       received: "لینک دریافت شد",
       inspecting: "در حال بررسی ویدیو…",
-      preparingPart: "در حال آماده‌سازی بخش",
-      adjustingPart: "در حال تنظیم اندازه بخش",
-      uploadingPart: "در حال ارسال بخش",
-      partSent: "بخش ارسال شد",
+      preparingPart: "در حال آماده‌سازی پارت",
+      adjustingPart: "در حال تنظیم اندازه پارت",
+      uploadingPart: "در حال ارسال پارت",
+      partSent: "پارت ارسال شد",
       overall: "کل ویدیو",
       remaining: "باقی‌مانده",
     };
@@ -547,7 +565,7 @@ function youtubeDownloadCopy(language) {
 }
 
 function linkInspectStatusText(copy) {
-  return "🔎 " + escapeHtml(copy.inspecting);
+  return "<b>🔎 " + escapeHtml(copy.inspecting) + "</b>";
 }
 
 function createProgressEditor(env, chatId, messageId) {
@@ -580,11 +598,16 @@ function createProgressEditor(env, chatId, messageId) {
 }
 
 function downloadProgressText(copy, state = {}) {
-  if (String(state.phase || "") === "complete") {
-    return "✅ " + escapeHtml(copy.sent);
+  const phase = String(state.phase || "preparing");
+  if (phase === "complete") {
+    return "<b>✅ " + escapeHtml(copy.sent) + "</b>";
   }
+  const partNumber = Math.max(1, Math.floor(Number(state.partNumber || 1)));
   const percent = Math.round(clampPercent(state.percent));
-  return "⏳ " + escapeHtml(copy.preparing) + " " + percent + "%";
+  const label = phase === "uploading" ? copy.uploadingPart : copy.preparingPart;
+  const icon = phase === "uploading" ? "📤" : "⏳";
+  const dots = ".".repeat((Math.floor(percent / 10) % 3) + 1);
+  return "<b>" + icon + " " + escapeHtml(label) + " " + partNumber + dots + " " + percent + "%</b>";
 }
 
 function clampPercent(value) {
