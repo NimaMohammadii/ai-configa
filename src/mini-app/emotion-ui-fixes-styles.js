@@ -41,6 +41,7 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 .voices-page{padding-top:0!important}
 .voices-page-head{padding-top:var(--vexa-tg-safe-top)!important}
 .explore-page-head{padding-top:var(--vexa-tg-safe-top)!important}
+.explore-search{top:50px!important;margin-top:0!important}
 .credits-page-scroll{padding-top:var(--vexa-tg-safe-top)!important}
 .vexa-app-settings-scroll{padding-top:var(--vexa-tg-safe-top)!important}
 
