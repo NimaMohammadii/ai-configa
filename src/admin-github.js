@@ -17,29 +17,9 @@ export function withAdminGitHubMainKeyboard(keyboard) {
 }
 
 export async function withAdminGitHubUserStatuses(env, keyboard) {
-  await ensureGitHubTables(env);
   const rows = Array.isArray(keyboard?.inline_keyboard)
     ? keyboard.inline_keyboard.map((row) => Array.isArray(row) ? row.map((button) => ({ ...button })) : [])
     : [];
-  const userIds = Array.from(new Set(rows.flatMap((row) => row.map((button) => {
-    const match = String(button?.callback_data || "").match(/^admin_user:([^:]+):/);
-    return match ? match[1] : "";
-  })).filter(Boolean)));
-  if (!userIds.length) return { ...(keyboard || {}), inline_keyboard: rows };
-
-  const placeholders = userIds.map(() => "?").join(",");
-  const result = await env.DB.prepare(
-    `SELECT user_id FROM github_connections WHERE user_id IN (${placeholders})`,
-  ).bind(...userIds).all();
-  const connected = new Set((result.results || []).map((row) => String(row.user_id)));
-
-  for (const row of rows) {
-    for (const button of row) {
-      const match = String(button?.callback_data || "").match(/^admin_user:([^:]+):/);
-      if (!match) continue;
-      button.text = String(button.text || "") + (connected.has(match[1]) ? " • GitHub ✅" : " • GitHub ❌");
-    }
-  }
   return { ...(keyboard || {}), inline_keyboard: rows };
 }
 

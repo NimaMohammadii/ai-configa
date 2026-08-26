@@ -8,6 +8,8 @@ import {
   getAdminAction,
   hasTrackedUser,
   isAdmin,
+  markLatestVexaLinkSuccessful,
+  recordVexaLinkEvent,
   setAdminAction,
   trackUser,
 } from "../../admin.js";
@@ -155,6 +157,7 @@ async function handleYouTubeLinkMessage(message, env) {
   const bookkeeping = Promise.all([
     trackUser(env, message.from).catch(() => null),
     ensureBalanceRow(env, userId).catch(() => null),
+    recordVexaLinkEvent(env, userId, sourceUrl, "bot").catch(() => null),
   ]);
 
   try {
@@ -399,6 +402,7 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
     }
 
     await progressEditor.update({ phase: "complete", partNumber: media.partNumber, percent: 100 }, copy, true);
+    await markLatestVexaLinkSuccessful(env, userId, sourceUrl).catch(() => null);
     if (Number(media.partNumber || 1) > 1) {
       await sendMultipartDownloadLink(env, chatId, sourceUrl, optionKey, copy).catch((error) => {
         console.warn("bot full video download link failed", error?.message || error);
