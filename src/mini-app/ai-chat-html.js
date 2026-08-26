@@ -27,7 +27,7 @@ export const AI_CHAT_HTML = `<!doctype html>
 </head>
 <body>
   <section id="aiChatPage" class="ai-chat-page" aria-hidden="false">
-    <header id="aiChatHead" class="ai-chat-head">
+    <header id="aiChatHead" class="ai-chat-head" style="top:var(--tg-content-safe-area-inset-top,var(--tg-safe-area-inset-top,env(safe-area-inset-top,0px)))">
       <div class="credit-tools">
         <button id="aiChatMenuButton" class="ai-chat-menu-button" type="button" aria-label="Open AI settings" aria-controls="aiChatMenuPanel" aria-expanded="false">
           <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
