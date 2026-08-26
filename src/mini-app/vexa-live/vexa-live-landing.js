@@ -24,8 +24,7 @@ button{font:inherit}
 const LANDING_RUNTIME_JS = String.raw`
 (function(){
 'use strict';
-const PLAYBACK_PREPARE_URL='/mini-app/live/api/youtube-playback/prepare';
-const DOWNLOAD_SESSION_URL='/mini-app/live/api/youtube-download/session';
+const DOWNLOAD_PREPARE_URL='/mini-app/live/api/youtube-download/prepare';
 const downloadButton=document.getElementById('vexaLiveDownload');
 
 function hostWindow(){try{if(window.parent&&window.parent!==window&&window.parent.location.origin===window.location.origin)return window.parent;}catch{}return window;}
@@ -46,7 +45,6 @@ function requestedDownloadUrl(){
   return url.protocol==='https:'?url.href:'';
  }catch{return'';}
 }
-function playbackToken(data){try{return String(new URL(String(data?.playbackUrl||''),window.location.origin).searchParams.get('token')||'').trim();}catch{return'';}}
 function startDownload(data){
  const absoluteUrl=new URL(String(data.downloadUrl),window.location.origin).href;
  const fileName=String(data.fileName||'Vexa-video.mp4');
@@ -55,17 +53,8 @@ function startDownload(data){
  const link=document.createElement('a');link.href=absoluteUrl;link.download=fileName;link.rel='noopener';document.body.appendChild(link);link.click();link.remove();
 }
 
-async function preparePlayback(url){
- const response=await fetch(PLAYBACK_PREPARE_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:url})});
- const data=await response.json().catch(function(){return{};});
- if(!response.ok||!data.playbackUrl)throw new Error(String(data.error||'Could not prepare this video'));
- return data;
-}
-
-async function prepareDownload(playback){
- const token=playbackToken(playback);
- if(!token)throw new Error('Video session is invalid');
- const response=await fetch(DOWNLOAD_SESSION_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),playbackToken:token})});
+async function prepareDownload(url){
+ const response=await fetch(DOWNLOAD_PREPARE_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:url})});
  const data=await response.json().catch(function(){return{};});
  if(!response.ok||!data.downloadUrl)throw new Error(String(data.error||'Could not prepare download'));
  return data;
@@ -77,8 +66,7 @@ async function runDownload(sourceOverride){
  const url=preset||promptVideoUrl();if(!url)return;
  setBusy(true,'Preparing…');haptic('light');
  try{
-  const playback=await preparePlayback(url);
-  const download=await prepareDownload(playback);
+  const download=await prepareDownload(url);
   startDownload(download);setBusy(false);haptic('medium');
  }catch(error){fail(String(error?.message||'Could not prepare download'));}
 }
