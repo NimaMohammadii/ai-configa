@@ -12,72 +12,33 @@ const LANDING_STYLE = String.raw`
 html,body{margin:0;width:100%;height:100%;min-height:100%;overflow:hidden;overscroll-behavior:none;background:${LIVE_BACKGROUND};color:#fff}
 body{position:fixed;inset:0;min-height:100dvh;font-family:"SF Pro Display","SF Pro Text",Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
 button{font:inherit}
-.vexa-live-download{position:fixed;inset:0;display:grid;place-items:center;background:${LIVE_BACKGROUND}}
-.vexa-live-download-action{min-width:132px;height:52px;padding:0 26px;${liquidGlassMaterialCss()}outline:0!important;border-radius:999px;color:rgba(255,255,255,.92);font-size:14px;font-weight:620;letter-spacing:.01em;line-height:1;appearance:none;-webkit-appearance:none;cursor:pointer;transform-origin:center;will-change:transform,filter;transition:opacity .16s ease,transform .3s cubic-bezier(.16,1,.3,1),filter .2s ease,background .25s ease,border-color .25s ease,box-shadow .25s ease}
-@media(hover:hover) and (pointer:fine){.vexa-live-download-action:hover{transform:scale(1.05);${LIQUID_GLASS_HOVER_CSS}}}
-.vexa-live-download-action:active{transform:scale(.97);filter:brightness(.9)}
+.vexa-live-download{position:fixed;inset:0;display:grid;place-items:center;background:${LIVE_BACKGROUND};overflow:hidden}
+.vexa-download-core{width:min(78vw,330px);display:flex;flex-direction:column;align-items:center;gap:18px;transform:translateY(-1.5vh)}
+.vexa-download-percent{margin:0;color:#f5f5f5;font-size:44px;font-weight:620;line-height:.95;letter-spacing:-.055em;font-variant-numeric:tabular-nums;opacity:0;transform:translateY(8px) scale(.97);transition:opacity .32s ease,transform .55s cubic-bezier(.16,1,.3,1)}
+.vexa-live-download[data-state="preparing"] .vexa-download-percent,.vexa-live-download[data-state="waiting"] .vexa-download-percent,.vexa-live-download[data-state="downloading"] .vexa-download-percent,.vexa-live-download[data-state="completed"] .vexa-download-percent,.vexa-live-download[data-state="error"] .vexa-download-percent{opacity:1;transform:none}
+.vexa-download-track{position:relative;width:100%;height:7px;border-radius:999px;overflow:hidden;background:#111;box-shadow:inset 0 0 0 1px rgba(255,255,255,.065),0 0 0 1px rgba(0,0,0,.7)}
+.vexa-download-fill{position:absolute;inset:0;transform:scaleX(var(--vexa-progress,0));transform-origin:left center;border-radius:inherit;background:linear-gradient(105deg,#626262 0%,#b7b7b7 18%,#fff 38%,#8f8f8f 55%,#fafafa 74%,#737373 100%);background-size:220% 100%;box-shadow:0 0 12px rgba(255,255,255,.16),inset 0 1px 0 rgba(255,255,255,.76),inset 0 -1px 0 rgba(0,0,0,.42);transition:transform .72s cubic-bezier(.16,1,.3,1);animation:vexaMetalFlow 2.4s linear infinite}
+.vexa-download-fill:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.06) 32%,rgba(255,255,255,.72) 50%,rgba(255,255,255,.08) 68%,transparent 100%);transform:translateX(-120%);animation:vexaMetalShine 1.9s ease-in-out infinite}
+.vexa-live-download[data-state="preparing"] .vexa-download-fill{transform:scaleX(.24);transform-origin:center;animation:vexaPrepare 1.35s cubic-bezier(.4,0,.2,1) infinite,vexaMetalFlow 2.4s linear infinite}
+.vexa-live-download[data-state="completed"] .vexa-download-fill{box-shadow:0 0 18px rgba(255,255,255,.24),inset 0 1px 0 rgba(255,255,255,.85),inset 0 -1px 0 rgba(0,0,0,.35)}
+.vexa-download-copy{display:flex;flex-direction:column;align-items:center;gap:5px;min-height:35px;text-align:center}
+.vexa-download-status{color:rgba(255,255,255,.72);font-size:12px;font-weight:610;line-height:1.2;letter-spacing:-.01em;transition:color .2s ease}
+.vexa-download-detail{color:rgba(255,255,255,.31);font-size:10px;font-weight:560;line-height:1.2;font-variant-numeric:tabular-nums;min-height:12px}
+.vexa-live-download[data-state="error"] .vexa-download-status{color:rgba(255,255,255,.55)}
+.vexa-live-download-action{min-width:132px;height:48px;margin-top:2px;padding:0 24px;${liquidGlassMaterialCss()}outline:0!important;border-radius:999px;color:rgba(255,255,255,.92);font-size:13px;font-weight:650;letter-spacing:-.01em;line-height:1;appearance:none;-webkit-appearance:none;cursor:pointer;transform-origin:center;will-change:transform,filter,opacity;transition:opacity .24s ease,transform .38s cubic-bezier(.16,1,.3,1),filter .2s ease,background .25s ease,border-color .25s ease,box-shadow .25s ease}
+@media(hover:hover) and (pointer:fine){.vexa-live-download-action:hover{transform:scale(1.045);${LIQUID_GLASS_HOVER_CSS}}}
+.vexa-live-download-action:active{transform:scale(.965);filter:brightness(.9)}
 .vexa-live-download-action:focus-visible{outline:none!important;box-shadow:${LIQUID_GLASS_FOCUS_RING}!important}
-.vexa-live-download-action:disabled{opacity:.44;cursor:default}
-@media(prefers-reduced-motion:reduce){.vexa-live-download-action{transition:none!important}}
+.vexa-live-download-action:disabled{opacity:.35;cursor:default}
+.vexa-live-download[data-state="downloading"] .vexa-live-download-action{opacity:0;transform:translateY(8px) scale(.96);pointer-events:none}
+.vexa-live-download[data-state="completed"] .vexa-live-download-action{opacity:.62}
+@keyframes vexaMetalFlow{0%{background-position:0% 50%}100%{background-position:220% 50%}}
+@keyframes vexaMetalShine{0%,15%{transform:translateX(-130%)}70%,100%{transform:translateX(130%)}}
+@keyframes vexaPrepare{0%{transform:translateX(-145%) scaleX(.22)}50%{transform:translateX(0) scaleX(.34)}100%{transform:translateX(145%) scaleX(.22)}}
+@media(prefers-reduced-motion:reduce){.vexa-download-percent,.vexa-download-fill,.vexa-download-fill:after,.vexa-live-download-action{animation:none!important;transition:none!important}}
 `;
 
-const LANDING_RUNTIME_JS = String.raw`
-(function(){
-'use strict';
-const DOWNLOAD_PREPARE_URL='/mini-app/live/api/youtube-download/prepare';
-const downloadButton=document.getElementById('vexaLiveDownload');
-
-function hostWindow(){try{if(window.parent&&window.parent!==window&&window.parent.location.origin===window.location.origin)return window.parent;}catch{}return window;}
-function telegram(){const host=hostWindow();return window.Telegram?.WebApp||host.Telegram?.WebApp||null;}
-function initData(){return String(telegram()?.initData||'');}
-function haptic(style){try{telegram()?.HapticFeedback?.impactOccurred?.(style||'light');}catch{}}
-function setBusy(busy,text){if(!downloadButton)return;downloadButton.textContent=text||'Download';downloadButton.disabled=Boolean(busy);}
-function fail(message){console.error('Vexa Live download failed',message);setBusy(false);try{window.alert(String(message||'Could not prepare download'));}catch{}haptic('light');}
-function promptVideoUrl(){const source=window.prompt('Enter video link');if(source===null)return'';return String(source||'').trim();}
-function requestedDownloadUrl(){
- const host=hostWindow();
- try{
-  const params=new URLSearchParams(host.location.search);
-  if(params.get('vexaDownload')!=='1')return'';
-  const source=String(params.get('vexaSource')||'').trim();
-  if(!source||source.length>2048)return'';
-  const url=new URL(source);
-  return url.protocol==='https:'?url.href:'';
- }catch{return'';}
-}
-function startDownload(data){
- const absoluteUrl=new URL(String(data.downloadUrl),window.location.origin).href;
- const fileName=String(data.fileName||'Vexa-video.mp4');
- const tg=telegram();
- if(tg?.downloadFile){try{tg.downloadFile({url:absoluteUrl,file_name:fileName});return;}catch{}}
- const link=document.createElement('a');link.href=absoluteUrl;link.download=fileName;link.rel='noopener';document.body.appendChild(link);link.click();link.remove();
-}
-
-async function prepareDownload(url){
- const response=await fetch(DOWNLOAD_PREPARE_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:url})});
- const data=await response.json().catch(function(){return{};});
- if(!response.ok||!data.downloadUrl)throw new Error(String(data.error||'Could not prepare download'));
- return data;
-}
-
-async function runDownload(sourceOverride){
- if(!downloadButton||downloadButton.disabled)return;
- const preset=String(sourceOverride||'').trim();
- const url=preset||promptVideoUrl();if(!url)return;
- setBusy(true,'Preparing…');haptic('light');
- try{
-  const download=await prepareDownload(url);
-  startDownload(download);setBusy(false);haptic('medium');
- }catch(error){fail(String(error?.message||'Could not prepare download'));}
-}
-
-downloadButton?.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();runDownload();});
-const autoDownloadUrl=requestedDownloadUrl();
-if(autoDownloadUrl)runDownload(autoDownloadUrl);
-})();
-`;
-
-const LANDING_BODY = '<body><main class="vexa-live-download"><button id="vexaLiveDownload" class="vexa-live-download-action" type="button">Download</button></main><script>' + LANDING_RUNTIME_JS.split('</script>').join('<\\/script>') + '</script></body>';
+const LANDING_BODY = '<body><main id="vexaLiveDownloadRoot" class="vexa-live-download" data-state="idle" style="--vexa-progress:0"><section class="vexa-download-core" aria-live="polite"><p id="vexaLivePercent" class="vexa-download-percent">0%</p><div id="vexaLiveProgressTrack" class="vexa-download-track" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="vexaLiveProgressFill" class="vexa-download-fill"></span></div><div class="vexa-download-copy"><span id="vexaLiveStatus" class="vexa-download-status">Preparing download</span><small id="vexaLiveDetail" class="vexa-download-detail"></small></div><button id="vexaLiveDownload" class="vexa-live-download-action" type="button" disabled>Download</button></section></main></body>';
 
 export async function appendVexaLiveLandingRuntime(request, response) {
   if (!response?.ok || request.method !== "GET") return response;
