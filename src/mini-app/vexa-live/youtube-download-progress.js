@@ -15,7 +15,6 @@ export const DOWNLOAD_PROGRESS_RUNTIME_PATH = "/mini-app/vexa-live/download-prog
 const FILE_NAME = "Vexa-video.mp4";
 const SESSION_TTL_SECONDS = 60 * 60;
 const SAVE_STORAGE_PREFIX = "vexa-download-save/";
-const SAVE_MULTIPART_PART_BYTES = 8 * 1024 * 1024;
 const PROGRESS_REPORT_BYTES = 2 * 1024 * 1024;
 const PROGRESS_REPORT_MS = 750;
 let progressTableReady = null;
@@ -123,7 +122,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-12"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-9"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -399,7 +398,7 @@ async function trackedDownload(request, env, ctx) {
     const streams = sourceStream.tee();
     sourceStream = streams[0];
     const saveKey = saveStorageKey(session);
-    savePromise = archiveSaveStream(env.EXPLORE_MEDIA, saveKey, streams[1], {
+    savePromise = env.EXPLORE_MEDIA.put(saveKey, streams[1], {
       httpMetadata: {
         contentType: "video/mp4",
         cacheControl: "private, max-age=" + SESSION_TTL_SECONDS,
@@ -409,6 +408,9 @@ async function trackedDownload(request, env, ctx) {
         session,
         expiresAt: String(Number(checked.row.expires_at || 0)),
       },
+    }).then((object) => {
+      if (!object || !positiveInteger(object.size)) throw new Error("Saved video is empty");
+      return object;
     }).catch(async (error) => {
       console.error("Vexa completed video cache failed", error?.stack || error);
       await env.EXPLORE_MEDIA.delete(saveKey).catch(() => null);
@@ -561,56 +563,6 @@ function saveStorageKey(session) {
   return SAVE_STORAGE_PREFIX + String(session || "") + ".mp4";
 }
 
-async function archiveSaveStream(bucket, key, stream, options) {
-  const reader = stream.getReader();
-  let upload = null;
-  let buffer = new Uint8Array(SAVE_MULTIPART_PART_BYTES);
-  let buffered = 0;
-  let totalBytes = 0;
-  let partNumber = 1;
-  const uploadedParts = [];
-
-  try {
-    upload = await bucket.createMultipartUpload(key, options);
-    while (true) {
-      const next = await reader.read();
-      if (next.done) break;
-      const chunk = next.value;
-      if (!chunk?.byteLength) continue;
-      let offset = 0;
-      while (offset < chunk.byteLength) {
-        const take = Math.min(buffer.byteLength - buffered, chunk.byteLength - offset);
-        buffer.set(chunk.subarray(offset, offset + take), buffered);
-        buffered += take;
-        offset += take;
-        totalBytes += take;
-        if (buffered === buffer.byteLength) {
-          uploadedParts.push(await upload.uploadPart(partNumber, buffer));
-          partNumber += 1;
-          buffer = new Uint8Array(SAVE_MULTIPART_PART_BYTES);
-          buffered = 0;
-        }
-      }
-    }
-
-    if (buffered > 0) {
-      uploadedParts.push(await upload.uploadPart(partNumber, buffer.slice(0, buffered)));
-    }
-    if (!totalBytes || !uploadedParts.length) throw new Error("Saved video is empty");
-
-    const object = await upload.complete(uploadedParts);
-    if (!object || positiveInteger(object.size) !== totalBytes) {
-      throw new Error("Saved video size did not match the completed download");
-    }
-    return object;
-  } catch (error) {
-    if (upload) await upload.abort().catch(() => null);
-    throw error;
-  } finally {
-    try { reader.releaseLock(); } catch (error) {}
-  }
-}
-
 async function cleanupExpiredDownloadSaves(env, now) {
   await ensureProgressTable(env);
   const result = await env.DB.prepare(
@@ -667,16 +619,18 @@ async function completeProgress(env, session, downloadedBytes) {
     await writeProgress(env, session, 0, "failed", "Download ended before data was received", 0);
     return;
   }
-  await env.DB.prepare(
-    "UPDATE vexa_youtube_download_progress SET total_bytes = ?, downloaded_bytes = ?, status = 'completed', error = NULL, updated_at = ? WHERE session = ?"
-  ).bind(actualBytes, actualBytes, now, session).run();
-  await publishProgress(env, session, {
-    totalBytes: actualBytes,
-    downloadedBytes: actualBytes,
-    status: "completed",
-    error: "",
-    updatedAt: now,
-  });
+  await Promise.all([
+    env.DB.prepare(
+      "UPDATE vexa_youtube_download_progress SET total_bytes = ?, downloaded_bytes = ?, status = 'completed', error = NULL, updated_at = ? WHERE session = ?"
+    ).bind(actualBytes, actualBytes, now, session).run(),
+    publishProgress(env, session, {
+      totalBytes: actualBytes,
+      downloadedBytes: actualBytes,
+      status: "completed",
+      error: "",
+      updatedAt: now,
+    }),
+  ]);
 }
 
 async function publishProgress(env, session, payload) {
@@ -813,7 +767,6 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   const qualityNode=document.getElementById('vexaLiveQuality');
   let saveButton=null;
   let saveFile=null;
-  let saveViaTelegram=false;
   let saveLoadPromise=null;
   let saveAbortController=null;
   let saveGeneration=0;
@@ -870,7 +823,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   function setSaveButton(text,disabled){const node=ensureSaveButton();if(!node)return;node.textContent=String(text||'Save');node.disabled=Boolean(disabled);}
   function setSaveVisible(visible){const node=ensureSaveButton();if(node)node.hidden=!Boolean(visible);}
   function clearSaveFile(){
-    saveGeneration+=1;saveFile=null;saveViaTelegram=false;saveLoadPromise=null;saveBusy=false;
+    saveGeneration+=1;saveFile=null;saveLoadPromise=null;saveBusy=false;
     if(saveAbortController){try{saveAbortController.abort();}catch(error){}saveAbortController=null;}
     if(saveButton){saveButton.textContent='Save';saveButton.disabled=true;}
   }
@@ -879,68 +832,50 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     if(!saveUrl)return false;
     clearSaveFile();
     const generation=saveGeneration;
-    const tg=telegram();
-    const name=/\.mp4$/i.test(String(prepared?.fileName||''))?String(prepared.fileName):'Vexa-video.mp4';
-    setSaveVisible(true);
-    if(typeof File!=='function'||typeof navigator.share!=='function'){
-      if(tg?.downloadFile){saveViaTelegram=true;setSaveButton('Save',false);return true;}
-      setSaveButton('Save unavailable',true);setState('completed','Downloaded','Native video save is unavailable on this device');return false;
-    }
     const controller=new AbortController();saveAbortController=controller;
-    setSaveButton('Preparing Save…',true);
+    setSaveVisible(true);setSaveButton('Preparing Save…',true);
     saveLoadPromise=(async function(){
-      for(let attempt=1;attempt<=2;attempt+=1){
-        try{
-          const response=await fetch(saveUrl,{method:'GET',cache:'no-store',signal:controller.signal});
-          if(!response.ok)throw new Error('Could not prepare saved video');
-          const blob=await response.blob();
-          if(generation!==saveGeneration)return false;
-          if(!blob.size)throw new Error('Saved video is empty');
-          const videoBlob=String(blob.type||'').toLowerCase()==='video/mp4'?blob:blob.slice(0,blob.size,'video/mp4');
-          const file=new File([videoBlob],name,{type:'video/mp4',lastModified:Date.now()});
-          if(typeof navigator.canShare==='function'&&!navigator.canShare({files:[file]})){
-            if(tg?.downloadFile){saveViaTelegram=true;setSaveButton('Save',false);return true;}
-            throw new Error('Native video saving is not supported on this device');
-          }
-          saveFile=file;setSaveButton('Save',false);return true;
-        }catch(error){
-          if(generation!==saveGeneration||String(error?.name||'')==='AbortError')return false;
-          if(attempt<2){await new Promise(function(resolve){setTimeout(resolve,300);});continue;}
-          console.warn('Vexa video save preparation failed',error?.message||error);
-          saveFile=null;saveViaTelegram=false;setSaveButton('Save unavailable',true);setState('completed','Downloaded','Saved video could not be prepared');return false;
+      try{
+        const response=await fetch(saveUrl,{method:'GET',cache:'no-store',signal:controller.signal});
+        if(!response.ok)throw new Error('Could not prepare saved video');
+        const blob=await response.blob();
+        if(generation!==saveGeneration)return false;
+        if(!blob.size)throw new Error('Saved video is empty');
+        const videoBlob=String(blob.type||'').toLowerCase()==='video/mp4'?blob:blob.slice(0,blob.size,'video/mp4');
+        const name=/\.mp4$/i.test(String(prepared?.fileName||''))?String(prepared.fileName):'Vexa-video.mp4';
+        const file=new File([videoBlob],name,{type:'video/mp4',lastModified:Date.now()});
+        if(typeof navigator.share!=='function'||typeof navigator.canShare!=='function'||!navigator.canShare({files:[file]})){
+          throw new Error('Native video saving is not supported on this device');
         }
+        saveFile=file;setSaveButton('Save',false);return true;
+      }catch(error){
+        if(generation!==saveGeneration||String(error?.name||'')==='AbortError')return false;
+        console.warn('Vexa video save preparation failed',error?.message||error);
+        saveFile=null;setSaveButton('Save unavailable',true);setState('completed','Downloaded','Native video save is unavailable on this device');return false;
+      }finally{
+        if(generation===saveGeneration){saveLoadPromise=null;saveAbortController=null;}
       }
-      return false;
-    })().finally(function(){
-      if(generation===saveGeneration){saveLoadPromise=null;saveAbortController=null;}
-    });
+    })();
     return saveLoadPromise;
   }
-  function onSaveClick(event){
+  async function onSaveClick(event){
     event?.preventDefault?.();event?.stopPropagation?.();
-    if(saveBusy)return;
-    const tg=telegram();
-    if(saveViaTelegram&&tg?.downloadFile&&prepared?.saveUrl){
-      try{
-        tg.downloadFile({url:prepared.saveUrl,file_name:prepared.fileName||'Vexa-video.mp4'},function(accepted){if(accepted!==false)haptic('medium');});
-      }catch(error){console.warn('Telegram native save failed',error?.message||error);}
-      return;
-    }
-    if(!saveFile||typeof navigator.share!=='function')return;
+    if(saveBusy||!saveFile)return;
     const file=saveFile;
-    if(typeof navigator.canShare==='function'&&!navigator.canShare({files:[file]}))return;
+    if(typeof navigator.share!=='function'||typeof navigator.canShare!=='function'||!navigator.canShare({files:[file]}))return;
     saveBusy=true;setSaveButton('Saving…',true);
-    let shareResult;
+    let sharePromise;
     try{
-      shareResult=navigator.share({files:[file]});
-      haptic('medium');
+      sharePromise=navigator.share({files:[file],title:String(prepared?.title||'Video')});
     }catch(error){
-      console.warn('Native video share failed',error?.message||error);
+      saveBusy=false;setSaveButton('Save',false);console.warn('Native video share failed',error?.message||error);return;
+    }
+    try{
+      await sharePromise;haptic('medium');
+    }catch(error){
+      if(String(error?.name||'')!=='AbortError')console.warn('Native video share failed',error?.message||error);
     }finally{
       saveBusy=false;if(saveFile)setSaveButton('Save',false);
-    }
-    if(shareResult&&typeof shareResult.catch==='function'){
-      shareResult.catch(function(error){if(String(error?.name||'')!=='AbortError')console.warn('Native video share failed',error?.message||error);});
     }
   }
   function setProgress(value,animate){
