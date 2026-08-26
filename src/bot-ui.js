@@ -1,4 +1,4 @@
-import { MINI_APP_ENTRY_SECTIONS, adminMiniAppEntryKeyboard, getMiniAppDefaultSection, hasTrackedUser } from "./admin.js";
+import { MINI_APP_ENTRY_SECTIONS, adminMiniAppEntryKeyboard, getMiniAppDefaultSection, hasTrackedUser, isAdmin } from "./admin.js";
 import { handleCallback as baseHandleCallback, handleMessage as baseHandleMessage } from "./bot.js";
 import { getState, setAppMode } from "./state.js";
 import { editMessage } from "./telegram-actions.js";
@@ -45,7 +45,9 @@ export async function handleCallback(query, env) {
   await baseHandleCallback(query, env);
   const data = query.data || "";
   if (isMiniAppEntryCallback(data)) {
-    await refreshMiniAppEntryPanel(query, env);
+    if (await isAdmin(env, query.from && query.from.id)) {
+      await refreshMiniAppEntryPanel(query, env);
+    }
     return;
   }
   if (!shouldRefresh(data)) return;
