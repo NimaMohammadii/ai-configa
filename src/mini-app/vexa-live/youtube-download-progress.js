@@ -122,7 +122,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-10"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-11"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -619,18 +619,16 @@ async function completeProgress(env, session, downloadedBytes) {
     await writeProgress(env, session, 0, "failed", "Download ended before data was received", 0);
     return;
   }
-  await Promise.all([
-    env.DB.prepare(
-      "UPDATE vexa_youtube_download_progress SET total_bytes = ?, downloaded_bytes = ?, status = 'completed', error = NULL, updated_at = ? WHERE session = ?"
-    ).bind(actualBytes, actualBytes, now, session).run(),
-    publishProgress(env, session, {
-      totalBytes: actualBytes,
-      downloadedBytes: actualBytes,
-      status: "completed",
-      error: "",
-      updatedAt: now,
-    }),
-  ]);
+  await env.DB.prepare(
+    "UPDATE vexa_youtube_download_progress SET total_bytes = ?, downloaded_bytes = ?, status = 'completed', error = NULL, updated_at = ? WHERE session = ?"
+  ).bind(actualBytes, actualBytes, now, session).run();
+  await publishProgress(env, session, {
+    totalBytes: actualBytes,
+    downloadedBytes: actualBytes,
+    status: "completed",
+    error: "",
+    updatedAt: now,
+  });
 }
 
 async function publishProgress(env, session, payload) {
