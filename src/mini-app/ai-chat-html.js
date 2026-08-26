@@ -26,8 +26,8 @@ export const AI_CHAT_HTML = `<!doctype html>
   <link rel="stylesheet" href="/mini-app/chat/styles.css?v=20260814-loader-text-original-1"/>
 </head>
 <body>
-  <section id="aiChatPage" class="ai-chat-page" aria-hidden="false">
-    <header id="aiChatHead" class="ai-chat-head" style="top:var(--tg-content-safe-area-inset-top,var(--tg-safe-area-inset-top,env(safe-area-inset-top,0px)))">
+  <section id="aiChatPage" class="ai-chat-page" aria-hidden="false" style="--ai-chat-safe-top:var(--tg-content-safe-area-inset-top,var(--tg-safe-area-inset-top,env(safe-area-inset-top,0px)));--ai-chat-safe-bottom:var(--tg-content-safe-area-inset-bottom,var(--tg-safe-area-inset-bottom,env(safe-area-inset-bottom,0px)));height:var(--tg-viewport-height,100dvh)">
+    <header id="aiChatHead" class="ai-chat-head" style="top:var(--ai-chat-safe-top)">
       <div class="credit-tools">
         <button id="aiChatMenuButton" class="ai-chat-menu-button" type="button" aria-label="Open AI settings" aria-controls="aiChatMenuPanel" aria-expanded="false">
           <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
@@ -93,7 +93,7 @@ export const AI_CHAT_HTML = `<!doctype html>
       </aside>
     </div>
     <div id="aiChatMessages" class="ai-chat-messages" role="log" aria-live="polite"><div id="aiChatEmpty" class="ai-chat-empty"><span>How can I help?</span><canvas id="aiChatEmptyOrb" class="ai-chat-empty-orb" width="96" height="96" aria-hidden="true"></canvas></div></div>
-    <form id="aiChatComposer" class="ai-chat-composer">
+    <form id="aiChatComposer" class="ai-chat-composer" style="bottom:max(12px,var(--ai-chat-safe-bottom))">
       <input id="aiChatFile" type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.txt,.md,.markdown,.json,.html,.htm,.xml,.csv,.tsv,.doc,.docx,.rtf,.odt,.ppt,.pptx,.xls,.xlsx,.js,.mjs,.ts,.tsx,.jsx,.py,.css,.sql,.log,.yaml,.yml,.toml,.eml,.ics,.srt,.vtt"/>
       <div id="aiChatAttachmentPreview" class="ai-chat-attachment-preview" aria-hidden="true"></div>
       <button id="aiChatAttach" class="ai-chat-attach" type="button" aria-label="Attach a file"><span aria-hidden="true">+</span></button>
