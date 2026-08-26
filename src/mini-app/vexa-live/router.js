@@ -6,7 +6,7 @@ import {
 
 const LIVE_ROOT = "/mini-app/vexa-live";
 const LIVE_BACKGROUND = "#000000";
-const INTEGRATION_VERSION = "20260826-1";
+const INTEGRATION_VERSION = "20260826-2";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -80,7 +80,6 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       "body.credits-page-open #" + SHARED_MESH_CANVAS_ID + "{z-index:104!important;opacity:1!important}" +
       "html." + SHARED_MESH_CLASS + ",body." + SHARED_MESH_CLASS + "{background:" + VEXA_BG + "!important}" +
       "body." + SHARED_MESH_CLASS + " .app{position:relative!important;z-index:1!important;background:transparent!important}" +
-      "body.image-mode." + SHARED_MESH_CLASS + " .tts-head,body.image-mode." + SHARED_MESH_CLASS + " .tts-head:before,body.image-mode." + SHARED_MESH_CLASS + " .tts-head:after{background:transparent!important}" +
       "body." + SHARED_MESH_CLASS + " .credits-page{background:transparent!important}" +
       "body." + SHARED_MESH_CLASS + " .credits-page .credits-page-head,body." + SHARED_MESH_CLASS + " .credits-page.toman-payment-active .credits-page-head,body." + SHARED_MESH_CLASS + " .credits-page.tribute-payment-active .credits-page-head{background-color:transparent!important;background-image:none!important}" +
       "body." + SHARED_MESH_CLASS + " .credits-page .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page .credits-page-head:after,body." + SHARED_MESH_CLASS + " .credits-page.toman-payment-active .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page.toman-payment-active .credits-page-head:after,body." + SHARED_MESH_CLASS + " .credits-page.tribute-payment-active .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page.tribute-payment-active .credits-page-head:after{background:transparent!important}" +
@@ -126,7 +125,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const body = document.body;
     if (!body) return;
     const canvas = document.getElementById(SHARED_MESH_CANVAS_ID);
-    const next = !mediaOpen && (body.classList.contains("image-mode") || body.classList.contains("credits-page-open"));
+    const next = !mediaOpen && body.classList.contains("credits-page-open");
     if (canvas) canvas.dataset.vexaMeshActive = next ? "true" : "false";
     document.documentElement.classList.toggle(SHARED_MESH_CLASS, next);
     body.classList.toggle(SHARED_MESH_CLASS, next);
