@@ -135,6 +135,9 @@ import {
   trackUser,
   tryAdminLogin,
   toggleAppModeLock,
+  adminMiniAppEntryText,
+  adminMiniAppEntryKeyboard,
+  setMiniAppDefaultSection,
 } from "./admin.js";
 import { AI_CHAT_MODELS, setAiChatModel } from "./ai-chat-model.js";
 import { addCredits, creditsForTtsCharacters, creditsForUsd, ensureBalanceRow, formatUsdBalanceFromCredits, getBalance, removeCredits, spendCredits } from "./credits.js";
@@ -821,6 +824,19 @@ export async function handleCallback(query, env) {
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppAccessText(env), await adminMiniAppAccessKeyboard(env));
+    return;
+  }
+
+  if (data === "admin_mini_app_entry" || data.startsWith("admin_mini_app_entry_set:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    if (data.startsWith("admin_mini_app_entry_set:")) {
+      await setMiniAppDefaultSection(env, data.slice("admin_mini_app_entry_set:".length));
+      await answerCallback(env, query.id, "Default entry section updated");
+    } else {
+      await answerCallback(env, query.id);
+    }
+    await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppEntryText(env), await adminMiniAppEntryKeyboard(env));
     return;
   }
 

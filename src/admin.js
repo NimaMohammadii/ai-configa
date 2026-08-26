@@ -84,6 +84,60 @@ export const MINI_APP_TRACKED_SECTIONS = {
 
 export const APP_MODE_LOCK_OPTIONS = Object.freeze({ tts: "Text to Speech", image: "Image Creator", ai_chat: "AI Chat", live: "Vexa Live" });
 
+export const MINI_APP_ENTRY_SECTIONS = Object.freeze({
+  home: "Home",
+  tts: "Text to Speech",
+  image: "Image Generator",
+  explore: "Explore",
+  voices: "Voice Library",
+  ai_chat: "AI Chat",
+  wheel: "Reward Wheel",
+  bank_card: "Buy Credits",
+});
+
+export async function getMiniAppDefaultSection(env) {
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = 'mini_app_default_section'").first();
+  return MINI_APP_ENTRY_SECTIONS[row?.value] ? row.value : "home";
+}
+
+export async function setMiniAppDefaultSection(env, section) {
+  if (!MINI_APP_ENTRY_SECTIONS[section]) throw new Error("Invalid mini app section");
+  requireDb(env);
+  await ensureAppSettingsTable(env);
+  await env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('mini_app_default_section', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(section).run();
+}
+
+export async function adminMiniAppEntryText(env) {
+  const selected = await getMiniAppDefaultSection(env);
+  const bot = await tgJson(env, "getMe", {}).catch(() => null);
+  const username = String(bot?.username || env.BOT_USERNAME || "").replace(/^@/, "");
+  const lines = [
+    "🚪 <b>Mini App Entry Section</b>", "",
+    "Default section: <b>" + MINI_APP_ENTRY_SECTIONS[selected] + "</b>",
+    "Users who open the app normally start here. A section-specific link always overrides this default.", "",
+    "<b>Section links</b>",
+  ];
+  for (const [section, label] of Object.entries(MINI_APP_ENTRY_SECTIONS)) {
+    const link = username ? `https://t.me/${username}?startapp=${section}` : `?startapp=${section}`;
+    lines.push(label + ": <code>" + link + "</code>");
+  }
+  return lines.join("\n");
+}
+
+export async function adminMiniAppEntryKeyboard(env) {
+  const selected = await getMiniAppDefaultSection(env);
+  const buttons = Object.entries(MINI_APP_ENTRY_SECTIONS).map(([section, label]) => ({
+    text: (selected === section ? "✅ " : "") + label,
+    callback_data: "admin_mini_app_entry_set:" + section,
+  }));
+  const rows = [];
+  for (let index = 0; index < buttons.length; index += 2) rows.push(buttons.slice(index, index + 2));
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
 export async function getAppModeLocks(env) {
   requireDb(env); await ensureAppSettingsTable(env);
   const rows = await env.DB.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'app_mode_locked_%'").all();
@@ -199,6 +253,7 @@ export function adminMainKeyboard() {
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }, { text: "📂 Section Opens", callback_data: "admin_section_opens" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
+      [{ text: "🚪 Mini App Entry Section", callback_data: "admin_mini_app_entry" }],
       [{ text: "🎛 Settings Section Locks", callback_data: "admin_app_mode_locks" }],
       [{ text: "🤖 AI Chat Users", callback_data: "admin_ai_chat_users:0" }, { text: "🎪 Vexa Live", callback_data: "admin_vexa_live_downloads:0" }],
       [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }],

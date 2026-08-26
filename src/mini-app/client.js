@@ -71,8 +71,21 @@ const MINI_APP_JS_WITH_LAUNCH_ROUTES = replaceMiniAppSource(
   "launch routes"
 );
 
-let MINI_APP_JS_WITH_HISTORY = replaceMiniAppSource(
+const MINI_APP_JS_WITH_DEFAULT_ROUTE = replaceMiniAppSource(
   MINI_APP_JS_WITH_LAUNCH_ROUTES,
+  "applyLaunchSection(launchSection())",
+  "applyLaunchSection(launchSection(data.defaultSection))",
+  "default launch route"
+).replace(
+  "function launchSection(){var raw=''",
+  "function launchSection(fallback){var raw=''"
+).replace(
+  "bank_card:'bank_card',wheel:'wheel',image:'image',explore:'explore',voices:'voices',tts:'tts',voice:'tts',home:'home'}[raw]||'home'",
+  "bank_card:'bank_card',wheel:'wheel',image:'image',explore:'explore',voices:'voices',tts:'tts',voice:'tts',home:'home'}[raw]||({ai_chat:'ai_chat',bank_card:'bank_card',wheel:'wheel',image:'image',explore:'explore',voices:'voices',tts:'tts',home:'home'}[String(fallback||'').toLowerCase()]||'home')"
+);
+
+let MINI_APP_JS_WITH_HISTORY = replaceMiniAppSource(
+  MINI_APP_JS_WITH_DEFAULT_ROUTE,
   "if(fill)fill.style.width='calc('+progressPercent+' - '+(ratio?5:0)+'px)'",
   "if(fill)fill.style.width=progressPercent",
   "history progress bar"
