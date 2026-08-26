@@ -5,17 +5,18 @@ import {
 } from "./mesh-background.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
-const INTEGRATION_VERSION = "20260822-13";
+const LIVE_BACKGROUND = "#000000";
+const INTEGRATION_VERSION = "20260826-1";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-  <meta name="theme-color" content="${VEXA_MESH_BASE_COLOR}" />
+  <meta name="theme-color" content="${LIVE_BACKGROUND}" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>Vexa Live</title>
-  <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:${VEXA_MESH_BASE_COLOR}}</style>
+  <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:${LIVE_BACKGROUND}}</style>
 </head>
 <body></body>
 </html>`;
@@ -30,6 +31,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   const SHARED_MESH_CANVAS_ID = "vexaSharedMeshBackground";
   const SHARED_MESH_CLASS = "vexa-mesh-surface";
   const VEXA_BG = ${JSON.stringify(VEXA_MESH_BASE_COLOR)};
+  const LIVE_BG = ${JSON.stringify(LIVE_BACKGROUND)};
   const DEFAULT_BG = "#000000";
   let mediaOpen = false;
   let mediaFrame = null;
@@ -49,7 +51,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   function syncTelegramChrome() {
     const tg = telegram();
     if (!tg) return;
-    const color = mediaOpen || meshSurfaceActive ? VEXA_BG : DEFAULT_BG;
+    const color = mediaOpen ? LIVE_BG : meshSurfaceActive ? VEXA_BG : DEFAULT_BG;
     try { if (tg.setHeaderColor) tg.setHeaderColor(color); } catch (error) {}
     try { if (tg.setBackgroundColor) tg.setBackgroundColor(color); } catch (error) {}
     try { if (tg.setBottomBarColor) tg.setBottomBarColor(color); } catch (error) {}
@@ -84,18 +86,12 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       "body." + SHARED_MESH_CLASS + " .credits-page .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page .credits-page-head:after,body." + SHARED_MESH_CLASS + " .credits-page.toman-payment-active .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page.toman-payment-active .credits-page-head:after,body." + SHARED_MESH_CLASS + " .credits-page.tribute-payment-active .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page.tribute-payment-active .credits-page-head:after{background:transparent!important}" +
       "#" + BUTTON_ID + "{place-items:center!important}" +
       "#" + BUTTON_ID + " svg{display:block!important;position:static!important;inset:auto!important;width:19px!important;height:19px!important;transform:none!important;transition:none!important;overflow:visible!important}" +
-      "#" + BUTTON_ID + "[aria-pressed=\"true\"] .vexa-media-play{opacity:0}" +
-      "#" + BUTTON_ID + "[aria-pressed=\"true\"] .vexa-media-mic{opacity:1}" +
-      ".vexa-media-play,.vexa-media-mic{transform:none!important;transform-origin:center;transition:opacity .18s ease}" +
-      ".vexa-media-mic{opacity:0}" +
       "body .tts-area{transition:opacity .28s ease,transform .48s cubic-bezier(.16,.86,.22,1)!important}" +
       "body .tts-bottom{transition:opacity .25s ease,transform .48s cubic-bezier(.16,.86,.22,1)!important}" +
-      "body.vexa-live-open{background:transparent!important}" +
+      "html:has(body.vexa-live-open),body.vexa-live-open{background:" + LIVE_BG + "!important}" +
       "body.vexa-live-open .app{position:relative!important;z-index:40!important;background:transparent!important;pointer-events:none!important}" +
       "body.vexa-live-open .app *{pointer-events:none!important}" +
-      "body.vexa-live-open .tts-head{position:sticky!important;z-index:41!important;background:transparent!important;opacity:1!important;visibility:visible!important;pointer-events:none!important}" +
-      "body.vexa-live-open .tts-head:before,body.vexa-live-open .tts-head:after{background:transparent!important;pointer-events:none!important}" +
-      "body.vexa-live-open #" + BUTTON_ID + "{pointer-events:auto!important}" +
+      "body.vexa-live-open .tts-head{display:none!important}" +
       "body.vexa-live-open .tts-area{opacity:0!important;transform:translateX(-30px) scale(.985)!important;pointer-events:none!important}" +
       "body.vexa-live-open .tts-bottom{opacity:0!important;transform:translateX(calc(-50% - 30px)) scale(.985)!important;pointer-events:none!important}";
     document.head.appendChild(style);
@@ -130,7 +126,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const body = document.body;
     if (!body) return;
     const canvas = document.getElementById(SHARED_MESH_CANVAS_ID);
-    const next = body.classList.contains("image-mode") || body.classList.contains("credits-page-open");
+    const next = !mediaOpen && (body.classList.contains("image-mode") || body.classList.contains("credits-page-open"));
     if (canvas) canvas.dataset.vexaMeshActive = next ? "true" : "false";
     document.documentElement.classList.toggle(SHARED_MESH_CLASS, next);
     body.classList.toggle(SHARED_MESH_CLASS, next);
@@ -159,7 +155,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     workspace.style.padding = "0";
     workspace.style.display = "block";
     workspace.style.overflow = "hidden";
-    workspace.style.background = "transparent";
+    workspace.style.background = LIVE_BG;
     workspace.style.transformOrigin = "center";
     workspace.style.willChange = "opacity, transform, clip-path";
     workspace.style.transition = "opacity .34s ease,transform .56s cubic-bezier(.16,.86,.22,1),clip-path .56s cubic-bezier(.16,.86,.22,1)";
@@ -190,10 +186,6 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   function destroyFrame() {
     const frame = mediaFrame || document.getElementById(FRAME_ID);
     if (!frame) { mediaFrame = null; return; }
-    try {
-      const video = frame.contentDocument && frame.contentDocument.querySelector("video");
-      if (video && !video.paused) video.pause();
-    } catch (error) {}
     try { frame.remove(); } catch (error) {}
     mediaFrame = null;
   }
@@ -205,9 +197,8 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     frame.id = FRAME_ID;
     frame.src = "/mini-app/vexa-live";
     frame.title = "Vexa Live";
-    frame.setAttribute("aria-label", "Vexa Live YouTube workspace");
-    frame.setAttribute("allow", "autoplay; fullscreen; picture-in-picture");
-    frame.style.cssText = "position:absolute;inset:0;display:block;width:100%;height:100%;min-width:100%;min-height:100%;border:0;background:transparent;opacity:0;transform:scale(1.018);transform-origin:center;pointer-events:none;transition:opacity .32s ease,transform .48s cubic-bezier(.16,.86,.22,1);will-change:opacity,transform;";
+    frame.setAttribute("aria-label", "Vexa Live download workspace");
+    frame.style.cssText = "position:absolute;inset:0;display:block;width:100%;height:100%;min-width:100%;min-height:100%;border:0;background:" + LIVE_BG + ";opacity:0;transform:scale(1.018);transform-origin:center;pointer-events:none;transition:opacity .32s ease,transform .48s cubic-bezier(.16,.86,.22,1);will-change:opacity,transform;";
     frame.addEventListener("load", function () {
       window.requestAnimationFrame(function () {
         if (!frame.isConnected) return;
@@ -237,9 +228,10 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
 
     mediaOpen = next;
     document.body.classList.toggle("vexa-live-open", next);
+    syncSharedMeshSurface();
     syncTelegramChrome();
     button.setAttribute("aria-pressed", next ? "true" : "false");
-    button.setAttribute("aria-label", next ? "Return to voice creation" : "Open Vexa Live");
+    button.setAttribute("aria-label", next ? "Return to voice creation" : "Open Vexa Live downloads");
     workspace.setAttribute("aria-hidden", next ? "false" : "true");
     workspace.style.opacity = next ? "1" : "0";
     workspace.style.transform = next ? "translateX(0) scale(1)" : "translateX(56px) scale(.97)";
@@ -269,10 +261,10 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     button.id = BUTTON_ID;
     button.type = "button";
     button.className = "mode-toggle vexa-live-media-toggle";
-    button.setAttribute("aria-label", "Open Vexa Live");
+    button.setAttribute("aria-label", "Open Vexa Live downloads");
     button.setAttribute("aria-pressed", "false");
     button.setAttribute("aria-hidden", document.body.classList.contains("ai-chat-admin") ? "false" : "true");
-    button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><g class="vexa-media-play"><rect x="3.25" y="4.25" width="17.5" height="15.5" rx="4.25" stroke="currentColor" stroke-width="1.7"/><path d="M10 8.7 15.6 12 10 15.3V8.7Z" fill="currentColor"/></g><g class="vexa-media-mic"><rect x="8.2" y="3" width="7.6" height="12" rx="3.8" stroke="currentColor" stroke-width="1.75"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.8 21h6.4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></g></svg>';
+    button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.75v10.5m0 0 4-4m-4 4-4-4M5 15.75v2.5A1.75 1.75 0 0 0 6.75 20h10.5A1.75 1.75 0 0 0 19 18.25v-2.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     button.addEventListener("click", function (event) {
       event.preventDefault();
       event.stopPropagation();
