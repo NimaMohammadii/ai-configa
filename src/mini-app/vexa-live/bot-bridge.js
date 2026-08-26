@@ -52,7 +52,6 @@ const LOCK_ACTION = "vexa_live_lock_minutes";
 const YOUTUBE_CALLBACK_PREFIX = "ytdl:";
 const YOUTUBE_WORKFLOW_KIND = "youtube_download";
 const PROGRESS_EDIT_MIN_INTERVAL_MS = 1_100;
-const VEXA_PUBLIC_MINI_APP_URL = "https://vexaai.space/mini-app";
 
 let botUsernameCache = "";
 
@@ -369,11 +368,6 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
     }
 
     await progressEditor.update({ phase: "complete", partNumber: media.partNumber, percent: 100 }, copy, true);
-    if (Number(media.partNumber || 1) > 1) {
-      await sendMultipartDownloadLink(env, chatId, sourceUrl, copy).catch((error) => {
-        console.warn("bot full video download link failed", error?.message || error);
-      });
-    }
     return { ok: true, label: media.label, parts: media.partNumber || 1 };
   } catch (error) {
     console.error("bot YouTube workflow download failed", error?.stack || error);
@@ -538,32 +532,6 @@ function youtubeDownloadKeyboard(options, copy) {
   return { inline_keyboard: rows };
 }
 
-function buildFullVideoDownloadUrl(sourceUrl) {
-  const url = new URL(VEXA_PUBLIC_MINI_APP_URL);
-  url.searchParams.set("section", "live");
-  url.searchParams.set("vexaDownload", "1");
-  url.searchParams.set("vexaSource", sourceUrl);
-  return url.toString();
-}
-
-function multipartDownloadKeyboard(sourceUrl, copy) {
-  return {
-    inline_keyboard: [[{
-      text: copy.fullDownloadButton,
-      web_app: { url: buildFullVideoDownloadUrl(sourceUrl) },
-    }]],
-  };
-}
-
-async function sendMultipartDownloadLink(env, chatId, sourceUrl, copy) {
-  await sendMessage(
-    env,
-    chatId,
-    "<b>🫧 " + escapeHtml(copy.fullDownload) + "</b>",
-    multipartDownloadKeyboard(sourceUrl, copy),
-  );
-}
-
 function youtubeDownloadCopy(language) {
   if (normalizeLang(language || "en") === "fa") {
     return {
@@ -582,8 +550,6 @@ function youtubeDownloadCopy(language) {
       partSent: "پارت ارسال شد",
       overall: "کل ویدیو",
       remaining: "باقی‌مانده",
-      fullDownload: "برای دانلود یک‌جای ویدیو می‌تونی اینجا کلیک کنی.",
-      fullDownloadButton: "🫧 دانلود یک‌جا",
     };
   }
   return {
@@ -602,8 +568,6 @@ function youtubeDownloadCopy(language) {
     partSent: "Part sent",
     overall: "Whole video",
     remaining: "Remaining",
-    fullDownload: "To download the full video in one file, tap below.",
-    fullDownloadButton: "🫧 Download full video",
   };
 }
 

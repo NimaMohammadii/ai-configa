@@ -58,17 +58,6 @@ function setBusy(busy,text){if(openButton){openButton.textContent=text||idleLabe
 function fail(message){console.error('Vexa Live action failed',message);setBusy(false);try{window.alert(String(message||'Could not open this video'));}catch{}haptic('light');}
 function selectMode(next,vibrate){if(next!=='watch'&&next!=='download')return;mode=next;if(modeSwitch)modeSwitch.dataset.mode=mode;for(const button of modeButtons)button.setAttribute('aria-selected',String(button.dataset.vexaMode===mode));if(openButton&&!openButton.disabled)openButton.textContent=idleLabel();if(vibrate!==false)haptic('light');}
 function promptVideoUrl(){const source=window.prompt('Enter video link');if(source===null)return'';return String(source||'').trim();}
-function requestedDownloadUrl(){
- const host=hostWindow();
- try{
-  const params=new URLSearchParams(host.location.search);
-  if(params.get('vexaDownload')!=='1')return'';
-  const source=String(params.get('vexaSource')||'').trim();
-  if(!source||source.length>2048)return'';
-  const url=new URL(source);
-  return url.protocol==='https:'?url.href:'';
- }catch{return'';}
-}
 function playbackToken(data){try{return String(new URL(String(data?.playbackUrl||''),window.location.origin).searchParams.get('token')||'').trim();}catch{return'';}}
 function startDownload(data){
  const absoluteUrl=new URL(String(data.downloadUrl),window.location.origin).href;
@@ -107,10 +96,9 @@ async function prepareDownload(playback){
  return data;
 }
 
-async function runAction(sourceOverride){
+async function runAction(){
  if(!openButton||openButton.disabled)return;
- const preset=String(sourceOverride||'').trim();
- const url=preset||promptVideoUrl();if(!url)return;
+ const url=promptVideoUrl();if(!url)return;
  setBusy(true,mode==='download'?'Preparing…':'Opening…');haptic('light');
  try{
   const playback=await preparePlayback(url);
@@ -123,8 +111,7 @@ async function runAction(sourceOverride){
 }
 for(const button of modeButtons)button.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();if(!button.disabled)selectMode(String(button.dataset.vexaMode||''),true);});
 openButton?.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();runAction();});
-const autoDownloadUrl=requestedDownloadUrl();
-if(autoDownloadUrl){selectMode('download',false);runAction(autoDownloadUrl);}else{selectMode('watch',false);}
+selectMode('watch',false);
 })();
 `;
 
