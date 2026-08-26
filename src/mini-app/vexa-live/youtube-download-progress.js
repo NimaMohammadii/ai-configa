@@ -11,7 +11,8 @@ const PROGRESS_PATH = "/mini-app/live/api/youtube-download/progress";
 const DIRECT_DOWNLOAD_PATH = "/mini-app/live/api/youtube-download";
 export const DOWNLOAD_PROGRESS_RUNTIME_PATH = "/mini-app/vexa-live/download-progress.js";
 
-const FILE_NAME = "Vexa-video.mp4";
+const VIDEO_FILE_NAME = "Vexa-video.mp4";
+const AUDIO_FILE_NAME = "Vexa-audio.m4a";
 const SESSION_TTL_SECONDS = 60 * 60;
 const PROGRESS_REPORT_BYTES = 2 * 1024 * 1024;
 const PROGRESS_REPORT_MS = 750;
@@ -112,7 +113,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-7"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-8"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -161,13 +162,15 @@ async function createDownloadSession(request, env, ctx) {
     return json({ error: String(error?.message || "Could not inspect video qualities") }, 502);
   }
 
-  const videos = Array.isArray(prepared?.options)
-    ? prepared.options.filter((option) =>
-        option?.kind === "video" &&
-        /^v\d{2,4}$/u.test(String(option?.key || "")) &&
-        positiveInteger(option?.sizeBytes) &&
-        String(option?.selector || "").trim())
+  const downloadOptions = Array.isArray(prepared?.options)
+    ? prepared.options.filter((option) => {
+        const key = String(option?.key || "");
+        const validKind = (option?.kind === "video" && /^v\d{2,4}$/u.test(key)) ||
+          (option?.kind === "audio" && key === "a");
+        return validKind && positiveInteger(option?.sizeBytes) && String(option?.selector || "").trim();
+      })
     : [];
+  const videos = downloadOptions.filter((option) => option.kind === "video");
   if (!videos.length) return json({ error: "Video quality is unavailable" }, 500);
 
   const requestedOptionKey = cleanOptionKey(payload.optionKey);
@@ -176,9 +179,12 @@ async function createDownloadSession(request, env, ctx) {
       ok: true,
       chooseQuality: true,
       title: String(prepared?.title || "Video"),
-      options: videos.map((option) => ({
+      options: downloadOptions.map((option) => ({
         key: String(option.key),
-        label: String(option.label || (positiveInteger(option.height) ? positiveInteger(option.height) + "p" : option.key)),
+        kind: String(option.kind || "video"),
+        label: option.kind === "audio"
+          ? "Audio"
+          : String(option.label || (positiveInteger(option.height) ? positiveInteger(option.height) + "p" : option.key)),
         sizeBytes: positiveInteger(option.sizeBytes),
         width: positiveInteger(option.width),
         height: positiveInteger(option.height),
@@ -187,8 +193,8 @@ async function createDownloadSession(request, env, ctx) {
     });
   }
 
-  const selected = videos.find((option) => String(option.key || "") === requestedOptionKey) || null;
-  if (!selected) return json({ error: "Selected video quality is unavailable" }, 409);
+  const selected = downloadOptions.find((option) => String(option.key || "") === requestedOptionKey) || null;
+  if (!selected) return json({ error: "Selected download option is unavailable" }, 409);
 
   const mediaInfo = {
     totalBytes: positiveInteger(selected.sizeBytes),
@@ -199,9 +205,11 @@ async function createDownloadSession(request, env, ctx) {
     provider: String(prepared?.provider || "youtube"),
     duration: positiveNumber(selected.duration),
     optionKey: String(selected.key || ""),
+    kind: String(selected.kind || "video"),
+    fileName: String(selected.filename || (selected.kind === "audio" ? AUDIO_FILE_NAME : VIDEO_FILE_NAME)),
   };
   const totalBytes = positiveInteger(mediaInfo.totalBytes);
-  if (!totalBytes) return json({ error: "Video size is unavailable" }, 500);
+  if (!totalBytes) return json({ error: "Media size is unavailable" }, 500);
 
   await ensureProgressTable(env);
   const session = randomToken();
@@ -234,7 +242,7 @@ async function createDownloadSession(request, env, ctx) {
 
   return json({
     ok: true,
-    fileName: FILE_NAME,
+    fileName: mediaInfo.fileName,
     fileSize: totalBytes,
     title: String(mediaInfo.title || "Video"),
     optionKey: mediaInfo.optionKey,
@@ -297,7 +305,7 @@ async function directDownloadHead(request, env) {
   const checked = await validateTrackedSession(env, session, downloadToken);
   if (checked.response) return checked.response;
   const totalBytes = positiveInteger(checked.row.total_bytes);
-  const headers = trackedDownloadHeaders();
+  const headers = trackedDownloadHeaders(checked.row.option_key);
   if (totalBytes) headers.set("Content-Length", String(totalBytes));
   return new Response(null, { status: 200, headers });
 }
@@ -357,7 +365,7 @@ async function trackedDownload(request, env, ctx) {
   }
 
   if (!sourceStream) {
-    const message = "Could not start the video download";
+    const message = "Could not start the media download";
     await writeProgress(env, session, 0, "failed", message, totalBytes);
     return json({ error: message }, 502);
   }
@@ -408,7 +416,7 @@ async function trackedDownload(request, env, ctx) {
           finished = true;
           await settleProgress();
           if (responseSize && downloaded !== responseSize) {
-            const message = "Video download ended before the expected file size";
+            const message = "Media download ended before the expected file size";
             await writeProgress(env, session, downloaded, "failed", message, totalBytes).catch(() => null);
             controller.error(new Error(message));
             return;
@@ -458,7 +466,7 @@ async function trackedDownload(request, env, ctx) {
 
   return new Response(responseBody, {
     status: 200,
-    headers: trackedDownloadHeaders(),
+    headers: trackedDownloadHeaders(checked.row.option_key),
   });
 }
 
@@ -476,10 +484,12 @@ async function validateTrackedSession(env, session, downloadToken) {
   return { row };
 }
 
-function trackedDownloadHeaders() {
+function trackedDownloadHeaders(optionKey) {
+  const audio = String(optionKey || "") === "a";
+  const fileName = audio ? AUDIO_FILE_NAME : VIDEO_FILE_NAME;
   return new Headers({
-    "Content-Type": "video/mp4",
-    "Content-Disposition": 'attachment; filename="' + FILE_NAME + '"',
+    "Content-Type": audio ? "audio/mp4" : "video/mp4",
+    "Content-Disposition": 'attachment; filename="' + fileName + '"',
     "Cache-Control": "private, no-store",
     "X-Content-Type-Options": "nosniff",
     "Access-Control-Allow-Origin": "https://web.telegram.org",
@@ -627,7 +637,7 @@ function cleanToken(value) {
 
 function cleanOptionKey(value) {
   const key = String(value || "").trim();
-  return /^v\d{2,4}$/u.test(key) ? key : "";
+  return /^(?:a|v\d{2,4})$/u.test(key) ? key : "";
 }
 
 function positiveInteger(value) {
@@ -655,7 +665,7 @@ function randomToken() {
 function publicDownloadError(error) {
   const message = String(error?.message || "");
   if (/cancel|abort/i.test(message)) return "Download was cancelled";
-  return "Video download failed before completion";
+  return "Media download failed before completion";
 }
 
 function json(value, status = 200) {
@@ -707,7 +717,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
       if(!source||source.length>2048)return{source:'',optionKey:''};
       const url=new URL(source);
       if(url.protocol!=='https:')return{source:'',optionKey:''};
-      const optionKey=/^v\d{2,4}$/.test(String(params.get('vexaOption')||''))?String(params.get('vexaOption')):'';
+      const optionKey=/^(?:a|v\d{2,4})$/.test(String(params.get('vexaOption')||''))?String(params.get('vexaOption')):'';
       return{source:url.href,optionKey:optionKey};
     }catch(error){return{source:'',optionKey:''};}
   }
@@ -739,7 +749,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   function tokenFromDownloadUrl(value){try{const token=new URL(String(value||''),window.location.origin).searchParams.get('token')||'';return/^[A-Za-z0-9_-]{40,160}$/.test(token)?token:'';}catch(error){return'';}}
   function wsUrl(value){const url=new URL(String(value||''),window.location.origin);url.protocol=url.protocol==='https:'?'wss:':'ws:';return url.href;}
   function selectedQuality(){return qualityOptions.find(function(option){return option.key===selectedOptionKey;})||null;}
-  function qualityDetail(option){if(!option)return'';return String(option.label||option.key)+' · '+mb(option.sizeBytes)+' MB';}
+  function qualityDetail(option){if(!option)return'';const label=option.kind==='audio'?'Audio':String(option.label||option.key);return label+' · '+mb(option.sizeBytes)+' MB';}
   function updateQualitySelection(){
     if(!qualityNode)return;
     for(const node of qualityNode.querySelectorAll('[data-quality-key]')){
@@ -756,20 +766,21 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   }
   function renderQualities(options,preferredKey){
     if(!qualityNode)return false;
-    qualityOptions=Array.isArray(options)?options.filter(function(option){return option&&/^v\d{2,4}$/.test(String(option.key||''))&&Number(option.sizeBytes||0)>0;}):[];
+    qualityOptions=Array.isArray(options)?options.filter(function(option){const key=String(option?.key||'');return option&&Number(option.sizeBytes||0)>0&&((option.kind==='video'&&/^v\d{2,4}$/.test(key))||(option.kind==='audio'&&key==='a'));}):[];
     qualityNode.replaceChildren();
     if(!qualityOptions.length){qualityNode.dataset.ready='0';selectedOptionKey='';return false;}
     for(const option of qualityOptions){
       const item=document.createElement('button');item.type='button';item.className='vexa-quality-option';item.dataset.qualityKey=String(option.key);item.dataset.selected='0';item.setAttribute('aria-pressed','false');
-      const label=document.createElement('span');label.textContent=String(option.label||option.key);
+      const label=document.createElement('span');label.textContent=option.kind==='audio'?'Audio':String(option.label||option.key);
       const size=document.createElement('small');size.textContent=mb(option.sizeBytes)+' MB';
       item.append(label,size);
       item.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();selectQuality(option.key,true);});
       qualityNode.appendChild(item);
     }
     qualityNode.dataset.ready='1';
-    const preferred=qualityOptions.some(function(option){return option.key===preferredKey;})?preferredKey:qualityOptions[0].key;
-    return selectQuality(preferred,false);
+    const preferred=qualityOptions.some(function(option){return option.key===preferredKey;})?preferredKey:'';
+    const lowestVideo=qualityOptions.filter(function(option){return option.kind==='video';}).sort(function(a,b){return Number(a.height||99999)-Number(b.height||99999);})[0]||null;
+    return selectQuality(preferred||(lowestVideo?.key||qualityOptions[0].key),false);
   }
   function clearQualities(){qualityOptions=[];selectedOptionKey='';if(qualityNode){qualityNode.replaceChildren();qualityNode.dataset.ready='0';}}
   function closeProgressSocket(){
@@ -790,10 +801,10 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
       busy=false;setState('error',String(data.error||'Download failed'),done?mb(done)+' MB received':qualityDetail(selectedQuality()));setButton('Try again',false);closeProgressSocket();prepared=null;return;
     }
     if(state==='preparing'){
-      if(displayedPercent<=0)setProgress(0,false);setState('preparing','Preparing download','0.0 MB / '+mb(total)+' MB');return;
+      if(displayedPercent<=0)setProgress(0,false);setState('preparing','Preparing download','This may take a few minutes. Keep the app open.');return;
     }
     if(state==='downloading'){
-      setProgress(Math.max(displayedPercent,pct),true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB');
+      setProgress(Math.max(displayedPercent,pct),true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB · Keep the app open');
     }
   }
   function connectProgress(progressUrl){
@@ -819,7 +830,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   function handleTelegramDownloadRequested(event){
     const state=String(event?.status||event||'').toLowerCase();
     if(state==='cancelled'){cancelNativeDownloadState();return;}
-    if(state==='downloading'&&busy){setState('preparing','Starting download','0.0 MB / '+mb(prepared?.fileSize||0)+' MB');}
+    if(state==='downloading'&&busy){setState('preparing','Starting download','This may take a few minutes. Keep the app open.');}
   }
   function bindTelegramDownloadEvent(){
     if(telegramDownloadEventBound)return;
@@ -831,7 +842,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     const clean=String(source||'').trim();
     if(!clean)return false;
     if(preparingPromise)return preparingPromise;
-    lastSource=clean;lastOptionKey=/^v\d{2,4}$/.test(String(optionKey||''))?String(optionKey):'';downloadToken='';directMeta=null;prepared=null;busy=false;closeProgressSocket();clearQualities();setProgress(0,false);setState('preparing','Loading qualities','');setButton('Preparing…',true);haptic('light');
+    lastSource=clean;lastOptionKey=/^(?:a|v\d{2,4})$/.test(String(optionKey||''))?String(optionKey):'';downloadToken='';directMeta=null;prepared=null;busy=false;closeProgressSocket();clearQualities();setProgress(0,false);setState('preparing','Loading qualities','');setButton('Preparing…',true);haptic('light');
     preparingPromise=(async function(){
       try{
         const response=await fetch(PREPARE_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:clean})});
@@ -843,8 +854,8 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
         const qualityData=await qualityResponse.json().catch(function(){return{};});
         if(!qualityResponse.ok||!Array.isArray(qualityData.options)||!qualityData.options.length)throw new Error(String(qualityData.error||'Could not load video qualities'));
         downloadToken=token;directMeta=direct;
-        if(!renderQualities(qualityData.options,lastOptionKey))throw new Error('Video quality is unavailable');
-        const option=selectedQuality();setProgress(0,false);setState('waiting','Choose quality',qualityDetail(option));setButton('Download',false);haptic('light');return true;
+        if(!renderQualities(qualityData.options,lastOptionKey))throw new Error('Download option is unavailable');
+        const option=selectedQuality();setProgress(0,false);setState('waiting','Choose format',qualityDetail(option));setButton('Download',false);haptic('light');return true;
       }catch(error){
         downloadToken='';directMeta=null;prepared=null;clearQualities();setState('error',String(error?.message||'Could not prepare download'),'');setButton('Try again',false);return false;
       }finally{preparingPromise=null;}
@@ -858,29 +869,29 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
       try{
         const sessionResponse=await fetch(SESSION_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),downloadToken:downloadToken,optionKey:selectedOptionKey})});
         const session=await sessionResponse.json().catch(function(){return{};});
-        if(!sessionResponse.ok||!session.downloadUrl||!session.progressUrl||!session.fileSize)throw new Error(String(session.error||'Could not prepare selected quality'));
+        if(!sessionResponse.ok||!session.downloadUrl||!session.progressUrl||!session.fileSize)throw new Error(String(session.error||'Could not prepare selected option'));
         prepared={downloadUrl:new URL(String(session.downloadUrl),window.location.origin).href,progressUrl:new URL(String(session.progressUrl),window.location.origin).href,fileName:String(session.fileName||directMeta?.fileName||'Vexa-video.mp4'),fileSize:Number(session.fileSize||0),title:String(session.title||directMeta?.title||'Video'),optionKey:String(session.optionKey||selectedOptionKey)};
         setProgress(0,false);setState('waiting','Ready to download',qualityDetail(option));setButton('Download',false);return true;
-      }catch(error){prepared=null;setState('error',String(error?.message||'Could not prepare selected quality'),qualityDetail(option));setButton('Try again',false);return false;}
+      }catch(error){prepared=null;setState('error',String(error?.message||'Could not prepare selected option'),qualityDetail(option));setButton('Try again',false);return false;}
       finally{preparingPromise=null;}
     })();
     return preparingPromise;
   }
   function requestDownload(){
     if(!prepared||busy)return;
-    busy=true;setProgress(0,false);setState('preparing','Waiting for Telegram','0.0 MB / '+mb(prepared.fileSize)+' MB');setButton('Downloading…',true);connectProgress(prepared.progressUrl);bindTelegramDownloadEvent();haptic('light');
+    busy=true;setProgress(0,false);setState('preparing','Waiting for Telegram','This may take a few minutes. Keep the app open.');setButton('Downloading…',true);connectProgress(prepared.progressUrl);bindTelegramDownloadEvent();haptic('light');
     const tg=telegram();
     if(tg?.downloadFile){
       try{
         tg.downloadFile({url:prepared.downloadUrl,file_name:prepared.fileName},function(accepted){
           if(accepted===false){cancelNativeDownloadState();return;}
-          setState('preparing','Starting download','0.0 MB / '+mb(prepared?.fileSize||0)+' MB');
+          setState('preparing','Starting download','This may take a few minutes. Keep the app open.');
         });
         return;
       }catch(error){console.warn('Telegram downloadFile failed',error?.message||error);}
     }
     try{
-      const link=document.createElement('a');link.href=prepared.downloadUrl;link.download=prepared.fileName;link.rel='noopener';document.body.appendChild(link);link.click();link.remove();setState('preparing','Starting download','0.0 MB / '+mb(prepared.fileSize)+' MB');
+      const link=document.createElement('a');link.href=prepared.downloadUrl;link.download=prepared.fileName;link.rel='noopener';document.body.appendChild(link);link.click();link.remove();setState('preparing','Starting download','This may take a few minutes. Keep the app open.');
     }catch(error){busy=false;closeProgressSocket();setState('error','Could not start download','');setButton('Try again',false);}
   }
   async function onButtonClick(event){
