@@ -298,12 +298,25 @@ export class VexaMediaContainerV3 extends Container {
     }
   }
 
-  async streamVideo(url, strategyId, formatId, transport = "", maxFinalizedBytes = TELEGRAM_UPLOAD_FILE_BYTES) {
+  async streamVideo(
+    url,
+    strategyId,
+    formatId,
+    transport = "",
+    maxFinalizedBytes = TELEGRAM_UPLOAD_FILE_BYTES,
+    includeDetails = false,
+  ) {
     const provider = mediaProviderForStrategy(strategyId);
-    const process = provider === "pornhub"
+    const prepared = provider === "pornhub"
       ? await this.startFinalizedPornHubProcess(url, strategyId, formatId, transport, maxFinalizedBytes)
-      : await this.startVideoProcess(url, strategyId, formatId, transport);
-    return this.streamProcess(process, provider);
+      : {
+          process: await this.startVideoProcess(url, strategyId, formatId, transport),
+          sizeBytes: 0,
+        };
+    const stream = await this.streamProcess(prepared.process, provider);
+    return includeDetails
+      ? { stream, sizeBytes: positiveInteger(prepared.sizeBytes) }
+      : stream;
   }
 
   async streamVideoPart(
@@ -416,33 +429,13 @@ export class VexaMediaContainerV3 extends Container {
   }
 
   async startFinalizedPornHubProcess(url, strategyId, formatId, transport = "", maxBytes = TELEGRAM_UPLOAD_FILE_BYTES) {
-    const tempPath = "/tmp/vexa-pornhub-" + crypto.randomUUID() + ".mp4";
-    try {
-      const downloadProcess = await this.startVideoProcess(
-        url,
-        strategyId,
-        formatId,
-        "native",
-        tempPath,
-      );
-      const output = await downloadProcess.output();
-      const decoder = new TextDecoder();
-      const detail = decoder.decode(output.stderr).trim();
-      if (output.exitCode !== 0) {
-        if (detail) console.error("yt-dlp finalized PornHub download failed", detail.slice(-4000));
-        throw publicContainerError(detail || "download failed", "pornhub");
-      }
-
-      const fileSize = await this.readFileSize(tempPath);
-      if (Number(maxBytes) > 0 && fileSize > Number(maxBytes)) {
-        throw new Error("This download is too large for Telegram");
-      }
-
-      return await this.openAndUnlinkFile(tempPath, "vexa-pornhub-stream");
-    } catch (error) {
-      await this.removeTempFile(tempPath);
-      throw error;
+    const stagedPath = await this.ensurePornHubTelegramStage(url, strategyId, formatId);
+    const fileSize = await this.readFileSize(stagedPath);
+    if (Number(maxBytes) > 0 && fileSize > Number(maxBytes)) {
+      throw new Error("This download is too large for Telegram");
     }
+    const process = await this.ctx.container.exec(["cat", stagedPath]);
+    return { process, sizeBytes: fileSize };
   }
 
   async startTelegramPartProcess(
@@ -945,15 +938,6 @@ async function prepareDownload(request, env, ctx) {
   if (!normalized?.url) return json({ error: "لینک ویدیو رو وارد کن" }, 400);
   const sourceUrl = normalized.url;
 
-  const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(user.id));
-  let metadata;
-  try {
-    metadata = await container.prepareVideo(sourceUrl);
-  } catch (error) {
-    console.error("Vexa media prepare failed", error?.stack || error);
-    return json({ error: publicMediaError(error, normalized.provider) }, 502);
-  }
-
   await ensureTokenTable(env);
   const now = Math.floor(Date.now() / 1000);
   const token = randomToken();
@@ -972,7 +956,7 @@ async function prepareDownload(request, env, ctx) {
     ok: true,
     downloadUrl: DOWNLOAD_PATH + "?token=" + encodeURIComponent(token),
     fileName: DOWNLOAD_FILE_NAME,
-    title: metadata?.title || "Video",
+    title: "Video",
     format: "mp4",
     expiresIn: TOKEN_TTL_SECONDS,
   });
