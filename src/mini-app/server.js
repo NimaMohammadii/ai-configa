@@ -1,6 +1,6 @@
 import { handleMiniAppRequest as baseHandleMiniAppRequest, isMiniAppRequest } from "./server-original.js";
 import { authenticateMiniAppPayload } from "./auth.js";
-import { getAppModeLocks, getMiniAppAccessSettings, getMiniAppDefaultSection, hasTrackedUser, isAdmin } from "../admin.js";
+import { getAppModeLocks, getMiniAppAccessSettings, hasTrackedUser, isAdmin } from "../admin.js";
 import { getBalance } from "../credits.js";
 import { regenerateSmartTtsSelection } from "../tts-smart-editing.js";
 import { buildPreparedReferralShare, getReferralLanguage, getReferralStatus, parseReferralStartParam, registerReferralFromStartParam } from "../referrals.js";
@@ -298,13 +298,11 @@ async function enhanceSession(response, request, env) {
     const body = await request.json().catch(() => ({}));
     const user = await authenticateMiniAppPayload(body, env);
     const state = await getState(env, user.id);
-    const configuredDefault = normalizeAppMode(await getMiniAppDefaultSection(env).catch(() => "tts"));
     const rawLaunch = String(body.launchSection || signedStartParam(body.initData) || "").trim().toLowerCase().replaceAll("-", "_");
     const launchModes = { voice: "tts", tts: "tts", image: "image", explore: "explore", ai_chat: "ai_chat", stt: "stt", speech_to_text: "stt", live: "live", vexa_live: "live" };
     const requestedMode = launchModes[rawLaunch] || "";
     const currentMode = normalizeAppMode(state.appMode);
-    const resolvedMode = requestedMode || (!rawLaunch || rawLaunch === "home" ? configuredDefault : currentMode);
-    appMode = resolvedMode || currentMode;
+    appMode = requestedMode || currentMode;
     if (appMode !== currentMode) appMode = normalizeAppMode(await setAppMode(env, user.id, appMode));
     appModeLocks = await getAppModeLocks(env);
   } catch (error) {
