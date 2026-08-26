@@ -82,7 +82,7 @@ export async function handleMiniAppRequest(request, env) {
       const body = await request.json().catch(() => ({}));
       const user = await authenticateMiniAppPayload(body, env);
       const [status, language] = await Promise.all([
-        getReferralStatus(env, user),
+        getReferralStatus(env, user.id),
         getReferralLanguage(env, user),
       ]);
       return json({ ...status, language });
