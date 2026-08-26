@@ -85,21 +85,19 @@ export const MINI_APP_TRACKED_SECTIONS = {
 export const APP_MODE_LOCK_OPTIONS = Object.freeze({ tts: "Text to Speech", image: "Image Creator", ai_chat: "AI Chat", live: "Vexa Live" });
 
 export const MINI_APP_ENTRY_SECTIONS = Object.freeze({
-  home: "Home",
   tts: "Text to Speech",
   image: "Image Generator",
   explore: "Explore",
-  voices: "Voice Library",
   ai_chat: "AI Chat",
-  wheel: "Reward Wheel",
-  bank_card: "Buy Credits",
+  stt: "Speech to Text",
+  live: "Vexa Live",
 });
 
 export async function getMiniAppDefaultSection(env) {
   requireDb(env);
   await ensureAppSettingsTable(env);
   const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = 'mini_app_default_section'").first();
-  return MINI_APP_ENTRY_SECTIONS[row?.value] ? row.value : "home";
+  return MINI_APP_ENTRY_SECTIONS[row?.value] ? row.value : "tts";
 }
 
 export async function setMiniAppDefaultSection(env, section) {
