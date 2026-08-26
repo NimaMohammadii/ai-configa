@@ -1,6 +1,6 @@
 import { handleMiniAppRequest as baseHandleMiniAppRequest, isMiniAppRequest } from "./server-original.js";
 import { authenticateMiniAppPayload } from "./auth.js";
-import { getAppModeLocks, getMiniAppAccessSettings, hasTrackedUser, isAdmin } from "../admin.js";
+import { getAppModeLocks, getMiniAppAccessSettings, getMiniAppDefaultSection, hasTrackedUser, isAdmin } from "../admin.js";
 import { getBalance } from "../credits.js";
 import { regenerateSmartTtsSelection } from "../tts-smart-editing.js";
 import { buildPreparedReferralShare, getReferralLanguage, getReferralStatus, parseReferralStartParam, registerReferralFromStartParam } from "../referrals.js";
@@ -303,7 +303,8 @@ async function enhanceSession(response, request, env) {
     console.error("mini app mode session lookup failed", error?.message || error);
   }
 
-  return json({ ...data, appMode, appModeLocks, imagePricing: dynamicPricingPayload(0) }, response.status);
+  const defaultSection = await getMiniAppDefaultSection(env).catch(() => "home");
+  return json({ ...data, appMode, appModeLocks, defaultSection, imagePricing: dynamicPricingPayload(0) }, response.status);
 }
 
 async function registerReferralBeforeFirstSession(request, env) {
