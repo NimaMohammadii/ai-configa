@@ -52,6 +52,7 @@ const LOCK_ACTION = "vexa_live_lock_minutes";
 const YOUTUBE_CALLBACK_PREFIX = "ytdl:";
 const YOUTUBE_WORKFLOW_KIND = "youtube_download";
 const PROGRESS_EDIT_MIN_INTERVAL_MS = 1_100;
+const MEDIA_PART_PREPARE_MAX_ATTEMPTS = 3;
 const VEXA_PUBLIC_MINI_APP_URL = "https://vexaai.space/mini-app";
 
 let botUsernameCache = "";
@@ -282,39 +283,68 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
 
   try {
     await progressEditor.update({ phase: "preparing", partNumber, percent: 0 }, copy, true);
-    const prepared = await prepareTelegramYouTubeMedia(
-      env,
-      userId,
-      sourceUrl,
-      optionKey,
-      payload?.prepared || null,
-    );
+
+    let prepared = null;
+    let media = null;
+    let lastPrepareError = null;
+
+    for (let attempt = 1; attempt <= MEDIA_PART_PREPARE_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        prepared = await prepareTelegramYouTubeMedia(
+          env,
+          userId,
+          sourceUrl,
+          optionKey,
+          attempt === 1 ? payload?.prepared || null : null,
+        );
+
+        let shownPercent = 0;
+        const prepareProgress = (progress) => {
+          const percent = Math.min(99, Math.round(clampPercent(progress?.percent)));
+          if (percent <= shownPercent) return;
+          shownPercent = percent;
+          progressEditor.update({
+            phase: "preparing",
+            partNumber,
+            percent: shownPercent,
+          }, copy).catch(() => null);
+        };
+
+        media = await downloadTelegramYouTubeMediaPart(
+          env,
+          userId,
+          prepared,
+          startSeconds,
+          partNumber,
+          prepareProgress,
+        );
+        lastPrepareError = null;
+        break;
+      } catch (error) {
+        lastPrepareError = error;
+        if (attempt >= MEDIA_PART_PREPARE_MAX_ATTEMPTS || !isRetriableMediaPartError(error)) {
+          throw error;
+        }
+        console.warn("bot media part preparation retry", {
+          partNumber,
+          attempt,
+          error: String(error?.message || error).slice(0, 300),
+        });
+        await progressEditor.update({
+          phase: "preparing",
+          partNumber,
+          percent: 0,
+        }, copy, true);
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+      }
+    }
+
+    if (!prepared || !media) {
+      throw lastPrepareError || new Error("Media part preparation failed");
+    }
+
     const workflowPrepared = snapshotTelegramYouTubeMedia(prepared);
     if (!workflowPrepared) throw new Error("Prepared media state is invalid");
-
-    let shownPercent = 0;
-    const updatePercent = (value) => {
-      const percent = Math.min(99, Math.round(clampPercent(value)));
-      if (percent <= shownPercent) return;
-      shownPercent = percent;
-      progressEditor.update({
-        phase: "preparing",
-        partNumber,
-        percent: shownPercent,
-      }, copy).catch(() => null);
-    };
-    const prepareProgress = (progress) => {
-      updatePercent(progress?.percent);
-    };
-
-    const media = await downloadTelegramYouTubeMediaPart(
-      env,
-      userId,
-      prepared,
-      startSeconds,
-      partNumber,
-      prepareProgress,
-    );
     const showPart = !media.done || Number(media.partNumber || 0) > 1;
 
     await progressEditor.update({
@@ -383,6 +413,16 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
     ).catch(() => null);
     throw error;
   }
+}
+
+function isRetriableMediaPartError(error) {
+  const message = String(error?.message || "").trim();
+  return message === "YouTube download is temporarily unavailable"
+    || message === "PornHub download is temporarily unavailable"
+    || message === "YouTube could not prepare this video"
+    || message === "PornHub could not prepare this video"
+    || message === "YouTube blocked the Cloudflare download request (403)"
+    || message === "PornHub blocked the Cloudflare download request";
 }
 
 async function sendTelegramMediaStream(env, chatId, media, onProgress = null) {
