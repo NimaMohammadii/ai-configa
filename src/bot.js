@@ -16,6 +16,8 @@ import {
   adminAiChatModelKeyboard,
   adminAiChatModelText,
   adminAiChatLockPromptText,
+  adminAppModeLocksText,
+  adminAppModeLocksKeyboard,
   adminBuyersKeyboard,
   adminBuyersText,
   adminReferralUsersKeyboard,
@@ -132,6 +134,7 @@ import {
   hasTrackedUser,
   trackUser,
   tryAdminLogin,
+  toggleAppModeLock,
 } from "./admin.js";
 import { AI_CHAT_MODELS, setAiChatModel } from "./ai-chat-model.js";
 import { addCredits, creditsForTtsCharacters, creditsForUsd, ensureBalanceRow, formatUsdBalanceFromCredits, getBalance, removeCredits, spendCredits } from "./credits.js";
@@ -562,7 +565,7 @@ export async function handleCallback(query, env) {
     const targetUserId = parts[1];
     const page = Number(parts[2] || 0);
     await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, await adminVexaLiveDownloadUserText(env, targetUserId), adminVexaLiveDownloadUserKeyboard(targetUserId, page));
+    await editCurrentMenu(env, chatId, userId, messageId, await adminVexaLiveDownloadUserText(env, targetUserId), await adminVexaLiveDownloadUserKeyboard(env, targetUserId, page));
     return;
   }
 
@@ -818,6 +821,15 @@ export async function handleCallback(query, env) {
     await clearAdminAction(env, userId);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminMiniAppAccessText(env), await adminMiniAppAccessKeyboard(env));
+    return;
+  }
+
+  if (data === "admin_app_mode_locks" || data.startsWith("admin_app_mode_lock:")) {
+    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
+    await clearAdminAction(env, userId);
+    if (data.startsWith("admin_app_mode_lock:")) await toggleAppModeLock(env, data.slice("admin_app_mode_lock:".length));
+    await answerCallback(env, query.id);
+    await editCurrentMenu(env, chatId, userId, messageId, await adminAppModeLocksText(env), await adminAppModeLocksKeyboard(env));
     return;
   }
 

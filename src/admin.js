@@ -82,6 +82,33 @@ export const MINI_APP_TRACKED_SECTIONS = {
   ai_chat: "AI Chat",
 };
 
+export const APP_MODE_LOCK_OPTIONS = Object.freeze({ tts: "Text to Speech", image: "Image Creator", ai_chat: "AI Chat", live: "Vexa Live" });
+
+export async function getAppModeLocks(env) {
+  requireDb(env); await ensureAppSettingsTable(env);
+  const rows = await env.DB.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'app_mode_locked_%'").all();
+  const values = Object.fromEntries((rows.results || []).map((row) => [row.key, row.value]));
+  return Object.fromEntries(Object.keys(APP_MODE_LOCK_OPTIONS).map((mode) => [mode, values["app_mode_locked_" + mode] === "1"]));
+}
+
+export async function toggleAppModeLock(env, mode) {
+  if (!APP_MODE_LOCK_OPTIONS[mode]) throw new Error("Invalid app section");
+  const locked = !(await getAppModeLocks(env))[mode];
+  await env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("app_mode_locked_" + mode, locked ? "1" : "0").run();
+  return locked;
+}
+
+export async function adminAppModeLocksText(env) {
+  const locks = await getAppModeLocks(env);
+  return ["🔐 <b>Settings Section Locks</b>", "", "Lock a main-experience switch so users cannot select it.", "", ...Object.entries(APP_MODE_LOCK_OPTIONS).map(([mode, label]) => (locks[mode] ? "🔒 " : "🔓 ") + label)].join("\n");
+}
+
+export async function adminAppModeLocksKeyboard(env) {
+  const locks = await getAppModeLocks(env);
+  const rows = Object.entries(APP_MODE_LOCK_OPTIONS).map(([mode, label]) => [{ text: (locks[mode] ? "🔒 " : "🔓 ") + label, callback_data: "admin_app_mode_lock:" + mode }]);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]); return { inline_keyboard: rows };
+}
+
 export function normalizeTrackedMiniAppSection(section = "home") {
   return MINI_APP_TRACKED_SECTIONS[section] ? section : "home";
 }
@@ -172,6 +199,7 @@ export function adminMainKeyboard() {
       [{ text: "🆕 Initial Start Credits", callback_data: "admin_initial_start" }, { text: "📱 Mini App Users", callback_data: "admin_mini_app_users:0" }],
       [{ text: "🎡 Wheel Users", callback_data: "admin_wheel_users:0" }, { text: "📂 Section Opens", callback_data: "admin_section_opens" }],
       [{ text: "🔐 Mini App Access", callback_data: "admin_mini_app_access" }, { text: "🖼 Mini App Icons", callback_data: "admin_mini_app_icons" }],
+      [{ text: "🎛 Settings Section Locks", callback_data: "admin_app_mode_locks" }],
       [{ text: "🤖 AI Chat Users", callback_data: "admin_ai_chat_users:0" }, { text: "🎪 Vexa Live", callback_data: "admin_vexa_live_downloads:0" }],
       [{ text: "🎨 Image Users", callback_data: "admin_image_users:0" }],
       [{ text: "🖼 Voice Profiles", callback_data: "admin_voice_profiles" }],
@@ -864,7 +892,7 @@ export async function getAdminUsersPage(env, page = 0, limit = 8) {
   const offset = Number(page) * Number(limit);
   const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM bot_users").first();
   const users = await env.DB.prepare(
-    "SELECT user_id, username, first_name, last_name, last_seen_at, return_count, mini_app_open_count FROM bot_users ORDER BY last_seen_at DESC LIMIT ? OFFSET ?"
+    "SELECT b.user_id, b.username, b.first_name, b.last_name, b.last_seen_at, b.return_count, b.mini_app_open_count, COALESCE(s.app_mode, 'tts') AS app_mode FROM bot_users b LEFT JOIN user_state s ON s.user_id = b.user_id ORDER BY b.last_seen_at DESC LIMIT ? OFFSET ?"
   ).bind(Number(limit), Number(offset)).all();
 
   return {
@@ -1004,6 +1032,25 @@ export async function ensureVexaLiveDownloadTokenTable(env) {
     ")"
   ).run();
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_vexa_youtube_playback_tokens_user_created ON vexa_youtube_playback_tokens (user_id, created_at DESC)").run();
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS vexa_link_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, source_url TEXT NOT NULL, source TEXT NOT NULL, successful INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, completed_at INTEGER)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_vexa_link_events_user_created ON vexa_link_events (user_id, created_at DESC)").run();
+}
+
+export async function recordVexaLinkEvent(env, userId, sourceUrl, source = "bot") {
+  await ensureVexaLiveDownloadTokenTable(env);
+  const result = await env.DB.prepare("INSERT INTO vexa_link_events (user_id, source_url, source, successful, created_at) VALUES (?, ?, ?, 0, ?)").bind(String(userId), String(sourceUrl), String(source), Math.floor(Date.now() / 1000)).run();
+  return Number(result.meta?.last_row_id || 0);
+}
+
+export async function markVexaLinkEventSuccessful(env, eventId) {
+  if (!eventId) return;
+  await ensureVexaLiveDownloadTokenTable(env);
+  await env.DB.prepare("UPDATE vexa_link_events SET successful = 1, completed_at = ? WHERE id = ?").bind(Math.floor(Date.now() / 1000), Number(eventId)).run();
+}
+
+export async function markLatestVexaLinkSuccessful(env, userId, sourceUrl) {
+  await ensureVexaLiveDownloadTokenTable(env);
+  await env.DB.prepare("UPDATE vexa_link_events SET successful = 1, completed_at = ? WHERE id = (SELECT id FROM vexa_link_events WHERE user_id = ? AND source_url = ? ORDER BY created_at DESC, id DESC LIMIT 1)").bind(Math.floor(Date.now() / 1000), String(userId), String(sourceUrl)).run();
 }
 
 export async function getAdminVexaLiveDownloadUsersPage(env, page = 0, limit = 8) {
@@ -1015,7 +1062,8 @@ export async function getAdminVexaLiveDownloadUsersPage(env, page = 0, limit = 8
   const countRow = await env.DB.prepare(
     "SELECT COUNT(*) AS total FROM (" +
     "SELECT user_id FROM vexa_youtube_playback_tokens GROUP BY user_id " +
-    "UNION SELECT user_id FROM vexa_youtube_download_tokens WHERE used_at IS NOT NULL GROUP BY user_id)"
+    "UNION SELECT user_id FROM vexa_youtube_download_tokens WHERE used_at IS NOT NULL GROUP BY user_id " +
+    "UNION SELECT user_id FROM vexa_link_events GROUP BY user_id)"
   ).first();
   const rows = await env.DB.prepare(
     "WITH playback AS (" +
@@ -1024,14 +1072,14 @@ export async function getAdminVexaLiveDownloadUsersPage(env, page = 0, limit = 8
     "), downloads AS (" +
       "SELECT user_id, COUNT(token) AS download_count, COUNT(DISTINCT source_url) AS unique_download_count, MAX(COALESCE(used_at, created_at)) AS last_download_at " +
       "FROM vexa_youtube_download_tokens WHERE used_at IS NOT NULL GROUP BY user_id" +
-    "), users AS (" +
-      "SELECT user_id FROM playback UNION SELECT user_id FROM downloads" +
+    "), events AS (SELECT user_id, COUNT(*) AS event_count, SUM(successful) AS event_success_count, MAX(created_at) AS last_event_at FROM vexa_link_events GROUP BY user_id), users AS (" +
+      "SELECT user_id FROM playback UNION SELECT user_id FROM downloads UNION SELECT user_id FROM events" +
     ") " +
     "SELECT users.user_id, b.username, b.first_name, b.last_name, " +
     "COALESCE(playback.preview_count, 0) AS preview_count, COALESCE(playback.unique_preview_count, 0) AS unique_preview_count, " +
-    "COALESCE(downloads.download_count, 0) AS download_count, COALESCE(downloads.unique_download_count, 0) AS unique_download_count, " +
-    "MAX(COALESCE(playback.last_preview_at, 0), COALESCE(downloads.last_download_at, 0)) AS last_activity_at " +
-    "FROM users LEFT JOIN playback ON playback.user_id = users.user_id LEFT JOIN downloads ON downloads.user_id = users.user_id " +
+    "COALESCE(downloads.download_count, 0) + COALESCE(events.event_success_count, 0) AS download_count, COALESCE(downloads.unique_download_count, 0) AS unique_download_count, " +
+    "COALESCE(playback.preview_count, 0) + COALESCE(events.event_count, 0) AS total_link_count, MAX(COALESCE(playback.last_preview_at, 0), COALESCE(downloads.last_download_at, 0), COALESCE(events.last_event_at, 0)) AS last_activity_at " +
+    "FROM users LEFT JOIN playback ON playback.user_id = users.user_id LEFT JOIN downloads ON downloads.user_id = users.user_id LEFT JOIN events ON events.user_id = users.user_id " +
     "LEFT JOIN bot_users b ON b.user_id = users.user_id " +
     "ORDER BY last_activity_at DESC LIMIT ? OFFSET ?"
   ).bind(safeLimit, offset).all();
@@ -1057,7 +1105,7 @@ export async function adminVexaLiveDownloadsText(env, page = 0) {
 export async function adminVexaLiveDownloadsKeyboard(env, page = 0) {
   const data = await getAdminVexaLiveDownloadUsersPage(env, page);
   const rows = data.users.map((user) => [{
-    text: userLabel(user) + " • 🔗 " + formatNumber(user.preview_count || 0) + " • ⬇️ " + formatNumber(user.download_count || 0),
+    text: userLabel(user) + " • 🔗 " + formatNumber(user.total_link_count || user.preview_count || 0),
     callback_data: "admin_vexa_live_download_user:" + user.user_id + ":" + data.page,
   }]);
   const nav = [];
@@ -1071,7 +1119,7 @@ export async function adminVexaLiveDownloadsKeyboard(env, page = 0) {
 export async function adminVexaLiveDownloadUserText(env, userId) {
   const rows = await getVexaLiveDownloadRows(env, userId, 100);
   const linkEntries = rows.filter((row) => row.activity_type === "link_entry");
-  const downloads = rows.filter((row) => row.activity_type === "download");
+  const downloads = rows.filter((row) => row.successful);
   const lines = [
     "🎪 <b>Vexa Live Activity Links</b>",
     "",
@@ -1079,30 +1127,18 @@ export async function adminVexaLiveDownloadUserText(env, userId) {
     "Link entries / video shown: <b>" + formatNumber(linkEntries.length) + "</b>",
     "Completed downloads: <b>" + formatNumber(downloads.length) + "</b>",
     "",
-    rows.length ? "Activities are separated by type below:" : "No Vexa Live activity links for this user."
+    rows.length ? "Use the buttons below to review link results." : "No Vexa Live activity links for this user."
   ];
-  if (linkEntries.length) {
-    lines.push("", "🔗 <b>Link entries / video shown</b>");
-    linkEntries.forEach((row, index) => {
-      lines.push("", (index + 1) + ". <b>" + escapeHtml(formatUnixTehranTime(row.activity_at)) + "</b>");
-      lines.push("<code>" + escapeHtml(row.source_url) + "</code>");
-    });
-  }
-  if (downloads.length) {
-    lines.push("", "⬇️ <b>Completed downloads</b>");
-    downloads.forEach((row, index) => {
-      lines.push("", (index + 1) + ". <b>" + escapeHtml(formatUnixTehranTime(row.activity_at)) + "</b>");
-      lines.push("<code>" + escapeHtml(row.source_url) + "</code>");
-    });
-  }
   return lines.join("\n");
 }
 
-export function adminVexaLiveDownloadUserKeyboard(userId, page = 0) {
-  return { inline_keyboard: [
+export async function adminVexaLiveDownloadUserKeyboard(env, userId, page = 0) {
+  const activity = await getVexaLiveDownloadRows(env, userId, 30);
+  const rows = activity.map((row, index) => [{ text: (row.successful ? "✅ " : "❌ ") + "Link " + (index + 1), url: row.source_url }]);
+  rows.push(
     [{ text: "⬇️ Download Links TXT", callback_data: "admin_vexa_live_download_links:" + userId }],
-    [{ text: "← Download Users", callback_data: "admin_vexa_live_downloads:" + page }, { text: "← Back", callback_data: "admin_main" }],
-  ] };
+    [{ text: "← Download Users", callback_data: "admin_vexa_live_downloads:" + page }, { text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
 }
 
 export async function getVexaLiveDownloadRows(env, userId, limit = 500) {
@@ -1114,9 +1150,10 @@ export async function getVexaLiveDownloadRows(env, userId, limit = 500) {
     "UNION ALL " +
     "SELECT source_url, COALESCE(used_at, created_at) AS activity_at, used_at, 'download' AS activity_type " +
     "FROM vexa_youtube_download_tokens WHERE user_id = ? AND used_at IS NOT NULL " +
+    "UNION ALL SELECT source_url, created_at AS activity_at, completed_at AS used_at, 'link_entry' AS activity_type FROM vexa_link_events WHERE user_id = ? " +
     "ORDER BY activity_at DESC LIMIT ?"
-  ).bind(String(userId), String(userId), Math.max(1, Number(limit) || 500)).all();
-  return rows.results || [];
+  ).bind(String(userId), String(userId), String(userId), Math.max(1, Number(limit) || 500)).all();
+  return (rows.results || []).map((row) => ({ ...row, successful: Boolean(row.used_at) }));
 }
 
 export function buildVexaLiveDownloadLinksFile(userId, rows = []) {
@@ -1574,7 +1611,7 @@ export async function adminUsersKeyboard(env, page = 0) {
   rows.push([{ text: "🔎 Search by username or ID", callback_data: "admin_user_search_prompt" }]);
 
   for (const user of data.users) {
-    rows.push([{ text: userLabel(user), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
+    rows.push([{ text: userLabel(user) + " • " + (APP_MODE_LOCK_OPTIONS[user.app_mode] || user.app_mode || "Text to Speech"), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
   }
 
   const nav = [];
