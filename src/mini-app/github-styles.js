@@ -20,11 +20,11 @@ export const GITHUB_STYLES = `
 #aiThinkingRow .ai-thinking-label{font-size:15px;font-weight:480;line-height:normal;letter-spacing:-.018em;color:transparent;background:linear-gradient(100deg,rgba(255,255,255,.36) 18%,rgba(255,255,255,.92) 43%,rgba(211,180,255,.88) 52%,rgba(255,255,255,.46) 72%);background-size:240% 100%;background-position:100% 50%;-webkit-background-clip:text;background-clip:text;text-shadow:0 0 18px rgba(190,145,255,.08);animation:aiThinkingShine 2.25s ease-in-out .32s infinite}
 #aiThinkingRow[data-state=searching] .ai-thinking-label{background-image:linear-gradient(100deg,rgba(255,255,255,.34) 18%,rgba(255,255,255,.78) 48%,rgba(255,255,255,.4) 76%);text-shadow:none}
 .ai-coding-preview-title i{color:#3fb950!important}.ai-coding-preview-title em{color:#f85149!important}.ai-diff-stats .added{color:#3fb950!important}.ai-diff-stats .removed{color:#f85149!important}.ai-diff-line.add{background:rgba(46,160,67,.12)!important}.ai-diff-line.add>i{color:rgba(126,231,135,.58)!important}.ai-diff-line.add>b,.ai-diff-line.add>code{color:#7ee787!important}.ai-diff-line.remove{background:rgba(248,81,73,.12)!important}.ai-diff-line.remove>i{color:rgba(255,161,152,.58)!important}.ai-diff-line.remove>b,.ai-diff-line.remove>code{color:#ffa198!important}.ai-coding-result-stats .added b{color:#3fb950!important}.ai-coding-result-stats .removed b{color:#f85149!important}.ai-coding-result-link{display:none!important}
-.ai-chat-head{top:calc(41px + var(--vexa-tg-safe-top))!important}
-.ai-chat-head::before{top:calc(-41px - var(--vexa-tg-safe-top))!important}
-.ai-chat-messages{padding-top:calc(107px + var(--vexa-tg-safe-top))!important;scroll-padding-top:calc(125px + var(--vexa-tg-safe-top))!important}
+.ai-chat-head{top:var(--vexa-tg-safe-top)!important}
+.ai-chat-head::before{top:calc(0px - var(--vexa-tg-safe-top))!important}
+.ai-chat-messages{padding-top:calc(66px + var(--vexa-tg-safe-top))!important;scroll-padding-top:calc(84px + var(--vexa-tg-safe-top))!important}
 .ai-chat-creature{top:calc(7px + var(--vexa-tg-safe-top))!important}
-.ai-chat-page .ai-chat-composer{bottom:calc(max(12px,var(--vexa-tg-safe-bottom)) + var(--ai-chat-keyboard-offset,0px))!important}
+.ai-chat-page .ai-chat-composer{bottom:max(12px,var(--vexa-tg-safe-bottom))!important}
 .ai-chat-message.assistant+.ai-chat-message.user{margin-top:36px!important}
 @media(max-width:360px){.ai-chat-menu-panel{width:min(78vw,278px)!important;left:10px!important}}
 `;
