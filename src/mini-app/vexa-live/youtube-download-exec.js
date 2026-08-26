@@ -54,7 +54,7 @@ const CLIENT_STRATEGIES = Object.freeze([
 ]);
 const PORNHUB_STRATEGY = Object.freeze({
   id: "pornhub",
-  args: Object.freeze([]),
+  args: Object.freeze(["--impersonate", "chrome"]),
 });
 const YTDLP_COMMON_ARGS = Object.freeze([
   "--ignore-config",
@@ -126,7 +126,7 @@ export class VexaMediaContainerV3 extends Container {
         protocol: "media",
         formatId: PORNHUB_MINI_APP_SELECTOR,
         strategyId: PORNHUB_STRATEGY.id,
-        transport: "ffmpeg",
+        transport: "native",
       };
     } catch (error) {
       if (isPublicMediaError(error)) throw error;
@@ -422,7 +422,7 @@ export class VexaMediaContainerV3 extends Container {
         url,
         strategyId,
         formatId,
-        transport,
+        "native",
         tempPath,
       );
       const output = await downloadProcess.output();
@@ -456,9 +456,9 @@ export class VexaMediaContainerV3 extends Container {
     onProgress = null,
   ) {
     const provider = mediaProviderForStrategy(strategyId);
-    const directSource = provider === "pornhub"
-      ? await this.resolveTelegramPartSource(url, strategyId, formatId)
-      : null;
+    const stagedPath = provider === "pornhub"
+      ? await this.ensurePornHubTelegramStage(url, strategyId, formatId)
+      : "";
     const start = Math.max(0, Number(startSeconds || 0));
     let seconds = Math.max(TELEGRAM_PART_MIN_SECONDS, Number(durationSeconds || TELEGRAM_PART_MIN_SECONDS));
     const limit = Math.max(1, Number(maxBytes || TELEGRAM_SAFE_FILE_BYTES));
@@ -478,9 +478,9 @@ export class VexaMediaContainerV3 extends Container {
         const section = "*" + formatSectionTime(start) + "-" + formatSectionTime(start + seconds);
         let downloadProcess = null;
         try {
-          downloadProcess = directSource
-            ? await this.startDirectTelegramPartProcess(
-                directSource,
+          downloadProcess = stagedPath
+            ? await this.startLocalTelegramPartProcess(
+                stagedPath,
                 start,
                 seconds,
                 tempPath,
@@ -510,7 +510,7 @@ export class VexaMediaContainerV3 extends Container {
 
           if (exitCode !== 0) {
             if (detail) console.error(
-              directSource ? "ffmpeg PornHub part download failed" : "yt-dlp Telegram part download failed",
+              stagedPath ? "ffmpeg local PornHub part failed" : "yt-dlp Telegram part download failed",
               detail.slice(-4000),
             );
             throw publicContainerError(detail || "download failed", provider);
@@ -556,56 +556,50 @@ export class VexaMediaContainerV3 extends Container {
     throw new Error("Could not fit this video part within Telegram file limits");
   }
 
-  async resolveTelegramPartSource(url, strategyId, formatId) {
+  async ensurePornHubTelegramStage(url, strategyId, formatId) {
     const strategy = clientStrategy(strategyId);
-    if (!strategy) throw new Error("Media client strategy is invalid");
+    if (!strategy || strategy.id !== PORNHUB_STRATEGY.id) {
+      throw new Error("Media client strategy is invalid");
+    }
     const selectedFormat = String(formatId || "").trim();
     if (!selectedFormat) throw new Error("Telegram video source is unavailable");
 
-    const process = await this.execYtDlp([
-      ...YTDLP_COMMON_ARGS,
-      ...strategy.args,
-      "--dump-single-json",
-      "--skip-download",
-      "--no-warnings",
-      "-f",
-      selectedFormat,
-      url,
-    ]);
-    const timer = setTimeout(() => {
-      try { process.kill(); } catch (error) {}
-    }, METADATA_TIMEOUT_MS);
+    const keyBytes = new TextEncoder().encode(String(url || "") + "\n" + selectedFormat);
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", keyBytes));
+    const key = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const stagePath = "/tmp/vexa-pornhub-stage-" + key + ".mp4";
 
     try {
-      const output = await process.output();
-      const decoder = new TextDecoder();
-      if (output.exitCode !== 0) {
-        throw publicContainerError(decoder.decode(output.stderr).trim(), "pornhub");
-      }
-      const data = JSON.parse(decoder.decode(output.stdout));
-      const requested = Array.isArray(data?.requested_formats) && data.requested_formats.length
-        ? data.requested_formats
-        : [data];
-      const videoFormat = requested.find((format) => hasVideoCodec(format)) || null;
-      const audioFormat = requested.find((format) => !hasVideoCodec(format) && hasAudioCodec(format)) || null;
-      const video = directFormatSource(videoFormat, data?.http_headers);
-      const audio = audioFormat ? directFormatSource(audioFormat, data?.http_headers) : null;
-      if (!video || (audioFormat && !audio)) {
-        throw new Error("Telegram video source is unavailable");
-      }
-      return { video, audio };
-    } catch (error) {
-      if (isPublicMediaError(error)) throw error;
-      if (error?.message === "Telegram video source is unavailable") throw error;
-      throw new Error("PornHub metadata was invalid");
-    } finally {
-      clearTimeout(timer);
+      const existingSize = await this.readFileSize(stagePath);
+      if (existingSize > 0) return stagePath;
+    } catch (error) {}
+
+    await this.removeTempFile(stagePath);
+    const downloadProcess = await this.startVideoProcess(
+      url,
+      strategyId,
+      selectedFormat,
+      "native",
+      stagePath,
+    );
+    const output = await downloadProcess.output();
+    const decoder = new TextDecoder();
+    const detail = decoder.decode(output.stderr).trim();
+    if (output.exitCode !== 0) {
+      await this.removeTempFile(stagePath);
+      if (detail) console.error("yt-dlp PornHub stage failed", detail.slice(-4000));
+      throw publicContainerError(detail || "download failed", "pornhub");
     }
+
+    await this.readFileSize(stagePath);
+    return stagePath;
   }
 
-  async startDirectTelegramPartProcess(source, startSeconds, durationSeconds, outputPath, progressPath = "") {
-    const directSource = sanitizeDirectMediaSource(source);
-    if (!directSource?.video) throw new Error("Telegram video source is unavailable");
+  async startLocalTelegramPartProcess(sourcePath, startSeconds, durationSeconds, outputPath, progressPath = "") {
+    const inputPath = String(sourcePath || "").trim();
+    if (!/^\/tmp\/vexa-pornhub-stage-[a-f0-9]{64}\.mp4$/u.test(inputPath)) {
+      throw new Error("Telegram video source is unavailable");
+    }
 
     const args = [
       "-nostdin",
@@ -622,23 +616,17 @@ export class VexaMediaContainerV3 extends Container {
       args.push("-stats_period", "0.5", "-progress", progress);
     }
 
-    appendFfmpegHttpInput(args, directSource.video, startSeconds);
-    if (directSource.audio) {
-      appendFfmpegHttpInput(args, directSource.audio, startSeconds);
-    }
-
+    const start = Math.max(0, Number(startSeconds || 0));
+    if (start > 0) args.push("-ss", formatSectionTime(start));
     args.push(
+      "-i",
+      inputPath,
       "-t",
       formatSectionTime(durationSeconds),
       "-map",
       "0:v:0",
-    );
-    if (directSource.audio) {
-      args.push("-map", "1:a:0");
-    } else {
-      args.push("-map", "0:a:0?");
-    }
-    args.push(
+      "-map",
+      "0:a:0?",
       "-c",
       "copy",
       "-avoid_negative_ts",
@@ -732,12 +720,16 @@ export class VexaMediaContainerV3 extends Container {
     const strategy = clientStrategy(strategyId);
     if (!strategy) throw new Error("Media client strategy is invalid");
     const selectedFormat = String(formatId || "").trim() || FORMAT_SELECTOR;
-    const forceFfmpeg = String(transport || "") === "ffmpeg";
+    const transportMode = String(transport || "");
+    const forceFfmpeg = transportMode === "ffmpeg";
+    const forceNativeHls = transportMode === "native";
     const section = String(downloadSection || "").trim();
     const needsFfmpegOutput = selectedFormat.includes("+") || forceFfmpeg || Boolean(section);
     const processingArgs = [];
     if (forceFfmpeg) {
       processingArgs.push("--downloader", "m3u8:ffmpeg");
+    } else if (forceNativeHls) {
+      processingArgs.push("--downloader", "m3u8:native");
     }
     if (section) {
       processingArgs.push("--download-sections", section);
@@ -1117,7 +1109,7 @@ function buildTelegramCatalog(data, strategyId) {
 
     const transport = provider === "pornhub" && (
       isHlsFormat(format) || (!hasAudio && isHlsFormat(pairedAudio?.format))
-    ) ? "ffmpeg" : "";
+    ) ? "native" : "";
     const prefix = provider === "pornhub" ? "Vexa-PornHub-" : "Vexa-YouTube-";
     const option = {
       key: "v" + height,
@@ -1148,7 +1140,7 @@ function buildTelegramCatalog(data, strategyId) {
       kind: "audio",
       sizeBytes: defaultAudio.size,
       selector: String(defaultAudio.format.format_id),
-      transport: provider === "pornhub" && isHlsFormat(defaultAudio.format) ? "ffmpeg" : "",
+      transport: provider === "pornhub" && isHlsFormat(defaultAudio.format) ? "native" : "",
       mimeType: "audio/mp4",
       filename: provider === "pornhub" ? "Vexa-PornHub-audio.m4a" : "Vexa-YouTube-audio.m4a",
       label: "Audio only",
@@ -1156,84 +1148,6 @@ function buildTelegramCatalog(data, strategyId) {
   }
 
   return { title, strategyId, provider, options };
-}
-
-function directFormatSource(format, fallbackHeaders = null) {
-  if (!format || typeof format !== "object") return null;
-  return sanitizeDirectFormatSource({
-    url: format?.url,
-    headers: {
-      ...(fallbackHeaders && typeof fallbackHeaders === "object" ? fallbackHeaders : {}),
-      ...(format?.http_headers && typeof format.http_headers === "object" ? format.http_headers : {}),
-    },
-  });
-}
-
-function sanitizeDirectMediaSource(source) {
-  const video = sanitizeDirectFormatSource(source?.video);
-  const audio = source?.audio ? sanitizeDirectFormatSource(source.audio) : null;
-  if (!video || (source?.audio && !audio)) return null;
-  return { video, audio };
-}
-
-function sanitizeDirectFormatSource(source) {
-  const rawUrl = String(source?.url || "").trim();
-  if (!rawUrl || rawUrl.length > 16_384) return null;
-
-  let url;
-  try {
-    url = new URL(rawUrl);
-  } catch (error) {
-    return null;
-  }
-  if (url.protocol !== "https:" || url.username || url.password) return null;
-
-  const headers = {};
-  const entries = Object.entries(source?.headers || {}).slice(0, 32);
-  for (const [rawName, rawValue] of entries) {
-    const name = String(rawName || "").trim();
-    const value = String(rawValue ?? "").trim();
-    if (!/^[A-Za-z0-9-]{1,80}$/.test(name) || !value || value.length > 2048) continue;
-    if (/[\r\n]/.test(value)) continue;
-    if (/^(?:host|content-length|range|connection|transfer-encoding|accept-encoding)$/i.test(name)) continue;
-    headers[name] = value;
-  }
-  return { url: url.toString(), headers };
-}
-
-function appendFfmpegHttpInput(args, source, startSeconds) {
-  const sanitized = sanitizeDirectFormatSource(source);
-  if (!sanitized) throw new Error("Telegram video source is unavailable");
-
-  args.push(
-    "-rw_timeout",
-    "15000000",
-    "-reconnect",
-    "1",
-    "-reconnect_on_network_error",
-    "1",
-    "-reconnect_on_http_error",
-    "5xx",
-    "-reconnect_streamed",
-    "1",
-    "-reconnect_delay_max",
-    "2",
-    "-reconnect_max_retries",
-    "1",
-  );
-
-  const start = Math.max(0, Number(startSeconds || 0));
-  if (start > 0) args.push("-ss", formatSectionTime(start));
-
-  const headerBlock = ffmpegHeaderBlock(sanitized.headers);
-  if (headerBlock) args.push("-headers", headerBlock);
-  args.push("-i", sanitized.url);
-}
-
-function ffmpegHeaderBlock(headers) {
-  return Object.entries(headers || {})
-    .map(([name, value]) => name + ": " + value + "\r\n")
-    .join("");
 }
 
 function sanitizeTelegramSelectedOption(option) {
