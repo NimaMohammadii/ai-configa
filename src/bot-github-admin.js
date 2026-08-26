@@ -201,10 +201,14 @@ async function upsertAdminMain(env, chatId, userId, messageId) {
   const targetMessageId = Number(messageId || 0);
   if (targetMessageId) {
     try {
-      await editAdminMenu(env, chatId, userId, targetMessageId, text, keyboard);
+      await editMessage(env, chatId, targetMessageId, text, keyboard);
+      await setMenuMessageId(env, userId, targetMessageId);
       return;
     } catch (error) {
-      if (!String(error?.message || error).toLowerCase().includes("message to edit not found")) throw error;
+      if (String(error?.message || error).toLowerCase().includes("message is not modified")) {
+        await setMenuMessageId(env, userId, targetMessageId);
+        return;
+      }
     }
   }
   const menu = await sendMessage(env, chatId, text, keyboard);
