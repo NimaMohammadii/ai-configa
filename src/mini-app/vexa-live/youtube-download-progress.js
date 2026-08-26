@@ -112,7 +112,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-9"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-7"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -170,82 +170,41 @@ async function createDownloadSession(request, env, ctx) {
     : [];
   if (!videos.length) return json({ error: "Video quality is unavailable" }, 500);
 
-  await ensureProgressTable(env);
-  const sessionExpiresAt = Math.min(
-    Number(row.expires_at || 0),
-    now + SESSION_TTL_SECONDS,
-  );
-
-  ctx?.waitUntil?.(
-    env.DB.prepare("DELETE FROM vexa_youtube_download_progress WHERE expires_at < ?")
-      .bind(now - 86400).run().catch(() => null)
-  );
-
   const requestedOptionKey = cleanOptionKey(payload.optionKey);
   if (!requestedOptionKey) {
-    const options = [];
-    for (const selected of videos) {
-      options.push(await createPreparedQualitySession(env, {
-        downloadToken,
-        userId: user.id,
-        sourceUrl: normalized.url,
-        prepared,
-        selected,
-        now,
-        expiresAt: sessionExpiresAt,
-      }));
-    }
     return json({
       ok: true,
       chooseQuality: true,
       title: String(prepared?.title || "Video"),
-      options,
+      options: videos.map((option) => ({
+        key: String(option.key),
+        label: String(option.label || (positiveInteger(option.height) ? positiveInteger(option.height) + "p" : option.key)),
+        sizeBytes: positiveInteger(option.sizeBytes),
+        width: positiveInteger(option.width),
+        height: positiveInteger(option.height),
+        duration: positiveNumber(option.duration),
+      })),
     });
   }
 
   const selected = videos.find((option) => String(option.key || "") === requestedOptionKey) || null;
   if (!selected) return json({ error: "Selected video quality is unavailable" }, 409);
 
-  const option = await createPreparedQualitySession(env, {
-    downloadToken,
-    userId: user.id,
-    sourceUrl: normalized.url,
-    prepared,
-    selected,
-    now,
-    expiresAt: sessionExpiresAt,
-  });
-
-  return json({
-    ok: true,
-    fileName: option.fileName,
-    fileSize: option.fileSize,
+  const mediaInfo = {
+    totalBytes: positiveInteger(selected.sizeBytes),
     title: String(prepared?.title || "Video"),
-    optionKey: option.optionKey,
-    downloadUrl: option.downloadUrl,
-    progressUrl: option.progressUrl,
-    expiresIn: option.expiresIn,
-  });
-}
+    strategyId: String(prepared?.strategyId || ""),
+    formatId: String(selected.selector || ""),
+    transport: String(selected.transport || ""),
+    provider: String(prepared?.provider || "youtube"),
+    duration: positiveNumber(selected.duration),
+    optionKey: String(selected.key || ""),
+  };
+  const totalBytes = positiveInteger(mediaInfo.totalBytes);
+  if (!totalBytes) return json({ error: "Video size is unavailable" }, 500);
 
-async function createPreparedQualitySession(env, {
-  downloadToken,
-  userId,
-  sourceUrl,
-  prepared,
-  selected,
-  now,
-  expiresAt,
-}) {
-  const totalBytes = positiveInteger(selected?.sizeBytes);
-  const formatId = String(selected?.selector || "").trim();
-  const strategyId = String(prepared?.strategyId || "").trim();
-  if (!totalBytes || !formatId || !strategyId) {
-    throw new Error("Video quality is unavailable");
-  }
-
+  await ensureProgressTable(env);
   const session = randomToken();
-  const optionKey = String(selected?.key || "");
   await env.DB.prepare(
     "INSERT INTO vexa_youtube_download_progress " +
     "(session, playback_token, user_id, total_bytes, downloaded_bytes, status, error, created_at, updated_at, expires_at, " +
@@ -254,34 +213,35 @@ async function createPreparedQualitySession(env, {
   ).bind(
     session,
     downloadToken,
-    String(userId),
+    String(user.id),
     totalBytes,
     now,
     now,
-    expiresAt,
-    sourceUrl,
-    strategyId,
-    formatId,
-    String(selected?.transport || ""),
-    String(prepared?.provider || "youtube"),
-    positiveNumber(selected?.duration),
-    optionKey,
+    now + SESSION_TTL_SECONDS,
+    normalized.url,
+    mediaInfo.strategyId,
+    mediaInfo.formatId,
+    mediaInfo.transport,
+    mediaInfo.provider,
+    mediaInfo.duration,
+    mediaInfo.optionKey,
   ).run();
 
-  return {
-    key: optionKey,
-    label: String(selected?.label || (positiveInteger(selected?.height) ? positiveInteger(selected.height) + "p" : optionKey)),
-    sizeBytes: totalBytes,
-    width: positiveInteger(selected?.width),
-    height: positiveInteger(selected?.height),
-    duration: positiveNumber(selected?.duration),
+  ctx?.waitUntil?.(
+    env.DB.prepare("DELETE FROM vexa_youtube_download_progress WHERE expires_at < ?")
+      .bind(now - 86400).run().catch(() => null)
+  );
+
+  return json({
+    ok: true,
     fileName: FILE_NAME,
     fileSize: totalBytes,
-    optionKey,
+    title: String(mediaInfo.title || "Video"),
+    optionKey: mediaInfo.optionKey,
     downloadUrl: DIRECT_DOWNLOAD_PATH + "?token=" + encodeURIComponent(downloadToken) + "&session=" + encodeURIComponent(session),
     progressUrl: PROGRESS_PATH + "?session=" + encodeURIComponent(session),
-    expiresIn: Math.max(1, expiresAt - now),
-  };
+    expiresIn: SESSION_TTL_SECONDS,
+  });
 }
 
 async function openDownloadProgressSocket(request, env) {
@@ -780,19 +740,6 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   function wsUrl(value){const url=new URL(String(value||''),window.location.origin);url.protocol=url.protocol==='https:'?'wss:':'ws:';return url.href;}
   function selectedQuality(){return qualityOptions.find(function(option){return option.key===selectedOptionKey;})||null;}
   function qualityDetail(option){if(!option)return'';return String(option.label||option.key)+' · '+mb(option.sizeBytes)+' MB';}
-  function preparedFromQuality(option){
-    if(!option||!option.downloadUrl||!option.progressUrl||!Number(option.fileSize||option.sizeBytes||0))return null;
-    try{
-      return{
-        downloadUrl:new URL(String(option.downloadUrl),window.location.origin).href,
-        progressUrl:new URL(String(option.progressUrl),window.location.origin).href,
-        fileName:String(option.fileName||directMeta?.fileName||'Vexa-video.mp4'),
-        fileSize:Number(option.fileSize||option.sizeBytes||0),
-        title:String(option.title||directMeta?.title||'Video'),
-        optionKey:String(option.optionKey||option.key||''),
-      };
-    }catch(error){return null;}
-  }
   function updateQualitySelection(){
     if(!qualityNode)return;
     for(const node of qualityNode.querySelectorAll('[data-quality-key]')){
@@ -803,14 +750,13 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   function selectQuality(key,announce){
     const option=qualityOptions.find(function(item){return item.key===String(key||'');});
     if(!option||busy)return false;
-    const nextPrepared=preparedFromQuality(option);if(!nextPrepared)return false;
-    selectedOptionKey=option.key;lastOptionKey=option.key;prepared=nextPrepared;closeProgressSocket();setProgress(0,true);updateQualitySelection();
+    selectedOptionKey=option.key;lastOptionKey=option.key;prepared=null;closeProgressSocket();setProgress(0,true);updateQualitySelection();
     if(announce!==false){setState('waiting','Ready to download',qualityDetail(option));haptic('light');}
     setButton('Download',false);return true;
   }
   function renderQualities(options,preferredKey){
     if(!qualityNode)return false;
-    qualityOptions=Array.isArray(options)?options.filter(function(option){return option&&/^v\d{2,4}$/.test(String(option.key||''))&&Number(option.sizeBytes||0)>0&&option.downloadUrl&&option.progressUrl;}):[];
+    qualityOptions=Array.isArray(options)?options.filter(function(option){return option&&/^v\d{2,4}$/.test(String(option.key||''))&&Number(option.sizeBytes||0)>0;}):[];
     qualityNode.replaceChildren();
     if(!qualityOptions.length){qualityNode.dataset.ready='0';selectedOptionKey='';return false;}
     for(const option of qualityOptions){
@@ -896,12 +842,27 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
         const qualityResponse=await fetch(SESSION_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),downloadToken:token})});
         const qualityData=await qualityResponse.json().catch(function(){return{};});
         if(!qualityResponse.ok||!Array.isArray(qualityData.options)||!qualityData.options.length)throw new Error(String(qualityData.error||'Could not load video qualities'));
-        downloadToken=token;directMeta=Object.assign({},direct,{title:String(qualityData.title||direct.title||'Video')});
+        downloadToken=token;directMeta=direct;
         if(!renderQualities(qualityData.options,lastOptionKey))throw new Error('Video quality is unavailable');
         const option=selectedQuality();setProgress(0,false);setState('waiting','Choose quality',qualityDetail(option));setButton('Download',false);haptic('light');return true;
       }catch(error){
         downloadToken='';directMeta=null;prepared=null;clearQualities();setState('error',String(error?.message||'Could not prepare download'),'');setButton('Try again',false);return false;
       }finally{preparingPromise=null;}
+    })();
+    return preparingPromise;
+  }
+  async function prepareSelectedDownload(){
+    if(!downloadToken||!selectedOptionKey||preparingPromise)return false;
+    const option=selectedQuality();setState('preparing','Preparing '+String(option?.label||'quality'),qualityDetail(option));setButton('Preparing…',true);haptic('light');
+    preparingPromise=(async function(){
+      try{
+        const sessionResponse=await fetch(SESSION_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),downloadToken:downloadToken,optionKey:selectedOptionKey})});
+        const session=await sessionResponse.json().catch(function(){return{};});
+        if(!sessionResponse.ok||!session.downloadUrl||!session.progressUrl||!session.fileSize)throw new Error(String(session.error||'Could not prepare selected quality'));
+        prepared={downloadUrl:new URL(String(session.downloadUrl),window.location.origin).href,progressUrl:new URL(String(session.progressUrl),window.location.origin).href,fileName:String(session.fileName||directMeta?.fileName||'Vexa-video.mp4'),fileSize:Number(session.fileSize||0),title:String(session.title||directMeta?.title||'Video'),optionKey:String(session.optionKey||selectedOptionKey)};
+        setProgress(0,false);setState('waiting','Ready to download',qualityDetail(option));setButton('Download',false);return true;
+      }catch(error){prepared=null;setState('error',String(error?.message||'Could not prepare selected quality'),qualityDetail(option));setButton('Try again',false);return false;}
+      finally{preparingPromise=null;}
     })();
     return preparingPromise;
   }
@@ -926,7 +887,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     event.preventDefault();event.stopPropagation();
     if(busy||button?.disabled)return;
     if(prepared){requestDownload();return;}
-    if(selectedOptionKey){const nextPrepared=preparedFromQuality(selectedQuality());if(nextPrepared){prepared=nextPrepared;requestDownload();return;}}
+    if(downloadToken&&selectedOptionKey){const ready=await prepareSelectedDownload();if(ready)requestDownload();return;}
     const launch=launchContext();
     const source=lastSource||launch.source||promptSource();
     if(!source)return;
