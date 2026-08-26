@@ -400,7 +400,7 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
 
     await progressEditor.update({ phase: "complete", partNumber: media.partNumber, percent: 100 }, copy, true);
     if (Number(media.partNumber || 1) > 1) {
-      await sendMultipartDownloadLink(env, chatId, sourceUrl, copy).catch((error) => {
+      await sendMultipartDownloadLink(env, chatId, sourceUrl, optionKey, copy).catch((error) => {
         console.warn("bot full video download link failed", error?.message || error);
       });
     }
@@ -578,29 +578,32 @@ function youtubeDownloadKeyboard(options, copy) {
   return { inline_keyboard: rows };
 }
 
-function buildFullVideoDownloadUrl(sourceUrl) {
+function buildFullVideoDownloadUrl(sourceUrl, optionKey) {
   const url = new URL(VEXA_PUBLIC_MINI_APP_URL);
   url.searchParams.set("section", "live");
   url.searchParams.set("vexaDownload", "1");
   url.searchParams.set("vexaSource", sourceUrl);
+  if (/^v\d{2,4}$/u.test(String(optionKey || ""))) {
+    url.searchParams.set("vexaOption", String(optionKey));
+  }
   return url.toString();
 }
 
-function multipartDownloadKeyboard(sourceUrl, copy) {
+function multipartDownloadKeyboard(sourceUrl, optionKey, copy) {
   return {
     inline_keyboard: [[{
       text: copy.fullDownloadButton,
-      web_app: { url: buildFullVideoDownloadUrl(sourceUrl) },
+      web_app: { url: buildFullVideoDownloadUrl(sourceUrl, optionKey) },
     }]],
   };
 }
 
-async function sendMultipartDownloadLink(env, chatId, sourceUrl, copy) {
+async function sendMultipartDownloadLink(env, chatId, sourceUrl, optionKey, copy) {
   await sendMessage(
     env,
     chatId,
     "<b>🫧 " + escapeHtml(copy.fullDownload) + "</b>",
-    multipartDownloadKeyboard(sourceUrl, copy),
+    multipartDownloadKeyboard(sourceUrl, optionKey, copy),
   );
 }
 
