@@ -14,6 +14,7 @@ import {
 } from "./mini-app/vexa-live/youtube-range-playback.js";
 import {
   VexaDownloadProgressHub,
+  appendDownloadProgressRuntime,
   handleTrackedYouTubeDownloadRequest,
   isTrackedYouTubeDownloadRequest,
 } from "./mini-app/vexa-live/youtube-download-progress.js";
@@ -65,6 +66,7 @@ export default {
       let response = await worker.fetch(request, env, ctx);
       response = await appendMiniAppVoiceTransformRuntime(request, response);
       response = await appendVexaLiveLandingRuntime(request, response);
+      response = await appendDownloadProgressRuntime(request, response);
       response = await appendVexaCustomPlayerRuntime(request, response);
       response = await appendVexaLiveSubtitlesRuntime(request, response);
       return response;
