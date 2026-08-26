@@ -40,6 +40,7 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 .tts-head:before{top:calc(0px - var(--vexa-tg-safe-top))!important}
 .voices-page{padding-top:0!important}
 .voices-page-head{padding-top:var(--vexa-tg-safe-top)!important}
+.voice-library-search{top:calc(var(--vexa-tg-safe-top) + 55px)!important}
 .explore-page-head{padding-top:var(--vexa-tg-safe-top)!important}
 .explore-search{top:50px!important;margin-top:0!important}
 .credits-page-scroll{padding-top:var(--vexa-tg-safe-top)!important}
