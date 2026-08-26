@@ -314,22 +314,26 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
       partNumber,
       prepareProgress,
     );
+    const showPart = !media.done || Number(media.partNumber || 0) > 1;
 
     await progressEditor.update({
       phase: "uploading",
       partNumber: media.partNumber,
+      showPart,
       percent: 0,
     }, copy, true);
     await sendTelegramMediaStream(env, chatId, media, (upload) => {
       return progressEditor.update({
         phase: "uploading",
         partNumber: media.partNumber,
+        showPart,
         percent: clampPercent(upload?.percent),
       }, copy);
     });
     await progressEditor.update({
       phase: "uploading",
       partNumber: media.partNumber,
+      showPart,
       percent: 100,
     }, copy, true);
 
@@ -393,7 +397,8 @@ async function sendTelegramMediaStream(env, chatId, media, onProgress = null) {
     if (Number.isSafeInteger(width) && width > 0) fields.push(["width", String(width)]);
     if (Number.isSafeInteger(height) && height > 0) fields.push(["height", String(height)]);
     if (Number.isSafeInteger(duration) && duration > 0) fields.push(["duration", String(duration)]);
-    const partLabel = Number(media.partNumber || 0) > 0 ? "\nPart " + Number(media.partNumber) : "";
+    const partNumber = Number(media.partNumber || 0);
+    const partLabel = (!media.done || partNumber > 1) && partNumber > 0 ? "\nPart " + partNumber : "";
     fields.push(["caption", (String(media.title || "YouTube video") + partLabel).slice(0, 1024)]);
   }
 
@@ -533,11 +538,12 @@ function youtubeDownloadCopy(language) {
       title: "دانلود از یوتیوب",
       choose: "کیفیت ویدیو را انتخاب کن، یا فقط صدا را دانلود کن:",
       audioOnly: "فقط صدا",
-      preparing: "در حال آماده‌سازی فایل…",
-      sent: "فایل آماده شد",
+      preparing: "در حال آماده‌سازی ویدیو",
+      uploading: "در حال ارسال ویدیو",
+      sent: "ویدیو آماده شد",
       failed: "دانلود یوتیوب فعلاً انجام نشد",
       received: "لینک دریافت شد",
-      inspecting: "در حال بررسی ویدیو…",
+      inspecting: "در حال بررسی ویدیو",
       preparingPart: "در حال آماده‌سازی پارت",
       adjustingPart: "در حال تنظیم اندازه پارت",
       uploadingPart: "در حال ارسال پارت",
@@ -550,11 +556,12 @@ function youtubeDownloadCopy(language) {
     title: "YouTube download",
     choose: "Choose a video quality, or download audio only:",
     audioOnly: "Audio only",
-    preparing: "Preparing the file…",
-    sent: "File ready",
+    preparing: "Preparing video",
+    uploading: "Sending video",
+    sent: "Video ready",
     failed: "YouTube download is temporarily unavailable",
     received: "Link received",
-    inspecting: "Checking video…",
+    inspecting: "Checking video",
     preparingPart: "Preparing part",
     adjustingPart: "Adjusting part size",
     uploadingPart: "Sending part",
@@ -565,7 +572,7 @@ function youtubeDownloadCopy(language) {
 }
 
 function linkInspectStatusText(copy) {
-  return "<b>🔎 " + escapeHtml(copy.inspecting) + "</b>";
+  return "<b>🫧 " + escapeHtml(copy.inspecting) + "...</b>";
 }
 
 function createProgressEditor(env, chatId, messageId) {
@@ -600,14 +607,16 @@ function createProgressEditor(env, chatId, messageId) {
 function downloadProgressText(copy, state = {}) {
   const phase = String(state.phase || "preparing");
   if (phase === "complete") {
-    return "<b>✅ " + escapeHtml(copy.sent) + "</b>";
+    return "<b>✔️ " + escapeHtml(copy.sent) + "</b>";
   }
   const partNumber = Math.max(1, Math.floor(Number(state.partNumber || 1)));
   const percent = Math.round(clampPercent(state.percent));
-  const label = phase === "uploading" ? copy.uploadingPart : copy.preparingPart;
-  const icon = phase === "uploading" ? "📤" : "⏳";
-  const dots = ".".repeat((Math.floor(percent / 10) % 3) + 1);
-  return "<b>" + icon + " " + escapeHtml(label) + " " + partNumber + dots + " " + percent + "%</b>";
+  const showPart = Boolean(state.showPart) || partNumber > 1;
+  const label = phase === "uploading"
+    ? showPart ? copy.uploadingPart + " " + partNumber : copy.uploading
+    : showPart ? copy.preparingPart + " " + partNumber : copy.preparing;
+  const icon = phase === "uploading" ? "🫧" : "🪼";
+  return "<b>" + icon + " " + escapeHtml(label) + "... " + percent + "%</b>";
 }
 
 function clampPercent(value) {
