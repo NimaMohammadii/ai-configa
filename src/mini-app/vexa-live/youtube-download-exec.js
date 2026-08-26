@@ -23,6 +23,8 @@ const TELEGRAM_PART_TARGET_BYTES = 42_000_000;
 const TELEGRAM_PART_MIN_SECONDS = 3;
 const TELEGRAM_PART_MAX_ATTEMPTS = 6;
 const TELEGRAM_CATALOG_CACHE_TTL_MS = 2 * 60 * 1000;
+const PORNHUB_CATALOG_MAX_ATTEMPTS = 3;
+const PORNHUB_CATALOG_RETRY_BASE_MS = 700;
 const FFMPEG_INPUT_ARGS =
   "ffmpeg_i:-rw_timeout 15000000 -reconnect 1 -reconnect_on_network_error 1 " +
   "-reconnect_on_http_error 5xx -reconnect_streamed 1 -reconnect_delay_max 2 -reconnect_max_retries 1";
@@ -207,21 +209,33 @@ export class VexaMediaContainerV3 extends Container {
     let lastError = null;
     const strategies = mediaStrategies(url);
     for (const strategy of strategies) {
-      try {
-        const catalog = await this.getTelegramDownloadCatalogForStrategy(url, strategy);
-        if (!this.telegramCatalogCache) this.telegramCatalogCache = new Map();
-        this.telegramCatalogCache.set(cacheKey, { createdAt: now, catalog });
-        if (this.telegramCatalogCache.size > 8) {
-          for (const [key, value] of this.telegramCatalogCache) {
-            if (now - Number(value?.createdAt || 0) > TELEGRAM_CATALOG_CACHE_TTL_MS) {
-              this.telegramCatalogCache.delete(key);
+      const provider = mediaProviderForStrategy(strategy.id);
+      const maxAttempts = provider === "pornhub" ? PORNHUB_CATALOG_MAX_ATTEMPTS : 1;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          const catalog = await this.getTelegramDownloadCatalogForStrategy(url, strategy);
+          const cachedAt = Date.now();
+          if (!this.telegramCatalogCache) this.telegramCatalogCache = new Map();
+          this.telegramCatalogCache.set(cacheKey, { createdAt: cachedAt, catalog });
+          if (this.telegramCatalogCache.size > 8) {
+            for (const [key, value] of this.telegramCatalogCache) {
+              if (cachedAt - Number(value?.createdAt || 0) > TELEGRAM_CATALOG_CACHE_TTL_MS) {
+                this.telegramCatalogCache.delete(key);
+              }
             }
           }
+          return catalog;
+        } catch (error) {
+          lastError = error;
+          console.warn("Vexa Telegram media catalog failed", {
+            strategy: strategy.id,
+            attempt,
+            maxAttempts,
+            error: String(error?.message || error).slice(0, 300),
+          });
+          if (attempt >= maxAttempts || !isRetriableCatalogError(error, provider)) break;
+          await new Promise((resolve) => setTimeout(resolve, PORNHUB_CATALOG_RETRY_BASE_MS * attempt));
         }
-        return catalog;
-      } catch (error) {
-        lastError = error;
-        console.warn("Vexa Telegram media catalog failed", strategy.id, error?.message || error);
       }
     }
     const provider = strategies[0]?.id === PORNHUB_STRATEGY.id ? "pornhub" : "youtube";
@@ -1405,6 +1419,15 @@ function mediaProviderForStrategy(strategyId) {
   return String(strategyId || "") === PORNHUB_STRATEGY.id ? "pornhub" : "youtube";
 }
 
+function isRetriableCatalogError(error, provider) {
+  if (provider !== "pornhub") return false;
+  const message = String(error?.message || "");
+  return message === "PornHub blocked the Cloudflare download request"
+    || message === "PornHub metadata was invalid"
+    || message === "PornHub could not prepare this video"
+    || message === "PornHub download is temporarily unavailable";
+}
+
 async function collectText(stream, maxBytes) {
   if (!stream) return "";
   const reader = stream.getReader();
@@ -1619,6 +1642,9 @@ function publicContainerError(detail, provider = "youtube") {
   if (provider === "pornhub") {
     if (/geo.?restricted|unavailable in your country|not available in your country/i.test(raw)) {
       return new Error("This PornHub video is not available from the server region");
+    }
+    if (/429|too many requests|bad gateway|service unavailable|gateway timeout|connection reset|connection aborted|connection closed|remote end closed|timed out|timeout|(?:^|\D)50[0234](?:\D|$)|curl(?:_cffi)?[^\n]*(?:28|35|52|56|92)/i.test(raw)) {
+      return new Error("PornHub download is temporarily unavailable");
     }
     if (/403|forbidden|410|gone|http error 412/i.test(raw)) {
       return new Error("PornHub blocked the Cloudflare download request");
