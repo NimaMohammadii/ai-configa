@@ -15,7 +15,6 @@ const FILE_NAME = "Vexa-video.mp4";
 const SESSION_TTL_SECONDS = 60 * 60;
 const PROGRESS_REPORT_BYTES = 2 * 1024 * 1024;
 const PROGRESS_REPORT_MS = 750;
-const FULL_VIDEO_DURATION_HEADROOM_SECONDS = 60;
 let progressTableReady = null;
 
 export class VexaDownloadProgressHub extends DurableObject {
@@ -113,7 +112,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-4"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-5"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -315,18 +314,16 @@ async function trackedDownload(request, env, ctx) {
 
     const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(checked.row.user_id));
     if (provider === "pornhub") {
-      const duration = Math.max(1, positiveNumber(checked.row.duration_seconds));
-      const preparedPart = await container.streamVideoPart(
+      const prepared = await container.streamVideo(
         sourceUrl,
         strategyId,
         formatId,
         transport,
         0,
-        duration + FULL_VIDEO_DURATION_HEADROOM_SECONDS,
-        Number.MAX_SAFE_INTEGER,
+        true,
       );
-      sourceStream = preparedPart?.stream || null;
-      responseSize = positiveInteger(preparedPart?.sizeBytes);
+      sourceStream = prepared?.stream || null;
+      responseSize = positiveInteger(prepared?.sizeBytes);
       if (responseSize) {
         totalBytes = responseSize;
         await updateProgressTotal(env, session, responseSize).catch(() => null);
@@ -376,6 +373,12 @@ async function trackedDownload(request, env, ctx) {
           if (finished) return;
           finished = true;
           await writeChain.catch(() => null);
+          if (responseSize && downloaded !== responseSize) {
+            const message = "Video download ended before the expected file size";
+            await writeProgress(env, session, downloaded, "failed", message, totalBytes).catch(() => null);
+            controller.error(new Error(message));
+            return;
+          }
           await completeProgress(env, session, downloaded).catch(() => null);
           controller.close();
           return;
@@ -409,9 +412,20 @@ async function trackedDownload(request, env, ctx) {
     },
   });
 
-  const headers = trackedDownloadHeaders();
-  if (responseSize) headers.set("Content-Length", String(responseSize));
-  return new Response(body, { status: 200, headers });
+  let responseBody = body;
+  if (responseSize) {
+    const fixed = new FixedLengthStream(responseSize);
+    const pipe = body.pipeTo(fixed.writable);
+    ctx?.waitUntil?.(pipe.catch((error) => {
+      console.error("Vexa fixed-length download stream failed", error?.stack || error);
+    }));
+    responseBody = fixed.readable;
+  }
+
+  return new Response(responseBody, {
+    status: 200,
+    headers: trackedDownloadHeaders(),
+  });
 }
 
 async function validateTrackedSession(env, session, downloadToken) {
