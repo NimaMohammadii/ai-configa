@@ -1,5 +1,5 @@
 import { getAdminAction, isAdmin } from "./admin.js";
-import { handleCallback, handleMessage, isMiniAppEntryStart } from "./bot-ui.js";
+import { handleCallback, handleMessage } from "./bot-ui.js";
 import { handleDemoCallback, isDemoCallback } from "./demo-flow.js";
 import { shouldProcessMessageOnce } from "./message-dedupe.js";
 import { ensurePinnedFromState } from "./pinned-message.js";
@@ -87,7 +87,7 @@ async function handleMessageAndPin(message, env) {
   await handleMessage(message, env);
 
   const text = message.text ? message.text.trim() : "";
-  if (!isMiniAppEntryStart(text)) return;
+  if (text !== "/start") return;
 
   const chatId = message.chat && message.chat.id;
   const userId = message.from && message.from.id;
