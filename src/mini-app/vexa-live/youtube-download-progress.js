@@ -1,13 +1,17 @@
 import { DurableObject } from "cloudflare:workers";
+import { getContainer } from "@cloudflare/containers";
 import { authenticateMiniAppPayload } from "../auth.js";
-import { handleYouTubePlaybackRequest } from "./youtube-range-playback.js";
+import {
+  handleYouTubeDownloadRequest,
+  normalizeBotMediaUrl,
+} from "./youtube-download-exec.js";
 
 const SESSION_PATH = "/mini-app/live/api/youtube-download/session";
 const PROGRESS_PATH = "/mini-app/live/api/youtube-download/progress";
-const PLAYBACK_PATH = "/mini-app/live/api/youtube-playback";
+const DIRECT_DOWNLOAD_PATH = "/mini-app/live/api/youtube-download";
 export const DOWNLOAD_PROGRESS_RUNTIME_PATH = "/mini-app/vexa-live/download-progress.js";
 
-const FILE_NAME = "Vexa-YouTube-video.mp4";
+const FILE_NAME = "Vexa-video.mp4";
 const SESSION_TTL_SECONDS = 60 * 60;
 const PROGRESS_REPORT_BYTES = 2 * 1024 * 1024;
 const PROGRESS_REPORT_MS = 750;
@@ -70,7 +74,7 @@ export function isTrackedYouTubeDownloadRequest(request) {
   if (url.pathname === SESSION_PATH || url.pathname === PROGRESS_PATH || url.pathname === DOWNLOAD_PROGRESS_RUNTIME_PATH) {
     return true;
   }
-  return url.pathname === PLAYBACK_PATH && url.searchParams.get("download") === "1";
+  return url.pathname === DIRECT_DOWNLOAD_PATH && Boolean(cleanToken(url.searchParams.get("session")));
 }
 
 export async function handleTrackedYouTubeDownloadRequest(request, env, ctx) {
@@ -93,7 +97,8 @@ export async function handleTrackedYouTubeDownloadRequest(request, env, ctx) {
     }
     return readDownloadProgress(request, env);
   }
-  if ((request.method === "GET" || request.method === "HEAD") && url.pathname === PLAYBACK_PATH && url.searchParams.get("download") === "1") {
+  if ((request.method === "GET" || request.method === "HEAD") && url.pathname === DIRECT_DOWNLOAD_PATH) {
+    if (request.method === "HEAD") return directDownloadHead(request, env, ctx);
     return trackedDownload(request, env, ctx);
   }
   return json({ error: "Method Not Allowed" }, 405);
@@ -107,7 +112,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260820-1"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-2"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -128,22 +133,34 @@ export async function appendDownloadProgressRuntime(request, response) {
 async function createDownloadSession(request, env, ctx) {
   const payload = await request.json().catch(() => ({}));
   const user = await authenticateMiniAppPayload(payload, env);
-  const playbackToken = cleanToken(payload.playbackToken);
-  if (!playbackToken) return json({ error: "Video session is invalid" }, 400);
+  const downloadToken = cleanToken(payload.downloadToken);
+  if (!downloadToken) return json({ error: "Download session is invalid" }, 400);
 
   const row = await env.DB.prepare(
-    "SELECT user_id, media_size, title, expires_at FROM vexa_youtube_playback_tokens WHERE token = ?"
-  ).bind(playbackToken).first();
+    "SELECT user_id, source_url, expires_at FROM vexa_youtube_download_tokens WHERE token = ?"
+  ).bind(downloadToken).first();
 
   const now = Math.floor(Date.now() / 1000);
   if (!row || Number(row.expires_at || 0) <= now) {
-    return json({ error: "Video session expired. Open the video again." }, 410);
+    return json({ error: "Download session expired. Prepare the video again." }, 410);
   }
   if (String(row.user_id) !== String(user.id)) {
-    return json({ error: "Video session does not belong to this user" }, 403);
+    return json({ error: "Download session does not belong to this user" }, 403);
   }
 
-  const totalBytes = positiveInteger(row.media_size);
+  const normalized = normalizeBotMediaUrl(row.source_url);
+  if (!normalized?.url || !env.VEXA_MEDIA) {
+    return json({ error: "Download source is unavailable" }, 503);
+  }
+
+  let mediaInfo;
+  try {
+    mediaInfo = await resolveDownloadMediaInfo(env, user.id, normalized.url);
+  } catch (error) {
+    console.error("Vexa download progress metadata failed", error?.stack || error);
+    return json({ error: String(error?.message || "Could not inspect download size") }, 502);
+  }
+  const totalBytes = positiveInteger(mediaInfo.totalBytes);
   if (!totalBytes) return json({ error: "Video size is unavailable" }, 500);
 
   await ensureProgressTable(env);
@@ -154,7 +171,7 @@ async function createDownloadSession(request, env, ctx) {
     "VALUES (?, ?, ?, ?, 0, 'ready', NULL, ?, ?, ?)"
   ).bind(
     session,
-    playbackToken,
+    downloadToken,
     String(user.id),
     totalBytes,
     now,
@@ -171,11 +188,30 @@ async function createDownloadSession(request, env, ctx) {
     ok: true,
     fileName: FILE_NAME,
     fileSize: totalBytes,
-    title: String(row.title || "YouTube video"),
-    downloadUrl: PLAYBACK_PATH + "?token=" + encodeURIComponent(playbackToken) + "&download=1&session=" + encodeURIComponent(session),
+    title: String(mediaInfo.title || "Video"),
+    downloadUrl: DIRECT_DOWNLOAD_PATH + "?token=" + encodeURIComponent(downloadToken) + "&session=" + encodeURIComponent(session),
     progressUrl: PROGRESS_PATH + "?session=" + encodeURIComponent(session),
     expiresIn: SESSION_TTL_SECONDS,
   });
+}
+
+async function resolveDownloadMediaInfo(env, userId, sourceUrl) {
+  const container = getContainer(env.VEXA_MEDIA, "youtube-" + safeContainerKey(userId));
+  const metadata = await container.prepareVideo(sourceUrl);
+  const catalog = await container.getTelegramDownloadCatalog(sourceUrl);
+  const videos = Array.isArray(catalog?.options)
+    ? catalog.options.filter((option) => option?.kind === "video" && positiveInteger(option?.sizeBytes))
+    : [];
+  const formatId = String(metadata?.formatId || "");
+  const exact = formatId
+    ? videos.find((option) => String(option?.selector || "") === formatId)
+    : null;
+  const selected = exact || videos[0] || null;
+  if (!selected) throw new Error("Video size is unavailable");
+  return {
+    totalBytes: positiveInteger(selected.sizeBytes),
+    title: String(metadata?.title || catalog?.title || "Video"),
+  };
 }
 
 async function openDownloadProgressSocket(request, env) {
@@ -211,113 +247,124 @@ async function readProgressRow(env, session) {
 
 function progressPayload(row) {
   const totalBytes = positiveInteger(row?.total_bytes);
-  const downloadedBytes = Math.min(totalBytes, Math.max(0, Number(row?.downloaded_bytes || 0)));
+  const downloadedBytes = Math.max(0, Number(row?.downloaded_bytes || 0));
+  const status = String(row?.status || "ready");
   return {
     ok: true,
     totalBytes,
     downloadedBytes,
-    percent: totalBytes ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 1000) / 10) : 0,
-    status: String(row?.status || "ready"),
+    percent: progressPercent(downloadedBytes, totalBytes, status),
+    status,
     error: row?.error ? String(row.error) : "",
     updatedAt: Number(row?.updated_at || 0),
   };
 }
 
+async function directDownloadHead(request, env, ctx) {
+  const url = new URL(request.url);
+  const session = cleanToken(url.searchParams.get("session"));
+  const downloadToken = cleanToken(url.searchParams.get("token"));
+  const checked = await validateTrackedSession(env, session, downloadToken);
+  if (checked.response) return checked.response;
+  url.searchParams.delete("session");
+  return handleYouTubeDownloadRequest(new Request(url.href, request), env, ctx);
+}
+
 async function trackedDownload(request, env, ctx) {
   const url = new URL(request.url);
-  const playbackToken = cleanToken(url.searchParams.get("token"));
   const session = cleanToken(url.searchParams.get("session"));
-  if (!playbackToken || !session) return json({ error: "Download link is invalid" }, 400);
+  const downloadToken = cleanToken(url.searchParams.get("token"));
+  const checked = await validateTrackedSession(env, session, downloadToken);
+  if (checked.response) return checked.response;
 
-  await ensureProgressTable(env);
-  const progress = await env.DB.prepare(
-    "SELECT playback_token, total_bytes, status, expires_at FROM vexa_youtube_download_progress WHERE session = ?"
-  ).bind(session).first();
-  const now = Math.floor(Date.now() / 1000);
-  if (!progress || Number(progress.expires_at || 0) <= now || String(progress.playback_token) !== playbackToken) {
-    return json({ error: "Download session expired" }, 410);
-  }
-
-  const totalBytes = positiveInteger(progress.total_bytes);
-  if (!totalBytes) return json({ error: "Download size is invalid" }, 500);
-
-  const headers = downloadHeaders();
-  if (request.method === "HEAD") {
-    headers.set("X-Vexa-File-Size", String(totalBytes));
-    return new Response(null, { status: 200, headers });
-  }
-
+  const totalBytes = positiveInteger(checked.row.total_bytes);
   await writeProgress(env, session, 0, "downloading", "", totalBytes);
 
-  const upstreamHeaders = new Headers(request.headers);
-  upstreamHeaders.delete("Range");
-  upstreamHeaders.delete("If-Range");
   const upstreamUrl = new URL(request.url);
-  upstreamUrl.searchParams.delete("download");
   upstreamUrl.searchParams.delete("session");
-  const upstreamRequest = new Request(upstreamUrl.href, { method: "GET", headers: upstreamHeaders });
+  const upstream = await handleYouTubeDownloadRequest(
+    new Request(upstreamUrl.href, { method: "GET", headers: request.headers }),
+    env,
+    ctx,
+  );
 
-  const upstream = await handleYouTubePlaybackRequest(upstreamRequest, env, ctx);
   if (!upstream.ok || !upstream.body) {
     const message = "Could not start the video download";
     await writeProgress(env, session, 0, "failed", message, totalBytes);
     return upstream;
   }
 
+  const reader = upstream.body.getReader();
   let downloaded = 0;
   let lastReportedBytes = 0;
   let lastReportedAt = Date.now();
   let writeChain = Promise.resolve();
+  let finished = false;
+
   const enqueueProgress = (bytes, status, error) => {
-    writeChain = writeChain.then(() => writeProgress(env, session, bytes, status, error, totalBytes)).catch(() => null);
+    writeChain = writeChain
+      .then(() => writeProgress(env, session, bytes, status, error, totalBytes))
+      .catch(() => null);
     ctx?.waitUntil?.(writeChain);
   };
 
-  const counter = new TransformStream({
-    transform(chunk, controller) {
-      const size = chunk?.byteLength || 0;
-      downloaded += size;
-      const nowMs = Date.now();
-      if ((downloaded - lastReportedBytes) >= PROGRESS_REPORT_BYTES || (nowMs - lastReportedAt) >= PROGRESS_REPORT_MS) {
-        lastReportedBytes = downloaded;
-        lastReportedAt = nowMs;
-        enqueueProgress(Math.min(downloaded, totalBytes), "downloading", "");
+  const body = new ReadableStream({
+    async pull(controller) {
+      try {
+        const next = await reader.read();
+        if (next.done) {
+          if (finished) return;
+          finished = true;
+          await writeChain.catch(() => null);
+          await completeProgress(env, session, downloaded).catch(() => null);
+          controller.close();
+          return;
+        }
+        if (!next.value?.byteLength) return;
+        downloaded += next.value.byteLength;
+        const nowMs = Date.now();
+        if ((downloaded - lastReportedBytes) >= PROGRESS_REPORT_BYTES || (nowMs - lastReportedAt) >= PROGRESS_REPORT_MS) {
+          lastReportedBytes = downloaded;
+          lastReportedAt = nowMs;
+          enqueueProgress(downloaded, "downloading", "");
+        }
+        controller.enqueue(next.value);
+      } catch (error) {
+        if (!finished) {
+          finished = true;
+          await writeChain.catch(() => null);
+          await writeProgress(env, session, downloaded, "failed", publicDownloadError(error), totalBytes).catch(() => null);
+        }
+        controller.error(error);
       }
-      controller.enqueue(chunk);
+    },
+    async cancel(reason) {
+      try { await reader.cancel(reason); } catch (error) {}
+      if (!finished) {
+        finished = true;
+        await writeChain.catch(() => null);
+        await writeProgress(env, session, downloaded, "cancelled", "Download was cancelled", totalBytes).catch(() => null);
+      }
     },
   });
 
-  const fixed = new FixedLengthStream(totalBytes);
-  const pump = upstream.body
-    .pipeThrough(counter)
-    .pipeTo(fixed.writable)
-    .then(async () => {
-      await writeChain;
-      if (downloaded !== totalBytes) {
-        await writeProgress(env, session, Math.min(downloaded, totalBytes), "failed", "Download ended before the full video was received", totalBytes);
-        return;
-      }
-      await writeProgress(env, session, totalBytes, "completed", "", totalBytes);
-    })
-    .catch(async (error) => {
-      await writeChain.catch(() => null);
-      await writeProgress(env, session, Math.min(downloaded, totalBytes), "failed", publicDownloadError(error), totalBytes).catch(() => null);
-      throw error;
-    });
-  ctx?.waitUntil?.(pump.catch(() => null));
-
-  return new Response(fixed.readable, { status: 200, headers });
+  const headers = new Headers(upstream.headers);
+  headers.delete("Content-Length");
+  headers.set("Cache-Control", "private, no-store");
+  return new Response(body, { status: upstream.status, statusText: upstream.statusText, headers });
 }
 
-function downloadHeaders() {
-  return new Headers({
-    "Content-Type": "video/mp4",
-    "Content-Disposition": 'attachment; filename="' + FILE_NAME + '"',
-    "Cache-Control": "private, no-store",
-    "X-Content-Type-Options": "nosniff",
-    "Access-Control-Allow-Origin": "https://web.telegram.org",
-    "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length, X-Vexa-File-Size",
-  });
+async function validateTrackedSession(env, session, downloadToken) {
+  if (!session || !downloadToken) return { response: json({ error: "Download link is invalid" }, 400) };
+  await ensureProgressTable(env);
+  const row = await env.DB.prepare(
+    "SELECT playback_token, total_bytes, status, expires_at FROM vexa_youtube_download_progress WHERE session = ?"
+  ).bind(session).first();
+  const now = Math.floor(Date.now() / 1000);
+  if (!row || Number(row.expires_at || 0) <= now || String(row.playback_token || "") !== downloadToken) {
+    return { response: json({ error: "Download session expired" }, 410) };
+  }
+  return { row };
 }
 
 async function writeProgress(env, session, downloadedBytes, status, error, totalBytes) {
@@ -326,18 +373,63 @@ async function writeProgress(env, session, downloadedBytes, status, error, total
   await env.DB.prepare(
     "UPDATE vexa_youtube_download_progress SET downloaded_bytes = ?, status = ?, error = ?, updated_at = ? WHERE session = ?"
   ).bind(safeDownloaded, String(status || "ready"), error ? String(error).slice(0, 500) : null, now, session).run();
-  const total = positiveInteger(totalBytes);
-  if (env.VEXA_DOWNLOAD_PROGRESS && total) {
-    const percent = Math.min(100, Math.round((Math.min(safeDownloaded, total) / total) * 1000) / 10);
-    const id = env.VEXA_DOWNLOAD_PROGRESS.idFromName(session);
-    const stub = env.VEXA_DOWNLOAD_PROGRESS.get(id);
-    const request = new Request("https://vexa-download-progress/publish", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session, totalBytes: total, downloadedBytes: Math.min(safeDownloaded, total), percent, status, error: error || "", updatedAt: now }),
-    });
-    await stub.fetch(request).catch(() => null);
+  await publishProgress(env, session, {
+    totalBytes: positiveInteger(totalBytes),
+    downloadedBytes: safeDownloaded,
+    status,
+    error: error || "",
+    updatedAt: now,
+  });
+}
+
+async function completeProgress(env, session, downloadedBytes) {
+  const actualBytes = positiveInteger(downloadedBytes);
+  const now = Math.floor(Date.now() / 1000);
+  if (!actualBytes) {
+    await writeProgress(env, session, 0, "failed", "Download ended before data was received", 0);
+    return;
   }
+  await env.DB.prepare(
+    "UPDATE vexa_youtube_download_progress SET total_bytes = ?, downloaded_bytes = ?, status = 'completed', error = NULL, updated_at = ? WHERE session = ?"
+  ).bind(actualBytes, actualBytes, now, session).run();
+  await publishProgress(env, session, {
+    totalBytes: actualBytes,
+    downloadedBytes: actualBytes,
+    status: "completed",
+    error: "",
+    updatedAt: now,
+  });
+}
+
+async function publishProgress(env, session, payload) {
+  const totalBytes = positiveInteger(payload.totalBytes);
+  if (!env.VEXA_DOWNLOAD_PROGRESS || !totalBytes) return;
+  const downloadedBytes = Math.max(0, Number(payload.downloadedBytes || 0));
+  const status = String(payload.status || "ready");
+  const id = env.VEXA_DOWNLOAD_PROGRESS.idFromName(session);
+  const stub = env.VEXA_DOWNLOAD_PROGRESS.get(id);
+  const request = new Request("https://vexa-download-progress/publish", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session,
+      totalBytes,
+      downloadedBytes,
+      percent: progressPercent(downloadedBytes, totalBytes, status),
+      status,
+      error: payload.error || "",
+      updatedAt: Number(payload.updatedAt || 0),
+    }),
+  });
+  await stub.fetch(request).catch(() => null);
+}
+
+function progressPercent(downloadedBytes, totalBytes, status) {
+  if (String(status || "") === "completed") return 100;
+  const total = positiveInteger(totalBytes);
+  if (!total) return 0;
+  const value = (Math.max(0, Number(downloadedBytes || 0)) / total) * 100;
+  return Math.max(0, Math.min(99, Math.round(value * 10) / 10));
 }
 
 async function ensureProgressTable(env) {
@@ -373,6 +465,11 @@ function positiveInteger(value) {
   return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
+function safeContainerKey(value) {
+  const raw = String(value || "anonymous").replace(/[^A-Za-z0-9_-]/g, "");
+  return (raw || "anonymous").slice(0, 80);
+}
+
 function randomToken() {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -382,7 +479,6 @@ function randomToken() {
 
 function publicDownloadError(error) {
   const message = String(error?.message || "");
-  if (/fixed.?length|length|shorter|longer/i.test(message)) return "Download size did not match the video size";
   if (/cancel|abort/i.test(message)) return "Download was cancelled";
   return "Video download failed before completion";
 }
@@ -396,123 +492,155 @@ function json(value, status = 200) {
 
 export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
 (function () {
-  const SESSION_URL = "/mini-app/live/api/youtube-download/session";
-  let busy = false;
-  let progressSocket = null;
-  let reconnectTimer = 0;
-  let reconnectAttempt = 0;
-  let activeProgressUrl = "";
-  let activeTotalBytes = 0;
+  'use strict';
+  const PREPARE_URL='/mini-app/live/api/youtube-download/prepare';
+  const SESSION_URL='/mini-app/live/api/youtube-download/session';
+  const root=document.getElementById('vexaLiveDownloadRoot');
+  const button=document.getElementById('vexaLiveDownload');
+  const percentNode=document.getElementById('vexaLivePercent');
+  const statusNode=document.getElementById('vexaLiveStatus');
+  const detailNode=document.getElementById('vexaLiveDetail');
+  const track=document.getElementById('vexaLiveProgressTrack');
+  let prepared=null;
+  let preparingPromise=null;
+  let lastSource='';
+  let busy=false;
+  let progressSocket=null;
+  let reconnectTimer=0;
+  let reconnectAttempt=0;
+  let displayedPercent=0;
+  let percentAnimation=0;
 
-  function hostWindow() {
-    try { if (window.parent && window.parent !== window && window.parent.location.origin === window.location.origin) return window.parent; }
-    catch (error) {}
-    return window;
+  function hostWindow(){try{if(window.parent&&window.parent!==window&&window.parent.location.origin===window.location.origin)return window.parent;}catch(error){}return window;}
+  function telegram(){const host=hostWindow();return window.Telegram?.WebApp||host.Telegram?.WebApp||null;}
+  function initData(){return String(telegram()?.initData||'');}
+  function haptic(style){try{telegram()?.HapticFeedback?.impactOccurred?.(style||'light');}catch(error){}}
+  function mb(bytes){return(Math.max(0,Number(bytes||0))/1048576).toFixed(1);}
+  function launchSource(){
+    const host=hostWindow();
+    try{
+      const params=new URLSearchParams(host.location.search);
+      if(params.get('vexaDownload')!=='1')return'';
+      const source=String(params.get('vexaSource')||'').trim();
+      if(!source||source.length>2048)return'';
+      const url=new URL(source);
+      return url.protocol==='https:'?url.href:'';
+    }catch(error){return'';}
   }
-  function telegram() { const host = hostWindow(); return window.Telegram?.WebApp || host.Telegram?.WebApp || null; }
-  function initData() { return String(telegram()?.initData || ""); }
-  function haptic(style) { try { telegram()?.HapticFeedback?.impactOccurred?.(style || "light"); } catch (error) {} }
-  function status(message, error) {
-    const node = document.getElementById("vexaLiveStatus");
-    if (!node) return;
-    node.textContent = String(message || "");
-    node.classList.toggle("show", Boolean(message));
-    node.classList.toggle("error", Boolean(error));
+  function promptSource(){const source=window.prompt('Enter video link');if(source===null)return'';return String(source||'').trim();}
+  function setState(state,message,detail){
+    if(root)root.dataset.state=String(state||'idle');
+    if(statusNode)statusNode.textContent=String(message||'');
+    if(detailNode)detailNode.textContent=String(detail||'');
   }
-  function mb(bytes) { return (Math.max(0, Number(bytes || 0)) / 1048576).toFixed(1); }
-  function playbackToken() {
-    const video = document.getElementById("vexaLiveVideo");
-    const src = String(video?.currentSrc || video?.src || "");
-    try {
-      const token = new URL(src, window.location.origin).searchParams.get("token") || "";
-      return /^[A-Za-z0-9_-]{40,160}$/.test(token) ? token : "";
-    } catch (error) { return ""; }
+  function setButton(text,disabled){if(!button)return;button.textContent=String(text||'Download');button.disabled=Boolean(disabled);}
+  function setProgress(value,animate){
+    const target=Math.max(0,Math.min(100,Number(value||0)));
+    if(root)root.style.setProperty('--vexa-progress',String(target/100));
+    if(track){track.setAttribute('aria-valuenow',String(Math.round(target)));}
+    cancelAnimationFrame(percentAnimation);
+    if(!animate){displayedPercent=target;if(percentNode)percentNode.textContent=Math.round(target)+'%';return;}
+    const from=displayedPercent;
+    const started=performance.now();
+    const duration=Math.min(650,220+Math.abs(target-from)*12);
+    const tick=function(now){
+      const t=Math.min(1,(now-started)/Math.max(1,duration));
+      const eased=1-Math.pow(1-t,3);
+      displayedPercent=from+(target-from)*eased;
+      if(percentNode)percentNode.textContent=Math.round(displayedPercent)+'%';
+      if(t<1)percentAnimation=requestAnimationFrame(tick);
+    };
+    percentAnimation=requestAnimationFrame(tick);
   }
-  function setButton(text, disabled) {
-    const button = document.getElementById("vexaLiveDownload");
-    if (!button) return;
-    button.textContent = text;
-    button.disabled = Boolean(disabled);
-  }
-  function finishButtonSoon() { setTimeout(function () { if (!busy) setButton("Download", false); }, 1200); }
-  function closeProgressSocket() {
+  function tokenFromDownloadUrl(value){try{const token=new URL(String(value||''),window.location.origin).searchParams.get('token')||'';return/^[A-Za-z0-9_-]{40,160}$/.test(token)?token:'';}catch(error){return'';}}
+  function wsUrl(value){const url=new URL(String(value||''),window.location.origin);url.protocol=url.protocol==='https:'?'wss:':'ws:';return url.href;}
+  function closeProgressSocket(){
     clearTimeout(reconnectTimer);reconnectTimer=0;reconnectAttempt=0;
     const socket=progressSocket;progressSocket=null;
-    if(socket)try{socket.close(1000,"done");}catch(error){}
+    if(socket)try{socket.close(1000,'done');}catch(error){}
   }
-  function wsUrl(value) {
-    const url = new URL(String(value), window.location.origin);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    return url.href;
-  }
-  function handleProgress(data) {
-    if (!data?.ok) return;
-    const total = Number(data.totalBytes || activeTotalBytes || 0);
-    const done = Math.min(total, Math.max(0, Number(data.downloadedBytes || 0)));
-    const percent = total > 0 ? Math.min(100, Math.max(0, Number(data.percent || 0))) : 0;
-    const state = String(data.status || "ready");
-    if (state === "completed") {
-      busy = false;setButton("100%", false);status("Downloaded · " + mb(total) + " MB", false);haptic("medium");closeProgressSocket();finishButtonSoon();return;
+  function handleProgress(data){
+    if(!data?.ok)return;
+    const total=Number(data.totalBytes||prepared?.fileSize||0);
+    const done=Math.max(0,Number(data.downloadedBytes||0));
+    const pct=Math.max(0,Math.min(100,Number(data.percent||0)));
+    const state=String(data.status||'ready');
+    if(state==='completed'){
+      busy=false;setProgress(100,true);setState('completed','Downloaded',mb(done||total)+' MB');setButton('Download again',false);closeProgressSocket();haptic('medium');return;
     }
-    if (state === "failed" || state === "cancelled") {
-      busy = false;setButton("Download", false);status(String(data.error || "Download failed"), true);closeProgressSocket();return;
+    if(state==='failed'||state==='cancelled'){
+      busy=false;setState('error',String(data.error||'Download failed'),done?mb(done)+' MB received':'');setButton('Try again',false);closeProgressSocket();prepared=null;return;
     }
-    setButton(state === "downloading" ? Math.round(percent) + "%" : "Waiting…", true);
-    status((state === "downloading" ? "Downloading · " : "Waiting for download · ") + mb(done) + " MB / " + mb(total) + " MB" + (state === "downloading" ? " · " + Math.round(percent) + "%" : ""), false);
+    if(state==='downloading'){
+      setProgress(pct,true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB');
+    }
   }
-  function connectProgress(progressUrl,totalBytes) {
-    activeProgressUrl=String(progressUrl||"");activeTotalBytes=Number(totalBytes||0);
-    clearTimeout(reconnectTimer);reconnectTimer=0;
-    if(progressSocket)try{progressSocket.close(1000,"replace");}catch(error){}
-    const socket=new WebSocket(wsUrl(activeProgressUrl));progressSocket=socket;
-    socket.addEventListener("open",function(){if(progressSocket!==socket)return;reconnectAttempt=0;});
-    socket.addEventListener("message",function(event){if(progressSocket!==socket)return;let data;try{data=JSON.parse(String(event.data||"{}"));}catch(error){return;}handleProgress(data);});
-    socket.addEventListener("close",function(){if(progressSocket===socket)progressSocket=null;if(!busy||!activeProgressUrl)return;if(reconnectAttempt>=4){busy=false;setButton("Download",false);status("Download progress connection was lost",true);return;}const delay=Math.min(4000,500*Math.pow(2,reconnectAttempt++));reconnectTimer=setTimeout(function(){if(busy&&activeProgressUrl)connectProgress(activeProgressUrl,activeTotalBytes);},delay);});
-    socket.addEventListener("error",function(){try{socket.close();}catch(error){}});
+  function connectProgress(progressUrl){
+    closeProgressSocket();
+    const target=String(progressUrl||'');
+    if(!target)return;
+    const socket=new WebSocket(wsUrl(target));progressSocket=socket;
+    socket.addEventListener('open',function(){if(progressSocket!==socket)return;reconnectAttempt=0;});
+    socket.addEventListener('message',function(event){if(progressSocket!==socket)return;let data;try{data=JSON.parse(String(event.data||'{}'));}catch(error){return;}handleProgress(data);});
+    socket.addEventListener('close',function(){
+      if(progressSocket===socket)progressSocket=null;
+      if(!busy||!prepared?.progressUrl)return;
+      if(reconnectAttempt>=6){setState('downloading','Downloading','Progress connection interrupted');return;}
+      const delay=Math.min(5000,450*Math.pow(2,reconnectAttempt++));
+      reconnectTimer=setTimeout(function(){if(busy&&prepared?.progressUrl)connectProgress(prepared.progressUrl);},delay);
+    });
+    socket.addEventListener('error',function(){try{socket.close();}catch(error){}});
   }
-
-  async function startDownload() {
-    if (busy) return;
-    const token = playbackToken();
-    if (!token) { status("Open the video before downloading", true); return; }
-    busy = true;setButton("Preparing…", true);status("Preparing download…", false);haptic("light");
-    try {
-      const response = await fetch(SESSION_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({ initData: initData(), playbackToken: token }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.downloadUrl || !data.progressUrl || !data.fileSize) throw new Error(String(data.error || "Could not prepare download"));
-      const totalBytes = Number(data.fileSize || 0);
-      const absoluteDownloadUrl = new URL(String(data.downloadUrl), window.location.origin).href;
-      const absoluteProgressUrl = new URL(String(data.progressUrl), window.location.origin).href;
-      const fileName = String(data.fileName || "Vexa-YouTube-video.mp4");
-      connectProgress(absoluteProgressUrl,totalBytes);
-      status("Ready · " + mb(totalBytes) + " MB", false);setButton("Download", false);
-      const tg = telegram();
-      if (tg?.downloadFile) {
-        tg.downloadFile({ url: absoluteDownloadUrl, file_name: fileName }, function (accepted) {
-          if (!accepted) { busy=false;closeProgressSocket();status("Download cancelled",false);setButton("Download",false);return; }
-          setButton("0%",true);status("Starting download · 0.0 MB / " + mb(totalBytes) + " MB",false);
+  async function prepareSource(source){
+    const clean=String(source||'').trim();
+    if(!clean)return false;
+    if(preparingPromise)return preparingPromise;
+    lastSource=clean;prepared=null;busy=false;closeProgressSocket();setProgress(0,false);setState('preparing','Preparing download','');setButton('Preparing…',true);haptic('light');
+    preparingPromise=(async function(){
+      try{
+        const response=await fetch(PREPARE_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:clean})});
+        const direct=await response.json().catch(function(){return{};});
+        if(!response.ok||!direct.downloadUrl)throw new Error(String(direct.error||'Could not prepare download'));
+        const downloadToken=tokenFromDownloadUrl(direct.downloadUrl);
+        if(!downloadToken)throw new Error('Download session is invalid');
+        const sessionResponse=await fetch(SESSION_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),downloadToken:downloadToken})});
+        const session=await sessionResponse.json().catch(function(){return{};});
+        if(!sessionResponse.ok||!session.downloadUrl||!session.progressUrl||!session.fileSize)throw new Error(String(session.error||'Could not prepare download progress'));
+        prepared={downloadUrl:new URL(String(session.downloadUrl),window.location.origin).href,progressUrl:new URL(String(session.progressUrl),window.location.origin).href,fileName:String(session.fileName||direct.fileName||'Vexa-video.mp4'),fileSize:Number(session.fileSize||0),title:String(session.title||direct.title||'Video')};
+        setProgress(0,false);setState('waiting','Ready to download',mb(prepared.fileSize)+' MB');setButton('Download',false);haptic('light');return true;
+      }catch(error){
+        prepared=null;setState('error',String(error?.message||'Could not prepare download'),'');setButton('Try again',false);return false;
+      }finally{preparingPromise=null;}
+    })();
+    return preparingPromise;
+  }
+  function requestDownload(){
+    if(!prepared||busy)return;
+    busy=true;setProgress(0,false);setState('downloading','Waiting for Telegram','0.0 MB / '+mb(prepared.fileSize)+' MB');setButton('Downloading…',true);connectProgress(prepared.progressUrl);haptic('light');
+    const tg=telegram();
+    if(tg?.downloadFile){
+      try{
+        tg.downloadFile({url:prepared.downloadUrl,file_name:prepared.fileName},function(accepted){
+          if(accepted===false){busy=false;closeProgressSocket();setProgress(0,true);setState('waiting','Download cancelled',mb(prepared?.fileSize||0)+' MB');setButton('Download',false);return;}
+          setState('downloading','Downloading','0.0 MB / '+mb(prepared?.fileSize||0)+' MB');
         });
-      } else {
-        const link=document.createElement("a");link.href=absoluteDownloadUrl;link.download=fileName;link.rel="noopener";document.body.appendChild(link);link.click();link.remove();
-        setButton("0%",true);status("Starting download · 0.0 MB / " + mb(totalBytes) + " MB",false);
-      }
-    } catch (error) {
-      busy=false;closeProgressSocket();setButton("Download",false);status(String(error?.message || "Could not prepare download"),true);
+        return;
+      }catch(error){console.warn('Telegram downloadFile failed',error?.message||error);}
     }
+    try{
+      const link=document.createElement('a');link.href=prepared.downloadUrl;link.download=prepared.fileName;link.rel='noopener';document.body.appendChild(link);link.click();link.remove();setState('downloading','Downloading','0.0 MB / '+mb(prepared.fileSize)+' MB');
+    }catch(error){busy=false;closeProgressSocket();setState('error','Could not start download','');setButton('Try again',false);}
   }
-
-  function bind() {
-    const oldButton=document.getElementById("vexaLiveDownload");
-    if(!oldButton||oldButton.dataset.vexaTrackedDownload==="1")return Boolean(oldButton);
-    const button=oldButton.cloneNode(true);button.dataset.vexaTrackedDownload="1";oldButton.replaceWith(button);
-    button.addEventListener("click",function(event){event.preventDefault();event.stopPropagation();startDownload();});
-    document.documentElement.dataset.vexaTrackedDownload="1";return true;
+  async function onButtonClick(event){
+    event.preventDefault();event.stopPropagation();
+    if(busy||button?.disabled)return;
+    if(prepared){requestDownload();return;}
+    const source=lastSource||launchSource()||promptSource();
+    if(!source)return;
+    await prepareSource(source);
   }
-  if(!bind()){const observer=new MutationObserver(function(){if(bind())observer.disconnect();});observer.observe(document.documentElement,{childList:true,subtree:true});}
+  button?.addEventListener('click',onButtonClick);
+  const preset=launchSource();
+  if(preset){lastSource=preset;prepareSource(preset);}else{setProgress(0,false);setState('idle','Ready when you are','');setButton('Download',false);}
 })();
 `;
