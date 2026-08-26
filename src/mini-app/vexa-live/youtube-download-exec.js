@@ -54,7 +54,7 @@ const CLIENT_STRATEGIES = Object.freeze([
 ]);
 const PORNHUB_STRATEGY = Object.freeze({
   id: "pornhub",
-  args: Object.freeze([]),
+  args: Object.freeze(["--impersonate", "chrome"]),
 });
 const YTDLP_COMMON_ARGS = Object.freeze([
   "--ignore-config",
