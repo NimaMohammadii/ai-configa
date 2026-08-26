@@ -112,7 +112,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-5"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-6"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -354,16 +354,38 @@ async function trackedDownload(request, env, ctx) {
   let downloaded = 0;
   let lastReportedBytes = 0;
   let lastReportedAt = Date.now();
-  let writeChain = Promise.resolve();
+  let publishChain = Promise.resolve();
+  let persistChain = Promise.resolve();
   let finished = false;
   let started = false;
 
   const enqueueProgress = (bytes, status, error) => {
-    writeChain = writeChain
-      .then(() => writeProgress(env, session, bytes, status, error, totalBytes))
+    const now = Math.floor(Date.now() / 1000);
+    const safeBytes = Math.max(0, Number(bytes || 0));
+    const safeStatus = String(status || "ready");
+    const safeError = error ? String(error).slice(0, 500) : "";
+
+    publishChain = publishChain
+      .then(() => publishProgress(env, session, {
+        totalBytes,
+        downloadedBytes: safeBytes,
+        status: safeStatus,
+        error: safeError,
+        updatedAt: now,
+      }))
       .catch(() => null);
-    ctx?.waitUntil?.(writeChain);
+
+    persistChain = persistChain
+      .then(() => persistProgress(env, session, safeBytes, safeStatus, safeError, now))
+      .catch(() => null);
+
+    ctx?.waitUntil?.(Promise.all([publishChain, persistChain]));
   };
+
+  const settleProgress = () => Promise.all([
+    publishChain.catch(() => null),
+    persistChain.catch(() => null),
+  ]);
 
   const body = new ReadableStream({
     async pull(controller) {
@@ -372,7 +394,7 @@ async function trackedDownload(request, env, ctx) {
         if (next.done) {
           if (finished) return;
           finished = true;
-          await writeChain.catch(() => null);
+          await settleProgress();
           if (responseSize && downloaded !== responseSize) {
             const message = "Video download ended before the expected file size";
             await writeProgress(env, session, downloaded, "failed", message, totalBytes).catch(() => null);
@@ -396,7 +418,7 @@ async function trackedDownload(request, env, ctx) {
       } catch (error) {
         if (!finished) {
           finished = true;
-          await writeChain.catch(() => null);
+          await settleProgress();
           await writeProgress(env, session, downloaded, "failed", publicDownloadError(error), totalBytes).catch(() => null);
         }
         controller.error(error);
@@ -406,7 +428,7 @@ async function trackedDownload(request, env, ctx) {
       try { await reader.cancel(reason); } catch (error) {}
       if (!finished) {
         finished = true;
-        await writeChain.catch(() => null);
+        await settleProgress();
         await writeProgress(env, session, downloaded, "cancelled", "Download was cancelled", totalBytes).catch(() => null);
       }
     },
@@ -461,19 +483,33 @@ async function updateProgressTotal(env, session, totalBytes) {
   ).bind(total, session).run();
 }
 
+async function persistProgress(env, session, downloadedBytes, status, error, updatedAt) {
+  await env.DB.prepare(
+    "UPDATE vexa_youtube_download_progress SET downloaded_bytes = ?, status = ?, error = ?, updated_at = ? WHERE session = ?"
+  ).bind(
+    Math.max(0, Number(downloadedBytes || 0)),
+    String(status || "ready"),
+    error ? String(error).slice(0, 500) : null,
+    Number(updatedAt || Math.floor(Date.now() / 1000)),
+    session,
+  ).run();
+}
+
 async function writeProgress(env, session, downloadedBytes, status, error, totalBytes) {
   const now = Math.floor(Date.now() / 1000);
   const safeDownloaded = Math.max(0, Number(downloadedBytes || 0));
-  await env.DB.prepare(
-    "UPDATE vexa_youtube_download_progress SET downloaded_bytes = ?, status = ?, error = ?, updated_at = ? WHERE session = ?"
-  ).bind(safeDownloaded, String(status || "ready"), error ? String(error).slice(0, 500) : null, now, session).run();
-  await publishProgress(env, session, {
-    totalBytes: positiveInteger(totalBytes),
-    downloadedBytes: safeDownloaded,
-    status,
-    error: error || "",
-    updatedAt: now,
-  });
+  const safeStatus = String(status || "ready");
+  const safeError = error ? String(error).slice(0, 500) : "";
+  await Promise.all([
+    persistProgress(env, session, safeDownloaded, safeStatus, safeError, now),
+    publishProgress(env, session, {
+      totalBytes: positiveInteger(totalBytes),
+      downloadedBytes: safeDownloaded,
+      status: safeStatus,
+      error: safeError,
+      updatedAt: now,
+    }),
+  ]);
 }
 
 async function completeProgress(env, session, downloadedBytes) {
@@ -483,16 +519,18 @@ async function completeProgress(env, session, downloadedBytes) {
     await writeProgress(env, session, 0, "failed", "Download ended before data was received", 0);
     return;
   }
-  await env.DB.prepare(
-    "UPDATE vexa_youtube_download_progress SET total_bytes = ?, downloaded_bytes = ?, status = 'completed', error = NULL, updated_at = ? WHERE session = ?"
-  ).bind(actualBytes, actualBytes, now, session).run();
-  await publishProgress(env, session, {
-    totalBytes: actualBytes,
-    downloadedBytes: actualBytes,
-    status: "completed",
-    error: "",
-    updatedAt: now,
-  });
+  await Promise.all([
+    env.DB.prepare(
+      "UPDATE vexa_youtube_download_progress SET total_bytes = ?, downloaded_bytes = ?, status = 'completed', error = NULL, updated_at = ? WHERE session = ?"
+    ).bind(actualBytes, actualBytes, now, session).run(),
+    publishProgress(env, session, {
+      totalBytes: actualBytes,
+      downloadedBytes: actualBytes,
+      status: "completed",
+      error: "",
+      updatedAt: now,
+    }),
+  ]);
 }
 
 async function publishProgress(env, session, payload) {
@@ -701,10 +739,10 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
       busy=false;setState('error',String(data.error||'Download failed'),done?mb(done)+' MB received':'');setButton('Try again',false);closeProgressSocket();prepared=null;return;
     }
     if(state==='preparing'){
-      setProgress(0,false);setState('preparing','Preparing download','0.0 MB / '+mb(total)+' MB');return;
+      if(displayedPercent<=0)setProgress(0,false);setState('preparing','Preparing download','0.0 MB / '+mb(total)+' MB');return;
     }
     if(state==='downloading'){
-      setProgress(pct,true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB');
+      setProgress(Math.max(displayedPercent,pct),true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB');
     }
   }
   function connectProgress(progressUrl){
