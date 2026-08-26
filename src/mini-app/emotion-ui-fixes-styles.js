@@ -1,5 +1,5 @@
 export const EMOTION_UI_FIXES_CSS = String.raw`
-:root{--vexa-tg-safe-top:max(var(--tg-safe-area-inset-top,0px),var(--tg-content-safe-area-inset-top,0px));--vexa-tg-safe-bottom:max(var(--tg-safe-area-inset-bottom,0px),var(--tg-content-safe-area-inset-bottom,0px));--vexa-tg-safe-left:max(var(--tg-safe-area-inset-left,0px),var(--tg-content-safe-area-inset-left,0px));--vexa-tg-safe-right:max(var(--tg-safe-area-inset-right,0px),var(--tg-content-safe-area-inset-right,0px));--app-viewport-height:var(--tg-viewport-height,100dvh)!important}
+:root{--vexa-tg-safe-top:var(--tg-content-safe-area-inset-top,var(--tg-safe-area-inset-top,env(safe-area-inset-top,0px)));--vexa-tg-safe-bottom:var(--tg-content-safe-area-inset-bottom,var(--tg-safe-area-inset-bottom,env(safe-area-inset-bottom,0px)));--vexa-tg-safe-left:var(--tg-content-safe-area-inset-left,var(--tg-safe-area-inset-left,env(safe-area-inset-left,0px)));--vexa-tg-safe-right:var(--tg-content-safe-area-inset-right,var(--tg-safe-area-inset-right,env(safe-area-inset-right,0px)));--app-viewport-height:var(--tg-viewport-height,100dvh)!important}
 .player-history-row{position:relative}
 .emotion-trigger,.player-history-row>.emotion-trigger{position:absolute!important;z-index:4;right:0!important;top:-54px!important;bottom:auto!important;width:46px!important;min-width:46px!important;height:46px!important;flex:0 0 46px!important;border-radius:50%!important;padding:0!important;display:grid!important;place-items:center!important;gap:0!important;background:rgba(255,255,255,.055)!important;color:rgba(255,255,255,.88)!important;border:1px solid rgba(255,255,255,.15)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 14px 34px rgba(0,0,0,.4)!important;animation:emotionButtonLift .34s cubic-bezier(.16,.9,.22,1)}
 .emotion-trigger-icon{display:none!important}
@@ -35,14 +35,14 @@ body.emotion-highlight-ready .tts-area textarea::selection{background:rgba(122,7
 .demo-language-button-avatar .demo-language-flag{display:block!important;width:28px!important;height:18px!important;flex:0 0 28px!important;border:0!important;border-radius:0!important;outline:0!important;box-shadow:none!important;filter:none!important}
 @media(max-width:390px){.demo-language-wrap .voice-btn{min-width:112px!important;max-width:124px!important;padding:0 8px!important;gap:6px!important;font-size:12px!important}.demo-language-wrap .voice-menu{width:min(230px,calc(100vw - 32px))!important}}
 
-/* Shared top spacing follows Telegram's own content-safe geometry. */
-.app{padding-top:calc(41px + var(--vexa-tg-safe-top))!important}
-.tts-head:before{top:calc(-41px - var(--vexa-tg-safe-top))!important}
-.voices-page{padding-top:24px!important}
-.voices-page-head{padding-top:calc(18px + var(--vexa-tg-safe-top))!important}
-.explore-page-head{padding-top:calc(18px + var(--vexa-tg-safe-top))!important}
-.credits-page-scroll{padding-top:calc(20px + var(--vexa-tg-safe-top))!important}
-.vexa-app-settings-scroll{padding-top:calc(62px + var(--vexa-tg-safe-top))!important}
+/* The first content pixel is Telegram's own content-safe top on every device. */
+.app{padding-top:var(--vexa-tg-safe-top)!important}
+.tts-head:before{top:calc(0px - var(--vexa-tg-safe-top))!important}
+.voices-page{padding-top:0!important}
+.voices-page-head{padding-top:var(--vexa-tg-safe-top)!important}
+.explore-page-head{padding-top:var(--vexa-tg-safe-top)!important}
+.credits-page-scroll{padding-top:var(--vexa-tg-safe-top)!important}
+.vexa-app-settings-scroll{padding-top:var(--vexa-tg-safe-top)!important}
 
 /* Credits hero fine positioning. */
 .credits-page-head{background-position:center calc(50% + 12px)!important}
