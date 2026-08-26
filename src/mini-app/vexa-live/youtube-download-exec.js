@@ -507,17 +507,18 @@ export class VexaMediaContainerV3 extends Container {
 
         const fileSize = await this.readFileSize(tempPath);
         if (fileSize <= limit) {
+          const actualDuration = await this.readMediaDuration(tempPath);
           await emitMediaProgress(onProgress, {
             phase: attempt > 0 ? "adjusting" : "preparing",
             percent: 100,
             attempt: attempt + 1,
             startSeconds: start,
-            durationSeconds: seconds,
+            durationSeconds: actualDuration,
           });
           return {
             process: await this.openAndUnlinkFile(tempPath, "vexa-telegram-part-stream"),
             sizeBytes: fileSize,
-            durationSeconds: seconds,
+            durationSeconds: actualDuration,
           };
         }
 
@@ -556,6 +557,26 @@ export class VexaMediaContainerV3 extends Container {
       throw new Error("Media returned an empty video stream");
     }
     return fileSize;
+  }
+
+  async readMediaDuration(path) {
+    const probeProcess = await this.ctx.container.exec([
+      "ffprobe",
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      path,
+    ]);
+    const probeOutput = await probeProcess.output();
+    const durationText = new TextDecoder().decode(probeOutput.stdout).trim();
+    const duration = Number.parseFloat(durationText);
+    if (probeOutput.exitCode !== 0 || !Number.isFinite(duration) || duration <= 0) {
+      throw new Error("Media returned an invalid video duration");
+    }
+    return Math.round(duration * 1000) / 1000;
   }
 
   async openAndUnlinkFile(path, label) {
@@ -783,7 +804,9 @@ export async function downloadTelegramYouTubeMediaPart(
       TELEGRAM_SAFE_FILE_BYTES,
       onProgress,
     );
-    const nextStart = Math.min(totalDuration, start + Number(part.durationSeconds || requestedSeconds));
+    const partDuration = positiveNumber(part.durationSeconds);
+    if (!partDuration) throw new Error("Video part duration is invalid");
+    const nextStart = Math.min(totalDuration, start + partDuration);
     const done = nextStart >= totalDuration - 0.25;
 
     return {
@@ -795,7 +818,7 @@ export async function downloadTelegramYouTubeMediaPart(
       sizeBytes: Number(part.sizeBytes || 0),
       width: selected.width,
       height: selected.height,
-      duration: Math.max(1, Math.round(Number(part.durationSeconds || requestedSeconds))),
+      duration: Math.max(1, Math.round(partDuration)),
       stream: part.stream,
       partNumber: currentPart,
       partStart: start,
