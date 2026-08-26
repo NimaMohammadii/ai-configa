@@ -11,6 +11,7 @@ import {
   getMiniAppDefaultSection,
   isAdmin,
   setMiniAppDefaultSection,
+  trackUser,
 } from "./admin.js";
 import {
   adminGitHubUsersView,
@@ -20,16 +21,31 @@ import {
   withAdminGitHubUserStatuses,
 } from "./admin-github.js";
 import { handleCallback as coreHandleCallback, handleMessage as coreHandleMessage } from "./bot.js";
+import { ensureBalanceRow } from "./credits.js";
 import { getState, setMenuMessageId } from "./state.js";
-import { answerCallback, editMessage } from "./telegram-actions.js";
+import { answerCallback, deleteMessage, editMessage, sendMessage } from "./telegram-actions.js";
 import { tgJson } from "./telegram-api.js";
 
 export async function handleMessage(message, env) {
-  await coreHandleMessage(message, env);
-
   const text = String(message?.text || "").trim();
   const userId = message?.from?.id;
   const chatId = message?.chat?.id;
+  const directAdminOpen = /^\/admin(?:@\w+)?$/i.test(text) || text === "/support";
+
+  if (userId && chatId && directAdminOpen && await isAdmin(env, userId)) {
+    await Promise.all([
+      trackUser(env, message.from).catch(() => null),
+      ensureBalanceRow(env, userId).catch(() => null),
+    ]);
+    await deleteMessage(env, chatId, message?.message_id).catch(() => null);
+    await clearAdminAction(env, userId);
+    const state = await getState(env, userId);
+    await upsertAdminMain(env, chatId, userId, state?.menuMessageId);
+    return;
+  }
+
+  await coreHandleMessage(message, env);
+
   if (!userId || !chatId || !(text.startsWith("/admin") || text === "/support")) return;
   if (!(await isAdmin(env, userId))) return;
 
@@ -177,6 +193,22 @@ async function showMiniAppEntryPanel(env, chatId, userId, messageId) {
 
 function isMiniAppEntryCallback(data) {
   return data === "admin_mini_app_entry" || data.startsWith("admin_mini_app_entry_set:");
+}
+
+async function upsertAdminMain(env, chatId, userId, messageId) {
+  const text = await adminMainText(env);
+  const keyboard = withAdminGitHubMainKeyboard(adminMainKeyboard());
+  const targetMessageId = Number(messageId || 0);
+  if (targetMessageId) {
+    try {
+      await editAdminMenu(env, chatId, userId, targetMessageId, text, keyboard);
+      return;
+    } catch (error) {
+      if (!String(error?.message || error).toLowerCase().includes("message to edit not found")) throw error;
+    }
+  }
+  const menu = await sendMessage(env, chatId, text, keyboard);
+  await setMenuMessageId(env, userId, menu?.message_id || null);
 }
 
 async function editAdminMenu(env, chatId, userId, messageId, text, keyboard) {
