@@ -112,7 +112,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-8"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-7"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -677,7 +677,6 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   const detailNode=document.getElementById('vexaLiveDetail');
   const track=document.getElementById('vexaLiveProgressTrack');
   const qualityNode=document.getElementById('vexaLiveQuality');
-  let saveButton=null;
   let prepared=null;
   let preparingPromise=null;
   let lastSource='';
@@ -719,30 +718,6 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     if(detailNode)detailNode.textContent=String(detail||'');
   }
   function setButton(text,disabled){if(!button)return;button.textContent=String(text||'Download');button.disabled=Boolean(disabled);}
-  function ensureSaveButton(){
-    if(saveButton&&saveButton.isConnected)return saveButton;
-    const parent=button?.parentElement;if(!parent)return null;
-    const node=document.createElement('button');
-    node.id='vexaLiveSave';node.className='vexa-live-download-action';node.type='button';node.textContent='Save';node.hidden=true;
-    node.setAttribute('aria-label','Save or share downloaded video');
-    node.addEventListener('click',onSaveClick);parent.appendChild(node);saveButton=node;return node;
-  }
-  function setSaveVisible(visible){const node=ensureSaveButton();if(node)node.hidden=!Boolean(visible);}
-  async function onSaveClick(event){
-    event?.preventDefault?.();event?.stopPropagation?.();
-    const shareUrl=String(prepared?.downloadUrl||'');if(!shareUrl)return;
-    haptic('light');
-    const shareData={title:String(prepared?.title||prepared?.fileName||'Video'),url:shareUrl};
-    try{
-      if(typeof navigator.share==='function'){await navigator.share(shareData);return;}
-    }catch(error){
-      if(String(error?.name||'')==='AbortError')return;
-      console.warn('Native share failed',error?.message||error);
-    }
-    const tg=telegram();
-    try{if(tg?.openLink){tg.openLink(shareUrl,{try_instant_view:false});return;}}catch(error){console.warn('Telegram openLink failed',error?.message||error);}
-    try{const opened=window.open(shareUrl,'_blank','noopener,noreferrer');if(!opened)window.location.href=shareUrl;}catch(error){window.location.href=shareUrl;}
-  }
   function setProgress(value,animate){
     const target=Math.max(0,Math.min(100,Number(value||0)));
     if(root)root.style.setProperty('--vexa-progress',String(target/100));
@@ -775,7 +750,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   function selectQuality(key,announce){
     const option=qualityOptions.find(function(item){return item.key===String(key||'');});
     if(!option||busy)return false;
-    selectedOptionKey=option.key;lastOptionKey=option.key;prepared=null;closeProgressSocket();setSaveVisible(false);setProgress(0,true);updateQualitySelection();
+    selectedOptionKey=option.key;lastOptionKey=option.key;prepared=null;closeProgressSocket();setProgress(0,true);updateQualitySelection();
     if(announce!==false){setState('waiting','Ready to download',qualityDetail(option));haptic('light');}
     setButton('Download',false);return true;
   }
@@ -809,16 +784,16 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     const pct=Math.max(0,Math.min(100,Number(data.percent||0)));
     const state=String(data.status||'ready');
     if(state==='completed'){
-      busy=false;setProgress(100,true);setState('completed','Downloaded',mb(done||total)+' MB');setButton('Download again',false);setSaveVisible(true);closeProgressSocket();haptic('medium');return;
+      busy=false;setProgress(100,true);setState('completed','Downloaded',mb(done||total)+' MB');setButton('Download again',false);closeProgressSocket();haptic('medium');return;
     }
     if(state==='failed'||state==='cancelled'){
-      busy=false;setSaveVisible(false);setState('error',String(data.error||'Download failed'),done?mb(done)+' MB received':qualityDetail(selectedQuality()));setButton('Try again',false);closeProgressSocket();prepared=null;return;
+      busy=false;setState('error',String(data.error||'Download failed'),done?mb(done)+' MB received':qualityDetail(selectedQuality()));setButton('Try again',false);closeProgressSocket();prepared=null;return;
     }
     if(state==='preparing'){
-      setSaveVisible(false);if(displayedPercent<=0)setProgress(0,false);setState('preparing','Preparing download','0.0 MB / '+mb(total)+' MB');return;
+      if(displayedPercent<=0)setProgress(0,false);setState('preparing','Preparing download','0.0 MB / '+mb(total)+' MB');return;
     }
     if(state==='downloading'){
-      setSaveVisible(false);setProgress(Math.max(displayedPercent,pct),true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB');
+      setProgress(Math.max(displayedPercent,pct),true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB');
     }
   }
   function connectProgress(progressUrl){
@@ -839,7 +814,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   }
   function cancelNativeDownloadState(){
     if(!busy)return;
-    busy=false;closeProgressSocket();setSaveVisible(false);setProgress(0,true);setState('waiting','Download cancelled',qualityDetail(selectedQuality())||mb(prepared?.fileSize||0)+' MB');setButton('Download',false);
+    busy=false;closeProgressSocket();setProgress(0,true);setState('waiting','Download cancelled',qualityDetail(selectedQuality())||mb(prepared?.fileSize||0)+' MB');setButton('Download',false);
   }
   function handleTelegramDownloadRequested(event){
     const state=String(event?.status||event||'').toLowerCase();
@@ -856,7 +831,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     const clean=String(source||'').trim();
     if(!clean)return false;
     if(preparingPromise)return preparingPromise;
-    lastSource=clean;lastOptionKey=/^v\d{2,4}$/.test(String(optionKey||''))?String(optionKey):'';downloadToken='';directMeta=null;prepared=null;busy=false;closeProgressSocket();setSaveVisible(false);clearQualities();setProgress(0,false);setState('preparing','Loading qualities','');setButton('Preparing…',true);haptic('light');
+    lastSource=clean;lastOptionKey=/^v\d{2,4}$/.test(String(optionKey||''))?String(optionKey):'';downloadToken='';directMeta=null;prepared=null;busy=false;closeProgressSocket();clearQualities();setProgress(0,false);setState('preparing','Loading qualities','');setButton('Preparing…',true);haptic('light');
     preparingPromise=(async function(){
       try{
         const response=await fetch(PREPARE_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:clean})});
@@ -871,14 +846,14 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
         if(!renderQualities(qualityData.options,lastOptionKey))throw new Error('Video quality is unavailable');
         const option=selectedQuality();setProgress(0,false);setState('waiting','Choose quality',qualityDetail(option));setButton('Download',false);haptic('light');return true;
       }catch(error){
-        downloadToken='';directMeta=null;prepared=null;clearQualities();setSaveVisible(false);setState('error',String(error?.message||'Could not prepare download'),'');setButton('Try again',false);return false;
+        downloadToken='';directMeta=null;prepared=null;clearQualities();setState('error',String(error?.message||'Could not prepare download'),'');setButton('Try again',false);return false;
       }finally{preparingPromise=null;}
     })();
     return preparingPromise;
   }
   async function prepareSelectedDownload(){
     if(!downloadToken||!selectedOptionKey||preparingPromise)return false;
-    const option=selectedQuality();setSaveVisible(false);setState('preparing','Preparing '+String(option?.label||'quality'),qualityDetail(option));setButton('Preparing…',true);haptic('light');
+    const option=selectedQuality();setState('preparing','Preparing '+String(option?.label||'quality'),qualityDetail(option));setButton('Preparing…',true);haptic('light');
     preparingPromise=(async function(){
       try{
         const sessionResponse=await fetch(SESSION_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),downloadToken:downloadToken,optionKey:selectedOptionKey})});
@@ -886,14 +861,14 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
         if(!sessionResponse.ok||!session.downloadUrl||!session.progressUrl||!session.fileSize)throw new Error(String(session.error||'Could not prepare selected quality'));
         prepared={downloadUrl:new URL(String(session.downloadUrl),window.location.origin).href,progressUrl:new URL(String(session.progressUrl),window.location.origin).href,fileName:String(session.fileName||directMeta?.fileName||'Vexa-video.mp4'),fileSize:Number(session.fileSize||0),title:String(session.title||directMeta?.title||'Video'),optionKey:String(session.optionKey||selectedOptionKey)};
         setProgress(0,false);setState('waiting','Ready to download',qualityDetail(option));setButton('Download',false);return true;
-      }catch(error){prepared=null;setSaveVisible(false);setState('error',String(error?.message||'Could not prepare selected quality'),qualityDetail(option));setButton('Try again',false);return false;}
+      }catch(error){prepared=null;setState('error',String(error?.message||'Could not prepare selected quality'),qualityDetail(option));setButton('Try again',false);return false;}
       finally{preparingPromise=null;}
     })();
     return preparingPromise;
   }
   function requestDownload(){
     if(!prepared||busy)return;
-    busy=true;setSaveVisible(false);setProgress(0,false);setState('preparing','Waiting for Telegram','0.0 MB / '+mb(prepared.fileSize)+' MB');setButton('Downloading…',true);connectProgress(prepared.progressUrl);bindTelegramDownloadEvent();haptic('light');
+    busy=true;setProgress(0,false);setState('preparing','Waiting for Telegram','0.0 MB / '+mb(prepared.fileSize)+' MB');setButton('Downloading…',true);connectProgress(prepared.progressUrl);bindTelegramDownloadEvent();haptic('light');
     const tg=telegram();
     if(tg?.downloadFile){
       try{
@@ -918,7 +893,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     if(!source)return;
     await prepareSource(source,lastOptionKey||launch.optionKey);
   }
-  ensureSaveButton();setSaveVisible(false);bindTelegramDownloadEvent();
+  bindTelegramDownloadEvent();
   button?.addEventListener('click',onButtonClick);
   const preset=launchContext();
   if(preset.source){lastSource=preset.source;lastOptionKey=preset.optionKey;prepareSource(preset.source,preset.optionKey);}else{setProgress(0,false);setState('idle','Ready when you are','');setButton('Download',false);}
