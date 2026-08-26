@@ -153,7 +153,7 @@ async function handleMessageAndPin(message, env) {
   await handleMessage(message, env);
 
   const text = message.text ? message.text.trim() : "";
-  if (text !== "/start") return;
+  if (!/^\/start(?:@\w+)?(?:\s|$)/i.test(text)) return;
 
   const chatId = message.chat && message.chat.id;
   const userId = message.from && message.from.id;
