@@ -98,7 +98,7 @@ export async function handleTrackedYouTubeDownloadRequest(request, env, ctx) {
     return readDownloadProgress(request, env);
   }
   if ((request.method === "GET" || request.method === "HEAD") && url.pathname === DIRECT_DOWNLOAD_PATH) {
-    if (request.method === "HEAD") return directDownloadHead(request, env, ctx);
+    if (request.method === "HEAD") return directDownloadHead(request, env);
     return trackedDownload(request, env, ctx);
   }
   return json({ error: "Method Not Allowed" }, 405);
@@ -112,7 +112,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-2"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-3"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -260,14 +260,16 @@ function progressPayload(row) {
   };
 }
 
-async function directDownloadHead(request, env, ctx) {
+async function directDownloadHead(request, env) {
   const url = new URL(request.url);
   const session = cleanToken(url.searchParams.get("session"));
   const downloadToken = cleanToken(url.searchParams.get("token"));
   const checked = await validateTrackedSession(env, session, downloadToken);
   if (checked.response) return checked.response;
-  url.searchParams.delete("session");
-  return handleYouTubeDownloadRequest(new Request(url.href, request), env, ctx);
+  const totalBytes = positiveInteger(checked.row.total_bytes);
+  const headers = trackedDownloadHeaders();
+  if (totalBytes) headers.set("Content-Length", String(totalBytes));
+  return new Response(null, { status: 200, headers });
 }
 
 async function trackedDownload(request, env, ctx) {
@@ -278,7 +280,7 @@ async function trackedDownload(request, env, ctx) {
   if (checked.response) return checked.response;
 
   const totalBytes = positiveInteger(checked.row.total_bytes);
-  await writeProgress(env, session, 0, "downloading", "", totalBytes);
+  await writeProgress(env, session, 0, "preparing", "", totalBytes);
 
   const upstreamUrl = new URL(request.url);
   upstreamUrl.searchParams.delete("session");
@@ -300,6 +302,7 @@ async function trackedDownload(request, env, ctx) {
   let lastReportedAt = Date.now();
   let writeChain = Promise.resolve();
   let finished = false;
+  let started = false;
 
   const enqueueProgress = (bytes, status, error) => {
     writeChain = writeChain
@@ -323,7 +326,8 @@ async function trackedDownload(request, env, ctx) {
         if (!next.value?.byteLength) return;
         downloaded += next.value.byteLength;
         const nowMs = Date.now();
-        if ((downloaded - lastReportedBytes) >= PROGRESS_REPORT_BYTES || (nowMs - lastReportedAt) >= PROGRESS_REPORT_MS) {
+        if (!started || (downloaded - lastReportedBytes) >= PROGRESS_REPORT_BYTES || (nowMs - lastReportedAt) >= PROGRESS_REPORT_MS) {
+          started = true;
           lastReportedBytes = downloaded;
           lastReportedAt = nowMs;
           enqueueProgress(downloaded, "downloading", "");
@@ -351,6 +355,9 @@ async function trackedDownload(request, env, ctx) {
   const headers = new Headers(upstream.headers);
   headers.delete("Content-Length");
   headers.set("Cache-Control", "private, no-store");
+  headers.set("Content-Disposition", 'attachment; filename="' + FILE_NAME + '"');
+  headers.set("Access-Control-Allow-Origin", "https://web.telegram.org");
+  headers.set("Access-Control-Expose-Headers", "Content-Disposition, Content-Type, Content-Length");
   return new Response(body, { status: upstream.status, statusText: upstream.statusText, headers });
 }
 
@@ -365,6 +372,17 @@ async function validateTrackedSession(env, session, downloadToken) {
     return { response: json({ error: "Download session expired" }, 410) };
   }
   return { row };
+}
+
+function trackedDownloadHeaders() {
+  return new Headers({
+    "Content-Type": "video/mp4",
+    "Content-Disposition": 'attachment; filename="' + FILE_NAME + '"',
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Access-Control-Allow-Origin": "https://web.telegram.org",
+    "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
+  });
 }
 
 async function writeProgress(env, session, downloadedBytes, status, error, totalBytes) {
@@ -510,6 +528,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   let reconnectAttempt=0;
   let displayedPercent=0;
   let percentAnimation=0;
+  let telegramDownloadEventBound=false;
 
   function hostWindow(){try{if(window.parent&&window.parent!==window&&window.parent.location.origin===window.location.origin)return window.parent;}catch(error){}return window;}
   function telegram(){const host=hostWindow();return window.Telegram?.WebApp||host.Telegram?.WebApp||null;}
@@ -571,6 +590,9 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     if(state==='failed'||state==='cancelled'){
       busy=false;setState('error',String(data.error||'Download failed'),done?mb(done)+' MB received':'');setButton('Try again',false);closeProgressSocket();prepared=null;return;
     }
+    if(state==='preparing'){
+      setProgress(0,false);setState('preparing','Preparing download','0.0 MB / '+mb(total)+' MB');return;
+    }
     if(state==='downloading'){
       setProgress(pct,true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB');
     }
@@ -585,11 +607,26 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     socket.addEventListener('close',function(){
       if(progressSocket===socket)progressSocket=null;
       if(!busy||!prepared?.progressUrl)return;
-      if(reconnectAttempt>=6){setState('downloading','Downloading','Progress connection interrupted');return;}
+      if(reconnectAttempt>=6){setState('preparing','Preparing download','Progress connection interrupted');return;}
       const delay=Math.min(5000,450*Math.pow(2,reconnectAttempt++));
       reconnectTimer=setTimeout(function(){if(busy&&prepared?.progressUrl)connectProgress(prepared.progressUrl);},delay);
     });
     socket.addEventListener('error',function(){try{socket.close();}catch(error){}});
+  }
+  function cancelNativeDownloadState(){
+    if(!busy)return;
+    busy=false;closeProgressSocket();setProgress(0,true);setState('waiting','Download cancelled',mb(prepared?.fileSize||0)+' MB');setButton('Download',false);
+  }
+  function handleTelegramDownloadRequested(event){
+    const state=String(event?.status||event||'').toLowerCase();
+    if(state==='cancelled'){cancelNativeDownloadState();return;}
+    if(state==='downloading'&&busy){setState('preparing','Starting download','0.0 MB / '+mb(prepared?.fileSize||0)+' MB');}
+  }
+  function bindTelegramDownloadEvent(){
+    if(telegramDownloadEventBound)return;
+    const tg=telegram();
+    if(!tg?.onEvent)return;
+    try{tg.onEvent('fileDownloadRequested',handleTelegramDownloadRequested);telegramDownloadEventBound=true;}catch(error){}
   }
   async function prepareSource(source){
     const clean=String(source||'').trim();
@@ -616,19 +653,19 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   }
   function requestDownload(){
     if(!prepared||busy)return;
-    busy=true;setProgress(0,false);setState('downloading','Waiting for Telegram','0.0 MB / '+mb(prepared.fileSize)+' MB');setButton('Downloading…',true);connectProgress(prepared.progressUrl);haptic('light');
+    busy=true;setProgress(0,false);setState('preparing','Waiting for Telegram','0.0 MB / '+mb(prepared.fileSize)+' MB');setButton('Downloading…',true);connectProgress(prepared.progressUrl);bindTelegramDownloadEvent();haptic('light');
     const tg=telegram();
     if(tg?.downloadFile){
       try{
         tg.downloadFile({url:prepared.downloadUrl,file_name:prepared.fileName},function(accepted){
-          if(accepted===false){busy=false;closeProgressSocket();setProgress(0,true);setState('waiting','Download cancelled',mb(prepared?.fileSize||0)+' MB');setButton('Download',false);return;}
-          setState('downloading','Downloading','0.0 MB / '+mb(prepared?.fileSize||0)+' MB');
+          if(accepted===false){cancelNativeDownloadState();return;}
+          setState('preparing','Starting download','0.0 MB / '+mb(prepared?.fileSize||0)+' MB');
         });
         return;
       }catch(error){console.warn('Telegram downloadFile failed',error?.message||error);}
     }
     try{
-      const link=document.createElement('a');link.href=prepared.downloadUrl;link.download=prepared.fileName;link.rel='noopener';document.body.appendChild(link);link.click();link.remove();setState('downloading','Downloading','0.0 MB / '+mb(prepared.fileSize)+' MB');
+      const link=document.createElement('a');link.href=prepared.downloadUrl;link.download=prepared.fileName;link.rel='noopener';document.body.appendChild(link);link.click();link.remove();setState('preparing','Starting download','0.0 MB / '+mb(prepared.fileSize)+' MB');
     }catch(error){busy=false;closeProgressSocket();setState('error','Could not start download','');setButton('Try again',false);}
   }
   async function onButtonClick(event){
@@ -639,6 +676,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     if(!source)return;
     await prepareSource(source);
   }
+  bindTelegramDownloadEvent();
   button?.addEventListener('click',onButtonClick);
   const preset=launchSource();
   if(preset){lastSource=preset;prepareSource(preset);}else{setProgress(0,false);setState('idle','Ready when you are','');setButton('Download',false);}
