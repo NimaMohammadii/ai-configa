@@ -9,7 +9,7 @@ import { getVexaLiveAccessSettings } from "./access.js";
 const PREPARE_PATH = "/mini-app/live/api/youtube-download/prepare";
 const DOWNLOAD_PATH = "/mini-app/live/api/youtube-download";
 const TOKEN_TTL_SECONDS = 10 * 60;
-const METADATA_TIMEOUT_MS = 35_000;
+const METADATA_TIMEOUT_MS = 90_000;
 const STREAM_START_TIMEOUT_MS = 90_000;
 const PROCESS_SETTLE_TIMEOUT_MS = 2_000;
 const DOWNLOAD_FILE_NAME = "Vexa-video.mp4";
