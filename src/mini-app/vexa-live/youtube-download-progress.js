@@ -122,7 +122,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-9"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-10"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -767,6 +767,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   const qualityNode=document.getElementById('vexaLiveQuality');
   let saveButton=null;
   let saveFile=null;
+  let saveViaTelegram=false;
   let saveLoadPromise=null;
   let saveAbortController=null;
   let saveGeneration=0;
@@ -823,7 +824,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   function setSaveButton(text,disabled){const node=ensureSaveButton();if(!node)return;node.textContent=String(text||'Save');node.disabled=Boolean(disabled);}
   function setSaveVisible(visible){const node=ensureSaveButton();if(node)node.hidden=!Boolean(visible);}
   function clearSaveFile(){
-    saveGeneration+=1;saveFile=null;saveLoadPromise=null;saveBusy=false;
+    saveGeneration+=1;saveFile=null;saveViaTelegram=false;saveLoadPromise=null;saveBusy=false;
     if(saveAbortController){try{saveAbortController.abort();}catch(error){}saveAbortController=null;}
     if(saveButton){saveButton.textContent='Save';saveButton.disabled=true;}
   }
@@ -832,8 +833,24 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     if(!saveUrl)return false;
     clearSaveFile();
     const generation=saveGeneration;
+    const tg=telegram();
+    const name=/\.mp4$/i.test(String(prepared?.fileName||''))?String(prepared.fileName):'Vexa-video.mp4';
+    let supportsFileShare=false;
+    if(typeof File==='function'&&typeof navigator.share==='function'&&typeof navigator.canShare==='function'){
+      try{
+        const probe=new File([new Uint8Array([0])],name,{type:'video/mp4'});
+        supportsFileShare=Boolean(navigator.canShare({files:[probe]}));
+      }catch(error){supportsFileShare=false;}
+    }
+    setSaveVisible(true);
+    if(!supportsFileShare){
+      if(tg?.downloadFile){
+        saveViaTelegram=true;setSaveButton('Save',false);return true;
+      }
+      setSaveButton('Save unavailable',true);setState('completed','Downloaded','Native video save is unavailable on this device');return false;
+    }
     const controller=new AbortController();saveAbortController=controller;
-    setSaveVisible(true);setSaveButton('Preparing Save…',true);
+    setSaveButton('Preparing Save…',true);
     saveLoadPromise=(async function(){
       try{
         const response=await fetch(saveUrl,{method:'GET',cache:'no-store',signal:controller.signal});
@@ -842,16 +859,16 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
         if(generation!==saveGeneration)return false;
         if(!blob.size)throw new Error('Saved video is empty');
         const videoBlob=String(blob.type||'').toLowerCase()==='video/mp4'?blob:blob.slice(0,blob.size,'video/mp4');
-        const name=/\.mp4$/i.test(String(prepared?.fileName||''))?String(prepared.fileName):'Vexa-video.mp4';
         const file=new File([videoBlob],name,{type:'video/mp4',lastModified:Date.now()});
-        if(typeof navigator.share!=='function'||typeof navigator.canShare!=='function'||!navigator.canShare({files:[file]})){
+        if(!navigator.canShare({files:[file]})){
+          if(tg?.downloadFile){saveViaTelegram=true;setSaveButton('Save',false);return true;}
           throw new Error('Native video saving is not supported on this device');
         }
         saveFile=file;setSaveButton('Save',false);return true;
       }catch(error){
         if(generation!==saveGeneration||String(error?.name||'')==='AbortError')return false;
         console.warn('Vexa video save preparation failed',error?.message||error);
-        saveFile=null;setSaveButton('Save unavailable',true);setState('completed','Downloaded','Native video save is unavailable on this device');return false;
+        saveFile=null;saveViaTelegram=false;setSaveButton('Save unavailable',true);setState('completed','Downloaded','Saved video could not be prepared');return false;
       }finally{
         if(generation===saveGeneration){saveLoadPromise=null;saveAbortController=null;}
       }
@@ -860,7 +877,15 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   }
   async function onSaveClick(event){
     event?.preventDefault?.();event?.stopPropagation?.();
-    if(saveBusy||!saveFile)return;
+    if(saveBusy)return;
+    const tg=telegram();
+    if(saveViaTelegram&&tg?.downloadFile&&prepared?.saveUrl){
+      try{
+        tg.downloadFile({url:prepared.saveUrl,file_name:prepared.fileName||'Vexa-video.mp4'},function(accepted){if(accepted!==false)haptic('medium');});
+      }catch(error){console.warn('Telegram native save failed',error?.message||error);}
+      return;
+    }
+    if(!saveFile)return;
     const file=saveFile;
     if(typeof navigator.share!=='function'||typeof navigator.canShare!=='function'||!navigator.canShare({files:[file]}))return;
     saveBusy=true;setSaveButton('Saving…',true);
