@@ -2,14 +2,10 @@ import { getContainer } from "@cloudflare/containers";
 import { getElevenApiSetting } from "../../admin.js";
 import { VexaSubtitleContainer as BaseVexaSubtitleContainer } from "./youtube-live-subtitles.js";
 
-const YOUTUBE_SESSION_PATH = "/mini-app/live/api/youtube-download/session";
 const YOUTUBE_DOWNLOAD_PATH = "/mini-app/live/api/youtube-download";
-const INSTAGRAM_SESSION_PATH = "/mini-app/live/api/instagram/session";
 const INSTAGRAM_DOWNLOAD_PATH = "/mini-app/live/api/instagram/download";
-const INSTAGRAM_STORY_SESSION_PATH = "/mini-app/live/api/instagram-story/session";
 const INSTAGRAM_STORY_DOWNLOAD_PATH = "/mini-app/live/api/instagram-story/download";
 const SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
-const SUBTITLE_COOKIE = "vexa_download_subtitle";
 const SOURCE_PREFIX = "vexa-subtitle-source/";
 const SOURCE_TTL_SECONDS = 2 * 60 * 60;
 const TRANSCRIBE_TIMEOUT_MS = 15 * 60 * 1000;
@@ -255,14 +251,6 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
   }
 }
 
-export function isDownloadSubtitlesRequest(request) {
-  const url = new URL(request.url);
-  if (url.pathname === SOURCE_PATH) return request.method === "GET" || request.method === "HEAD";
-  if (request.method !== "GET" && request.method !== "HEAD") return false;
-  if (url.pathname !== YOUTUBE_DOWNLOAD_PATH && url.pathname !== INSTAGRAM_DOWNLOAD_PATH && url.pathname !== INSTAGRAM_STORY_DOWNLOAD_PATH) return false;
-  return Boolean(normalizeSubtitleLanguage(url.searchParams.get("subtitle")));
-}
-
 export async function handleDownloadSubtitlesRequest(request, env, ctx, delegates) {
   const url = new URL(request.url);
   if (url.pathname === SOURCE_PATH) return serveSubtitleSource(request, env);
@@ -288,21 +276,6 @@ export async function handleDownloadSubtitlesRequest(request, env, ctx, delegate
   }
 
   return renderDownloadWithSubtitles(request, env, ctx, provider, language, delegate);
-}
-
-export async function rewriteDownloadSessionResponseWithSubtitles(request, response) {
-  if (!response?.ok || request.method !== "POST") return response;
-  const path = new URL(request.url).pathname;
-  if (path !== YOUTUBE_SESSION_PATH && path !== INSTAGRAM_SESSION_PATH && path !== INSTAGRAM_STORY_SESSION_PATH) return response;
-  const language = subtitleLanguageFromCookie(request.headers.get("Cookie"));
-  if (!language) return response;
-
-  const data = await response.clone().json().catch(() => null);
-  if (!data || !data.downloadUrl || String(data.optionKey || "") === "a" || data.live === true) return response;
-  const downloadUrl = new URL(String(data.downloadUrl), request.url);
-  downloadUrl.searchParams.set("subtitle", language);
-  data.downloadUrl = downloadUrl.pathname + downloadUrl.search;
-  return cloneJsonResponse(response, data);
 }
 
 async function renderDownloadWithSubtitles(request, env, ctx, provider, language, delegate) {
@@ -1212,20 +1185,6 @@ async function cleanupExpiredSubtitleSources(env) {
   }
 }
 
-function subtitleLanguageFromCookie(value) {
-  const cookies = String(value || "").split(";");
-  for (const pair of cookies) {
-    const index = pair.indexOf("=");
-    if (index < 0) continue;
-    const name = pair.slice(0, index).trim();
-    if (name !== SUBTITLE_COOKIE) continue;
-    let raw = pair.slice(index + 1).trim();
-    try { raw = decodeURIComponent(raw); } catch {}
-    return normalizeSubtitleLanguage(raw);
-  }
-  return "";
-}
-
 function normalizeSubtitleLanguage(value) {
   const key = String(value || "").trim().toLowerCase();
   return Object.prototype.hasOwnProperty.call(SUBTITLE_LANGUAGES, key) ? key : "";
@@ -1242,14 +1201,6 @@ function cleanSubtitleText(value) {
     .replace(/([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])\s+(?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu, "$1")
     .replace(/\s+/gu, " ")
     .trim();
-}
-
-function cloneJsonResponse(response, data) {
-  if (!data) return response;
-  const headers = new Headers(response.headers);
-  headers.delete("Content-Length");
-  headers.set("Content-Type", "application/json; charset=utf-8");
-  return new Response(JSON.stringify(data), { status: response.status, statusText: response.statusText, headers });
 }
 
 function makeSourceToken() {
