@@ -12,7 +12,7 @@ const RESULT_TTL_SECONDS = 6 * 60 * 60;
 const RESULT_PART_BYTES = 8 * 1024 * 1024;
 const RESULT_READ_STALL_MS = 90 * 1000;
 const RESULT_PART_STALL_MS = 2 * 60 * 1000;
-const WORKFLOW_TIMEOUT = "1 hour";
+const WORKFLOW_TIMEOUT = "30 minutes";
 const SUBTITLE_LANGUAGES = new Set([
   "original", "en", "fa", "ru", "de", "tr", "es", "ar", "fr", "pt", "it", "hi", "zh", "ja", "ko",
 ]);
@@ -80,7 +80,7 @@ export async function appendVexaDownloadControllerRuntime(request, response) {
   if (!String(response.headers.get("Content-Type") || "").toLowerCase().includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + RUNTIME_PATH + '?v=20260827-unified-1"></script>';
+  const tag = '<script src="' + RUNTIME_PATH + '?v=20260827-unified-2"></script>';
   const html = source.includes(RUNTIME_PATH)
     ? source
     : source.includes("</body>")
