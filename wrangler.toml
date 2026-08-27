@@ -31,6 +31,11 @@ name = "vexa-ai-coding-tasks"
 binding = "AI_CODING_WORKFLOW"
 class_name = "AiCodingWorkflow"
 
+[[workflows]]
+name = "vexa-subtitle-downloads"
+binding = "VEXA_SUBTITLE_WORKFLOW"
+class_name = "VexaSubtitleWorkflow"
+
 # Vexa media container. Pinned image includes yt-dlp 2026.08.19, Deno and FFmpeg.
 # Basic is used for headroom during YouTube JS challenge solving; idle instances sleep quickly.
 [[containers]]
