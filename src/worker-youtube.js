@@ -42,7 +42,6 @@ import {
 import {
   VexaSubtitleContainer,
   handleDownloadSubtitlesRequest,
-  isDownloadSubtitlesRequest,
 } from "./mini-app/vexa-live/download-subtitles.js";
 import {
   VexaSubtitleWorkflow,
@@ -56,6 +55,7 @@ import {
 } from "./mini-app/vexa-live/youtube-live-persistence.js";
 import { appendVexaLiveLandingRuntime } from "./mini-app/vexa-live/vexa-live-landing.js";
 
+const SUBTITLE_SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
 const RETIRED_DOWNLOAD_RUNTIME_PATHS = new Set([
   "/mini-app/vexa-live/download-progress.js",
   "/mini-app/vexa-live/instagram-download.js",
@@ -91,13 +91,8 @@ export default {
       if (isVexaDownloadControllerRequest(request)) {
         return handleVexaDownloadControllerRequest(request, env, ctx);
       }
-      if (isDownloadSubtitlesRequest(request)) {
-        const response = await handleDownloadSubtitlesRequest(request, env, ctx, {
-          youtube: handleTrackedYouTubeDownloadRequest,
-          instagram: handleInstagramDownloadRequest,
-          story: handleInstagramStoryDownloadRequest,
-        });
-        if (response) return response;
+      if (path === SUBTITLE_SOURCE_PATH && (request.method === "GET" || request.method === "HEAD")) {
+        return handleDownloadSubtitlesRequest(request, env, ctx, {});
       }
       if (isVexaLiveSubtitlesRequest(request)) {
         return await handleVexaLiveSubtitlesRequest(request, env, ctx);
