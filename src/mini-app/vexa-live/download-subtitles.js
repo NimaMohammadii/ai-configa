@@ -77,19 +77,22 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
     return process;
   }
 
-  async renderSubtitledVideo(mediaUrl, assText, language, durationHint = 0, onProgress = null) {
+  async renderSubtitledVideo(mediaUrl, cues, language, durationHint = 0, onProgress = null) {
     await this.ensureAudioReady();
     const source = String(mediaUrl || "").trim();
-    const subtitles = String(assText || "");
+    const subtitleCues = Array.isArray(cues) ? cues : [];
     if (!/^https:\/\//i.test(source)) throw new Error("Subtitle video source is invalid");
-    if (!subtitles || subtitles.length > 2_000_000) throw new Error("Subtitle track is invalid");
+    if (!subtitleCues.length) throw new Error("Subtitle track is invalid");
 
     const id = crypto.randomUUID();
     const assPath = "/tmp/vexa-download-subtitles-" + id + ".ass";
     const outputPath = "/tmp/vexa-download-subtitled-" + id + ".mp4";
     try {
+      const mediaInfo = await this.readMediaInfo(source);
+      const subtitles = buildAss(subtitleCues, language, mediaInfo.width, mediaInfo.height);
+      if (!subtitles || subtitles.length > 2_000_000) throw new Error("Subtitle track is invalid");
       await this.writeUtf8File(assPath, subtitles);
-      const durationSeconds = await this.readMediaDuration(source).catch(() => positiveNumber(durationHint));
+      const durationSeconds = positiveNumber(mediaInfo.duration) || positiveNumber(durationHint);
       await emitSubtitleProgress(onProgress, { phase: "rendering", percent: 0, durationSeconds });
       const filter = "ass=" + assPath;
       const process = this.trackSubtitleProcess(await this.ctx.container.exec([
@@ -214,25 +217,32 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
     }
   }
 
-  async readMediaDuration(source) {
+  async readMediaInfo(source) {
     const process = await this.ctx.container.exec([
       "ffprobe",
       "-v",
       "error",
       "-rw_timeout",
       "30000000",
+      "-select_streams",
+      "v:0",
       "-show_entries",
-      "format=duration",
+      "stream=width,height:format=duration",
       "-of",
-      "default=noprint_wrappers=1:nokey=1",
+      "json",
       source,
     ]);
     const output = await process.output();
-    const duration = Number.parseFloat(new TextDecoder().decode(output.stdout).trim());
-    if (output.exitCode !== 0 || !Number.isFinite(duration) || duration <= 0) {
-      throw new Error("Could not read video duration");
+    let data = null;
+    try { data = JSON.parse(new TextDecoder().decode(output.stdout)); } catch {}
+    const video = Array.isArray(data?.streams) ? data.streams[0] : null;
+    const width = positiveInteger(video?.width);
+    const height = positiveInteger(video?.height);
+    const duration = positiveNumber(data?.format?.duration);
+    if (output.exitCode !== 0 || !width || !height) {
+      throw new Error("Could not read video dimensions");
     }
-    return duration;
+    return { width, height, duration };
   }
 
   async readRenderedSize(path) {
@@ -329,7 +339,7 @@ async function renderDownloadWithSubtitles(request, env, ctx, provider, language
 
     const sourceUrl = new URL(SOURCE_PATH, request.url);
     sourceUrl.searchParams.set("token", sourceToken);
-    const subtitle = await createDownloadSubtitleAss(env, sourceUrl.href, language, async event => {
+    const subtitle = await createDownloadSubtitleTrack(env, sourceUrl.href, language, async event => {
       const phase = String(event?.phase || "");
       const fraction = clamp01(event?.fraction);
       if (phase === "transcribing") {
@@ -347,7 +357,7 @@ async function renderDownloadWithSubtitles(request, env, ctx, provider, language
     const container = getContainer(env.VEXA_SUBTITLES, "subtitle-download-" + safeContainerKey(session));
     const rendered = await container.renderSubtitledVideo(
       sourceUrl.href,
-      subtitle.assText,
+      subtitle.cues,
       subtitle.fontLanguage,
       subtitle.durationSeconds,
       async event => {
@@ -469,7 +479,7 @@ async function stageSubtitleSource(bucket, key, stream, expiresAt, expectedBytes
   }
 }
 
-async function createDownloadSubtitleAss(env, sourceUrl, targetLanguage, onProgress = null) {
+async function createDownloadSubtitleTrack(env, sourceUrl, targetLanguage, onProgress = null) {
   const apiKey = await selectedElevenApiKey(env);
   if (!apiKey) throw new Error("Speech-to-text is unavailable");
   await emitSubtitleProgress(onProgress, { phase: "transcribing", fraction: 0 });
@@ -519,7 +529,7 @@ async function createDownloadSubtitleAss(env, sourceUrl, targetLanguage, onProgr
   }
   const fontLanguage = targetLanguage === "original" ? (detectedLanguage || "en") : targetLanguage;
   const durationSeconds = cues.reduce((max, cue) => Math.max(max, Number(cue?.end || 0)), 0);
-  return { assText: buildAss(cues, fontLanguage), fontLanguage, durationSeconds };
+  return { cues, fontLanguage, durationSeconds };
 }
 
 function subtitleCuesFromWords(value) {
@@ -658,20 +668,20 @@ function parseJsonObject(value) {
   try { return JSON.parse(text); } catch { return null; }
 }
 
-function buildAss(cues, language) {
-  const font = subtitleFont(language);
+function buildAss(cues, language, width, height) {
+  const style = downloadSubtitleStyle(width, height, language);
   const header = [
     "[Script Info]",
     "ScriptType: v4.00+",
-    "PlayResX: 1920",
-    "PlayResY: 1080",
+    "PlayResX: " + style.width,
+    "PlayResY: " + style.height,
     "WrapStyle: 0",
     "ScaledBorderAndShadow: yes",
     "YCbCr Matrix: TV.709",
     "",
     "[V4+ Styles]",
     "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-    "Style: Default," + font.name + ",48,&H00FFFFFF,&H00FFFFFF,&H00101010,&H78000000,-1,0,0,0,100,100,0,0,1,3.2,1.2,2,90,90,58,1",
+    "Style: Default," + style.fontName + "," + style.fontSize + ",&H00FFFFFF,&H00FFFFFF,&H57000000,&HB3000000,-1,0,0,0,100,100,0,0,3," + style.padding + "," + style.shadow + ",2," + style.marginX + "," + style.marginX + "," + style.marginV + ",1",
     "",
     "[Events]",
     "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -682,14 +692,29 @@ function buildAss(cues, language) {
   return header.concat(events).join("\n") + "\n";
 }
 
+function downloadSubtitleStyle(width, height, language) {
+  const videoWidth = Math.max(1, positiveInteger(width));
+  const videoHeight = Math.max(1, positiveInteger(height));
+  return {
+    width: videoWidth,
+    height: videoHeight,
+    fontName: subtitleFont(language).name,
+    fontSize: clampInteger(Math.round(videoHeight * 0.06), 18, 58),
+    padding: clampNumber(videoHeight * 0.018, 4, 12, 1),
+    shadow: clampNumber(videoHeight * 0.006, 1, 4, 1),
+    marginX: clampInteger(Math.round(videoWidth * 0.07), 18, Math.max(18, Math.round(videoWidth * 0.12))),
+    marginV: clampInteger(Math.round(videoHeight * 0.055), 12, 60),
+  };
+}
+
 function subtitleFont(language) {
   const key = normalizeDetectedLanguage(language) || String(language || "en").toLowerCase();
-  if (key === "fa" || key === "ar") return { name: "Noto Sans Arabic" };
+  if (key === "fa" || key === "ar") return { name: "Vazirmatn" };
   if (key === "hi") return { name: "Noto Sans Devanagari" };
   if (key === "zh") return { name: "Noto Sans CJK SC" };
   if (key === "ja") return { name: "Noto Sans CJK JP" };
   if (key === "ko") return { name: "Noto Sans CJK KR" };
-  return { name: "Noto Sans" };
+  return { name: "Quicksand" };
 }
 
 function wrapSubtitleText(value) {
@@ -1250,6 +1275,18 @@ function positiveNumber(value) {
   return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
+function clampInteger(value, min, max) {
+  const number = Number(value);
+  return Math.round(Math.max(min, Math.min(max, Number.isFinite(number) ? number : min)));
+}
+
+function clampNumber(value, min, max, decimals = 1) {
+  const number = Number(value);
+  const safe = Math.max(min, Math.min(max, Number.isFinite(number) ? number : min));
+  const scale = 10 ** Math.max(0, Number(decimals || 0));
+  return Math.round(safe * scale) / scale;
+}
+
 function clamp01(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 0;
@@ -1259,7 +1296,7 @@ function clamp01(value) {
 function publicSubtitleError(error) {
   const message = String(error?.message || "");
   if (/cancel|abort/i.test(message)) return "Download was cancelled";
-  if (/speech|transcrib|subtitle|translation|render|font/i.test(message)) return message || "Could not create subtitles";
+  if (/speech|transcrib|subtitle|translation|render|font|dimensions/i.test(message)) return message || "Could not create subtitles";
   return "Could not create the subtitled video";
 }
 
