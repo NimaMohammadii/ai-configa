@@ -1,6 +1,9 @@
 import { getAdminAction, isAdmin } from "./admin.js";
 import { handleCallback, handleMessage } from "./mini-app/vexa-live/bot-bridge.js";
-import { handleInstagramLinkMessage } from "./mini-app/vexa-live/instagram-bot-bridge.js";
+import {
+  handleInstagramCallback,
+  handleInstagramLinkMessage,
+} from "./mini-app/vexa-live/instagram-bot-bridge.js";
 import {
   handleMiniAppWithSpeechToText,
   handleSpeechToTextRequest,
@@ -163,6 +166,8 @@ async function handleMessageAndPin(message, env) {
 }
 
 async function handleCallbackAndPin(query, env) {
+  if (await handleInstagramCallback(query, env)) return;
+
   await handleCallback(query, env);
 
   const data = query.data || "";
@@ -179,5 +184,5 @@ function isImageEditMessage(message) {
 }
 
 function logError(error) {
-  console.error(error && error.stack ? error.stack : error);
+  console.error(error);
 }
