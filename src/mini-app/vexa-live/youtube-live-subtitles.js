@@ -23,7 +23,7 @@ const VAD_SILENCE_SECONDS = 0.65;
 const VAD_THRESHOLD = 0.4;
 const VAD_MIN_SPEECH_MS = 100;
 const VAD_MIN_SILENCE_MS = 250;
-const EOF_FLUSH_FRAMES = 5;
+const EOF_FLUSH_FRAMES = 8;
 const EOF_FLUSH_GRACE_MS = 1600;
 const SUBTITLE_MAX_WORDS = 14;
 const SUBTITLE_MAX_CHARS = 96;
@@ -546,7 +546,7 @@ async function flushScribeTail(upstream, signal) {
   if (signal.aborted || upstream?.readyState !== WebSocket.OPEN) return;
   const silence = new Uint8Array(PCM_FRAME_BYTES), payload = bytesToBase64(silence);
   for (let i = 0; i < EOF_FLUSH_FRAMES && !signal.aborted && upstream.readyState === WebSocket.OPEN; i += 1) {
-    upstream.send(JSON.stringify({ message_type: "input_audio_chunk", audio_base_64: payload, sample_rate: PCM_SAMPLE_RATE, commit: i === EOF_FLUSH_FRAMES - 1 }));
+    upstream.send(JSON.stringify({ message_type: "input_audio_chunk", audio_base_64: payload, sample_rate: PCM_SAMPLE_RATE }));
   }
 }
 
