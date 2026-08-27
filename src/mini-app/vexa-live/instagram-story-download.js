@@ -16,12 +16,16 @@ export const INSTAGRAM_STORY_RUNTIME_PATH = "/mini-app/vexa-live/instagram-story
 
 const TOKEN_TTL_SECONDS = 10 * 60;
 const SESSION_TTL_SECONDS = 60 * 60;
+const LIVE_SESSION_TTL_SECONDS = 6 * 60 * 60;
 const METADATA_TIMEOUT_MS = 90_000;
+const INSTAGRAM_API_TIMEOUT_MS = 20_000;
 const PROGRESS_REPORT_BYTES = 2 * 1024 * 1024;
 const PROGRESS_REPORT_MS = 750;
 const INSTAGRAM_HOST_SUFFIX = "instagram.com";
 const STORY_FILE_PREFIX = "Vexa-Instagram-Story-";
 const HIGHLIGHT_FILE_PREFIX = "Vexa-Instagram-Highlight-";
+const LIVE_FILE_PREFIX = "Vexa-Instagram-Live-";
+const INSTAGRAM_WEB_APP_ID = "936619743392459";
 const STORY_YTDLP_ARGS = Object.freeze([
   "--ignore-config",
   "--force-ipv4",
@@ -33,13 +37,15 @@ const STORY_YTDLP_ARGS = Object.freeze([
   "2",
   "--fragment-retries",
   "2",
+  "--extractor-args",
+  "instagram:app_id=ios",
 ]);
 const STORY_YTDLP_WITH_SESSION_SCRIPT = [
   "set -eu",
   "umask 077",
   'cookie_file="/tmp/vexa-instagram-story-cookies.txt"',
-  'printf \'# Netscape HTTP Cookie File\\n.instagram.com\\tTRUE\\t/\\tTRUE\\t0\\tsessionid\\t%s\\n\' "$INSTAGRAM_SESSIONID" > "$cookie_file"',
-  "unset INSTAGRAM_SESSIONID",
+  'printf \'%s\\n\' "$INSTAGRAM_COOKIES" > "$cookie_file"',
+  "unset INSTAGRAM_COOKIES",
   'exec yt-dlp --cookies "$cookie_file" "$@"',
 ].join("\n");
 
@@ -48,8 +54,7 @@ let progressTableReady = null;
 
 export class VexaInstagramStoryContainer extends VexaInstagramContainer {
   async execYtDlp(args, options = {}) {
-    const sessionId = cleanInstagramSessionId(this.env?.INSTAGRAM_SESSIONID);
-    if (!sessionId) throw new Error("Instagram Story login is temporarily unavailable");
+    const auth = instagramAuth(this.env);
     if (!this.ctx.container.running) await this.start();
     return this.ctx.container.exec(
       ["sh", "-c", STORY_YTDLP_WITH_SESSION_SCRIPT, "vexa-instagram-story", ...args],
@@ -57,13 +62,14 @@ export class VexaInstagramStoryContainer extends VexaInstagramContainer {
         ...options,
         env: {
           ...(options?.env || {}),
-          INSTAGRAM_SESSIONID: sessionId,
+          INSTAGRAM_COOKIES: auth.cookieFile,
         },
       },
     );
   }
 
   async getInstagramStoryCatalog(url) {
+    if (isInstagramLiveUrl(url)) return this.getInstagramLiveCatalog(url);
     const process = await this.execYtDlp([
       ...STORY_YTDLP_ARGS,
       "--dump-single-json",
@@ -113,6 +119,7 @@ export class VexaInstagramStoryContainer extends VexaInstagramContainer {
   }
 
   async streamInstagramStory(url, formatId, playlistIndex = 1) {
+    if (isInstagramLiveUrl(url)) return this.streamInstagramLive(url);
     const selected = String(formatId || "").trim();
     const item = Math.max(1, Math.floor(Number(playlistIndex || 1)));
     if (!selected || selected.length > 120) throw new Error("Instagram Story format is unavailable");
@@ -127,6 +134,71 @@ export class VexaInstagramStoryContainer extends VexaInstagramContainer {
       "-o",
       "-",
       url,
+    ]);
+    return this.streamProcess(process);
+  }
+
+  async getInstagramLiveCatalog(url) {
+    const live = await this.getInstagramLiveInfo(url);
+    const username = instagramLiveUsername(url);
+    return {
+      title: "Instagram Live by " + username,
+      type: "live",
+      options: [{
+        key: "s1",
+        kind: "live",
+        width: positiveInteger(live?.dimensions?.width),
+        height: positiveInteger(live?.dimensions?.height),
+        duration: 0,
+        sizeBytes: 0,
+        formatId: "live",
+        playlistIndex: 1,
+        filename: LIVE_FILE_PREFIX + sanitizeFileName(username) + ".mp4",
+        label: "Live",
+      }],
+    };
+  }
+
+  async getInstagramLiveInfo(url) {
+    const username = instagramLiveUsername(url);
+    if (!username) throw new Error("Enter a valid Instagram Live link");
+    const auth = instagramAuth(this.env);
+    const profile = await fetchInstagramJson(
+      "https://i.instagram.com/api/v1/users/web_profile_info/?username=" + encodeURIComponent(username),
+      auth,
+    );
+    const userId = String(profile?.data?.user?.id || "").trim();
+    if (!/^\d+$/u.test(userId)) throw new Error("This Instagram account is unavailable");
+    const live = await fetchInstagramJson(
+      "https://i.instagram.com/api/v1/live/web_info/?target_user_id=" + encodeURIComponent(userId),
+      auth,
+    );
+    const dashUrl = String(live?.dash_abr_playback_url || live?.broadcast?.dash_abr_playback_url || "").trim();
+    if (!dashUrl) {
+      const message = String(live?.message || live?.broadcast_status || "").toLowerCase();
+      if (/not live|ended|stopped/u.test(message)) throw new Error("This Instagram account is not live now");
+      throw new Error("This Instagram Live is unavailable");
+    }
+    if (!isTrustedInstagramMediaUrl(dashUrl)) throw new Error("Instagram returned an invalid Live stream");
+    return { ...live, dashUrl };
+  }
+
+  async streamInstagramLive(url) {
+    const live = await this.getInstagramLiveInfo(url);
+    if (!this.ctx.container.running) await this.start();
+    const process = await this.ctx.container.exec([
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel", "warning",
+      "-nostdin",
+      "-rw_timeout", "15000000",
+      "-i", live.dashUrl,
+      "-map", "0:v:0",
+      "-map", "0:a:0?",
+      "-c", "copy",
+      "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+      "-f", "mp4",
+      "pipe:1",
     ]);
     return this.streamProcess(process);
   }
@@ -231,7 +303,7 @@ export async function appendInstagramStoryRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + INSTAGRAM_STORY_RUNTIME_PATH + '?v=20260827-1"></script>';
+  const tag = '<script src="' + INSTAGRAM_STORY_RUNTIME_PATH + '?v=20260827-2"></script>';
   const html = source.includes(INSTAGRAM_STORY_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -327,7 +399,10 @@ async function createStorySession(request, env, ctx) {
 
   const session = randomToken();
   const totalBytes = positiveInteger(selected.sizeBytes);
-  const fileName = String(selected.filename || STORY_FILE_PREFIX + String(selected.playlistIndex).padStart(3, "0") + ".mp4");
+  const live = selected.kind === "live";
+  const fileName = String(selected.filename || (live
+    ? LIVE_FILE_PREFIX + "recording.mp4"
+    : STORY_FILE_PREFIX + String(selected.playlistIndex).padStart(3, "0") + ".mp4"));
   await env.DB.prepare(
     "INSERT INTO vexa_instagram_story_progress " +
     "(session, download_token, user_id, source_url, format_id, playlist_index, option_key, file_name, total_bytes, downloaded_bytes, status, error, created_at, updated_at, expires_at) " +
@@ -344,7 +419,7 @@ async function createStorySession(request, env, ctx) {
     totalBytes,
     now,
     now,
-    now + SESSION_TTL_SECONDS,
+    now + (live ? LIVE_SESSION_TTL_SECONDS : SESSION_TTL_SECONDS),
   ).run();
 
   ctx?.waitUntil?.(
@@ -358,9 +433,10 @@ async function createStorySession(request, env, ctx) {
     fileSize: totalBytes,
     title: String(row.title || "Instagram Story"),
     optionKey: selected.key,
+    live,
     downloadUrl: DOWNLOAD_PATH + "?token=" + encodeURIComponent(token) + "&session=" + encodeURIComponent(session),
     progressUrl: PROGRESS_PATH + "?session=" + encodeURIComponent(session),
-    expiresIn: SESSION_TTL_SECONDS,
+    expiresIn: live ? LIVE_SESSION_TTL_SECONDS : SESSION_TTL_SECONDS,
   });
 }
 
@@ -590,7 +666,6 @@ async function completeStoryProgress(env, session, downloadedBytes) {
 async function publishStoryProgress(env, session, payload) {
   if (!env.VEXA_INSTAGRAM_STORY_PROGRESS) return;
   const totalBytes = positiveInteger(payload.totalBytes);
-  if (!totalBytes) return;
   const id = env.VEXA_INSTAGRAM_STORY_PROGRESS.idFromName(session);
   const stub = env.VEXA_INSTAGRAM_STORY_PROGRESS.get(id);
   await stub.fetch(new Request("https://vexa-instagram-story-progress/publish", {
@@ -757,7 +832,7 @@ function sanitizeStoryOptions(options) {
   if (!Array.isArray(options)) return [];
   return options.map((option) => ({
     key: cleanStoryOptionKey(option?.key),
-    kind: "video",
+    kind: option?.kind === "live" ? "live" : "video",
     width: positiveInteger(option?.width),
     height: positiveInteger(option?.height),
     duration: positiveNumber(option?.duration),
@@ -767,7 +842,8 @@ function sanitizeStoryOptions(options) {
     filename: String(option?.filename || "").slice(0, 240),
     label: String(option?.label || "").slice(0, 80),
   })).filter((option) =>
-    option.key && option.sizeBytes && option.formatId && option.playlistIndex && option.filename);
+    option.key && option.formatId && option.playlistIndex && option.filename &&
+    (option.kind === "live" || option.sizeBytes));
 }
 
 function parseStoryCatalog(value) {
@@ -785,11 +861,14 @@ export function normalizeInstagramStoryUrl(value) {
   const path = url.pathname.replace(/\/+$/u, "");
   const highlight = path.match(/^\/stories\/highlights\/(\d+)$/u);
   const story = path.match(/^\/stories\/([A-Za-z0-9._]+)(?:\/(\d+))?$/u);
-  if (!highlight && !story) return "";
+  const live = path.match(/^\/([A-Za-z0-9._]+)\/live$/u);
+  if (!highlight && !story && !live) return "";
   url.hostname = "www.instagram.com";
-  url.pathname = highlight
-    ? "/stories/highlights/" + highlight[1] + "/"
-    : "/stories/" + story[1] + (story[2] ? "/" + story[2] : "") + "/";
+  url.pathname = live
+    ? "/" + live[1] + "/live/"
+    : highlight
+      ? "/stories/highlights/" + highlight[1] + "/"
+      : "/stories/" + story[1] + (story[2] ? "/" + story[2] : "") + "/";
   url.search = "";
   url.hash = "";
   return url.toString();
@@ -816,8 +895,11 @@ function storyError(detail) {
   if (/rate.?limit|too many requests|http error 429|exceeded the rate-limit/i.test(raw)) {
     return new Error("Instagram temporarily rate-limited the server");
   }
+  if (/provided instagram account cookies are no longer valid|redirect[^\n]*login|login[^\n]*redirect|challenge_required|checkpoint_required/i.test(raw)) {
+    return new Error("Instagram login session expired. Refresh the Instagram cookies");
+  }
   if (/login required|you need to log in|log in|sign in|registered users|private|unreachable/i.test(raw)) {
-    return new Error("This Instagram Story or Highlight requires login");
+    return new Error("This Instagram Story, Highlight or Live requires a valid login");
   }
   if (/not available|unavailable|removed|deleted|empty media response/i.test(raw)) {
     return new Error("This Instagram Story or Highlight is unavailable");
@@ -845,20 +927,123 @@ function isStoryPublicError(error) {
 
 const STORY_PUBLIC_ERRORS = new Set([
   "Instagram temporarily rate-limited the server",
-  "This Instagram Story or Highlight requires login",
+  "Instagram login session expired. Refresh the Instagram cookies",
+  "This Instagram Story, Highlight or Live requires a valid login",
   "This Instagram Story or Highlight is unavailable",
   "Instagram did not expose a downloadable Story video",
   "Instagram blocked the Cloudflare Story request",
   "Instagram Story stream did not start in time",
   "Instagram returned an invalid Story MP4 stream",
   "Instagram Story download is temporarily unavailable",
+  "Instagram Story login is temporarily unavailable",
+  "Instagram Live lookup temporarily failed",
   "Could not start the Instagram Story download",
+  "Enter a valid Instagram Live link",
+  "This Instagram account is unavailable",
+  "This Instagram account is not live now",
+  "This Instagram Live is unavailable",
+  "Instagram returned an invalid Live stream",
 ]);
 
-function cleanInstagramSessionId(value) {
-  const sessionId = String(value || "").trim();
-  if (!sessionId || sessionId.length > 4096 || /[\u0000-\u001F\u007F]/u.test(sessionId)) return "";
-  return sessionId;
+function instagramAuth(env) {
+  const cookies = new Map();
+  const configured = String(env?.INSTAGRAM_COOKIES || "").trim();
+  if (configured) {
+    if (/^# Netscape HTTP Cookie File/im.test(configured) || /\t/u.test(configured)) {
+      for (const line of configured.split(/\r?\n/u)) {
+        if (!line || line.startsWith("#")) continue;
+        const fields = line.split("\t");
+        if (fields.length < 7) continue;
+        const domain = String(fields[0] || "").replace(/^\./u, "").toLowerCase();
+        if (domain !== "instagram.com" && !domain.endsWith(".instagram.com")) continue;
+        addInstagramCookie(cookies, fields[5], fields.slice(6).join("\t"));
+      }
+    } else {
+      for (const part of configured.split(";")) {
+        const separator = part.indexOf("=");
+        if (separator <= 0) continue;
+        addInstagramCookie(cookies, part.slice(0, separator), part.slice(separator + 1));
+      }
+    }
+  }
+  addInstagramCookie(cookies, "sessionid", env?.INSTAGRAM_SESSIONID, false);
+  addInstagramCookie(cookies, "csrftoken", env?.INSTAGRAM_CSRFTOKEN, false);
+  addInstagramCookie(cookies, "ds_user_id", env?.INSTAGRAM_DS_USER_ID, false);
+
+  if (!cookies.get("sessionid")) {
+    throw new Error("Instagram Story login is temporarily unavailable");
+  }
+
+  const lines = ["# Netscape HTTP Cookie File"];
+  for (const [name, value] of cookies) {
+    lines.push([".instagram.com", "TRUE", "/", "TRUE", "0", name, value].join("\t"));
+  }
+  return {
+    cookieFile: lines.join("\n") + "\n",
+    cookieHeader: [...cookies].map(([name, value]) => name + "=" + value).join("; "),
+    csrfToken: cookies.get("csrftoken") || "",
+  };
+}
+
+function addInstagramCookie(cookies, rawName, rawValue, replace = true) {
+  const name = String(rawName || "").trim();
+  const value = String(rawValue || "").trim();
+  if (!/^[A-Za-z0-9_]+$/u.test(name) || !value || /[\u0000-\u001F\u007F;\t]/u.test(value)) return;
+  if (replace || !cookies.has(name)) cookies.set(name, value);
+}
+
+async function fetchInstagramJson(url, auth) {
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Accept": "*/*",
+        "Cookie": auth.cookieHeader,
+        "Referer": "https://www.instagram.com/",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
+        "X-IG-App-ID": INSTAGRAM_WEB_APP_ID,
+        ...(auth.csrfToken ? { "X-CSRFToken": auth.csrfToken } : {}),
+      },
+      redirect: "manual",
+      signal: AbortSignal.timeout(INSTAGRAM_API_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new Error("Instagram Live lookup temporarily failed");
+  }
+  const location = String(response.headers.get("Location") || "");
+  if (response.status === 401 || response.status === 403 || /\/accounts\/login/u.test(location)) {
+    throw new Error("Instagram login session expired. Refresh the Instagram cookies");
+  }
+  if (response.status === 429) throw new Error("Instagram temporarily rate-limited the server");
+  if (!response.ok) throw new Error("Instagram Live lookup temporarily failed");
+  const data = await response.json().catch(() => null);
+  if (!data || typeof data !== "object") throw new Error("Instagram Live lookup temporarily failed");
+  if (/login_required|checkpoint_required|challenge_required/u.test(String(data.message || ""))) {
+    throw new Error("Instagram login session expired. Refresh the Instagram cookies");
+  }
+  return data;
+}
+
+function isInstagramLiveUrl(value) {
+  return Boolean(instagramLiveUsername(value));
+}
+
+function instagramLiveUsername(value) {
+  let url;
+  try { url = new URL(String(value || "")); } catch (error) { return ""; }
+  const match = url.pathname.replace(/\/+$/u, "").match(/^\/([A-Za-z0-9._]+)\/live$/u);
+  return match ? match[1] : "";
+}
+
+function isTrustedInstagramMediaUrl(value) {
+  let url;
+  try { url = new URL(String(value || "")); } catch (error) { return false; }
+  if (url.protocol !== "https:" || url.username || url.password) return false;
+  const host = url.hostname.toLowerCase();
+  return host === "instagram.com" || host.endsWith(".instagram.com") ||
+    host === "cdninstagram.com" || host.endsWith(".cdninstagram.com") ||
+    host === "fbcdn.net" || host.endsWith(".fbcdn.net");
 }
 
 function cleanToken(value) {
@@ -933,27 +1118,27 @@ export const INSTAGRAM_STORY_RUNTIME_JS = String.raw`
   function initData(){return String(telegram()?.initData||'');}
   function haptic(style){try{telegram()?.HapticFeedback?.impactOccurred?.(style||'light');}catch(error){}}
   function mb(bytes){return(Math.max(0,Number(bytes||0))/1048576).toFixed(1);}
-  function normalizeStory(value){try{const url=new URL(String(value||'').trim());const host=url.hostname.toLowerCase();if(url.protocol!=='https:'||!(host==='instagram.com'||host.endsWith('.instagram.com')))return'';const path=url.pathname.replace(/\\/+$/,'');if(!(/^\\/stories\\/highlights\\/\\d+$/.test(path)||/^\\/stories\\/[A-Za-z0-9._]+(?:\\/\\d+)?$/.test(path)))return'';return url.href;}catch(error){return'';}}
+  function normalizeStory(value){try{const url=new URL(String(value||'').trim());const host=url.hostname.toLowerCase();if(url.protocol!=='https:'||!(host==='instagram.com'||host.endsWith('.instagram.com')))return'';const path=url.pathname.replace(/\\/+$/,'');if(!(/^\\/stories\\/highlights\\/\\d+$/.test(path)||/^\\/stories\\/[A-Za-z0-9._]+(?:\\/\\d+)?$/.test(path)||/^\\/[A-Za-z0-9._]+\\/live$/.test(path)))return'';return url.href;}catch(error){return'';}}
   function launchPreset(){const host=hostWindow();try{const params=new URLSearchParams(host.location.search);if(params.get('vexaDownload')!=='1')return{source:'',optionKey:''};const source=String(params.get('vexaSource')||'').trim();const optionKey=/^s\\d{1,3}$/.test(String(params.get('vexaOption')||''))?String(params.get('vexaOption')):'';return{source,optionKey};}catch(error){return{source:'',optionKey:''};}}
   function stripPreset(){const host=hostWindow();try{const url=new URL(host.location.href);url.searchParams.delete('vexaDownload');url.searchParams.delete('vexaSource');url.searchParams.delete('vexaOption');host.history.replaceState(host.history.state,'',url.href);}catch(error){}}
   function setState(state,message,detail){if(root)root.dataset.state=String(state||'idle');if(statusNode)statusNode.textContent=String(message||'');if(detailNode)detailNode.textContent=String(detail||'');}
   function setButton(text,disabled){if(!button)return;button.textContent=String(text||'Download');button.disabled=Boolean(disabled);}
   function setProgress(value,animate){const target=Math.max(0,Math.min(100,Number(value||0)));if(root)root.style.setProperty('--vexa-progress',String(target/100));if(track)track.setAttribute('aria-valuenow',String(Math.round(target)));cancelAnimationFrame(percentAnimation);if(!animate){displayedPercent=target;if(percentNode)percentNode.textContent=Math.round(target)+'%';return;}const from=displayedPercent;const started=performance.now();const duration=Math.min(650,220+Math.abs(target-from)*12);const tick=function(now){const t=Math.min(1,(now-started)/Math.max(1,duration));const eased=1-Math.pow(1-t,3);displayedPercent=from+(target-from)*eased;if(percentNode)percentNode.textContent=Math.round(displayedPercent)+'%';if(t<1)percentAnimation=requestAnimationFrame(tick);};percentAnimation=requestAnimationFrame(tick);}
   function selectedStory(){return storyOptions.find(function(option){return option.key===selectedOptionKey;})||null;}
-  function storyDetail(option){if(!option)return'';const resolution=Number(option.height||0)>0?' · '+Number(option.height)+'p':'';return String(option.label||option.key)+resolution+' · '+mb(option.sizeBytes)+' MB';}
+  function storyDetail(option){if(!option)return'';if(option.kind==='live')return'Live recording · Keep the app open until it ends';const resolution=Number(option.height||0)>0?' · '+Number(option.height)+'p':'';return String(option.label||option.key)+resolution+' · '+mb(option.sizeBytes)+' MB';}
   function updateSelection(){if(!qualityNode)return;for(const node of qualityNode.querySelectorAll('[data-quality-key]')){node.dataset.selected=node.dataset.qualityKey===selectedOptionKey?'1':'0';node.setAttribute('aria-pressed',node.dataset.selected==='1'?'true':'false');}}
   function selectStory(key,announce){const option=storyOptions.find(function(item){return item.key===String(key||'');});if(!option||busy)return false;selectedOptionKey=option.key;prepared=null;closeProgressSocket();setProgress(0,true);updateSelection();if(announce!==false){setState('waiting','Ready to download',storyDetail(option));haptic('light');}setButton('Download',false);return true;}
-  function renderStories(options,preferredKey){if(!qualityNode)return false;storyOptions=Array.isArray(options)?options.filter(function(option){return option&&/^s\\d{1,3}$/.test(String(option.key||''))&&Number(option.sizeBytes||0)>0;}):[];qualityNode.replaceChildren();if(!storyOptions.length){qualityNode.dataset.ready='0';selectedOptionKey='';return false;}qualityNode.style.maxHeight='176px';qualityNode.style.overflowY='auto';qualityNode.style.padding='2px';for(const option of storyOptions){const item=document.createElement('button');item.type='button';item.className='vexa-quality-option';item.dataset.qualityKey=String(option.key);item.dataset.selected='0';item.setAttribute('aria-pressed','false');const label=document.createElement('span');label.textContent=String(option.label||option.key);const size=document.createElement('small');const resolution=Number(option.height||0)>0?Number(option.height)+'p · ':'';size.textContent=resolution+mb(option.sizeBytes)+' MB';item.append(label,size);item.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();selectStory(option.key,true);});qualityNode.appendChild(item);}qualityNode.dataset.ready='1';const preferred=storyOptions.some(function(option){return option.key===preferredKey;})?preferredKey:'';return selectStory(preferred||storyOptions[0].key,false);}
+  function renderStories(options,preferredKey){if(!qualityNode)return false;storyOptions=Array.isArray(options)?options.filter(function(option){return option&&/^s\\d{1,3}$/.test(String(option.key||''))&&(option.kind==='live'||Number(option.sizeBytes||0)>0);}):[];qualityNode.replaceChildren();if(!storyOptions.length){qualityNode.dataset.ready='0';selectedOptionKey='';return false;}qualityNode.style.maxHeight='176px';qualityNode.style.overflowY='auto';qualityNode.style.padding='2px';for(const option of storyOptions){const item=document.createElement('button');item.type='button';item.className='vexa-quality-option';item.dataset.qualityKey=String(option.key);item.dataset.selected='0';item.setAttribute('aria-pressed','false');const label=document.createElement('span');label.textContent=String(option.label||option.key);const size=document.createElement('small');const resolution=Number(option.height||0)>0?Number(option.height)+'p · ':'';size.textContent=option.kind==='live'?'Records until the Live ends':resolution+mb(option.sizeBytes)+' MB';item.append(label,size);item.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();selectStory(option.key,true);});qualityNode.appendChild(item);}qualityNode.dataset.ready='1';const preferred=storyOptions.some(function(option){return option.key===preferredKey;})?preferredKey:'';return selectStory(preferred||storyOptions[0].key,false);}
   function clearStories(){storyOptions=[];selectedOptionKey='';if(qualityNode){qualityNode.replaceChildren();qualityNode.dataset.ready='0';qualityNode.style.maxHeight='';qualityNode.style.overflowY='';qualityNode.style.padding='';}}
   function closeProgressSocket(){clearTimeout(reconnectTimer);reconnectTimer=0;reconnectAttempt=0;const socket=progressSocket;progressSocket=null;if(socket)try{socket.close(1000,'done');}catch(error){}}
   function wsUrl(value){const url=new URL(String(value||''),window.location.origin);url.protocol=url.protocol==='https:'?'wss:':'ws:';return url.href;}
-  function handleProgress(data){if(!data?.ok)return;const total=Number(data.totalBytes||prepared?.fileSize||0);const done=Math.max(0,Number(data.downloadedBytes||0));const pct=Math.max(0,Math.min(100,Number(data.percent||0)));const state=String(data.status||'ready');if(state==='completed'){busy=false;setProgress(100,true);setState('completed','Downloaded',mb(done||total)+' MB');setButton('Download again',false);closeProgressSocket();haptic('medium');return;}if(state==='failed'||state==='cancelled'){busy=false;setState('error',String(data.error||'Download failed'),done?mb(done)+' MB received':storyDetail(selectedStory()));setButton('Try again',false);closeProgressSocket();prepared=null;return;}if(state==='preparing'){if(displayedPercent<=0)setProgress(0,false);setState('preparing','Preparing download','This may take a few minutes. Keep the app open.');return;}if(state==='downloading'){setProgress(Math.max(displayedPercent,pct),true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB · Keep the app open');}}
+  function handleProgress(data){if(!data?.ok)return;const total=Number(data.totalBytes||prepared?.fileSize||0);const done=Math.max(0,Number(data.downloadedBytes||0));const pct=Math.max(0,Math.min(100,Number(data.percent||0)));const state=String(data.status||'ready');const live=selectedStory()?.kind==='live'||prepared?.live;if(state==='completed'){busy=false;setProgress(100,true);setState('completed',live?'Live recording completed':'Downloaded',mb(done||total)+' MB');setButton('Download again',false);closeProgressSocket();haptic('medium');return;}if(state==='failed'||state==='cancelled'){busy=false;setState('error',String(data.error||'Download failed'),done?mb(done)+' MB received':storyDetail(selectedStory()));setButton('Try again',false);closeProgressSocket();prepared=null;return;}if(state==='preparing'){if(displayedPercent<=0)setProgress(0,false);setState('preparing',live?'Connecting to Instagram Live':'Preparing download','This may take a few minutes. Keep the app open.');return;}if(state==='downloading'){if(live){setState('downloading','Recording Instagram Live',mb(done)+' MB saved · Keep the app open');return;}setProgress(Math.max(displayedPercent,pct),true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB · Keep the app open');}}
   function connectProgress(progressUrl){closeProgressSocket();const target=String(progressUrl||'');if(!target)return;const socket=new WebSocket(wsUrl(target));progressSocket=socket;socket.addEventListener('open',function(){if(progressSocket!==socket)return;reconnectAttempt=0;});socket.addEventListener('message',function(event){if(progressSocket!==socket)return;let data;try{data=JSON.parse(String(event.data||'{}'));}catch(error){return;}handleProgress(data);});socket.addEventListener('close',function(){if(progressSocket===socket)progressSocket=null;if(!busy||!prepared?.progressUrl)return;if(reconnectAttempt>=6){setState('preparing','Preparing download','Progress connection interrupted');return;}const delay=Math.min(5000,450*Math.pow(2,reconnectAttempt++));reconnectTimer=setTimeout(function(){if(busy&&prepared?.progressUrl)connectProgress(prepared.progressUrl);},delay);});socket.addEventListener('error',function(){try{socket.close();}catch(error){}});}
   function cancelDownload(){if(!busy)return;busy=false;closeProgressSocket();setProgress(0,true);setState('waiting','Download cancelled',storyDetail(selectedStory()));setButton('Download',false);}
   function handleTelegramEvent(event){const state=String(event?.status||event||'').toLowerCase();if(state==='cancelled'){cancelDownload();return;}if(state==='downloading'&&busy)setState('preparing','Starting download','This may take a few minutes. Keep the app open.');}
   function bindTelegramEvent(){if(telegramEventBound)return;const tg=telegram();if(!tg?.onEvent)return;try{tg.onEvent('fileDownloadRequested',handleTelegramEvent);telegramEventBound=true;}catch(error){}}
-  async function prepareSource(source,preferredKey){if(preparingPromise)return preparingPromise;const clean=normalizeStory(source);if(!clean)return false;storyActive=true;sourceUrl=clean;downloadToken='';prepared=null;busy=false;closeProgressSocket();clearStories();setProgress(0,false);setState('preparing','Loading Instagram Story','This may take a few moments');setButton('Preparing…',true);haptic('light');preparingPromise=(async function(){try{const response=await fetch(PREPARE_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:clean})});const data=await response.json().catch(function(){return{};});if(!response.ok||!data.downloadToken||!Array.isArray(data.options)||!data.options.length)throw new Error(String(data.error||'Could not prepare Instagram Story'));downloadToken=String(data.downloadToken);if(!renderStories(data.options,preferredKey))throw new Error('Instagram Story is unavailable');const option=selectedStory();setProgress(0,false);setState('waiting',data.type==='highlight'?'Choose highlight clip':'Choose story',storyDetail(option));setButton('Download',false);haptic('light');return true;}catch(error){downloadToken='';prepared=null;clearStories();setState('error',String(error?.message||'Could not prepare Instagram Story'),'');setButton('Try again',false);return false;}finally{preparingPromise=null;}})();return preparingPromise;}
-  async function prepareSelectedDownload(){if(!downloadToken||!selectedOptionKey||preparingPromise)return false;const option=selectedStory();setState('preparing','Preparing '+String(option?.label||'Story'),storyDetail(option));setButton('Preparing…',true);preparingPromise=(async function(){try{const response=await fetch(SESSION_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),downloadToken:downloadToken,optionKey:selectedOptionKey})});const session=await response.json().catch(function(){return{};});if(!response.ok||!session.downloadUrl||!session.progressUrl||!session.fileSize)throw new Error(String(session.error||'Could not prepare Instagram Story'));prepared={downloadUrl:new URL(String(session.downloadUrl),window.location.origin).href,progressUrl:new URL(String(session.progressUrl),window.location.origin).href,fileName:String(session.fileName||'Vexa-Instagram-Story.mp4'),fileSize:Number(session.fileSize||0),title:String(session.title||'Instagram Story'),optionKey:String(session.optionKey||selectedOptionKey)};setProgress(0,false);setState('waiting','Ready to download',storyDetail(option));setButton('Download',false);return true;}catch(error){prepared=null;setState('error',String(error?.message||'Could not prepare Instagram Story'),storyDetail(option));setButton('Try again',false);return false;}finally{preparingPromise=null;}})();return preparingPromise;}
+  async function prepareSource(source,preferredKey){if(preparingPromise)return preparingPromise;const clean=normalizeStory(source);if(!clean)return false;storyActive=true;sourceUrl=clean;downloadToken='';prepared=null;busy=false;closeProgressSocket();clearStories();setProgress(0,false);setState('preparing',/\\/live\\/?$/.test(new URL(clean).pathname)?'Checking Instagram Live':'Loading Instagram Story','This may take a few moments');setButton('Preparing…',true);haptic('light');preparingPromise=(async function(){try{const response=await fetch(PREPARE_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:clean})});const data=await response.json().catch(function(){return{};});if(!response.ok||!data.downloadToken||!Array.isArray(data.options)||!data.options.length)throw new Error(String(data.error||'Could not prepare Instagram Story'));downloadToken=String(data.downloadToken);if(!renderStories(data.options,preferredKey))throw new Error('Instagram Story is unavailable');const option=selectedStory();setProgress(0,false);setState('waiting',data.type==='live'?'Instagram Live is ready':data.type==='highlight'?'Choose highlight clip':'Choose story',storyDetail(option));setButton(data.type==='live'?'Start recording':'Download',false);haptic('light');return true;}catch(error){downloadToken='';prepared=null;clearStories();setState('error',String(error?.message||'Could not prepare Instagram Story'),'');setButton('Try again',false);return false;}finally{preparingPromise=null;}})();return preparingPromise;}
+  async function prepareSelectedDownload(){if(!downloadToken||!selectedOptionKey||preparingPromise)return false;const option=selectedStory();setState('preparing','Preparing '+String(option?.label||'Story'),storyDetail(option));setButton('Preparing…',true);preparingPromise=(async function(){try{const response=await fetch(SESSION_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),downloadToken:downloadToken,optionKey:selectedOptionKey})});const session=await response.json().catch(function(){return{};});if(!response.ok||!session.downloadUrl||!session.progressUrl||(!session.live&&!session.fileSize))throw new Error(String(session.error||'Could not prepare Instagram Story'));prepared={downloadUrl:new URL(String(session.downloadUrl),window.location.origin).href,progressUrl:new URL(String(session.progressUrl),window.location.origin).href,fileName:String(session.fileName||'Vexa-Instagram-Story.mp4'),fileSize:Number(session.fileSize||0),title:String(session.title||'Instagram Story'),optionKey:String(session.optionKey||selectedOptionKey),live:Boolean(session.live)};setProgress(0,false);setState('waiting',session.live?'Ready to record':'Ready to download',storyDetail(option));setButton(session.live?'Start recording':'Download',false);return true;}catch(error){prepared=null;setState('error',String(error?.message||'Could not prepare Instagram Story'),storyDetail(option));setButton('Try again',false);return false;}finally{preparingPromise=null;}})();return preparingPromise;}
   function requestDownload(){if(!prepared||busy)return;busy=true;setProgress(0,false);setState('preparing','Waiting for Telegram','This may take a few minutes. Keep the app open.');setButton('Downloading…',true);connectProgress(prepared.progressUrl);bindTelegramEvent();haptic('light');const tg=telegram();if(tg?.downloadFile){try{tg.downloadFile({url:prepared.downloadUrl,file_name:prepared.fileName},function(accepted){if(accepted===false){cancelDownload();return;}setState('preparing','Starting download','This may take a few minutes. Keep the app open.');});return;}catch(error){console.warn('Telegram Instagram Story downloadFile failed',error?.message||error);}}try{const link=document.createElement('a');link.href=prepared.downloadUrl;link.download=prepared.fileName;link.rel='noopener';document.body.appendChild(link);link.click();link.remove();setState('preparing','Starting download','This may take a few minutes. Keep the app open.');}catch(error){busy=false;closeProgressSocket();setState('error','Could not start download','');setButton('Try again',false);}}
   async function handleStoryButton(){if(busy||button?.disabled)return;if(prepared){requestDownload();return;}if(downloadToken&&selectedOptionKey){const ready=await prepareSelectedDownload();if(ready)requestDownload();return;}if(sourceUrl)await prepareSource(sourceUrl,selectedOptionKey);}
   function captureStoryClick(event){if(!storyActive)return;event.preventDefault();event.stopImmediatePropagation();handleStoryButton();}

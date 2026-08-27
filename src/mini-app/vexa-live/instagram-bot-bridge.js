@@ -63,9 +63,13 @@ export async function handleInstagramLinkMessage(message, env) {
 
     const keyboard = instagramDownloadKeyboard(options, sourceUrl, isStory, copy);
     const title = isStory
-      ? (prepared.type === "highlight" ? copy.highlightTitle : copy.storyTitle)
+      ? (prepared.type === "live"
+          ? copy.liveTitle
+          : prepared.type === "highlight" ? copy.highlightTitle : copy.storyTitle)
       : copy.instagramTitle;
-    const detail = isStory ? copy.chooseStory : copy.chooseQuality;
+    const detail = isStory
+      ? (prepared.type === "live" ? copy.chooseLive : copy.chooseStory)
+      : copy.chooseQuality;
     const resultText = [
       "<b>" + escapeHtml(title) + "</b>",
       "",
@@ -268,7 +272,7 @@ function instagramDownloadKeyboard(options, sourceUrl, isStory, copy) {
   for (const option of options) {
     const key = String(option?.key || "");
     if (isStory ? !/^s\d{1,3}$/u.test(key) : !/^v\d{2,4}$/u.test(key)) continue;
-    const tooLarge = Number(option?.sizeBytes || 0) > TELEGRAM_SAFE_FILE_BYTES;
+    const tooLarge = option?.kind === "live" || Number(option?.sizeBytes || 0) > TELEGRAM_SAFE_FILE_BYTES;
     const text = isStory
       ? storyButtonText(option, tooLarge)
       : mediaButtonText(option, tooLarge);
@@ -312,6 +316,7 @@ function mediaButtonText(option, tooLarge) {
 }
 
 function storyButtonText(option, tooLarge) {
+  if (option?.kind === "live") return "🔴 Record Instagram Live";
   const label = String(option?.label || option?.key || "Story");
   const height = Number(option?.height || 0);
   const size = formatMegabytes(option?.sizeBytes);
@@ -428,8 +433,10 @@ function instagramCopy(language) {
       instagramTitle: "دانلود از اینستاگرام",
       storyTitle: "دانلود استوری اینستاگرام",
       highlightTitle: "دانلود هایلایت اینستاگرام",
+      liveTitle: "ضبط لایو اینستاگرام",
       chooseQuality: "کیفیت ویدیو را انتخاب کن:",
       chooseStory: "استوری یا کلیپ هایلایت را انتخاب کن:",
+      chooseLive: "برای شروع ضبط لایو، دانلودر را باز کن:",
       preparing: "در حال آماده‌سازی دانلود…",
       uploading: "در حال ارسال به تلگرام…",
       keepOpen: "تا پایان ارسال صبر کن.",
@@ -445,8 +452,10 @@ function instagramCopy(language) {
     instagramTitle: "Instagram download",
     storyTitle: "Instagram Story download",
     highlightTitle: "Instagram Highlight download",
+    liveTitle: "Instagram Live recording",
     chooseQuality: "Choose video quality:",
     chooseStory: "Choose a Story or Highlight clip:",
+    chooseLive: "Open the downloader to start recording this Live:",
     preparing: "Preparing download…",
     uploading: "Sending to Telegram…",
     keepOpen: "Keep the chat open until it finishes.",
