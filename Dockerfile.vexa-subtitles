@@ -1,0 +1,16 @@
+FROM docker.io/friedrichrehren/yt-dlp:2026.08.19
+
+USER root
+
+# Download subtitles are burned into video with libass. Keep the fonts in the
+# image so requests never need package-manager/network access at render time.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends fontconfig fonts-noto-core fonts-noto-cjk; \
+    fc-cache -f; \
+    rm -rf /var/lib/apt/lists/*; \
+    printf '%s\n' '#!/bin/sh' 'case "$1" in add) exit 0 ;; *) exit 127 ;; esac' > /usr/local/bin/apk; \
+    chmod 0755 /usr/local/bin/apk
+
+USER 65532
+WORKDIR /downloads
