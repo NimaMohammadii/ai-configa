@@ -34,11 +34,35 @@ const STORY_YTDLP_ARGS = Object.freeze([
   "--fragment-retries",
   "2",
 ]);
+const STORY_YTDLP_WITH_SESSION_SCRIPT = [
+  "set -eu",
+  "umask 077",
+  'cookie_file="/tmp/vexa-instagram-story-cookies.txt"',
+  'printf \'# Netscape HTTP Cookie File\\n.instagram.com\\tTRUE\\t/\\tTRUE\\t0\\tsessionid\\t%s\\n\' "$INSTAGRAM_SESSIONID" > "$cookie_file"',
+  "unset INSTAGRAM_SESSIONID",
+  'exec yt-dlp --cookies "$cookie_file" "$@"',
+].join("\n");
 
 let tablesReady = null;
 let progressTableReady = null;
 
 export class VexaInstagramStoryContainer extends VexaInstagramContainer {
+  async execYtDlp(args, options = {}) {
+    const sessionId = cleanInstagramSessionId(this.env?.INSTAGRAM_SESSIONID);
+    if (!sessionId) throw new Error("Instagram Story login is temporarily unavailable");
+    if (!this.ctx.container.running) await this.start();
+    return this.ctx.container.exec(
+      ["sh", "-c", STORY_YTDLP_WITH_SESSION_SCRIPT, "vexa-instagram-story", ...args],
+      {
+        ...options,
+        env: {
+          ...(options?.env || {}),
+          INSTAGRAM_SESSIONID: sessionId,
+        },
+      },
+    );
+  }
+
   async getInstagramStoryCatalog(url) {
     const process = await this.execYtDlp([
       ...STORY_YTDLP_ARGS,
@@ -812,6 +836,12 @@ const STORY_PUBLIC_ERRORS = new Set([
   "Instagram Story download is temporarily unavailable",
   "Could not start the Instagram Story download",
 ]);
+
+function cleanInstagramSessionId(value) {
+  const sessionId = String(value || "").trim();
+  if (!sessionId || sessionId.length > 4096 || /[\u0000-\u001F\u007F]/u.test(sessionId)) return "";
+  return sessionId;
+}
 
 function cleanToken(value) {
   const token = String(value || "").trim();
