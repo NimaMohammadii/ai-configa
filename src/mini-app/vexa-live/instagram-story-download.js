@@ -12,7 +12,6 @@ const PREPARE_PATH = "/mini-app/live/api/instagram-story/prepare";
 const SESSION_PATH = "/mini-app/live/api/instagram-story/session";
 const DOWNLOAD_PATH = "/mini-app/live/api/instagram-story/download";
 const PROGRESS_PATH = "/mini-app/live/api/instagram-story/progress";
-export const INSTAGRAM_STORY_RUNTIME_PATH = "/mini-app/vexa-live/instagram-story-download.js";
 
 const TOKEN_TTL_SECONDS = 10 * 60;
 const SESSION_TTL_SECONDS = 60 * 60;
@@ -256,24 +255,11 @@ export class VexaInstagramStoryProgressHub extends DurableObject {
 
 export function isInstagramStoryDownloadRequest(request) {
   const path = new URL(request.url).pathname;
-  return path === PREPARE_PATH ||
-    path === SESSION_PATH ||
-    path === DOWNLOAD_PATH ||
-    path === PROGRESS_PATH ||
-    path === INSTAGRAM_STORY_RUNTIME_PATH;
+  return path === PREPARE_PATH || path === SESSION_PATH || path === DOWNLOAD_PATH || path === PROGRESS_PATH;
 }
 
 export async function handleInstagramStoryDownloadRequest(request, env, ctx) {
   const url = new URL(request.url);
-  if (request.method === "GET" && url.pathname === INSTAGRAM_STORY_RUNTIME_PATH) {
-    return new Response(INSTAGRAM_STORY_RUNTIME_JS, {
-      headers: {
-        "Content-Type": "application/javascript; charset=utf-8",
-        "Cache-Control": "no-store, no-cache, must-revalidate",
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
-  }
   if (request.method === "POST" && url.pathname === PREPARE_PATH) {
     return prepareStory(request, env, ctx);
   }
@@ -291,32 +277,6 @@ export async function handleInstagramStoryDownloadRequest(request, env, ctx) {
     return trackedStoryDownload(request, env, ctx);
   }
   return json({ error: "Method Not Allowed" }, 405);
-}
-
-export async function appendInstagramStoryRuntime(request, response) {
-  if (!response?.ok || request.method !== "GET") return response;
-  const path = new URL(request.url).pathname;
-  if (path !== "/mini-app/vexa-live" && path !== "/mini-app/vexa-live/") return response;
-  const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
-  if (!contentType.includes("text/html")) return response;
-
-  const source = await response.text();
-  const tag = '<script src="' + INSTAGRAM_STORY_RUNTIME_PATH + '?v=20260827-progress-stall-fix-2"></script>';
-  const html = source.includes(INSTAGRAM_STORY_RUNTIME_PATH)
-    ? source
-    : source.includes("</body>")
-      ? source.replace("</body>", tag + "\n</body>")
-      : source + tag;
-
-  const headers = new Headers(response.headers);
-  headers.delete("Content-Length");
-  headers.delete("Content-Encoding");
-  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
-  return new Response(html, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
 }
 
 async function prepareStory(request, env, ctx) {
@@ -1095,72 +1055,3 @@ function json(value, status = 200) {
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
   });
 }
-
-export const INSTAGRAM_STORY_RUNTIME_JS = String.raw`
-(function () {
-  'use strict';
-  const PREPARE_URL='/mini-app/live/api/instagram-story/prepare';
-  const SESSION_URL='/mini-app/live/api/instagram-story/session';
-  const root=document.getElementById('vexaLiveDownloadRoot');
-  const button=document.getElementById('vexaLiveDownload');
-  const percentNode=document.getElementById('vexaLivePercent');
-  const statusNode=document.getElementById('vexaLiveStatus');
-  const detailNode=document.getElementById('vexaLiveDetail');
-  const track=document.getElementById('vexaLiveProgressTrack');
-  const qualityNode=document.getElementById('vexaLiveQuality');
-  const originalPrompt=window.prompt.bind(window);
-  let storyActive=false;
-  let prepared=null;
-  let preparingPromise=null;
-  let downloadToken='';
-  let sourceUrl='';
-  let storyOptions=[];
-  let selectedOptionKey='';
-  let busy=false;
-  let progressSocket=null;
-  let reconnectTimer=0;
-  let reconnectAttempt=0;
-  let displayedPercent=0;
-  let percentAnimation=0;
-  let telegramEventBound=false;
-
-  function hostWindow(){try{if(window.parent&&window.parent!==window&&window.parent.location.origin===window.location.origin)return window.parent;}catch(error){}return window;}
-  function telegram(){const host=hostWindow();return window.Telegram?.WebApp||host.Telegram?.WebApp||null;}
-  function initData(){return String(telegram()?.initData||'');}
-  function haptic(style){try{telegram()?.HapticFeedback?.impactOccurred?.(style||'light');}catch(error){}}
-  function mb(bytes){return(Math.max(0,Number(bytes||0))/1048576).toFixed(1);}
-  function formatPercent(value){const number=Math.max(0,Math.min(100,Number(value||0)));if(number>=100)return'100%';const rounded=Math.round(number*10)/10;return(String(rounded).includes('.')?rounded.toFixed(1):String(rounded))+'%';}
-  function normalizeStory(value){try{const url=new URL(String(value||'').trim());const host=url.hostname.toLowerCase();if(url.protocol!=='https:'||!(host==='instagram.com'||host.endsWith('.instagram.com')))return'';const path=url.pathname.replace(/\\/+$/,'');if(!(/^\\/stories\\/highlights\\/\\d+$/.test(path)||/^\\/stories\\/[A-Za-z0-9._]+(?:\\/\\d+)?$/.test(path)||/^\\/[A-Za-z0-9._]+\\/live$/.test(path)))return'';return url.href;}catch(error){return'';}}
-  function launchPreset(){const host=hostWindow();try{const params=new URLSearchParams(host.location.search);if(params.get('vexaDownload')!=='1')return{source:'',optionKey:''};const source=String(params.get('vexaSource')||'').trim();const optionKey=/^s\\d{1,3}$/.test(String(params.get('vexaOption')||''))?String(params.get('vexaOption')):'';return{source,optionKey};}catch(error){return{source:'',optionKey:''};}}
-  function stripPreset(){const host=hostWindow();try{const url=new URL(host.location.href);url.searchParams.delete('vexaDownload');url.searchParams.delete('vexaSource');url.searchParams.delete('vexaOption');host.history.replaceState(host.history.state,'',url.href);}catch(error){}}
-  function setState(state,message,detail){if(root)root.dataset.state=String(state||'idle');if(statusNode)statusNode.textContent=String(message||'');if(detailNode)detailNode.textContent=String(detail||'');}
-  function setButton(text,disabled){if(!button)return;button.textContent=String(text||'Download');button.disabled=Boolean(disabled);}
-  function setProgress(value,animate){const target=Math.max(0,Math.min(100,Number(value||0)));if(root)root.style.setProperty('--vexa-progress',String(target/100));if(track)track.setAttribute('aria-valuenow',String(Math.round(target*10)/10));cancelAnimationFrame(percentAnimation);if(!animate){displayedPercent=target;if(percentNode)percentNode.textContent=formatPercent(target);return;}const from=displayedPercent;const started=performance.now();const duration=Math.min(650,220+Math.abs(target-from)*12);const tick=function(now){const t=Math.min(1,(now-started)/Math.max(1,duration));const eased=1-Math.pow(1-t,3);displayedPercent=from+(target-from)*eased;if(percentNode)percentNode.textContent=formatPercent(displayedPercent);if(t<1)percentAnimation=requestAnimationFrame(tick);};percentAnimation=requestAnimationFrame(tick);}
-  function selectedStory(){return storyOptions.find(function(option){return option.key===selectedOptionKey;})||null;}
-  function storyDetail(option){if(!option)return'';if(option.kind==='live')return'Live recording · Keep the app open until it ends';const resolution=Number(option.height||0)>0?' · '+Number(option.height)+'p':'';return String(option.label||option.key)+resolution+' · '+mb(option.sizeBytes)+' MB';}
-  function updateSelection(){if(!qualityNode)return;for(const node of qualityNode.querySelectorAll('[data-quality-key]')){node.dataset.selected=node.dataset.qualityKey===selectedOptionKey?'1':'0';node.setAttribute('aria-pressed',node.dataset.selected==='1'?'true':'false');}}
-  function selectStory(key,announce){const option=storyOptions.find(function(item){return item.key===String(key||'');});if(!option||busy)return false;selectedOptionKey=option.key;prepared=null;closeProgressSocket();setProgress(0,true);updateSelection();if(announce!==false){setState('waiting','Ready to download',storyDetail(option));haptic('light');}setButton('Download',false);return true;}
-  function renderStories(options,preferredKey){if(!qualityNode)return false;storyOptions=Array.isArray(options)?options.filter(function(option){return option&&/^s\\d{1,3}$/.test(String(option.key||''))&&(option.kind==='live'||Number(option.sizeBytes||0)>0);}):[];qualityNode.replaceChildren();if(!storyOptions.length){qualityNode.dataset.ready='0';selectedOptionKey='';return false;}qualityNode.style.maxHeight='176px';qualityNode.style.overflowY='auto';qualityNode.style.padding='2px';for(const option of storyOptions){const item=document.createElement('button');item.type='button';item.className='vexa-quality-option';item.dataset.qualityKey=String(option.key);item.dataset.selected='0';item.setAttribute('aria-pressed','false');const label=document.createElement('span');label.textContent=String(option.label||option.key);const size=document.createElement('small');const resolution=Number(option.height||0)>0?Number(option.height)+'p · ':'';size.textContent=option.kind==='live'?'Records until the Live ends':resolution+mb(option.sizeBytes)+' MB';item.append(label,size);item.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();selectStory(option.key,true);});qualityNode.appendChild(item);}qualityNode.dataset.ready='1';const preferred=storyOptions.some(function(option){return option.key===preferredKey;})?preferredKey:'';return selectStory(preferred||storyOptions[0].key,false);}
-  function clearStories(){storyOptions=[];selectedOptionKey='';if(qualityNode){qualityNode.replaceChildren();qualityNode.dataset.ready='0';qualityNode.style.maxHeight='';qualityNode.style.overflowY='';qualityNode.style.padding='';}}
-  function closeProgressSocket(resetAttempt){clearTimeout(reconnectTimer);reconnectTimer=0;if(resetAttempt!==false)reconnectAttempt=0;const socket=progressSocket;progressSocket=null;if(socket)try{socket.close(1000,'done');}catch(error){}}
-  function wsUrl(value){const url=new URL(String(value||''),window.location.origin);url.protocol=url.protocol==='https:'?'wss:':'ws:';return url.href;}
-  function handleProgress(data){if(!data?.ok)return;const total=Number(data.totalBytes||prepared?.fileSize||0);const done=Math.max(0,Number(data.downloadedBytes||0));const pct=Math.max(0,Math.min(100,Number(data.percent||0)));const state=String(data.status||'ready');const live=selectedStory()?.kind==='live'||prepared?.live;if(state==='completed'){busy=false;setProgress(100,true);setState('completed',live?'Live recording completed':'Downloaded',mb(done||total)+' MB');setButton('Download again',false);closeProgressSocket();haptic('medium');return;}if(state==='failed'||state==='cancelled'){busy=false;setState('error',String(data.error||'Download failed'),done?mb(done)+' MB received':storyDetail(selectedStory()));setButton('Try again',false);closeProgressSocket();prepared=null;return;}if(!live&&(state==='staging'||state==='transcribing'||state==='translating'||state==='rendering'||state==='finalizing')){const label=state==='staging'?'Getting video':state==='transcribing'?'Creating subtitles':state==='translating'?'Translating subtitles':state==='rendering'?'Rendering subtitles':'Finishing video';setProgress(Math.max(displayedPercent,pct),true);setState('downloading',label,formatPercent(pct)+' · Keep the app open');return;}if(state==='preparing'){if(displayedPercent<=0)setProgress(0,false);setState('preparing',live?'Connecting to Instagram Live':'Preparing download','This may take a few minutes. Keep the app open.');return;}if(state==='downloading'){if(live){setState('downloading','Recording Instagram Live',mb(done)+' MB saved · Keep the app open');return;}setProgress(Math.max(displayedPercent,pct),true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB · Keep the app open');}}
-  function connectProgress(progressUrl,reconnecting){clearTimeout(reconnectTimer);reconnectTimer=0;const previous=progressSocket;progressSocket=null;if(previous)try{previous.close(1000,'reconnect');}catch(error){}if(!reconnecting)reconnectAttempt=0;const target=String(progressUrl||'');if(!target)return;const socket=new WebSocket(wsUrl(target));progressSocket=socket;socket.addEventListener('open',function(){if(progressSocket!==socket)return;reconnectAttempt=0;});socket.addEventListener('message',function(event){if(progressSocket!==socket)return;let data;try{data=JSON.parse(String(event.data||'{}'));}catch(error){return;}handleProgress(data);});socket.addEventListener('close',function(){if(progressSocket!==socket)return;progressSocket=null;if(!busy||!prepared?.progressUrl)return;const delay=Math.min(10000,500*Math.pow(2,Math.min(reconnectAttempt,5)));reconnectAttempt=Math.min(reconnectAttempt+1,6);reconnectTimer=setTimeout(function(){if(busy&&prepared?.progressUrl)connectProgress(prepared.progressUrl,true);},delay);});socket.addEventListener('error',function(){try{socket.close();}catch(error){}});}
-  function cancelDownload(){if(!busy)return;busy=false;closeProgressSocket();setProgress(0,true);setState('waiting','Download cancelled',storyDetail(selectedStory()));setButton('Download',false);}
-  function handleTelegramEvent(event){const state=String(event?.status||event||'').toLowerCase();if(state==='cancelled'){cancelDownload();return;}if(state==='downloading'&&busy&&displayedPercent<=0)setState('preparing','Starting download','This may take a few minutes. Keep the app open.');}
-  function bindTelegramEvent(){if(telegramEventBound)return;const tg=telegram();if(!tg?.onEvent)return;try{tg.onEvent('fileDownloadRequested',handleTelegramEvent);telegramEventBound=true;}catch(error){}}
-  async function prepareSource(source,preferredKey){if(preparingPromise)return preparingPromise;const clean=normalizeStory(source);if(!clean)return false;storyActive=true;sourceUrl=clean;downloadToken='';prepared=null;busy=false;closeProgressSocket();clearStories();setProgress(0,false);setState('preparing',/\\/live\\/?$/.test(new URL(clean).pathname)?'Checking Instagram Live':'Loading Instagram Story','This may take a few moments');setButton('Preparing…',true);haptic('light');preparingPromise=(async function(){try{const response=await fetch(PREPARE_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:clean})});const data=await response.json().catch(function(){return{};});if(!response.ok||!data.downloadToken||!Array.isArray(data.options)||!data.options.length)throw new Error(String(data.error||'Could not prepare Instagram Story'));downloadToken=String(data.downloadToken);if(!renderStories(data.options,preferredKey))throw new Error('Instagram Story is unavailable');const option=selectedStory();setProgress(0,false);setState('waiting',data.type==='live'?'Instagram Live is ready':data.type==='highlight'?'Choose highlight clip':'Choose story',storyDetail(option));setButton(data.type==='live'?'Start recording':'Download',false);haptic('light');return true;}catch(error){downloadToken='';prepared=null;clearStories();setState('error',String(error?.message||'Could not prepare Instagram Story'),'');setButton('Try again',false);return false;}finally{preparingPromise=null;}})();return preparingPromise;}
-  async function prepareSelectedDownload(){if(!downloadToken||!selectedOptionKey||preparingPromise)return false;const option=selectedStory();setState('preparing','Preparing '+String(option?.label||'Story'),storyDetail(option));setButton('Preparing…',true);preparingPromise=(async function(){try{const response=await fetch(SESSION_URL,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),downloadToken:downloadToken,optionKey:selectedOptionKey})});const session=await response.json().catch(function(){return{};});if(!response.ok||!session.downloadUrl||!session.progressUrl||(!session.live&&!session.fileSize))throw new Error(String(session.error||'Could not prepare Instagram Story'));prepared={downloadUrl:new URL(String(session.downloadUrl),window.location.origin).href,progressUrl:new URL(String(session.progressUrl),window.location.origin).href,fileName:String(session.fileName||'Vexa-Instagram-Story.mp4'),fileSize:Number(session.fileSize||0),title:String(session.title||'Instagram Story'),optionKey:String(session.optionKey||selectedOptionKey),live:Boolean(session.live)};setProgress(0,false);setState('waiting',session.live?'Ready to record':'Ready to download',storyDetail(option));setButton(session.live?'Start recording':'Download',false);return true;}catch(error){prepared=null;setState('error',String(error?.message||'Could not prepare Instagram Story'),storyDetail(option));setButton('Try again',false);return false;}finally{preparingPromise=null;}})();return preparingPromise;}
-  function requestDownload(){if(!prepared||busy)return;busy=true;setProgress(0,false);setState('preparing','Waiting for Telegram','This may take a few minutes. Keep the app open.');setButton('Downloading…',true);connectProgress(prepared.progressUrl,false);bindTelegramEvent();haptic('light');const tg=telegram();if(tg?.downloadFile){try{tg.downloadFile({url:prepared.downloadUrl,file_name:prepared.fileName},function(accepted){if(accepted===false){cancelDownload();return;}if(displayedPercent<=0)setState('preparing','Starting download','This may take a few minutes. Keep the app open.');});return;}catch(error){console.warn('Telegram Instagram Story downloadFile failed',error?.message||error);}}try{const link=document.createElement('a');link.href=prepared.downloadUrl;link.download=prepared.fileName;link.rel='noopener';document.body.appendChild(link);link.click();link.remove();if(displayedPercent<=0)setState('preparing','Starting download','This may take a few minutes. Keep the app open.');}catch(error){busy=false;closeProgressSocket();setState('error','Could not start download','');setButton('Try again',false);}}
-  async function handleStoryButton(){if(busy||button?.disabled)return;if(prepared){requestDownload();return;}if(downloadToken&&selectedOptionKey){const ready=await prepareSelectedDownload();if(ready)requestDownload();return;}if(sourceUrl)await prepareSource(sourceUrl,selectedOptionKey);}
-  function captureStoryClick(event){if(!storyActive)return;event.preventDefault();event.stopImmediatePropagation();handleStoryButton();}
-  button?.addEventListener('click',captureStoryClick,true);
-  bindTelegramEvent();
-
-  window.prompt=function(message,defaultValue){const value=originalPrompt(message,defaultValue);if(value===null)return value;const clean=String(value||'').trim();const story=normalizeStory(clean);if(story){prepareSource(story,'');return'';}return value;};
-
-  const preset=launchPreset();
-  const storyPreset=normalizeStory(preset.source);
-  if(storyPreset){storyActive=true;sourceUrl=storyPreset;stripPreset();setTimeout(function(){prepareSource(storyPreset,preset.optionKey);},0);}
-})();
-`;
