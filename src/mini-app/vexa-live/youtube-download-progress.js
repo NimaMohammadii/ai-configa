@@ -113,7 +113,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260826-8"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260827-real-subtitle-progress-1"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -800,6 +800,12 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     if(state==='failed'||state==='cancelled'){
       busy=false;setState('error',String(data.error||'Download failed'),done?mb(done)+' MB received':qualityDetail(selectedQuality()));setButton('Try again',false);closeProgressSocket();prepared=null;return;
     }
+    if(state==='staging'||state==='transcribing'||state==='translating'||state==='rendering'||state==='finalizing'){
+      const label=state==='staging'?'Getting video':state==='transcribing'?'Creating subtitles':state==='translating'?'Translating subtitles':state==='rendering'?'Rendering subtitles':'Finishing video';
+      setProgress(Math.max(displayedPercent,pct),true);
+      setState('downloading',label,Math.round(pct)+'% · Keep the app open');
+      return;
+    }
     if(state==='preparing'){
       if(displayedPercent<=0)setProgress(0,false);setState('preparing','Preparing download','This may take a few minutes. Keep the app open.');return;
     }
@@ -830,7 +836,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   function handleTelegramDownloadRequested(event){
     const state=String(event?.status||event||'').toLowerCase();
     if(state==='cancelled'){cancelNativeDownloadState();return;}
-    if(state==='downloading'&&busy){setState('preparing','Starting download','This may take a few minutes. Keep the app open.');}
+    if(state==='downloading'&&busy&&displayedPercent<=0){setState('preparing','Starting download','This may take a few minutes. Keep the app open.');}
   }
   function bindTelegramDownloadEvent(){
     if(telegramDownloadEventBound)return;
@@ -885,13 +891,13 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
       try{
         tg.downloadFile({url:prepared.downloadUrl,file_name:prepared.fileName},function(accepted){
           if(accepted===false){cancelNativeDownloadState();return;}
-          setState('preparing','Starting download','This may take a few minutes. Keep the app open.');
+          if(displayedPercent<=0)setState('preparing','Starting download','This may take a few minutes. Keep the app open.');
         });
         return;
       }catch(error){console.warn('Telegram downloadFile failed',error?.message||error);}
     }
     try{
-      const link=document.createElement('a');link.href=prepared.downloadUrl;link.download=prepared.fileName;link.rel='noopener';document.body.appendChild(link);link.click();link.remove();setState('preparing','Starting download','This may take a few minutes. Keep the app open.');
+      const link=document.createElement('a');link.href=prepared.downloadUrl;link.download=prepared.fileName;link.rel='noopener';document.body.appendChild(link);link.click();link.remove();if(displayedPercent<=0)setState('preparing','Starting download','This may take a few minutes. Keep the app open.');
     }catch(error){busy=false;closeProgressSocket();setState('error','Could not start download','');setButton('Try again',false);}
   }
   async function onButtonClick(event){
