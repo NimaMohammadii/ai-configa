@@ -18,6 +18,7 @@ const TRANSLATION_MODEL = "gpt-5.6-terra";
 const TRANSLATION_BATCH_SIZE = 20;
 const STREAM_PROGRESS_BYTES = 2 * 1024 * 1024;
 const STREAM_PROGRESS_MS = 750;
+const R2_MULTIPART_PART_BYTES = 8 * 1024 * 1024;
 
 const SUBTITLE_LANGUAGES = Object.freeze({
   original: "Original",
@@ -287,10 +288,7 @@ async function renderDownloadWithSubtitles(request, env, ctx, provider, language
     const sourceToken = makeSourceToken();
     sourceKey = SOURCE_PREFIX + sourceToken + ".mp4";
     const expiresAt = Math.floor(Date.now() / 1000) + SOURCE_TTL_SECONDS;
-    const staged = await env.EXPLORE_MEDIA.put(sourceKey, rawResponse.body, {
-      httpMetadata: { contentType: "video/mp4", cacheControl: "private, no-store" },
-      customMetadata: { vexaSubtitleSource: "1", expiresAt: String(expiresAt) },
-    });
+    const staged = await stageSubtitleSource(env.EXPLORE_MEDIA, sourceKey, rawResponse.body, expiresAt);
     if (!staged) throw new Error("Could not stage subtitle source video");
     await deleteDownloadSession(env, provider, tempSession).catch(() => null);
     tempSession = "";
@@ -322,6 +320,62 @@ async function renderDownloadWithSubtitles(request, env, ctx, provider, language
   } finally {
     if (tempSession) await deleteDownloadSession(env, provider, tempSession).catch(() => null);
     if (sourceKey) await env.EXPLORE_MEDIA.delete(sourceKey).catch(() => null);
+  }
+}
+
+async function stageSubtitleSource(bucket, key, stream, expiresAt) {
+  const upload = await bucket.createMultipartUpload(key, {
+    httpMetadata: { contentType: "video/mp4", cacheControl: "private, no-store" },
+    customMetadata: { vexaSubtitleSource: "1", expiresAt: String(expiresAt) },
+  });
+  const reader = stream.getReader();
+  const parts = [];
+  let buffer = new Uint8Array(R2_MULTIPART_PART_BYTES);
+  let buffered = 0;
+  let partNumber = 1;
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      if (!next.value?.byteLength) continue;
+      const chunk = next.value instanceof Uint8Array ? next.value : new Uint8Array(next.value);
+      let offset = 0;
+      while (offset < chunk.byteLength) {
+        const length = Math.min(R2_MULTIPART_PART_BYTES - buffered, chunk.byteLength - offset);
+        buffer.set(chunk.subarray(offset, offset + length), buffered);
+        buffered += length;
+        offset += length;
+        totalBytes += length;
+
+        if (buffered === R2_MULTIPART_PART_BYTES) {
+          parts.push(await upload.uploadPart(partNumber, buffer));
+          partNumber += 1;
+          buffer = new Uint8Array(R2_MULTIPART_PART_BYTES);
+          buffered = 0;
+        }
+      }
+    }
+
+    if (!parts.length && !buffered) throw new Error("Subtitle source video was empty");
+    if (buffered) {
+      parts.push(await upload.uploadPart(partNumber, buffer.slice(0, buffered)));
+    }
+
+    const object = await upload.complete(parts);
+    if (!object || positiveInteger(object.size) !== totalBytes) {
+      throw new Error("Subtitle source staging ended before the expected file size");
+    }
+    return object;
+  } catch (error) {
+    try { await reader.cancel(error); } catch {}
+    try { await upload.abort(); } catch {}
+    console.error("Vexa subtitle source multipart staging failed", error?.stack || error);
+    if (/subtitle source/i.test(String(error?.message || ""))) throw error;
+    throw new Error("Could not stage subtitle source video");
+  } finally {
+    try { reader.releaseLock(); } catch {}
   }
 }
 
