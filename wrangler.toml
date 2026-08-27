@@ -39,6 +39,13 @@ image = "docker.io/friedrichrehren/yt-dlp:2026.08.19"
 max_instances = 3
 instance_type = "basic"
 
+# Isolated Instagram downloader. It uses the same pinned yt-dlp runtime without sharing provider code/state.
+[[containers]]
+class_name = "VexaInstagramContainer"
+image = "docker.io/friedrichrehren/yt-dlp:2026.08.19"
+max_instances = 3
+instance_type = "basic"
+
 # Dedicated FFmpeg worker for short near-live subtitle audio windows.
 [[containers]]
 class_name = "VexaSubtitleContainer"
@@ -49,6 +56,14 @@ instance_type = "basic"
 [[durable_objects.bindings]]
 name = "VEXA_MEDIA"
 class_name = "VexaMediaContainerV3"
+
+[[durable_objects.bindings]]
+name = "VEXA_INSTAGRAM"
+class_name = "VexaInstagramContainer"
+
+[[durable_objects.bindings]]
+name = "VEXA_INSTAGRAM_PROGRESS"
+class_name = "VexaInstagramProgressHub"
 
 [[durable_objects.bindings]]
 name = "VEXA_SUBTITLES"
@@ -90,6 +105,14 @@ new_sqlite_classes = ["VexaSubtitleContainer"]
 [[migrations]]
 tag = "vexa-download-progress-hub-v1"
 new_sqlite_classes = ["VexaDownloadProgressHub"]
+
+[[migrations]]
+tag = "vexa-instagram-container-v1"
+new_sqlite_classes = ["VexaInstagramContainer"]
+
+[[migrations]]
+tag = "vexa-instagram-progress-hub-v1"
+new_sqlite_classes = ["VexaInstagramProgressHub"]
 
 [triggers]
 crons = ["* * * * *"]

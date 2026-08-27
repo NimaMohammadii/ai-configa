@@ -19,6 +19,13 @@ import {
   isTrackedYouTubeDownloadRequest,
 } from "./mini-app/vexa-live/youtube-download-progress.js";
 import {
+  VexaInstagramContainer,
+  VexaInstagramProgressHub,
+  appendInstagramDownloadRuntime,
+  handleInstagramDownloadRequest,
+  isInstagramDownloadRequest,
+} from "./mini-app/vexa-live/instagram-download.js";
+import {
   appendVexaCustomPlayerRuntime,
   handleVexaCustomPlayerRequest,
   isVexaCustomPlayerRequest,
@@ -36,7 +43,13 @@ import {
 import { appendVexaLiveLandingRuntime } from "./mini-app/vexa-live/vexa-live-landing.js";
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
-export { VexaMediaContainerV3, VexaSubtitleContainer, VexaDownloadProgressHub };
+export {
+  VexaMediaContainerV3,
+  VexaSubtitleContainer,
+  VexaDownloadProgressHub,
+  VexaInstagramContainer,
+  VexaInstagramProgressHub,
+};
 
 export default {
   ...worker,
@@ -54,6 +67,9 @@ export default {
       if (isVexaCustomPlayerRequest(request)) {
         return handleVexaCustomPlayerRequest(request);
       }
+      if (isInstagramDownloadRequest(request)) {
+        return await handleInstagramDownloadRequest(request, env, ctx);
+      }
       if (isTrackedYouTubeDownloadRequest(request)) {
         return await handleTrackedYouTubeDownloadRequest(request, env, ctx);
       }
@@ -66,6 +82,7 @@ export default {
       let response = await worker.fetch(request, env, ctx);
       response = await appendMiniAppVoiceTransformRuntime(request, response);
       response = await appendVexaLiveLandingRuntime(request, response);
+      response = await appendInstagramDownloadRuntime(request, response);
       response = await appendDownloadProgressRuntime(request, response);
       response = await appendVexaCustomPlayerRuntime(request, response);
       response = await appendVexaLiveSubtitlesRuntime(request, response);
