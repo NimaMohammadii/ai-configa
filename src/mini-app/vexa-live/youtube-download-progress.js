@@ -241,7 +241,7 @@ async function readDownloadProgress(request, env) {
 
 async function readProgressRow(env, session) {
   return env.DB.prepare(
-    "SELECT total_bytes, downloaded_bytes, status, error, updated_at, expires_at FROM vexa_youtube_download_progress WHERE session = ?"
+    "SELECT total_bytes, downloaded_bytes, status, error, updated_at, expires_at, provider FROM vexa_youtube_download_progress WHERE session = ?"
   ).bind(session).first();
 }
 
@@ -249,11 +249,15 @@ function progressPayload(row) {
   const totalBytes = positiveInteger(row?.total_bytes);
   const downloadedBytes = Math.max(0, Number(row?.downloaded_bytes || 0));
   const status = String(row?.status || "ready");
+  const localUpload = String(row?.provider || "") === "upload" && status === "uploading";
+  const percent = localUpload
+    ? Math.max(0, Math.min(20, Math.round(((downloadedBytes / Math.max(1, totalBytes)) * 20) * 10) / 10))
+    : progressPercent(downloadedBytes, totalBytes, status);
   return {
     ok: true,
     totalBytes,
     downloadedBytes,
-    percent: progressPercent(downloadedBytes, totalBytes, status),
+    percent,
     status,
     error: row?.error ? String(row.error) : "",
     updatedAt: Number(row?.updated_at || 0),
