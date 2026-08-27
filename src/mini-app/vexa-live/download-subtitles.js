@@ -562,7 +562,9 @@ function subtitleCuesFromWords(value) {
     const merged = cleanSubtitleText(current.map((word) => word.text).join(" "));
     const sentenceEnd = /[.!?…。！？؟]$/u.test(text);
     const span = end - start;
-    if ((sentenceEnd && current.length >= 4 && span >= 1.1) || current.length >= 13 || span >= 5.2 || Array.from(merged).length >= 82) flush();
+    const cjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(merged);
+    const charLimit = cjk ? 34 : 70;
+    if ((sentenceEnd && current.length >= 4 && span >= 1.1) || current.length >= 11 || span >= 4.8 || Array.from(merged).length >= charLimit) flush();
   }
   flush();
   return cues.filter((cue) => cue.text && cue.end > cue.start);
@@ -675,13 +677,13 @@ function buildAss(cues, language, width, height) {
     "ScriptType: v4.00+",
     "PlayResX: " + style.width,
     "PlayResY: " + style.height,
-    "WrapStyle: 0",
+    "WrapStyle: 2",
     "ScaledBorderAndShadow: yes",
     "YCbCr Matrix: TV.709",
     "",
     "[V4+ Styles]",
     "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-    "Style: Default," + style.fontName + "," + style.fontSize + ",&H00FFFFFF,&H00FFFFFF,&H57000000,&HB3000000,-1,0,0,0,100,100,0,0,3," + style.padding + "," + style.shadow + ",2," + style.marginX + "," + style.marginX + "," + style.marginV + ",1",
+    "Style: Default," + style.fontName + "," + style.fontSize + ",&H00FFFFFF,&H00FFFFFF,&H57000000,&H57000000,0,0,0,0,100,100,0,0,3," + style.padding + ",0,2," + style.marginX + "," + style.marginX + "," + style.marginV + ",1",
     "",
     "[Events]",
     "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
@@ -700,8 +702,7 @@ function downloadSubtitleStyle(width, height, language) {
     height: videoHeight,
     fontName: subtitleFont(language).name,
     fontSize: clampInteger(Math.round(videoHeight * 0.06), 18, 58),
-    padding: clampNumber(videoHeight * 0.018, 4, 12, 1),
-    shadow: clampNumber(videoHeight * 0.006, 1, 4, 1),
+    padding: clampNumber(videoHeight * 0.016, 4, 10, 1),
     marginX: clampInteger(Math.round(videoWidth * 0.07), 18, Math.max(18, Math.round(videoWidth * 0.12))),
     marginV: clampInteger(Math.round(videoHeight * 0.055), 12, 60),
   };
@@ -719,20 +720,24 @@ function subtitleFont(language) {
 
 function wrapSubtitleText(value) {
   const text = cleanSubtitleText(value);
-  if (Array.from(text).length <= 46) return text;
+  const cjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text);
+  const target = cjk ? 18 : 38;
+  if (Array.from(text).length <= target) return text;
   const words = text.split(/\s+/u).filter(Boolean);
   if (words.length < 2) {
     const chars = Array.from(text);
-    const middle = Math.ceil(chars.length / 2);
-    return chars.slice(0, middle).join("") + "\n" + chars.slice(middle).join("");
+    const middle = Math.min(target, Math.ceil(chars.length / 2));
+    return chars.slice(0, middle).join("") + "\n" + chars.slice(middle, Math.min(chars.length, middle + target)).join("");
   }
   let bestIndex = 1;
   let bestScore = Number.POSITIVE_INFINITY;
   for (let index = 1; index < words.length; index += 1) {
     const left = words.slice(0, index).join(" ");
     const right = words.slice(index).join(" ");
-    const score = Math.abs(Array.from(left).length - Array.from(right).length) +
-      Math.max(0, Array.from(left).length - 54) * 4 + Math.max(0, Array.from(right).length - 54) * 4;
+    const leftLength = Array.from(left).length;
+    const rightLength = Array.from(right).length;
+    const overflow = Math.max(0, leftLength - target) + Math.max(0, rightLength - target);
+    const score = Math.abs(leftLength - rightLength) + overflow * 12;
     if (score < bestScore) { bestScore = score; bestIndex = index; }
   }
   return words.slice(0, bestIndex).join(" ") + "\n" + words.slice(bestIndex).join(" ");
