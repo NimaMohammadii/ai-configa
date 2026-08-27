@@ -19,6 +19,10 @@ const TRANSLATION_BATCH_SIZE = 20;
 const STREAM_PROGRESS_BYTES = 2 * 1024 * 1024;
 const STREAM_PROGRESS_MS = 750;
 const R2_MULTIPART_PART_BYTES = 8 * 1024 * 1024;
+const SOURCE_READ_STALL_MS = 90 * 1000;
+const R2_PART_STALL_MS = 2 * 60 * 1000;
+const FFMPEG_PROGRESS_STALL_MS = 2 * 60 * 1000;
+const PROGRESS_SETTLE_MS = 2 * 1000;
 const STAGING_PROGRESS_END = 25;
 const TRANSCRIBE_PROGRESS_END = 40;
 const TRANSLATE_PROGRESS_END = 55;
@@ -130,11 +134,19 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
         "+faststart",
         outputPath,
       ]));
-      const progressPromise = collectSubtitleFfmpegProgress(process.stdout, durationSeconds, onProgress);
+      const progressPromise = collectSubtitleFfmpegProgress(
+        process.stdout,
+        durationSeconds,
+        onProgress,
+        () => { try { process.kill(9); } catch {} },
+      ).then(() => null, error => error);
       const stderrPromise = collectProcessText(process.stderr, 16_384);
-      const exitCode = await process.exitCode.catch(() => -1);
-      const detail = await stderrPromise;
-      await progressPromise;
+      const [exitCode, detail, progressError] = await Promise.all([
+        process.exitCode.catch(() => -1),
+        stderrPromise,
+        progressPromise,
+      ]);
+      if (progressError) throw progressError;
       if (exitCode !== 0) {
         if (detail) console.error("Vexa subtitle burn-in failed", detail.slice(-5000));
         throw new Error("Could not render subtitles into this video");
@@ -401,6 +413,7 @@ async function stageSubtitleSource(bucket, key, stream, expiresAt, expectedBytes
     customMetadata: { vexaSubtitleSource: "1", expiresAt: String(expiresAt) },
   });
   const reader = stream.getReader();
+  const progress = createLatestAsyncReporter(onProgress);
   const parts = [];
   let buffer = new Uint8Array(R2_MULTIPART_PART_BYTES);
   let buffered = 0;
@@ -409,19 +422,23 @@ async function stageSubtitleSource(bucket, key, stream, expiresAt, expectedBytes
   let lastReportedBytes = 0;
   let lastReportedAt = Date.now();
 
-  const report = async force => {
+  const report = force => {
     if (typeof onProgress !== "function") return;
     const now = Date.now();
     if (!force && totalBytes - lastReportedBytes < STREAM_PROGRESS_BYTES && now - lastReportedAt < STREAM_PROGRESS_MS) return;
     lastReportedBytes = totalBytes;
     lastReportedAt = now;
     const expected = positiveInteger(expectedBytes);
-    await onProgress(expected ? Math.min(1, totalBytes / expected) : 0, totalBytes);
+    progress.push(expected ? Math.min(1, totalBytes / expected) : 0, totalBytes);
   };
 
   try {
     while (true) {
-      const next = await reader.read();
+      const next = await withTimeout(
+        reader.read(),
+        SOURCE_READ_STALL_MS,
+        "Subtitle source download stalled",
+      );
       if (next.done) break;
       if (!next.value?.byteLength) continue;
       const chunk = next.value instanceof Uint8Array ? next.value : new Uint8Array(next.value);
@@ -434,26 +451,39 @@ async function stageSubtitleSource(bucket, key, stream, expiresAt, expectedBytes
         totalBytes += length;
 
         if (buffered === R2_MULTIPART_PART_BYTES) {
-          parts.push(await upload.uploadPart(partNumber, buffer));
+          parts.push(await withTimeout(
+            upload.uploadPart(partNumber, buffer),
+            R2_PART_STALL_MS,
+            "Subtitle source upload stalled",
+          ));
           partNumber += 1;
           buffer = new Uint8Array(R2_MULTIPART_PART_BYTES);
           buffered = 0;
         }
       }
-      await report(false);
+      report(false);
     }
 
     if (!parts.length && !buffered) throw new Error("Subtitle source video was empty");
     if (buffered) {
-      parts.push(await upload.uploadPart(partNumber, buffer.slice(0, buffered)));
+      parts.push(await withTimeout(
+        upload.uploadPart(partNumber, buffer.slice(0, buffered)),
+        R2_PART_STALL_MS,
+        "Subtitle source upload stalled",
+      ));
     }
 
-    const object = await upload.complete(parts);
+    const object = await withTimeout(
+      upload.complete(parts),
+      R2_PART_STALL_MS,
+      "Subtitle source upload stalled",
+    );
     if (!object || positiveInteger(object.size) !== totalBytes) {
       throw new Error("Subtitle source staging ended before the expected file size");
     }
-    await report(true);
-    if (typeof onProgress === "function") await onProgress(1, totalBytes);
+    report(true);
+    progress.push(1, totalBytes);
+    await progress.settle(PROGRESS_SETTLE_MS);
     return object;
   } catch (error) {
     try { await reader.cancel(error); } catch {}
@@ -865,10 +895,35 @@ async function setSubtitleProgress(env, provider, session, totalBytes, downloade
   const persistedDone = publishTotal && hasOverride && state !== "completed"
     ? Math.round(publishTotal * (percent / 100))
     : actualDone;
+  const rank = subtitleProgressRank(state);
+  const rankSql = subtitleProgressRankSql();
+  const terminalFailure = state === "failed" || state === "cancelled";
+  let condition;
+  let conditionArgs;
+  if (state === "completed") {
+    condition = "status NOT IN ('completed','failed','cancelled')";
+    conditionArgs = [];
+  } else if (terminalFailure) {
+    condition = "status NOT IN ('completed','failed','cancelled')";
+    conditionArgs = [];
+  } else {
+    condition = "((" + rankSql + ") < ? OR ((" + rankSql + ") = ? AND downloaded_bytes <= ?))";
+    conditionArgs = [rank, rank, persistedDone];
+  }
 
-  await env.DB.prepare(
-    "UPDATE " + table + " SET total_bytes = CASE WHEN ? > 0 THEN ? ELSE total_bytes END, downloaded_bytes = ?, status = ?, error = ?, updated_at = ? WHERE session = ?"
-  ).bind(requestedTotal, requestedTotal, persistedDone, state, message || null, now, session).run();
+  const result = await env.DB.prepare(
+    "UPDATE " + table + " SET total_bytes = CASE WHEN ? > 0 THEN ? ELSE total_bytes END, downloaded_bytes = ?, status = ?, error = ?, updated_at = ? WHERE session = ? AND " + condition
+  ).bind(
+    requestedTotal,
+    requestedTotal,
+    state === "completed" ? publishTotal : persistedDone,
+    state,
+    message || null,
+    now,
+    session,
+    ...conditionArgs,
+  ).run();
+  if (Number(result?.meta?.changes || 0) <= 0) return;
 
   if (!publishTotal) return;
   const binding = provider === "story"
@@ -891,7 +946,7 @@ async function setSubtitleProgress(env, provider, session, totalBytes, downloade
     body: JSON.stringify({
       session,
       totalBytes: publishTotal,
-      downloadedBytes: actualDone,
+      downloadedBytes: state === "completed" ? publishTotal : persistedDone,
       percent,
       status: state,
       error: message,
@@ -900,15 +955,16 @@ async function setSubtitleProgress(env, provider, session, totalBytes, downloade
   })).catch(() => null);
 }
 
-async function collectSubtitleFfmpegProgress(stream, durationSeconds, onProgress) {
+async function collectSubtitleFfmpegProgress(stream, durationSeconds, onProgress, onStall = null) {
   if (!stream) return;
   const reader = stream.getReader();
   const decoder = new TextDecoder();
+  const progress = createLatestAsyncReporter(async event => emitSubtitleProgress(onProgress, event));
   let pending = "";
   let lastPercent = -1;
   const duration = positiveNumber(durationSeconds);
 
-  const handleLine = async rawLine => {
+  const handleLine = rawLine => {
     const line = String(rawLine || "").trim();
     if (!line) return;
     let elapsed = NaN;
@@ -920,32 +976,41 @@ async function collectSubtitleFfmpegProgress(stream, durationSeconds, onProgress
       elapsed = Number(line.slice("out_time_ms=".length)) / 1_000_000;
     }
     if (duration && Number.isFinite(elapsed)) {
-      const percent = Math.max(0, Math.min(99, Math.floor((elapsed / duration) * 100)));
+      const rawPercent = Math.max(0, Math.min(99.9, (elapsed / duration) * 100));
+      const percent = Math.round(rawPercent * 10) / 10;
       if (percent > lastPercent) {
         lastPercent = percent;
-        await emitSubtitleProgress(onProgress, { phase: "rendering", percent, durationSeconds: duration });
+        progress.push({ phase: "rendering", percent, durationSeconds: duration });
       }
     }
     if (line === "progress=end" && lastPercent < 100) {
       lastPercent = 100;
-      await emitSubtitleProgress(onProgress, { phase: "rendering", percent: 100, durationSeconds: duration });
+      progress.push({ phase: "rendering", percent: 100, durationSeconds: duration });
     }
   };
 
   try {
     while (true) {
-      const next = await reader.read();
+      const next = await withTimeout(
+        reader.read(),
+        FFMPEG_PROGRESS_STALL_MS,
+        "Subtitle rendering stalled",
+      );
       if (next.done) break;
       if (!next.value?.byteLength) continue;
       pending += decoder.decode(next.value, { stream: true });
       const lines = pending.split(/\r?\n/u);
       pending = lines.pop() || "";
-      for (const line of lines) await handleLine(line);
+      for (const line of lines) handleLine(line);
     }
     pending += decoder.decode();
-    if (pending) await handleLine(pending);
+    if (pending) handleLine(pending);
+    await progress.settle(PROGRESS_SETTLE_MS);
   } catch (error) {
-    console.warn("Vexa subtitle render progress stream failed", error?.message || error);
+    try { onStall?.(error); } catch {}
+    throw error;
+  } finally {
+    try { reader.releaseLock(); } catch {}
   }
 }
 
@@ -981,6 +1046,90 @@ async function emitSubtitleProgress(onProgress, event) {
   } catch (error) {
     console.warn("Vexa subtitle progress callback failed", error?.message || error);
   }
+}
+
+function createLatestAsyncReporter(callback) {
+  let latest = null;
+  let active = null;
+
+  const pump = () => {
+    if (active || !latest || typeof callback !== "function") return;
+    const run = async () => {
+      while (latest) {
+        const args = latest;
+        latest = null;
+        try { await callback(...args); } catch (error) {
+          console.warn("Vexa subtitle progress publish failed", error?.message || error);
+        }
+      }
+    };
+    active = run().finally(() => {
+      active = null;
+      if (latest) pump();
+    });
+  };
+
+  return {
+    push(...args) {
+      if (typeof callback !== "function") return;
+      latest = args;
+      pump();
+    },
+    async settle(timeoutMs = PROGRESS_SETTLE_MS) {
+      if (typeof callback !== "function") return;
+      const deadline = Date.now() + Math.max(1, Number(timeoutMs || 0));
+      while (active || latest) {
+        pump();
+        const current = active;
+        if (!current) return;
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return;
+        const completed = await Promise.race([
+          current.then(() => true, () => true),
+          new Promise(resolve => setTimeout(() => resolve(false), remaining)),
+        ]);
+        if (!completed) return;
+      }
+    },
+  };
+}
+
+async function withTimeout(promise, timeoutMs, message) {
+  let timer = 0;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), Math.max(1, Number(timeoutMs || 0)));
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function subtitleProgressRank(value) {
+  const state = String(value || "");
+  if (state === "staging") return 10;
+  if (state === "transcribing") return 20;
+  if (state === "translating") return 30;
+  if (state === "rendering") return 40;
+  if (state === "finalizing") return 50;
+  if (state === "completed" || state === "failed" || state === "cancelled") return 100;
+  return 0;
+}
+
+function subtitleProgressRankSql() {
+  return "CASE status " +
+    "WHEN 'staging' THEN 10 " +
+    "WHEN 'transcribing' THEN 20 " +
+    "WHEN 'translating' THEN 30 " +
+    "WHEN 'rendering' THEN 40 " +
+    "WHEN 'finalizing' THEN 50 " +
+    "WHEN 'completed' THEN 100 " +
+    "WHEN 'failed' THEN 100 " +
+    "WHEN 'cancelled' THEN 100 " +
+    "ELSE 0 END";
 }
 
 async function serveSubtitleSource(request, env) {
