@@ -548,6 +548,10 @@ function progressPercent(downloadedBytes, totalBytes, status) {
   return Math.max(0, Math.min(99, Math.round(value * 10) / 10));
 }
 
+export async function ensureVexaDownloadProgressTable(env) {
+  await ensureProgressTable(env);
+}
+
 async function ensureProgressTable(env) {
   if (!progressTableReady) {
     progressTableReady = (async () => {
