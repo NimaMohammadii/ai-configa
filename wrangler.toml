@@ -58,11 +58,18 @@ image = "docker.io/friedrichrehren/yt-dlp:2026.08.19"
 max_instances = 3
 instance_type = "basic"
 
-# Dedicated FFmpeg subtitle worker. The local image pins the media runtime and
-# preinstalls Noto fonts so realtime and burned-in subtitles work without
-# installing packages during a user request.
+# Realtime subtitle audio containers. Download burn-in rendering is isolated below
+# so a retry or a busy live subtitle session cannot consume the other workload's slots.
 [[containers]]
 class_name = "VexaSubtitleContainer"
+image = "./Dockerfile.vexa-subtitles"
+max_instances = 3
+instance_type = "basic"
+
+# Fixed three-instance pool for burned-in subtitle downloads. Requests are routed
+# only across these stable instances instead of creating one container per session.
+[[containers]]
+class_name = "VexaDownloadSubtitleContainer"
 image = "./Dockerfile.vexa-subtitles"
 max_instances = 3
 instance_type = "basic"
@@ -90,6 +97,10 @@ class_name = "VexaInstagramStoryProgressHub"
 [[durable_objects.bindings]]
 name = "VEXA_SUBTITLES"
 class_name = "VexaSubtitleContainer"
+
+[[durable_objects.bindings]]
+name = "VEXA_DOWNLOAD_SUBTITLES"
+class_name = "VexaDownloadSubtitleContainer"
 
 [[durable_objects.bindings]]
 name = "VEXA_DOWNLOAD_PROGRESS"
@@ -143,6 +154,10 @@ new_sqlite_classes = ["VexaInstagramStoryContainer"]
 [[migrations]]
 tag = "vexa-instagram-story-progress-hub-v1"
 new_sqlite_classes = ["VexaInstagramStoryProgressHub"]
+
+[[migrations]]
+tag = "vexa-download-subtitle-container-v1"
+new_sqlite_classes = ["VexaDownloadSubtitleContainer"]
 
 [triggers]
 crons = ["* * * * *"]
