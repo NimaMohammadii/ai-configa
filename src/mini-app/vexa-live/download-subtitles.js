@@ -18,8 +18,6 @@ const TRANSLATION_MODEL = "gpt-5.6-terra";
 const TRANSLATION_BATCH_SIZE = 20;
 const STREAM_PROGRESS_BYTES = 2 * 1024 * 1024;
 const STREAM_PROGRESS_MS = 750;
-const FONT_DIR = "/tmp/vexa-subtitle-fonts";
-const FONT_DOWNLOAD_LIMIT_BYTES = 40 * 1024 * 1024;
 
 const SUBTITLE_LANGUAGES = Object.freeze({
   original: "Original",
@@ -56,61 +54,6 @@ const LANGUAGE_ALIASES = Object.freeze({
   kor: "ko", ko: "ko",
 });
 
-const FONT_ASSETS = Object.freeze({
-  arabic: Object.freeze({
-    name: "Noto Sans Arabic",
-    file: "NotoSansArabic.ttf",
-    url: "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansarabic/NotoSansArabic%5Bwdth,wght%5D.ttf",
-  }),
-  devanagari: Object.freeze({
-    name: "Noto Sans Devanagari",
-    file: "NotoSansDevanagari.ttf",
-    url: "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth,wght%5D.ttf",
-  }),
-  zh: Object.freeze({
-    name: "Noto Sans CJK SC",
-    file: "NotoSansCJKsc-Regular.otf",
-    url: "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
-  }),
-  ja: Object.freeze({
-    name: "Noto Sans CJK JP",
-    file: "NotoSansCJKjp-Regular.otf",
-    url: "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf",
-  }),
-  ko: Object.freeze({
-    name: "Noto Sans CJK KR",
-    file: "NotoSansCJKkr-Regular.otf",
-    url: "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/Korean/NotoSansCJKkr-Regular.otf",
-  }),
-});
-
-const PY_FONT_DOWNLOAD = String.raw`
-import os, sys, urllib.request
-url, path, limit = sys.argv[1], sys.argv[2], int(sys.argv[3])
-os.makedirs(os.path.dirname(path), exist_ok=True)
-tmp = path + ".part"
-try:
-    req = urllib.request.Request(url, headers={"User-Agent": "Vexa/1.0"})
-    with urllib.request.urlopen(req, timeout=45) as response, open(tmp, "wb") as output:
-        total = 0
-        while True:
-            chunk = response.read(1024 * 1024)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > limit:
-                raise RuntimeError("font too large")
-            output.write(chunk)
-    if os.path.getsize(tmp) < 10000:
-        raise RuntimeError("font download was empty")
-    os.replace(tmp, path)
-finally:
-    try:
-        if os.path.exists(tmp): os.remove(tmp)
-    except Exception:
-        pass
-`;
-
 export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
   activeSubtitleProcesses = new Set();
 
@@ -136,14 +79,12 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
     if (!/^https:\/\//i.test(source)) throw new Error("Subtitle video source is invalid");
     if (!subtitles || subtitles.length > 2_000_000) throw new Error("Subtitle track is invalid");
 
-    const font = subtitleFont(language);
-    const fontsDir = await this.ensureSubtitleFont(font);
     const id = crypto.randomUUID();
     const assPath = "/tmp/vexa-download-subtitles-" + id + ".ass";
     const outputPath = "/tmp/vexa-download-subtitled-" + id + ".mp4";
     try {
       await this.writeUtf8File(assPath, subtitles);
-      const filter = "ass=" + assPath + (fontsDir ? ":fontsdir=" + fontsDir : "");
+      const filter = "ass=" + assPath;
       const process = this.trackSubtitleProcess(await this.ctx.container.exec([
         "ffmpeg",
         "-nostdin",
@@ -232,36 +173,6 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
     });
   }
 
-  async ensureSubtitleFont(font) {
-    if (!font?.asset) return "";
-    const asset = font.asset;
-    const path = FONT_DIR + "/" + asset.file;
-    const currentSize = await this.readOptionalFileSize(path);
-    if (currentSize >= 10_000) return FONT_DIR;
-
-    const mkdir = await this.ctx.container.exec(["mkdir", "-p", FONT_DIR]);
-    const mkdirOutput = await mkdir.output();
-    if (mkdirOutput.exitCode !== 0) throw new Error("Could not prepare subtitle fonts");
-
-    const process = this.trackSubtitleProcess(await this.ctx.container.exec([
-      "python",
-      "-c",
-      PY_FONT_DOWNLOAD,
-      asset.url,
-      path,
-      String(FONT_DOWNLOAD_LIMIT_BYTES),
-    ]));
-    const output = await process.output();
-    if (output.exitCode !== 0) {
-      const detail = new TextDecoder().decode(output.stderr).trim();
-      if (detail) console.error("Vexa subtitle font download failed", detail.slice(-2000));
-      throw new Error("Subtitle font support is temporarily unavailable");
-    }
-    const size = await this.readOptionalFileSize(path);
-    if (size < 10_000) throw new Error("Subtitle font support is temporarily unavailable");
-    return FONT_DIR;
-  }
-
   async writeUtf8File(path, text) {
     const clear = await this.ctx.container.exec(["rm", "-f", path]);
     await clear.output().catch(() => null);
@@ -276,17 +187,6 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
       ]);
       const output = await process.output();
       if (output.exitCode !== 0) throw new Error("Could not prepare subtitle track");
-    }
-  }
-
-  async readOptionalFileSize(path) {
-    try {
-      const process = await this.ctx.container.exec(["sh", "-c", 'test -f "$1" && wc -c < "$1" || echo 0', "vexa-file-size", path]);
-      const output = await process.output();
-      const size = Number.parseInt(new TextDecoder().decode(output.stdout).trim(), 10);
-      return Number.isFinite(size) && size > 0 ? size : 0;
-    } catch {
-      return 0;
     }
   }
 
@@ -629,12 +529,12 @@ function buildAss(cues, language) {
 
 function subtitleFont(language) {
   const key = normalizeDetectedLanguage(language) || String(language || "en").toLowerCase();
-  if (key === "fa" || key === "ar") return { name: FONT_ASSETS.arabic.name, asset: FONT_ASSETS.arabic };
-  if (key === "hi") return { name: FONT_ASSETS.devanagari.name, asset: FONT_ASSETS.devanagari };
-  if (key === "zh") return { name: FONT_ASSETS.zh.name, asset: FONT_ASSETS.zh };
-  if (key === "ja") return { name: FONT_ASSETS.ja.name, asset: FONT_ASSETS.ja };
-  if (key === "ko") return { name: FONT_ASSETS.ko.name, asset: FONT_ASSETS.ko };
-  return { name: "DejaVu Sans", asset: null };
+  if (key === "fa" || key === "ar") return { name: "Noto Sans Arabic" };
+  if (key === "hi") return { name: "Noto Sans Devanagari" };
+  if (key === "zh") return { name: "Noto Sans CJK SC" };
+  if (key === "ja") return { name: "Noto Sans CJK JP" };
+  if (key === "ko") return { name: "Noto Sans CJK KR" };
+  return { name: "Noto Sans" };
 }
 
 function wrapSubtitleText(value) {
