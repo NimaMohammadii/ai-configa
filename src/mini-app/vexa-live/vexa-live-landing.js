@@ -11,7 +11,7 @@ const LANDING_STYLE = String.raw`
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;width:100%;height:100%;min-height:100%;overflow:hidden;overscroll-behavior:none;background:${LIVE_BACKGROUND};color:#fff}
 body{position:fixed;inset:0;min-height:100dvh;font-family:"SF Pro Display","SF Pro Text",Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
-button{font:inherit}
+button,select{font:inherit}
 .vexa-live-download{position:fixed;inset:0;display:grid;place-items:center;background:${LIVE_BACKGROUND};overflow:hidden}
 .vexa-download-core{width:min(88vw,390px);display:flex;flex-direction:column;align-items:center;gap:18px;transform:translateY(-1.5vh)}
 .vexa-download-percent{margin:0;color:#f5f5f5;font-size:44px;font-weight:620;line-height:.95;letter-spacing:-.055em;font-variant-numeric:tabular-nums;opacity:0;transform:translateY(8px) scale(.97);transition:opacity .32s ease,transform .55s cubic-bezier(.16,1,.3,1)}
@@ -35,7 +35,17 @@ button{font:inherit}
 @media(hover:hover) and (pointer:fine){.vexa-quality-option:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.82)}}
 .vexa-quality-option:active{transform:scale(.96)}
 .vexa-quality-option:focus-visible{outline:none;box-shadow:${LIQUID_GLASS_FOCUS_RING}}
-.vexa-live-download[data-state="preparing"] .vexa-download-quality,.vexa-live-download[data-state="downloading"] .vexa-download-quality{opacity:.22;pointer-events:none}
+.vexa-download-subtitles{width:100%;max-height:0;opacity:0;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:10px;transform:translateY(7px) scale(.985);pointer-events:none;transition:max-height .48s cubic-bezier(.16,1,.3,1),opacity .28s ease,transform .44s cubic-bezier(.16,1,.3,1)}
+.vexa-download-subtitles[data-ready="1"]{max-height:46px;opacity:1;transform:none;pointer-events:auto}
+.vexa-subtitle-label{color:rgba(255,255,255,.34);font-size:9px;font-weight:670;letter-spacing:.02em;white-space:nowrap}
+.vexa-subtitle-select-shell{position:relative;min-width:148px;height:36px;border:1px solid rgba(255,255,255,.09);border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.018));box-shadow:inset 0 1px 0 rgba(255,255,255,.035);transition:opacity .22s ease,border-color .22s ease,background .22s ease}
+.vexa-subtitle-select{position:absolute;inset:0;width:100%;height:100%;padding:0 31px 0 11px;border:0;outline:0;background:transparent;color:rgba(255,255,255,.72);font-size:10.5px;font-weight:630;appearance:none;-webkit-appearance:none;cursor:pointer}
+.vexa-subtitle-select option{background:#111;color:#fff}
+.vexa-subtitle-chevron{position:absolute;right:11px;top:50%;transform:translateY(-52%);color:rgba(255,255,255,.34);font-size:13px;line-height:1;pointer-events:none}
+.vexa-subtitle-select:focus-visible{outline:none}
+.vexa-subtitle-select-shell:has(.vexa-subtitle-select:focus-visible){box-shadow:${LIQUID_GLASS_FOCUS_RING}}
+.vexa-download-subtitles[data-disabled="1"]{opacity:.28;pointer-events:none}
+.vexa-live-download[data-state="preparing"] .vexa-download-quality,.vexa-live-download[data-state="downloading"] .vexa-download-quality,.vexa-live-download[data-state="preparing"] .vexa-download-subtitles,.vexa-live-download[data-state="downloading"] .vexa-download-subtitles{opacity:.22;pointer-events:none}
 .vexa-live-download-action{min-width:132px;height:48px;margin-top:2px;padding:0 24px;${liquidGlassMaterialCss()}outline:0!important;border-radius:999px;color:rgba(255,255,255,.92);font-size:13px;font-weight:650;letter-spacing:-.01em;line-height:1;appearance:none;-webkit-appearance:none;cursor:pointer;transform-origin:center;will-change:transform,filter,opacity;transition:opacity .24s ease,transform .38s cubic-bezier(.16,1,.3,1),filter .2s ease,background .25s ease,border-color .25s ease,box-shadow .25s ease}
 @media(hover:hover) and (pointer:fine){.vexa-live-download-action:hover{transform:scale(1.045);${LIQUID_GLASS_HOVER_CSS}}}
 .vexa-live-download-action:active{transform:scale(.965);filter:brightness(.9)}
@@ -47,10 +57,61 @@ button{font:inherit}
 @keyframes vexaMetalShine{0%,15%{transform:translateX(-130%)}70%,100%{transform:translateX(130%)}}
 @keyframes vexaPrepare{0%{transform:translateX(-145%) scaleX(.22)}50%{transform:translateX(0) scaleX(.34)}100%{transform:translateX(145%) scaleX(.22)}}
 @keyframes vexaQualityMetal{0%{background-position:0% 50%}100%{background-position:180% 50%}}
-@media(prefers-reduced-motion:reduce){.vexa-download-percent,.vexa-download-fill,.vexa-download-fill:after,.vexa-live-download-action,.vexa-download-quality,.vexa-quality-option{animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){.vexa-download-percent,.vexa-download-fill,.vexa-download-fill:after,.vexa-live-download-action,.vexa-download-quality,.vexa-quality-option,.vexa-download-subtitles{animation:none!important;transition:none!important}}
 `;
 
-const LANDING_BODY = '<body><main id="vexaLiveDownloadRoot" class="vexa-live-download" data-state="idle" style="--vexa-progress:0"><section class="vexa-download-core" aria-live="polite"><p id="vexaLivePercent" class="vexa-download-percent">0%</p><div id="vexaLiveProgressTrack" class="vexa-download-track" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="vexaLiveProgressFill" class="vexa-download-fill"></span></div><div class="vexa-download-copy"><span id="vexaLiveStatus" class="vexa-download-status">Preparing download</span><small id="vexaLiveDetail" class="vexa-download-detail"></small></div><div id="vexaLiveQuality" class="vexa-download-quality" role="group" aria-label="Video quality"></div><button id="vexaLiveDownload" class="vexa-live-download-action" type="button" disabled>Download</button></section></main></body>';
+const LANDING_SCRIPT = String.raw`(function(){
+  'use strict';
+  const COOKIE='vexa_download_subtitle';
+  const STORAGE='vexaDownloadSubtitle';
+  const allowed=new Set(['off','original','en','fa','ru','de','tr','es','ar','fr','pt','it','hi','zh','ja','ko']);
+  const quality=document.getElementById('vexaLiveQuality');
+  const shell=document.getElementById('vexaDownloadSubtitle');
+  const select=document.getElementById('vexaDownloadSubtitleLanguage');
+  if(!quality||!shell||!select)return;
+  function cookieValue(){
+    const prefix=COOKIE+'=';
+    for(const part of String(document.cookie||'').split(';')){
+      const value=part.trim();
+      if(!value.startsWith(prefix))continue;
+      try{return decodeURIComponent(value.slice(prefix.length));}catch(error){return value.slice(prefix.length);}
+    }
+    return'';
+  }
+  function savedValue(){
+    const fromCookie=cookieValue();if(allowed.has(fromCookie))return fromCookie;
+    try{const stored=String(localStorage.getItem(STORAGE)||'');if(allowed.has(stored))return stored;}catch(error){}
+    return'off';
+  }
+  function saveValue(value){
+    const next=allowed.has(value)?value:'off';
+    try{localStorage.setItem(STORAGE,next);}catch(error){}
+    const secure=location.protocol==='https:'?'; Secure':'';
+    document.cookie=COOKIE+'='+encodeURIComponent(next)+'; Max-Age=31536000; Path=/; SameSite=Lax'+secure;
+  }
+  function haptic(){
+    try{
+      const host=window.parent&&window.parent!==window&&window.parent.location.origin===window.location.origin?window.parent:window;
+      (window.Telegram?.WebApp||host.Telegram?.WebApp)?.HapticFeedback?.impactOccurred?.('light');
+    }catch(error){}
+  }
+  function sync(){
+    const ready=quality.dataset.ready==='1';
+    const active=quality.querySelector('[data-quality-key][data-selected="1"]');
+    const audio=String(active?.dataset?.qualityKey||'')==='a';
+    shell.dataset.ready=ready?'1':'0';
+    shell.dataset.disabled=audio?'1':'0';
+    select.disabled=audio;
+  }
+  select.value=savedValue();
+  saveValue(select.value);
+  select.addEventListener('change',function(){saveValue(String(select.value||'off'));haptic();});
+  const observer=new MutationObserver(sync);
+  observer.observe(quality,{childList:true,subtree:true,attributes:true,attributeFilter:['data-ready','data-selected']});
+  sync();
+})();`;
+
+const LANDING_BODY = '<body><main id="vexaLiveDownloadRoot" class="vexa-live-download" data-state="idle" style="--vexa-progress:0"><section class="vexa-download-core" aria-live="polite"><p id="vexaLivePercent" class="vexa-download-percent">0%</p><div id="vexaLiveProgressTrack" class="vexa-download-track" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="vexaLiveProgressFill" class="vexa-download-fill"></span></div><div class="vexa-download-copy"><span id="vexaLiveStatus" class="vexa-download-status">Preparing download</span><small id="vexaLiveDetail" class="vexa-download-detail"></small></div><div id="vexaLiveQuality" class="vexa-download-quality" role="group" aria-label="Video quality"></div><div id="vexaDownloadSubtitle" class="vexa-download-subtitles" data-ready="0" data-disabled="0"><span class="vexa-subtitle-label">Subtitles</span><label class="vexa-subtitle-select-shell"><select id="vexaDownloadSubtitleLanguage" class="vexa-subtitle-select" aria-label="Burned-in subtitle language"><option value="off">Off</option><option value="original">Original audio</option><option value="en">English</option><option value="fa">فارسی</option><option value="ru">Русский</option><option value="de">Deutsch</option><option value="tr">Türkçe</option><option value="es">Español</option><option value="ar">العربية</option><option value="fr">Français</option><option value="pt">Português</option><option value="it">Italiano</option><option value="hi">हिन्दी</option><option value="zh">中文</option><option value="ja">日本語</option><option value="ko">한국어</option></select><span class="vexa-subtitle-chevron">⌄</span></label></div><button id="vexaLiveDownload" class="vexa-live-download-action" type="button" disabled>Download</button></section></main><script>' + LANDING_SCRIPT + '</script></body>';
 
 export async function appendVexaLiveLandingRuntime(request, response) {
   if (!response?.ok || request.method !== "GET") return response;
