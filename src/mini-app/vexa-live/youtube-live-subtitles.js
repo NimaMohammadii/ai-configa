@@ -6,7 +6,7 @@ import { LIVE_SUBTITLES_RUNTIME_JS } from "./youtube-live-subtitles-runtime.js";
 
 const SOCKET_PATH = "/mini-app/live/api/youtube-subtitles/realtime";
 const RUNTIME_PATH = "/mini-app/vexa-live/live-subtitles.js";
-const RUNTIME_VERSION = "20260821-visible-1";
+const RUNTIME_VERSION = "20260827-audio-cues-1";
 
 const TRANSLATION_MODEL = "gpt-5.6-terra";
 const TRANSLATE_TIMEOUT_MS = 12000;
@@ -19,16 +19,14 @@ const WARMUP_MAX_AUDIO_LEAD_SECONDS = 4.7;
 const PLAYBACK_AUDIO_LEAD_SECONDS = 4.2;
 const WARMUP_NO_SPEECH_GRACE_MS = 650;
 const WARMUP_MAX_WAIT_MS = 12000;
-const PARTIAL_FALLBACK_INTERVAL_SECONDS = 2.4;
-const TIMESTAMP_WAIT_MS = 650;
-const VAD_SILENCE_SECONDS = 0.3;
+const VAD_SILENCE_SECONDS = 0.65;
 const VAD_THRESHOLD = 0.4;
 const VAD_MIN_SPEECH_MS = 100;
-const VAD_MIN_SILENCE_MS = 100;
+const VAD_MIN_SILENCE_MS = 250;
 const EOF_FLUSH_FRAMES = 5;
-const EOF_FLUSH_GRACE_MS = 900;
-const LIVE_SOURCE_MAX_WORDS = 14;
-const LIVE_SOURCE_MAX_CHARS = 180;
+const EOF_FLUSH_GRACE_MS = 1600;
+const SUBTITLE_MAX_WORDS = 14;
+const SUBTITLE_MAX_CHARS = 96;
 
 const TARGET_LANGUAGES = Object.freeze({
   original: "Original", en: "English", fa: "Persian", ru: "Russian", de: "German", tr: "Turkish", es: "Spanish", ar: "Arabic",
@@ -214,19 +212,17 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
   const container = getContainer(env.VEXA_SUBTITLES, "subtitle-" + safeContainerKey(user.id));
   let audioStream = null, upstream = null, upstreamEndedNormally = false, completed = false, scribeFailure = "";
   let baseStart = 0, latestAudioMediaTime = 0, audioLeadSeconds = 0, warmupReadySent = false, sawSpeech = false;
-  let latestPartial = null, lastSegmentMediaTime = 0, segmentSequence = 0, preparedCount = 0;
-  let pendingSettled = null, settledTimer = 0, noSpeechTimer = 0, warmupMaxTimer = 0;
+  let segmentSequence = 0, preparedCount = 0;
+  let noSpeechTimer = 0, warmupMaxTimer = 0;
   const segmentQueue = [];
   let activeTranslation = null;
   const translationCache = new Map();
   const recentSegments = [];
-  let lastPartialSnapshotText = "";
   const timestampState = { offset: 0, lastEnd: 0 };
 
-  const clearSettledTimer = () => { if (settledTimer) { clearTimeout(settledTimer); settledTimer = 0; } };
   const clearNoSpeechTimer = () => { if (noSpeechTimer) { clearTimeout(noSpeechTimer); noSpeechTimer = 0; } };
   const clearWarmupMaxTimer = () => { if (warmupMaxTimer) { clearTimeout(warmupMaxTimer); warmupMaxTimer = 0; } };
-  const clearTimers = () => { clearSettledTimer(); clearNoSpeechTimer(); clearWarmupMaxTimer(); };
+  const clearTimers = () => { clearNoSpeechTimer(); clearWarmupMaxTimer(); };
   signal.addEventListener("abort", clearTimers, { once: true });
 
   const sendWarmupReady = prepared => {
@@ -249,8 +245,8 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
     }
   };
 
-  const enqueueSegment = (sourceText, timing, sourceMediaTime) => {
-    const text = liveSubtitleWindow(sourceText);
+  const enqueueSegment = (sourceText, timing) => {
+    const text = cleanSubtitleText(sourceText);
     if (!text || !timing) return false;
     const overlapsExisting = recentSegments.some(item => {
       if (item.text !== text) return false;
@@ -260,60 +256,19 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
     if (overlapsExisting) return false;
     recentSegments.push({ text, start: timing.start, end: timing.end });
     if (recentSegments.length > 40) recentSegments.splice(0, recentSegments.length - 40);
-    lastSegmentMediaTime = Math.max(lastSegmentMediaTime, Number(sourceMediaTime || timing.end || baseStart));
-    const job = { id: String(++segmentSequence), sourceText: text, start: timing.start, end: timing.end };
-    if (targetLanguage !== "original" && segmentQueue.length) segmentQueue.splice(0, segmentQueue.length);
-    segmentQueue.push(job);
+    segmentQueue.push({ id: String(++segmentSequence), sourceText: text, start: timing.start, end: timing.end });
     pumpTranslationQueue();
     return true;
   };
 
-  const flushPendingSettled = timingOverride => {
-    clearSettledTimer();
-    const item = pendingSettled;
-    pendingSettled = null;
-    if (!item) return;
-    const timing = timingOverride || approximateLiveTiming(item.text, item.audioMediaTime, baseStart);
-    enqueueSegment(item.text, timing, item.audioMediaTime);
-  };
-
-  const queueSettled = value => {
-    const text = liveSubtitleWindow(value);
-    if (!text) return;
-    sawSpeech = true;
-    clearNoSpeechTimer();
-    latestPartial = { text, audioMediaTime: latestAudioMediaTime };
-    if (pendingSettled?.text === text) {
-      pendingSettled.audioMediaTime = latestAudioMediaTime;
-      return;
-    }
-    if (pendingSettled) flushPendingSettled(null);
-    pendingSettled = { text, audioMediaTime: latestAudioMediaTime };
-    settledTimer = setTimeout(() => { settledTimer = 0; flushPendingSettled(null); }, TIMESTAMP_WAIT_MS);
-  };
-
   const handleTimedTranscript = message => {
-    const text = liveSubtitleWindow(message?.text);
-    const raw = rawTimingFromScribeWords(message);
-    if (!text || !raw) return;
+    const units = timedSubtitleUnits(message);
+    if (!units.length) return;
     sawSpeech = true;
     clearNoSpeechTimer();
-    const timing = mapScribeTiming(raw, baseStart, timestampState);
-    if (!timing) return;
-    if (pendingSettled?.text === text) {
-      const mediaTime = pendingSettled.audioMediaTime;
-      flushPendingSettled(timing);
-      lastSegmentMediaTime = Math.max(lastSegmentMediaTime, mediaTime);
-      return;
-    }
-    enqueueSegment(text, timing, latestAudioMediaTime);
-  };
-
-  const maybeSnapshotPartial = () => {
-    if (!latestPartial?.text || latestPartial.text === lastPartialSnapshotText) return;
-    if (latestAudioMediaTime - lastSegmentMediaTime < PARTIAL_FALLBACK_INTERVAL_SECONDS) return;
-    if (enqueueSegment(latestPartial.text, approximateLiveTiming(latestPartial.text, latestAudioMediaTime, baseStart), latestAudioMediaTime)) {
-      lastPartialSnapshotText = latestPartial.text;
+    for (const unit of units) {
+      const timing = mapScribeTiming({ start: unit.start, end: unit.end }, baseStart, timestampState);
+      if (timing) enqueueSegment(unit.text, timing);
     }
   };
 
@@ -322,15 +277,7 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
     if (!clean || signal.aborted || server.readyState !== WebSocket.OPEN) return;
     const current = estimatedControlTime(playbackControl);
     let start = Number(job.start), end = Number(job.end);
-    if (!playbackControl.warming) {
-      if (targetLanguage === "original" && end < current - 0.18) return;
-      if (targetLanguage !== "original" && end < current + 0.12) {
-        const words = clean.split(/\s+/u).filter(Boolean).length;
-        const hold = Math.min(4.2, Math.max(1.6, words * 0.28 + 0.9));
-        start = Math.max(0, current - 0.05);
-        end = current + hold;
-      }
-    }
+    if (!playbackControl.warming && end < current - 0.18) return;
     preparedCount += 1;
     send({ type: "caption_segment", id: job.id, text: clean, start: roundTime(start), end: roundTime(end), revision: Number(job.id) || 0 });
     maybeWarmupReady();
@@ -373,7 +320,6 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
     baseStart = finiteNumber(playback.currentTime, 0, 86400);
     if (baseStart === null) throw httpError("Subtitle start time is invalid", 400);
     latestAudioMediaTime = baseStart;
-    lastSegmentMediaTime = baseStart;
     const playbackRate = finiteNumber(playback.playbackRate, 0.25, 4) ?? 1;
     updatePlaybackControl(playbackControl, { currentTime: baseStart, playbackRate, playing: Boolean(playback.playing), warming: Boolean(playback.warming) });
 
@@ -420,17 +366,17 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
         return;
       }
       if (type === "partial_transcript") {
-        const text = liveSubtitleWindow(message?.text);
-        if (text) {
+        if (cleanSubtitleText(message?.text)) {
           sawSpeech = true;
           clearNoSpeechTimer();
-          latestPartial = { text, audioMediaTime: latestAudioMediaTime };
-          maybeSnapshotPartial();
         }
         return;
       }
       if (type === "final_transcript" || type === "committed_transcript") {
-        queueSettled(message?.text);
+        if (cleanSubtitleText(message?.text)) {
+          sawSpeech = true;
+          clearNoSpeechTimer();
+        }
         return;
       }
       if (type === "final_transcript_with_timestamps" || type === "committed_transcript_with_timestamps") {
@@ -476,15 +422,12 @@ async function runRealtimeSubtitleSession({ request, env, server, payload, playb
       onProgress: absoluteAudioTime => {
         latestAudioMediaTime = absoluteAudioTime;
         audioLeadSeconds = Math.max(0, absoluteAudioTime - estimatedControlTime(playbackControl));
-        maybeSnapshotPartial();
         maybeWarmupReady();
       },
     });
 
     await flushScribeTail(upstream, signal);
     await sleepWithSignal(EOF_FLUSH_GRACE_MS, signal);
-    flushPendingSettled(null);
-    if (latestPartial?.text) maybeSnapshotPartial();
     while ((activeTranslation || segmentQueue.length) && !signal.aborted) {
       pumpTranslationQueue();
       if (activeTranslation) await Promise.allSettled([activeTranslation]);
@@ -603,7 +546,7 @@ async function flushScribeTail(upstream, signal) {
   if (signal.aborted || upstream?.readyState !== WebSocket.OPEN) return;
   const silence = new Uint8Array(PCM_FRAME_BYTES), payload = bytesToBase64(silence);
   for (let i = 0; i < EOF_FLUSH_FRAMES && !signal.aborted && upstream.readyState === WebSocket.OPEN; i += 1) {
-    upstream.send(JSON.stringify({ message_type: "input_audio_chunk", audio_base_64: payload, sample_rate: PCM_SAMPLE_RATE }));
+    upstream.send(JSON.stringify({ message_type: "input_audio_chunk", audio_base_64: payload, sample_rate: PCM_SAMPLE_RATE, commit: i === EOF_FLUSH_FRAMES - 1 }));
   }
 }
 
@@ -671,23 +614,45 @@ function waitForControlChange(control, version, signal, timeoutMs = 0) {
   });
 }
 
-function approximateLiveTiming(text, audioMediaTime, baseStart) {
-  const endMedia = Number(audioMediaTime);
-  if (!Number.isFinite(endMedia)) return null;
-  const clean = cleanSubtitleText(text);
-  if (!clean) return null;
-  const words = clean.split(/\s+/u).filter(Boolean).length;
-  const chars = Array.from(clean).length;
-  const speechSpan = words > 1 ? words * 0.38 : chars * 0.1;
-  const span = Math.max(0.9, Math.min(3.6, speechSpan || 0.9));
-  const start = Math.max(Number(baseStart || 0), endMedia - span);
-  return { start: roundTime(start), end: roundTime(Math.max(start + 0.55, endMedia + 0.18)) };
-}
-
-function rawTimingFromScribeWords(message) {
-  const words = (Array.isArray(message?.words) ? message.words : []).filter(word => Number.isFinite(Number(word?.start)) && Number.isFinite(Number(word?.end)));
-  if (!words.length) return null;
-  return { start: Number(words[0].start), end: Number(words[words.length - 1].end) };
+function timedSubtitleUnits(message) {
+  const words = (Array.isArray(message?.words) ? message.words : []).filter(word =>
+    String(word?.type || "word") !== "spacing" &&
+    cleanSubtitleText(word?.text) &&
+    Number.isFinite(Number(word?.start)) &&
+    Number.isFinite(Number(word?.end))
+  );
+  if (!words.length) return [];
+  const units = [];
+  let current = [];
+  const emit = count => {
+    const selected = current.splice(0, count);
+    const text = cleanSubtitleText(selected.map(word => word.text).join(" "));
+    if (!text || !selected.length) return;
+    units.push({ text, start: Number(selected[0].start), end: Number(selected[selected.length - 1].end) });
+  };
+  for (const word of words) {
+    current.push(word);
+    const text = cleanSubtitleText(current.map(item => item.text).join(" "));
+    const token = cleanSubtitleText(word.text);
+    const strongBoundary = /[.!?…؟。！？]["'”’）)]*$/u.test(token);
+    const softBoundary = /[,;:،؛]["'”’）)]*$/u.test(token);
+    if (strongBoundary || (softBoundary && current.length >= 7)) {
+      emit(current.length);
+      continue;
+    }
+    if (current.length >= SUBTITLE_MAX_WORDS || Array.from(text).length >= SUBTITLE_MAX_CHARS) {
+      let boundary = -1;
+      for (let index = current.length - 2; index >= 3; index -= 1) {
+        if (/[.!?…؟。！？,;:،؛]["'”’）)]*$/u.test(cleanSubtitleText(current[index].text))) {
+          boundary = index + 1;
+          break;
+        }
+      }
+      emit(boundary > 0 ? boundary : current.length);
+    }
+  }
+  if (current.length) emit(current.length);
+  return units;
 }
 
 function mapScribeTiming(raw, baseStart, state) {
@@ -714,7 +679,7 @@ async function translateLiveSubtitle({ env, sourceText, targetLanguage, signal }
       signal: controller.signal,
       body: JSON.stringify({
         model: TRANSLATION_MODEL,
-        instructions: "Translate this live-video subtitle into " + languageName + ". Preserve meaning, names, numbers and tone. Keep it concise and natural for at most two subtitle lines. Return only the complete translation with no label, explanation, quotes or markdown.",
+        instructions: "Translate this complete, audio-aligned speech cue into " + languageName + ". Preserve its full meaning, names, numbers, tone and grammatical relationships. Keep the translation natural and readable in at most two subtitle lines. If two lines are needed, insert exactly one newline at a natural clause boundary; never split a phrase, name, number or grammatical unit. Return only the complete translation with no label, explanation, quotes or markdown.",
         input: sourceText,
         reasoning: { effort: "none" },
         text: { verbosity: "low" },
@@ -791,17 +756,30 @@ function safeContainerKey(value) { const raw = String(value || "anonymous").repl
 function finiteNumber(value, min, max) { const number = Number(value); return Number.isFinite(number) && number >= min && number <= max ? number : null; }
 function roundTime(value) { return Math.round(Number(value || 0) * 1000) / 1000; }
 function cleanSubtitleText(value) { return String(value || "").replace(/\s+([,.;:!?،؛؟])/g, "$1").replace(/\s+/g, " ").trim(); }
-function liveSubtitleWindow(value) {
-  const text = cleanSubtitleText(value);
-  if (!text) return "";
-  const words = text.split(/\s+/u);
-  const wordWindow = words.length > LIVE_SOURCE_MAX_WORDS ? words.slice(-LIVE_SOURCE_MAX_WORDS).join(" ") : text;
-  const chars = Array.from(wordWindow);
-  if (chars.length <= LIVE_SOURCE_MAX_CHARS) return wordWindow;
-  const tail = chars.slice(-LIVE_SOURCE_MAX_CHARS).join("");
-  return tail.replace(/^\S+\s+/u, "").trim() || tail.trim();
+function formatSubtitleLines(value) {
+  const rawLines = String(value || "").split(/\r?\n/u).map(cleanSubtitleText).filter(Boolean);
+  let text = rawLines.length > 1 ? rawLines[0] + "\n" + cleanSubtitleText(rawLines.slice(1).join(" ")) : (rawLines[0] || "");
+  if (!text || text.includes("\n") || Array.from(text).length <= 52) return text;
+  const words = text.split(/\s+/u).filter(Boolean);
+  if (words.length < 4) return text;
+  const total = Array.from(text).length;
+  let best = -1, bestScore = Infinity;
+  for (let index = 1; index < words.length; index += 1) {
+    const left = words.slice(0, index).join(" "), right = words.slice(index).join(" ");
+    const leftLength = Array.from(left).length, rightLength = Array.from(right).length;
+    if (leftLength < total * 0.24 || rightLength < total * 0.24) continue;
+    const boundary = words[index - 1];
+    const strong = /[.!?…؟。！？]["'”’）)]*$/u.test(boundary);
+    const soft = /[,;:،؛]["'”’）)]*$/u.test(boundary);
+    const score = Math.abs(leftLength - rightLength) - (strong ? 30 : soft ? 14 : 0);
+    if (score < bestScore) { best = index; bestScore = score; }
+  }
+  return best > 0 ? words.slice(0, best).join(" ") + "\n" + words.slice(best).join(" ") : text;
 }
-function cleanTranslatedText(value) { return cleanSubtitleText(value).replace(/^["“”'‘’]+/u, "").replace(/["“”'‘’]+$/u, "").trim(); }
+function cleanTranslatedText(value) {
+  const text = String(value || "").trim().replace(/^["“”'‘’]+/u, "").replace(/["“”'‘’]+$/u, "").trim();
+  return formatSubtitleLines(text);
+}
 function publicScribeError(type, message) {
   if (type === "quota_exceeded") return "Speech-to-text quota is unavailable";
   if (type === "rate_limited") return "Realtime transcription is rate limited";
