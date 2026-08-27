@@ -25,6 +25,7 @@ const STORY_FILE_PREFIX = "Vexa-Instagram-Story-";
 const HIGHLIGHT_FILE_PREFIX = "Vexa-Instagram-Highlight-";
 const LIVE_FILE_PREFIX = "Vexa-Instagram-Live-";
 const INSTAGRAM_WEB_APP_ID = "936619743392459";
+const INSTAGRAM_WEB_API_BASE = "https://www.instagram.com/api/v1";
 
 let tablesReady = null;
 let progressTableReady = null;
@@ -68,25 +69,35 @@ export class VexaInstagramStoryContainer extends VexaInstagramContainer {
     const target = instagramStoryTarget(url);
     if (!target) throw new Error("Enter a valid Instagram Story or Highlight link");
     const auth = instagramAuth(this.env);
+    const storyPage = await fetchInstagramStoryPage(url, auth);
+    const pageUser = instagramStoryPageUser(storyPage);
+    if (!pageUser) {
+      throw new Error("This Instagram Story, Highlight or Live requires a valid login");
+    }
+
+    const userId = String(pageUser?.pk || pageUser?.id || "").trim();
     let reelId;
     if (target.type === "highlight") {
       reelId = "highlight:" + target.id;
     } else {
-      const profile = await fetchInstagramJson(
-        "https://i.instagram.com/api/v1/users/web_profile_info/?username=" + encodeURIComponent(target.username),
-        auth,
-      );
-      const userId = String(profile?.data?.user?.id || "").trim();
-      if (!/^\d+$/u.test(userId)) throw new Error("This Instagram account is unavailable");
+      if (!/^\d+$/u.test(userId)) throw new Error("Instagram authenticated request temporarily failed");
       reelId = userId;
     }
+
     const data = await fetchInstagramJson(
-      "https://i.instagram.com/api/v1/feed/reels_media/?reel_ids=" + encodeURIComponent(reelId),
+      INSTAGRAM_WEB_API_BASE + "/feed/reels_media/?reel_ids=" + encodeURIComponent(reelId),
       auth,
     );
     const reels = data?.reels && typeof data.reels === "object" ? data.reels : {};
-    const reel = reels[reelId] || Object.values(reels)[0] || null;
-    let items = Array.isArray(reel?.items) ? reel.items : [];
+    if (!Object.keys(reels).length) {
+      throw new Error("This Instagram Story, Highlight or Live requires a valid login");
+    }
+    const reel = reels[reelId] || null;
+    if (!reel) {
+      throw new Error("This Instagram Story, Highlight or Live requires a valid login");
+    }
+
+    let items = Array.isArray(reel.items) ? reel.items : [];
     if (target.storyId) {
       items = items.filter((story) => instagramStoryItemMatches(story, target.storyId));
     }
@@ -944,6 +955,86 @@ function addInstagramCookie(cookies, rawName, rawValue, replace = true) {
   if (replace || !cookies.has(name)) cookies.set(name, value);
 }
 
+async function fetchInstagramStoryPage(url, auth) {
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: instagramStoryPageHeaders(auth),
+      redirect: "manual",
+      signal: AbortSignal.timeout(INSTAGRAM_API_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new Error("Instagram authenticated request temporarily failed");
+  }
+  const location = String(response.headers.get("Location") || "");
+  if (response.status === 401 || response.status === 403 || /\/accounts\/login/u.test(location)) {
+    throw new Error("Instagram login session expired. Refresh the Instagram cookies");
+  }
+  if (response.status === 429) throw new Error("Instagram temporarily rate-limited the server");
+  const html = await response.text().catch(() => "");
+  if (!response.ok || !html) throw new Error("Instagram authenticated request temporarily failed");
+  return html;
+}
+
+function instagramStoryPageUser(source) {
+  const html = String(source || "");
+  let offset = 0;
+  while (offset < html.length) {
+    const marker = html.indexOf('"user":', offset);
+    if (marker < 0) return null;
+    let start = marker + 7;
+    while (/\s/u.test(html[start] || "")) start += 1;
+    if (html[start] !== "{") {
+      offset = start + 1;
+      continue;
+    }
+    const parsed = parseInstagramJsonObject(html, start);
+    if (parsed?.value && typeof parsed.value === "object") {
+      const id = String(parsed.value.pk || parsed.value.id || "").trim();
+      if (/^\d+$/u.test(id)) return parsed.value;
+    }
+    offset = parsed?.end || (start + 1);
+  }
+  return null;
+}
+
+function parseInstagramJsonObject(source, start) {
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (quoted) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        quoted = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      quoted = true;
+      continue;
+    }
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        const end = index + 1;
+        try {
+          return { value: JSON.parse(source.slice(start, end)), end };
+        } catch (error) {
+          return { value: null, end };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 async function fetchInstagramJson(url, auth) {
   let response;
   try {
@@ -969,6 +1060,15 @@ async function fetchInstagramJson(url, auth) {
     throw new Error("Instagram authenticated request temporarily failed");
   }
   return data;
+}
+
+function instagramStoryPageHeaders(auth) {
+  return {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Cookie": auth.cookieHeader,
+    "Referer": "https://www.instagram.com/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+  };
 }
 
 function instagramRequestHeaders(auth) {
