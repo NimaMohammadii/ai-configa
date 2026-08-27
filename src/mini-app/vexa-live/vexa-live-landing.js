@@ -68,7 +68,7 @@ const SUBTITLE_PREFERENCE_SCRIPT = String.raw`(function(){
   const shell=document.getElementById('vexaDownloadSubtitle');
   const select=document.getElementById('vexaDownloadSubtitleLanguage');
   if(!root||!quality||!shell||!select)return;
-  function cookieValue(){const prefix=COOKIE+'=';for(const part of String(document.cookie||'').split(';')){const value=part.trim();if(!value.startsWith(prefix))continue;try{return decodeURIComponent(value.slice(prefix.length));}catch(error){return value.slice(prefix.length);}}return''';}
+  function cookieValue(){const prefix=COOKIE+'=';for(const part of String(document.cookie||'').split(';')){const value=part.trim();if(!value.startsWith(prefix))continue;try{return decodeURIComponent(value.slice(prefix.length));}catch(error){return value.slice(prefix.length);}}return'';}
   function savedValue(){const fromCookie=cookieValue();if(allowed.has(fromCookie))return fromCookie;try{const stored=String(localStorage.getItem(STORAGE)||'');if(allowed.has(stored))return stored;}catch(error){}return'off';}
   function saveValue(value){const next=allowed.has(value)?value:'off';try{localStorage.setItem(STORAGE,next);}catch(error){}const secure=location.protocol==='https:'?'; Secure':'';document.cookie=COOKIE+'='+encodeURIComponent(next)+'; Max-Age=31536000; Path=/; SameSite=Lax'+secure;}
   function sync(){const ready=quality.dataset.ready==='1'||root.dataset.localUpload==='1';const active=quality.querySelector('[data-quality-key][data-selected="1"]');const audio=String(active?.dataset?.qualityKey||'')==='a'&&root.dataset.localUpload!=='1';shell.dataset.ready=ready?'1':'0';shell.dataset.disabled=audio?'1':'0';select.disabled=audio;}
