@@ -2053,7 +2053,7 @@ export const IMAGE_EXPLORE_SIZE_OPTIONS = [
 
 
 export const IMAGE_EXPLORE_TAGS = [
-  "Trending", "Portrait", "Profile", "Cinematic", "Realistic", "Studio", "Fashion", "Luxury", "Lifestyle", "Street",
+  "Trending", "Portrait", "Profile", "Female", "Male", "Cinematic", "Realistic", "Studio", "Fashion", "Luxury", "Lifestyle", "Street",
   "Travel", "Nature", "Fantasy", "Business", "Couple", "Family", "Product", "Advertising", "E-commerce", "Food",
   "Beauty", "Technology", "Automotive", "Indoor", "Outdoor", "Night", "Minimal", "Colorful", "Instagram", "Story",
 ];
