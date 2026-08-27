@@ -69,6 +69,7 @@ export class VexaInstagramStoryContainer extends VexaInstagramContainer {
       "--dump-single-json",
       "--skip-download",
       "--no-warnings",
+      "--verbose",
       url,
     ]);
     const timer = setTimeout(() => {
@@ -79,7 +80,24 @@ export class VexaInstagramStoryContainer extends VexaInstagramContainer {
       const output = await process.output();
       const decoder = new TextDecoder();
       const detail = decoder.decode(output.stderr).trim();
-      if (output.exitCode !== 0) throw storyError(detail || "metadata failed");
+      if (output.exitCode !== 0) {
+        const diagnostic = detail.toLowerCase();
+        console.error("Instagram Story yt-dlp auth diagnostic", {
+          exitCode: output.exitCode,
+          sessionConfigured: true,
+          stderrBytes: output.stderr?.byteLength || 0,
+          foundAccountCookies: diagnostic.includes("found instagram account cookies"),
+          loginRequired: /login required|you need to log in|log in to access|sign in/u.test(diagnostic),
+          loginRedirect: /redirect[^\n]*login|login[^\n]*redirect/u.test(diagnostic),
+          challenge: /challenge|checkpoint/u.test(diagnostic),
+          http403: /http error 403|\b403\b|forbidden/u.test(diagnostic),
+          http404: /http error 404|\b404\b/u.test(diagnostic),
+          http429: /http error 429|\b429\b|rate.?limit|too many requests/u.test(diagnostic),
+          emptyResponse: /empty media response|empty response|no videos|no reels/u.test(diagnostic),
+          unreachable: /unreachable|not accessible/u.test(diagnostic),
+        });
+        throw storyError(detail || "metadata failed");
+      }
       const data = JSON.parse(decoder.decode(output.stdout));
       const catalog = buildStoryCatalog(data, url);
       if (!catalog.options.length) {
