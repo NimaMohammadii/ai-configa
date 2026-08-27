@@ -11,12 +11,15 @@ const INSTAGRAM_STORY_DOWNLOAD_PATH = "/mini-app/live/api/instagram-story/downlo
 const SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
 const SUBTITLE_COOKIE = "vexa_download_subtitle";
 const SOURCE_PREFIX = "vexa-subtitle-source/";
-const SOURCE_TTL_SECONDS = 30 * 60;
-const TRANSCRIBE_TIMEOUT_MS = 8 * 60 * 1000;
+const SOURCE_TTL_SECONDS = 2 * 60 * 60;
+const TRANSCRIBE_TIMEOUT_MS = 15 * 60 * 1000;
 const TRANSLATE_TIMEOUT_MS = 60 * 1000;
 const TRANSLATION_MODEL = "gpt-5.6-terra";
+const TRANSLATION_BATCH_SIZE = 20;
 const STREAM_PROGRESS_BYTES = 2 * 1024 * 1024;
 const STREAM_PROGRESS_MS = 750;
+const FONT_DIR = "/tmp/vexa-subtitle-fonts";
+const FONT_DOWNLOAD_LIMIT_BYTES = 40 * 1024 * 1024;
 
 const SUBTITLE_LANGUAGES = Object.freeze({
   original: "Original",
@@ -38,7 +41,7 @@ const SUBTITLE_LANGUAGES = Object.freeze({
 
 const LANGUAGE_ALIASES = Object.freeze({
   eng: "en", en: "en",
-  fas: "fa", per: "fa", fa: "fa",
+  fas: "fa", per: "fa", pes: "fa", fa: "fa",
   rus: "ru", ru: "ru",
   deu: "de", ger: "de", de: "de",
   tur: "tr", tr: "tr",
@@ -48,13 +51,83 @@ const LANGUAGE_ALIASES = Object.freeze({
   por: "pt", pt: "pt",
   ita: "it", it: "it",
   hin: "hi", hi: "hi",
-  zho: "zh", cmn: "zh", zh: "zh",
+  zho: "zh", cmn: "zh", yue: "zh", zh: "zh",
   jpn: "ja", ja: "ja",
   kor: "ko", ko: "ko",
 });
 
+const FONT_ASSETS = Object.freeze({
+  arabic: Object.freeze({
+    name: "Noto Sans Arabic",
+    file: "NotoSansArabic.ttf",
+    url: "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansarabic/NotoSansArabic%5Bwdth,wght%5D.ttf",
+  }),
+  devanagari: Object.freeze({
+    name: "Noto Sans Devanagari",
+    file: "NotoSansDevanagari.ttf",
+    url: "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth,wght%5D.ttf",
+  }),
+  zh: Object.freeze({
+    name: "Noto Sans CJK SC",
+    file: "NotoSansCJKsc-Regular.otf",
+    url: "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
+  }),
+  ja: Object.freeze({
+    name: "Noto Sans CJK JP",
+    file: "NotoSansCJKjp-Regular.otf",
+    url: "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf",
+  }),
+  ko: Object.freeze({
+    name: "Noto Sans CJK KR",
+    file: "NotoSansCJKkr-Regular.otf",
+    url: "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/Korean/NotoSansCJKkr-Regular.otf",
+  }),
+});
+
+const PY_FONT_DOWNLOAD = String.raw`
+import os, sys, urllib.request
+url, path, limit = sys.argv[1], sys.argv[2], int(sys.argv[3])
+os.makedirs(os.path.dirname(path), exist_ok=True)
+tmp = path + ".part"
+try:
+    req = urllib.request.Request(url, headers={"User-Agent": "Vexa/1.0"})
+    with urllib.request.urlopen(req, timeout=45) as response, open(tmp, "wb") as output:
+        total = 0
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > limit:
+                raise RuntimeError("font too large")
+            output.write(chunk)
+    if os.path.getsize(tmp) < 10000:
+        raise RuntimeError("font download was empty")
+    os.replace(tmp, path)
+finally:
+    try:
+        if os.path.exists(tmp): os.remove(tmp)
+    except Exception:
+        pass
+`;
+
 export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
-  subtitleFontGroups = new Set();
+  activeSubtitleProcesses = new Set();
+
+  async onActivityExpired() {
+    if (this.activeSubtitleProcesses.size) {
+      try { this.renewActivityTimeout(); } catch {}
+      return;
+    }
+    return super.onActivityExpired();
+  }
+
+  trackSubtitleProcess(process) {
+    if (!process) return process;
+    this.activeSubtitleProcesses.add(process);
+    process.exitCode.catch(() => -1).finally(() => this.activeSubtitleProcesses.delete(process));
+    return process;
+  }
 
   async renderSubtitledVideo(mediaUrl, assText, language) {
     await this.ensureAudioReady();
@@ -64,14 +137,14 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
     if (!subtitles || subtitles.length > 2_000_000) throw new Error("Subtitle track is invalid");
 
     const font = subtitleFont(language);
-    await this.ensureSubtitleFonts(font.group);
-
+    const fontsDir = await this.ensureSubtitleFont(font);
     const id = crypto.randomUUID();
     const assPath = "/tmp/vexa-download-subtitles-" + id + ".ass";
     const outputPath = "/tmp/vexa-download-subtitled-" + id + ".mp4";
     try {
       await this.writeUtf8File(assPath, subtitles);
-      const process = await this.ctx.container.exec([
+      const filter = "ass=" + assPath + (fontsDir ? ":fontsdir=" + fontsDir : "");
+      const process = this.trackSubtitleProcess(await this.ctx.container.exec([
         "ffmpeg",
         "-nostdin",
         "-hide_banner",
@@ -87,7 +160,7 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
         "-map",
         "0:a:0?",
         "-vf",
-        "ass=" + assPath,
+        filter,
         "-c:v",
         "libx264",
         "-preset",
@@ -103,28 +176,90 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
         "-movflags",
         "+faststart",
         outputPath,
-      ]);
+      ]));
       const output = await process.output();
       const detail = new TextDecoder().decode(output.stderr).trim();
       if (output.exitCode !== 0) {
         if (detail) console.error("Vexa subtitle burn-in failed", detail.slice(-5000));
         throw new Error("Could not render subtitles into this video");
       }
+
       const sizeBytes = await this.readRenderedSize(outputPath);
-      const streamProcess = await this.ctx.container.exec([
+      const streamProcess = this.trackSubtitleProcess(await this.ctx.container.exec([
         "sh",
         "-c",
         'exec 3<"$1" || exit 1; rm -f "$1" "$2"; cat <&3',
         "vexa-subtitle-stream",
         outputPath,
         assPath,
-      ]);
+      ]));
       if (!streamProcess.stdout) throw new Error("Could not open subtitled video");
-      return { stream: streamProcess.stdout, sizeBytes };
+      return { stream: this.streamTrackedProcess(streamProcess), sizeBytes };
     } catch (error) {
       await this.removeSubtitleFiles(assPath, outputPath);
       throw error;
     }
+  }
+
+  streamTrackedProcess(process) {
+    const source = process?.stdout;
+    if (!source) throw new Error("Could not open subtitled video");
+    const reader = source.getReader();
+    let closed = false;
+    const stop = async reason => {
+      if (closed) return;
+      closed = true;
+      try { await reader.cancel(reason); } catch {}
+      try { process.kill(); } catch {}
+      this.activeSubtitleProcesses.delete(process);
+    };
+    return new ReadableStream({
+      async pull(controller) {
+        try {
+          const next = await reader.read();
+          if (next.done) {
+            closed = true;
+            controller.close();
+            return;
+          }
+          if (next.value?.byteLength) controller.enqueue(next.value);
+        } catch (error) {
+          await stop(error);
+          controller.error(error);
+        }
+      },
+      cancel: stop,
+    });
+  }
+
+  async ensureSubtitleFont(font) {
+    if (!font?.asset) return "";
+    const asset = font.asset;
+    const path = FONT_DIR + "/" + asset.file;
+    const currentSize = await this.readOptionalFileSize(path);
+    if (currentSize >= 10_000) return FONT_DIR;
+
+    const mkdir = await this.ctx.container.exec(["mkdir", "-p", FONT_DIR]);
+    const mkdirOutput = await mkdir.output();
+    if (mkdirOutput.exitCode !== 0) throw new Error("Could not prepare subtitle fonts");
+
+    const process = this.trackSubtitleProcess(await this.ctx.container.exec([
+      "python",
+      "-c",
+      PY_FONT_DOWNLOAD,
+      asset.url,
+      path,
+      String(FONT_DOWNLOAD_LIMIT_BYTES),
+    ]));
+    const output = await process.output();
+    if (output.exitCode !== 0) {
+      const detail = new TextDecoder().decode(output.stderr).trim();
+      if (detail) console.error("Vexa subtitle font download failed", detail.slice(-2000));
+      throw new Error("Subtitle font support is temporarily unavailable");
+    }
+    const size = await this.readOptionalFileSize(path);
+    if (size < 10_000) throw new Error("Subtitle font support is temporarily unavailable");
+    return FONT_DIR;
   }
 
   async writeUtf8File(path, text) {
@@ -144,47 +279,30 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
     }
   }
 
-  async readRenderedSize(path) {
-    const process = await this.ctx.container.exec([
-      "sh",
-      "-c",
-      'wc -c < "$1"',
-      "vexa-subtitle-size",
-      path,
-    ]);
-    const output = await process.output();
-    const size = Number.parseInt(new TextDecoder().decode(output.stdout).trim(), 10);
-    if (output.exitCode !== 0 || !Number.isSafeInteger(size) || size <= 0) {
-      throw new Error("Subtitled video is empty");
+  async readOptionalFileSize(path) {
+    try {
+      const process = await this.ctx.container.exec(["sh", "-c", 'test -f "$1" && wc -c < "$1" || echo 0', "vexa-file-size", path]);
+      const output = await process.output();
+      const size = Number.parseInt(new TextDecoder().decode(output.stdout).trim(), 10);
+      return Number.isFinite(size) && size > 0 ? size : 0;
+    } catch {
+      return 0;
     }
-    return size;
   }
 
-  async ensureSubtitleFonts(group) {
-    const key = String(group || "latin");
-    if (this.subtitleFontGroups.has(key)) return;
-    const packages = key === "arabic"
-      ? ["font-noto-arabic"]
-      : key === "devanagari"
-        ? ["font-noto-devanagari"]
-        : key === "cjk"
-          ? ["font-noto-cjk"]
-          : ["font-noto"];
-    const process = await this.ctx.container.exec(["apk", "add", "--no-cache", ...packages]);
+  async readRenderedSize(path) {
+    const process = await this.ctx.container.exec(["sh", "-c", 'wc -c < "$1"', "vexa-subtitle-size", path]);
     const output = await process.output();
-    if (output.exitCode !== 0) {
-      const detail = new TextDecoder().decode(output.stderr).trim();
-      if (detail) console.error("Vexa subtitle font install failed", detail.slice(-2000));
-      throw new Error("Subtitle font support is temporarily unavailable");
-    }
-    this.subtitleFontGroups.add(key);
+    const size = Number.parseInt(new TextDecoder().decode(output.stdout).trim(), 10);
+    if (output.exitCode !== 0 || !Number.isSafeInteger(size) || size <= 0) throw new Error("Subtitled video is empty");
+    return size;
   }
 
   async removeSubtitleFiles(...paths) {
     try {
       const process = await this.ctx.container.exec(["rm", "-f", ...paths.filter(Boolean)]);
       await process.output().catch(() => null);
-    } catch (error) {}
+    } catch {}
   }
 }
 
@@ -246,11 +364,7 @@ async function renderDownloadWithSubtitles(request, env, ctx, provider, language
 
   const validationUrl = new URL(request.url);
   validationUrl.searchParams.delete("subtitle");
-  const validation = await delegate(
-    new Request(validationUrl.href, { method: "HEAD", headers: request.headers }),
-    env,
-    ctx,
-  );
+  const validation = await delegate(new Request(validationUrl.href, { method: "HEAD", headers: request.headers }), env, ctx);
   if (!validation?.ok) return validation;
 
   await setSubtitleProgress(env, provider, session, 0, 0, "preparing", "").catch(() => null);
@@ -264,11 +378,7 @@ async function renderDownloadWithSubtitles(request, env, ctx, provider, language
 
     const rawUrl = new URL(validationUrl.href);
     rawUrl.searchParams.set("session", tempSession);
-    const rawResponse = await delegate(
-      new Request(rawUrl.href, { method: "GET", headers: request.headers }),
-      env,
-      ctx,
-    );
+    const rawResponse = await delegate(new Request(rawUrl.href, { method: "GET", headers: request.headers }), env, ctx);
     if (!rawResponse?.ok || !rawResponse.body) {
       const detail = await rawResponse?.text?.().catch(() => "");
       throw new Error(detail || "Could not read subtitle source video");
@@ -401,8 +511,8 @@ async function translateSubtitleCues(env, cues, targetLanguage) {
   const languageName = SUBTITLE_LANGUAGES[targetLanguage];
   if (!languageName) throw new Error("Subtitle language is invalid");
   const translated = [];
-  for (let offset = 0; offset < cues.length; offset += 24) {
-    const chunk = cues.slice(offset, offset + 24);
+  for (let offset = 0; offset < cues.length; offset += TRANSLATION_BATCH_SIZE) {
+    const chunk = cues.slice(offset, offset + TRANSLATION_BATCH_SIZE);
     const texts = await translateTextChunk(env, chunk.map((cue) => cue.text), languageName);
     for (let index = 0; index < chunk.length; index += 1) {
       translated.push({ ...chunk[index], text: cleanSubtitleText(texts[index]) });
@@ -435,11 +545,25 @@ async function requestTranslationChunk(env, texts, languageName) {
         model: TRANSLATION_MODEL,
         instructions:
           "Translate each video subtitle into " + languageName + ". Preserve meaning, names, numbers and tone. " +
-          "Keep each item concise and natural for at most two subtitle lines. Return ONLY a valid JSON array of exactly " +
-          texts.length + " strings in the same order. Do not merge, split, number or explain items.",
-        input: JSON.stringify(texts),
+          "Keep every item concise and natural for at most two subtitle lines. Preserve the exact number and order of items.",
+        input: JSON.stringify({ subtitles: texts }),
         reasoning: { effort: "none" },
-        text: { verbosity: "low" },
+        text: {
+          verbosity: "low",
+          format: {
+            type: "json_schema",
+            name: "subtitle_translations",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                translations: { type: "array", items: { type: "string" } },
+              },
+              required: ["translations"],
+              additionalProperties: false,
+            },
+          },
+        },
         max_output_tokens: Math.max(500, Math.min(7000, texts.join(" ").length * 2)),
         store: false,
       }),
@@ -449,12 +573,12 @@ async function requestTranslationChunk(env, texts, languageName) {
       console.error("Vexa subtitle batch translation failed", response.status, JSON.stringify(data).slice(0, 1200));
       throw new Error("AI subtitle translation failed");
     }
-    const output = responseOutputText(data);
-    const parsed = parseJsonArray(output);
-    if (!Array.isArray(parsed) || parsed.length !== texts.length || parsed.some((item) => typeof item !== "string" || !item.trim())) {
+    const parsed = parseJsonObject(responseOutputText(data));
+    const translations = Array.isArray(parsed?.translations) ? parsed.translations : [];
+    if (translations.length !== texts.length || translations.some((item) => typeof item !== "string" || !item.trim())) {
       throw new Error("AI subtitle translation returned invalid output");
     }
-    return parsed.map(cleanSubtitleText);
+    return translations.map(cleanSubtitleText);
   } catch (error) {
     if (controller.signal.aborted) throw new Error("Subtitle translation timed out");
     throw error;
@@ -474,9 +598,9 @@ function responseOutputText(data) {
   return parts.join("").trim();
 }
 
-function parseJsonArray(value) {
-  const text = String(value || "").trim().replace(/^```(?:json)?\s*/iu, "").replace(/\s*```$/u, "");
-  try { return JSON.parse(text); } catch (error) { return null; }
+function parseJsonObject(value) {
+  const text = String(value || "").trim();
+  try { return JSON.parse(text); } catch { return null; }
 }
 
 function buildAss(cues, language) {
@@ -504,13 +628,13 @@ function buildAss(cues, language) {
 }
 
 function subtitleFont(language) {
-  const key = normalizeDetectedLanguage(language) || String(language || "en");
-  if (key === "fa" || key === "ar") return { group: "arabic", name: "Noto Sans Arabic" };
-  if (key === "hi") return { group: "devanagari", name: "Noto Sans Devanagari" };
-  if (key === "zh") return { group: "cjk", name: "Noto Sans CJK SC" };
-  if (key === "ja") return { group: "cjk", name: "Noto Sans CJK JP" };
-  if (key === "ko") return { group: "cjk", name: "Noto Sans CJK KR" };
-  return { group: "latin", name: "Noto Sans" };
+  const key = normalizeDetectedLanguage(language) || String(language || "en").toLowerCase();
+  if (key === "fa" || key === "ar") return { name: FONT_ASSETS.arabic.name, asset: FONT_ASSETS.arabic };
+  if (key === "hi") return { name: FONT_ASSETS.devanagari.name, asset: FONT_ASSETS.devanagari };
+  if (key === "zh") return { name: FONT_ASSETS.zh.name, asset: FONT_ASSETS.zh };
+  if (key === "ja") return { name: FONT_ASSETS.ja.name, asset: FONT_ASSETS.ja };
+  if (key === "ko") return { name: FONT_ASSETS.ko.name, asset: FONT_ASSETS.ko };
+  return { name: "DejaVu Sans", asset: null };
 }
 
 function wrapSubtitleText(value) {
@@ -527,7 +651,8 @@ function wrapSubtitleText(value) {
   for (let index = 1; index < words.length; index += 1) {
     const left = words.slice(0, index).join(" ");
     const right = words.slice(index).join(" ");
-    const score = Math.abs(Array.from(left).length - Array.from(right).length) + Math.max(0, Array.from(left).length - 54) * 4 + Math.max(0, Array.from(right).length - 54) * 4;
+    const score = Math.abs(Array.from(left).length - Array.from(right).length) +
+      Math.max(0, Array.from(left).length - 54) * 4 + Math.max(0, Array.from(right).length - 54) * 4;
     if (score < bestScore) { bestScore = score; bestIndex = index; }
   }
   return words.slice(0, bestIndex).join(" ") + "\n" + words.slice(bestIndex).join(" ");
@@ -617,6 +742,12 @@ function trackedSubtitleResponse(sourceStream, sizeBytes, headers, env, ctx, pro
           if (finished) return;
           finished = true;
           await progressChain.catch(() => null);
+          if (downloaded !== sizeBytes) {
+            const message = "Subtitled video ended before the expected file size";
+            await setSubtitleProgress(env, provider, session, sizeBytes, downloaded, "failed", message).catch(() => null);
+            controller.error(new Error(message));
+            return;
+          }
           await setSubtitleProgress(env, provider, session, sizeBytes, sizeBytes, "completed", "").catch(() => null);
           controller.close();
           return;
@@ -640,7 +771,7 @@ function trackedSubtitleResponse(sourceStream, sizeBytes, headers, env, ctx, pro
       }
     },
     async cancel(reason) {
-      try { await reader.cancel(reason); } catch (error) {}
+      try { await reader.cancel(reason); } catch {}
       if (!finished) {
         finished = true;
         await progressChain.catch(() => null);
@@ -676,12 +807,14 @@ async function setSubtitleProgress(env, provider, session, totalBytes, downloade
       ? env.VEXA_INSTAGRAM_PROGRESS
       : env.VEXA_DOWNLOAD_PROGRESS;
   if (!binding) return;
+
   let publishTotal = total;
   if (!publishTotal) {
     const row = await env.DB.prepare("SELECT total_bytes FROM " + table + " WHERE session = ?").bind(session).first();
     publishTotal = positiveInteger(row?.total_bytes);
   }
   if (!publishTotal) return;
+
   const id = binding.idFromName(session);
   const stub = binding.get(id);
   const target = provider === "story"
@@ -723,7 +856,13 @@ async function serveSubtitleSource(request, env) {
     "X-Content-Type-Options": "nosniff",
   });
   const size = positiveInteger(head.size);
-  const range = parseRange(request.headers.get("Range"), size);
+  const rangeHeader = request.headers.get("Range");
+  const range = parseRange(rangeHeader, size);
+  if (rangeHeader && !range) {
+    if (size) headers.set("Content-Range", "bytes */" + size);
+    return new Response(null, { status: 416, headers });
+  }
+
   if (request.method === "HEAD") {
     if (size) headers.set("Content-Length", String(size));
     return new Response(null, { status: 200, headers });
@@ -747,8 +886,7 @@ function parseRange(value, size) {
   const text = String(value || "").trim();
   if (!text || !size) return null;
   const match = text.match(/^bytes=(\d*)-(\d*)$/u);
-  if (!match) return null;
-  if (!match[1] && !match[2]) return null;
+  if (!match || (!match[1] && !match[2])) return null;
   let start;
   let end;
   if (!match[1]) {
@@ -769,7 +907,7 @@ async function cleanupExpiredSubtitleSources(env) {
   if (!env.EXPLORE_MEDIA) return;
   const now = Math.floor(Date.now() / 1000);
   let cursor;
-  for (let page = 0; page < 3; page += 1) {
+  for (let page = 0; page < 5; page += 1) {
     const listed = await env.EXPLORE_MEDIA.list({ prefix: SOURCE_PREFIX, cursor, limit: 100 }).catch(() => null);
     if (!listed) return;
     const expired = listed.objects.filter((object) => sourceKeyExpiry(object.key) <= now).map((object) => object.key);
@@ -787,7 +925,7 @@ function subtitleLanguageFromCookie(value) {
     const name = pair.slice(0, index).trim();
     if (name !== SUBTITLE_COOKIE) continue;
     let raw = pair.slice(index + 1).trim();
-    try { raw = decodeURIComponent(raw); } catch (error) {}
+    try { raw = decodeURIComponent(raw); } catch {}
     return normalizeSubtitleLanguage(raw);
   }
   return "";
@@ -864,7 +1002,7 @@ function positiveInteger(value) {
 function publicSubtitleError(error) {
   const message = String(error?.message || "");
   if (/cancel|abort/i.test(message)) return "Download was cancelled";
-  if (/speech|transcrib|subtitle|translation|render/i.test(message)) return message || "Could not create subtitles";
+  if (/speech|transcrib|subtitle|translation|render|font/i.test(message)) return message || "Could not create subtitles";
   return "Could not create the subtitled video";
 }
 
