@@ -726,8 +726,8 @@ function wrapSubtitleText(value) {
   const words = text.split(/\s+/u).filter(Boolean);
   if (words.length < 2) {
     const chars = Array.from(text);
-    const middle = Math.min(target, Math.ceil(chars.length / 2));
-    return chars.slice(0, middle).join("") + "\n" + chars.slice(middle, Math.min(chars.length, middle + target)).join("");
+    const middle = Math.ceil(chars.length / 2);
+    return chars.slice(0, middle).join("") + "\n" + chars.slice(middle).join("");
   }
   let bestIndex = 1;
   let bestScore = Number.POSITIVE_INFINITY;
@@ -882,7 +882,7 @@ async function setSubtitleProgress(env, provider, session, totalBytes, downloade
   const table = provider === "story"
     ? "vexa_instagram_story_progress"
     : provider === "instagram"
-      ? "vexa_instagram_download_progress"
+      ? "vexa_instagram_progress"
       : "vexa_youtube_download_progress";
 
   let publishTotal = requestedTotal;
