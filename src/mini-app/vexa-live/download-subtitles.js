@@ -683,14 +683,26 @@ function buildAss(cues, language, width, height) {
     "",
     "[V4+ Styles]",
     "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-    "Style: Default," + style.fontName + "," + style.fontSize + ",&H00FFFFFF,&H00FFFFFF,&H57000000,&H57000000,0,0,0,0,100,100,0,0,3," + style.padding + ",0,2," + style.marginX + "," + style.marginX + "," + style.marginV + ",1",
+    "Style: Default," + style.fontName + "," + style.fontSize + ",&H00FFFFFF,&H00FFFFFF,&H62000000,&H00000000,-1,0,0,0,100,100,0,0,1,0.8,0,5,0,0,0,1",
+    "Style: Background,DejaVu Sans,10,&H50000000,&H50000000,&H50000000,&H50000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1",
     "",
     "[Events]",
     "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
   ];
-  const events = cues.map((cue) =>
-    "Dialogue: 0," + assTime(cue.start) + "," + assTime(cue.end) + ",Default,,0,0,0,," + assEscape(wrapSubtitleText(cue.text))
-  );
+  const events = [];
+  for (const cue of cues) {
+    const start = assTime(cue.start);
+    const end = assTime(cue.end);
+    const wrapped = wrapSubtitleText(cue.text);
+    const box = subtitleBoxMetrics(wrapped, style);
+    const shape = roundedAssRectangle(box.width, box.height, style.radius);
+    events.push(
+      "Dialogue: 0," + start + "," + end + ",Background,,0,0,0,,{\\an7\\pos(" + box.x + "," + box.y + ")\\p1\\bord0\\shad0\\1c&H000000&\\1a&H50&}" + shape
+    );
+    events.push(
+      "Dialogue: 1," + start + "," + end + ",Default,,0,0,0,,{\\an5\\pos(" + box.centerX + "," + box.centerY + ")}" + assEscape(wrapped)
+    );
+  }
   return header.concat(events).join("\n") + "\n";
 }
 
@@ -701,11 +713,65 @@ function downloadSubtitleStyle(width, height, language) {
     width: videoWidth,
     height: videoHeight,
     fontName: subtitleFont(language).name,
-    fontSize: clampInteger(Math.round(videoHeight * 0.06), 18, 58),
-    padding: clampNumber(videoHeight * 0.016, 4, 10, 1),
+    fontSize: clampInteger(Math.round(videoHeight * 0.055), 18, 54),
+    paddingX: clampInteger(Math.round(videoHeight * 0.017), 7, 16),
+    paddingY: clampInteger(Math.round(videoHeight * 0.011), 5, 11),
+    radius: clampInteger(Math.round(videoHeight * 0.015), 7, 16),
     marginX: clampInteger(Math.round(videoWidth * 0.07), 18, Math.max(18, Math.round(videoWidth * 0.12))),
     marginV: clampInteger(Math.round(videoHeight * 0.055), 12, 60),
   };
+}
+
+function subtitleBoxMetrics(value, style) {
+  const lines = String(value || "").split(/\r?\n/u).filter(Boolean).slice(0, 2);
+  const textWidth = Math.max(...lines.map(line => estimateSubtitleLineWidth(line, style.fontSize)), style.fontSize * 2);
+  const maxWidth = Math.max(style.fontSize * 2, style.width - style.marginX * 2);
+  const width = clampInteger(Math.ceil(textWidth + style.paddingX * 2), Math.ceil(style.fontSize * 2.4), maxWidth);
+  const lineHeight = style.fontSize * 1.22;
+  const height = Math.ceil(Math.max(1, lines.length) * lineHeight + style.paddingY * 2);
+  const x = Math.round((style.width - width) / 2);
+  const y = Math.round(style.height - style.marginV - height);
+  return {
+    x,
+    y,
+    width,
+    height,
+    centerX: Math.round(x + width / 2),
+    centerY: Math.round(y + height / 2),
+  };
+}
+
+function estimateSubtitleLineWidth(value, fontSize) {
+  let units = 0;
+  for (const char of Array.from(String(value || ""))) {
+    if (/\s/u.test(char)) units += 0.3;
+    else if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(char)) units += 1;
+    else if (/[\p{Script=Arabic}]/u.test(char)) units += 0.61;
+    else if (/[A-Z]/u.test(char)) units += 0.66;
+    else if (/[a-z0-9]/u.test(char)) units += 0.55;
+    else if (/[,.;:!?،؛؟'"]/u.test(char)) units += 0.3;
+    else units += 0.6;
+  }
+  return Math.ceil(units * fontSize);
+}
+
+function roundedAssRectangle(width, height, radius) {
+  const w = Math.max(1, Math.round(width));
+  const h = Math.max(1, Math.round(height));
+  const r = Math.max(1, Math.min(Math.round(radius), Math.floor(w / 2), Math.floor(h / 2)));
+  const k = 0.55228475;
+  const a = Math.round(r * k);
+  return [
+    "m", r, 0,
+    "l", w - r, 0,
+    "b", w - r + a, 0, w, r - a, w, r,
+    "l", w, h - r,
+    "b", w, h - r + a, w - r + a, h, w - r, h,
+    "l", r, h,
+    "b", r - a, h, 0, h - r + a, 0, h - r,
+    "l", 0, r,
+    "b", 0, r - a, r - a, 0, r, 0,
+  ].join(" ");
 }
 
 function subtitleFont(language) {
