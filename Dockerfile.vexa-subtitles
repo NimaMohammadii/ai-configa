@@ -2,15 +2,25 @@ FROM docker.io/friedrichrehren/yt-dlp:2026.08.19
 
 USER root
 
-# Download subtitles are burned into video with libass. Keep the fonts in the
-# image so requests never need package-manager/network access at render time.
+# Burned-in subtitles must not depend on package installation or font downloads
+# while a user request is running. Install the complete script coverage once at
+# image-build time and seed the exact paths used by the subtitle renderer.
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends fontconfig fonts-noto-core fonts-noto-cjk; \
+    apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core fonts-noto-core fonts-noto-cjk; \
     fc-cache -f; \
-    rm -rf /var/lib/apt/lists/*; \
-    printf '%s\n' '#!/bin/sh' 'case "$1" in add) exit 0 ;; *) exit 127 ;; esac' > /usr/local/bin/apk; \
-    chmod 0755 /usr/local/bin/apk
+    mkdir -p /tmp/vexa-subtitle-fonts; \
+    cp "$(fc-match -f '%{file}' 'Noto Sans Arabic')" /tmp/vexa-subtitle-fonts/NotoSansArabic.ttf; \
+    cp "$(fc-match -f '%{file}' 'Noto Sans Devanagari')" /tmp/vexa-subtitle-fonts/NotoSansDevanagari.ttf; \
+    cp "$(fc-match -f '%{file}' 'Noto Sans CJK SC')" /tmp/vexa-subtitle-fonts/NotoSansCJK-Regular.ttc; \
+    ln -s NotoSansCJK-Regular.ttc /tmp/vexa-subtitle-fonts/NotoSansCJKsc-Regular.otf; \
+    ln -s NotoSansCJK-Regular.ttc /tmp/vexa-subtitle-fonts/NotoSansCJKjp-Regular.otf; \
+    ln -s NotoSansCJK-Regular.ttc /tmp/vexa-subtitle-fonts/NotoSansCJKkr-Regular.otf; \
+    test "$(wc -c < /tmp/vexa-subtitle-fonts/NotoSansArabic.ttf)" -gt 10000; \
+    test "$(wc -c < /tmp/vexa-subtitle-fonts/NotoSansDevanagari.ttf)" -gt 10000; \
+    test "$(wc -c < /tmp/vexa-subtitle-fonts/NotoSansCJK-Regular.ttc)" -gt 10000; \
+    chown -R 65532:65532 /tmp/vexa-subtitle-fonts; \
+    rm -rf /var/lib/apt/lists/*
 
 USER 65532
 WORKDIR /downloads
