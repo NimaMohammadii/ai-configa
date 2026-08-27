@@ -113,7 +113,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260827-real-subtitle-progress-1"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260827-progress-stall-fix-1"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -708,6 +708,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   function initData(){return String(telegram()?.initData||'');}
   function haptic(style){try{telegram()?.HapticFeedback?.impactOccurred?.(style||'light');}catch(error){}}
   function mb(bytes){return(Math.max(0,Number(bytes||0))/1048576).toFixed(1);}
+  function formatPercent(value){const number=Math.max(0,Math.min(100,Number(value||0)));if(number>=100)return'100%';const rounded=Math.round(number*10)/10;return(String(rounded).includes('.')?rounded.toFixed(1):String(rounded))+"%";}
   function launchContext(){
     const host=hostWindow();
     try{
@@ -731,9 +732,9 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   function setProgress(value,animate){
     const target=Math.max(0,Math.min(100,Number(value||0)));
     if(root)root.style.setProperty('--vexa-progress',String(target/100));
-    if(track){track.setAttribute('aria-valuenow',String(Math.round(target)));}
+    if(track){track.setAttribute('aria-valuenow',String(Math.round(target*10)/10));}
     cancelAnimationFrame(percentAnimation);
-    if(!animate){displayedPercent=target;if(percentNode)percentNode.textContent=Math.round(target)+'%';return;}
+    if(!animate){displayedPercent=target;if(percentNode)percentNode.textContent=formatPercent(target);return;}
     const from=displayedPercent;
     const started=performance.now();
     const duration=Math.min(650,220+Math.abs(target-from)*12);
@@ -741,7 +742,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
       const t=Math.min(1,(now-started)/Math.max(1,duration));
       const eased=1-Math.pow(1-t,3);
       displayedPercent=from+(target-from)*eased;
-      if(percentNode)percentNode.textContent=Math.round(displayedPercent)+'%';
+      if(percentNode)percentNode.textContent=formatPercent(displayedPercent);
       if(t<1)percentAnimation=requestAnimationFrame(tick);
     };
     percentAnimation=requestAnimationFrame(tick);
@@ -783,8 +784,8 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     return selectQuality(preferred||(lowestVideo?.key||qualityOptions[0].key),false);
   }
   function clearQualities(){qualityOptions=[];selectedOptionKey='';if(qualityNode){qualityNode.replaceChildren();qualityNode.dataset.ready='0';}}
-  function closeProgressSocket(){
-    clearTimeout(reconnectTimer);reconnectTimer=0;reconnectAttempt=0;
+  function closeProgressSocket(resetAttempt){
+    clearTimeout(reconnectTimer);reconnectTimer=0;if(resetAttempt!==false)reconnectAttempt=0;
     const socket=progressSocket;progressSocket=null;
     if(socket)try{socket.close(1000,'done');}catch(error){}
   }
@@ -803,7 +804,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     if(state==='staging'||state==='transcribing'||state==='translating'||state==='rendering'||state==='finalizing'){
       const label=state==='staging'?'Getting video':state==='transcribing'?'Creating subtitles':state==='translating'?'Translating subtitles':state==='rendering'?'Rendering subtitles':'Finishing video';
       setProgress(Math.max(displayedPercent,pct),true);
-      setState('downloading',label,Math.round(pct)+'% · Keep the app open');
+      setState('downloading',label,formatPercent(pct)+' · Keep the app open');
       return;
     }
     if(state==='preparing'){
@@ -813,8 +814,10 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
       setProgress(Math.max(displayedPercent,pct),true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB · Keep the app open');
     }
   }
-  function connectProgress(progressUrl){
-    closeProgressSocket();
+  function connectProgress(progressUrl,reconnecting){
+    clearTimeout(reconnectTimer);reconnectTimer=0;
+    const previous=progressSocket;progressSocket=null;if(previous)try{previous.close(1000,'reconnect');}catch(error){}
+    if(!reconnecting)reconnectAttempt=0;
     const target=String(progressUrl||'');
     if(!target)return;
     const socket=new WebSocket(wsUrl(target));progressSocket=socket;
@@ -823,9 +826,8 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     socket.addEventListener('close',function(){
       if(progressSocket===socket)progressSocket=null;
       if(!busy||!prepared?.progressUrl)return;
-      if(reconnectAttempt>=6){setState('preparing','Preparing download','Progress connection interrupted');return;}
-      const delay=Math.min(5000,450*Math.pow(2,reconnectAttempt++));
-      reconnectTimer=setTimeout(function(){if(busy&&prepared?.progressUrl)connectProgress(prepared.progressUrl);},delay);
+      const delay=Math.min(10000,500*Math.pow(2,Math.min(reconnectAttempt,5)));reconnectAttempt=Math.min(reconnectAttempt+1,6);
+      reconnectTimer=setTimeout(function(){if(busy&&prepared?.progressUrl)connectProgress(prepared.progressUrl,true);},delay);
     });
     socket.addEventListener('error',function(){try{socket.close();}catch(error){}});
   }
@@ -885,7 +887,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   }
   function requestDownload(){
     if(!prepared||busy)return;
-    busy=true;setProgress(0,false);setState('preparing','Waiting for Telegram','This may take a few minutes. Keep the app open.');setButton('Downloading…',true);connectProgress(prepared.progressUrl);bindTelegramDownloadEvent();haptic('light');
+    busy=true;setProgress(0,false);setState('preparing','Waiting for Telegram','This may take a few minutes. Keep the app open.');setButton('Downloading…',true);connectProgress(prepared.progressUrl,false);bindTelegramDownloadEvent();haptic('light');
     const tg=telegram();
     if(tg?.downloadFile){
       try{
