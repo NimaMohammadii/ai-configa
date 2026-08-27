@@ -17,6 +17,7 @@ export const INSTAGRAM_STORY_RUNTIME_PATH = "/mini-app/vexa-live/instagram-story
 const TOKEN_TTL_SECONDS = 10 * 60;
 const SESSION_TTL_SECONDS = 60 * 60;
 const LIVE_SESSION_TTL_SECONDS = 6 * 60 * 60;
+const METADATA_TIMEOUT_MS = 90_000;
 const INSTAGRAM_API_TIMEOUT_MS = 20_000;
 const PROGRESS_REPORT_BYTES = 2 * 1024 * 1024;
 const PROGRESS_REPORT_MS = 750;
@@ -25,18 +26,94 @@ const STORY_FILE_PREFIX = "Vexa-Instagram-Story-";
 const HIGHLIGHT_FILE_PREFIX = "Vexa-Instagram-Highlight-";
 const LIVE_FILE_PREFIX = "Vexa-Instagram-Live-";
 const INSTAGRAM_WEB_APP_ID = "936619743392459";
-const INSTAGRAM_WEB_API_BASE = "https://www.instagram.com/api/v1";
+const STORY_YTDLP_ARGS = Object.freeze([
+  "--ignore-config",
+  "--force-ipv4",
+  "--js-runtimes",
+  "deno",
+  "--socket-timeout",
+  "15",
+  "--retries",
+  "2",
+  "--fragment-retries",
+  "2",
+]);
+const STORY_YTDLP_WITH_SESSION_SCRIPT = [
+  "set -eu",
+  "umask 077",
+  'cookie_file="/tmp/vexa-instagram-story-cookies.txt"',
+  'printf \'%s\\n\' "$INSTAGRAM_COOKIES" > "$cookie_file"',
+  "unset INSTAGRAM_COOKIES",
+  'exec yt-dlp --cookies "$cookie_file" "$@"',
+].join("\n");
 
 let tablesReady = null;
 let progressTableReady = null;
 
 export class VexaInstagramStoryContainer extends VexaInstagramContainer {
+  async execYtDlp(args, options = {}) {
+    const auth = instagramAuth(this.env);
+    if (!this.ctx.container.running) await this.start();
+    return this.ctx.container.exec(
+      ["sh", "-c", STORY_YTDLP_WITH_SESSION_SCRIPT, "vexa-instagram-story", ...args],
+      {
+        ...options,
+        env: {
+          ...(options?.env || {}),
+          INSTAGRAM_COOKIES: auth.cookieFile,
+        },
+      },
+    );
+  }
+
   async getInstagramStoryCatalog(url) {
     if (isInstagramLiveUrl(url)) return this.getInstagramLiveCatalog(url);
-    const collection = await this.getInstagramStoryCollection(url);
-    const catalog = buildAuthenticatedStoryCatalog(collection);
-    if (!catalog.options.length) throw new Error("Instagram did not expose a downloadable Story video");
-    return catalog;
+    const process = await this.execYtDlp([
+      ...STORY_YTDLP_ARGS,
+      "--dump-single-json",
+      "--skip-download",
+      "--no-warnings",
+      "--verbose",
+      url,
+    ]);
+    const timer = setTimeout(() => {
+      try { process.kill(); } catch (error) {}
+    }, METADATA_TIMEOUT_MS);
+
+    try {
+      const output = await process.output();
+      const decoder = new TextDecoder();
+      const detail = decoder.decode(output.stderr).trim();
+      if (output.exitCode !== 0) {
+        const diagnostic = detail.toLowerCase();
+        console.error("Instagram Story yt-dlp auth diagnostic", {
+          exitCode: output.exitCode,
+          sessionConfigured: true,
+          stderrBytes: output.stderr?.byteLength || 0,
+          foundAccountCookies: diagnostic.includes("found instagram account cookies"),
+          loginRequired: /login required|you need to log in|log in to access|sign in/u.test(diagnostic),
+          loginRedirect: /redirect[^\n]*login|login[^\n]*redirect/u.test(diagnostic),
+          challenge: /challenge|checkpoint/u.test(diagnostic),
+          http403: /http error 403|\b403\b|forbidden/u.test(diagnostic),
+          http404: /http error 404|\b404\b/u.test(diagnostic),
+          http429: /http error 429|\b429\b|rate.?limit|too many requests/u.test(diagnostic),
+          emptyResponse: /empty media response|empty response|no videos|no reels/u.test(diagnostic),
+          unreachable: /unreachable|not accessible/u.test(diagnostic),
+        });
+        throw storyError(detail || "metadata failed");
+      }
+      const data = JSON.parse(decoder.decode(output.stdout));
+      const catalog = buildStoryCatalog(data, url);
+      if (!catalog.options.length) {
+        throw new Error("Instagram did not expose a downloadable Story video");
+      }
+      return catalog;
+    } catch (error) {
+      if (isStoryPublicError(error)) throw error;
+      throw storyError(error?.message || error);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async streamInstagramStory(url, formatId, playlistIndex = 1) {
@@ -44,71 +121,19 @@ export class VexaInstagramStoryContainer extends VexaInstagramContainer {
     const selected = String(formatId || "").trim();
     const item = Math.max(1, Math.floor(Number(playlistIndex || 1)));
     if (!selected || selected.length > 120) throw new Error("Instagram Story format is unavailable");
-    const collection = await this.getInstagramStoryCollection(url);
-    const story = collection.items[item - 1];
-    if (!story || instagramStoryItemId(story) !== selected) {
-      throw new Error("Selected Instagram Story is no longer available");
-    }
-    const media = bestAuthenticatedStoryVideo(story);
-    if (!media?.url || !isTrustedInstagramMediaUrl(media.url)) {
-      throw new Error("Instagram Story video is unavailable");
-    }
-    const auth = instagramAuth(this.env);
-    const response = await fetch(media.url, {
-      headers: instagramRequestHeaders(auth),
-      redirect: "follow",
-    });
-    if (response.status === 401 || response.status === 403) {
-      throw new Error("Instagram login session expired. Refresh the Instagram cookies");
-    }
-    if (!response.ok || !response.body) throw new Error("Instagram Story video is unavailable");
-    return response.body;
-  }
-
-  async getInstagramStoryCollection(url) {
-    const target = instagramStoryTarget(url);
-    if (!target) throw new Error("Enter a valid Instagram Story or Highlight link");
-    const auth = instagramAuth(this.env);
-    const storyPage = await fetchInstagramStoryPage(url, auth);
-    const pageUser = instagramStoryPageUser(storyPage);
-    if (!pageUser) {
-      throw new Error("This Instagram Story, Highlight or Live requires a valid login");
-    }
-
-    const userId = String(pageUser?.pk || pageUser?.id || "").trim();
-    let reelId;
-    if (target.type === "highlight") {
-      reelId = "highlight:" + target.id;
-    } else {
-      if (!/^\d+$/u.test(userId)) throw new Error("Instagram authenticated request temporarily failed");
-      reelId = userId;
-    }
-
-    const data = await fetchInstagramJson(
-      INSTAGRAM_WEB_API_BASE + "/feed/reels_media/?reel_ids=" + encodeURIComponent(reelId),
-      auth,
-    );
-    const reels = data?.reels && typeof data.reels === "object" ? data.reels : {};
-    if (!Object.keys(reels).length) {
-      throw new Error("This Instagram Story, Highlight or Live requires a valid login");
-    }
-    const reel = reels[reelId] || null;
-    if (!reel) {
-      throw new Error("This Instagram Story, Highlight or Live requires a valid login");
-    }
-
-    let items = Array.isArray(reel.items) ? reel.items : [];
-    if (target.storyId) {
-      items = items.filter((story) => instagramStoryItemMatches(story, target.storyId));
-    }
-    if (!items.length) throw new Error("This Instagram Story or Highlight is unavailable");
-    return {
-      type: target.type,
-      title: String(reel?.title || (target.type === "highlight"
-        ? "Instagram Highlight"
-        : "Instagram Story by " + target.username)),
-      items,
-    };
+    const process = await this.execYtDlp([
+      ...STORY_YTDLP_ARGS,
+      "--quiet",
+      "--no-warnings",
+      "--playlist-items",
+      String(item),
+      "-f",
+      selected,
+      "-o",
+      "-",
+      url,
+    ]);
+    return this.streamProcess(process);
   }
 
   async getInstagramLiveCatalog(url) {
@@ -713,22 +738,22 @@ async function assertLiveAccess(env, userId) {
   }
 }
 
-function buildAuthenticatedStoryCatalog(collection) {
-  const entries = Array.isArray(collection?.items) ? collection.items : [];
-  const isHighlight = collection?.type === "highlight";
+function buildStoryCatalog(data, sourceUrl) {
+  const entries = storyEntries(data);
+  const isHighlight = /\/stories\/highlights\//u.test(String(sourceUrl || ""));
   const options = [];
 
   for (let index = 0; index < entries.length && index < 60; index += 1) {
     const entry = entries[index];
-    const best = bestAuthenticatedStoryVideo(entry);
+    const best = bestStoryFormat(entry);
     if (!best) continue;
-    const height = positiveInteger(best.height || entry?.original_height);
-    const width = positiveInteger(best.width || entry?.original_width);
-    const duration = positiveNumber(entry?.video_duration || best.duration);
-    const formatId = instagramStoryItemId(entry);
+    const height = positiveInteger(best.height || entry?.height);
+    const width = positiveInteger(best.width || entry?.width);
+    const duration = positiveNumber(entry?.duration || best.duration);
+    const formatId = String(best.format_id || "").trim();
     if (!formatId) continue;
-    let sizeBytes = positiveInteger(best?.size || best?.file_size);
-    if (!sizeBytes) sizeBytes = estimatedStorySize(height, duration || 15);
+    let sizeBytes = formatSizeBytes(best, duration);
+    if (!sizeBytes) sizeBytes = estimatedStorySize(height, duration);
     if (!sizeBytes) continue;
 
     const itemNumber = index + 1;
@@ -747,45 +772,51 @@ function buildAuthenticatedStoryCatalog(collection) {
     });
   }
 
-  const title = String(collection?.title || (isHighlight ? "Instagram Highlight" : "Instagram Story")).trim() ||
+  const title = String(data?.title || (isHighlight ? "Instagram Highlight" : "Instagram Story")).trim() ||
     (isHighlight ? "Instagram Highlight" : "Instagram Story");
   return { title, type: isHighlight ? "highlight" : "story", options };
 }
 
-function bestAuthenticatedStoryVideo(entry) {
-  const versions = Array.isArray(entry?.video_versions) ? entry.video_versions : [];
-  return versions
-    .filter((video) => isTrustedInstagramMediaUrl(video?.url))
-    .sort((a, b) => authenticatedStoryVideoScore(b) - authenticatedStoryVideoScore(a))[0] || null;
+function storyEntries(data) {
+  if (Array.isArray(data?.formats) && data.formats.length) return [data];
+  const entries = Array.isArray(data?.entries) ? data.entries : [];
+  return entries.filter((entry) => Array.isArray(entry?.formats) && entry.formats.length);
 }
 
-function authenticatedStoryVideoScore(video) {
-  return positiveInteger(video?.width) * positiveInteger(video?.height) * 1000 +
-    positiveInteger(video?.bitrate || video?.bandwidth);
+function bestStoryFormat(entry) {
+  const formats = Array.isArray(entry?.formats) ? entry.formats : [];
+  return formats
+    .filter(isStoryMp4Format)
+    .sort((a, b) => storyFormatScore(b) - storyFormatScore(a))[0] || null;
 }
 
-function instagramStoryItemId(story) {
-  const value = String(story?.pk || story?.id || "").trim();
-  return value.split("_")[0].slice(0, 120);
+function isStoryMp4Format(format) {
+  if (!format || format.has_drm) return false;
+  const ext = String(format.ext || "").toLowerCase();
+  const protocol = String(format.protocol || "").toLowerCase();
+  const url = String(format.url || "");
+  const vcodec = String(format.vcodec || "").toLowerCase();
+  const acodec = String(format.acodec || "").toLowerCase();
+  if (ext !== "mp4" || !/^https?:\/\//i.test(url)) return false;
+  if (protocol && !protocol.startsWith("http")) return false;
+  if (vcodec === "none" || acodec === "none") return false;
+  return true;
 }
 
-function instagramStoryItemMatches(story, storyId) {
-  const wanted = String(storyId || "").trim();
-  const pk = String(story?.pk || "").trim();
-  const id = String(story?.id || "").trim();
-  return wanted && (wanted === pk || wanted === id || wanted === id.split("_")[0]);
+function storyFormatScore(format) {
+  return positiveInteger(format?.height) * 1_000_000 +
+    (positiveNumber(format?.fps) || 0) * 1000 +
+    (positiveNumber(format?.tbr) || positiveNumber(format?.vbr) || 0);
 }
 
-function instagramStoryTarget(value) {
-  let url;
-  try { url = new URL(String(value || "")); } catch (error) { return null; }
-  const path = url.pathname.replace(/\/+$/u, "");
-  const highlight = path.match(/^\/stories\/highlights\/(\d+)$/u);
-  if (highlight) return { type: "highlight", id: highlight[1], username: "", storyId: "" };
-  const story = path.match(/^\/stories\/([A-Za-z0-9._]+)(?:\/(\d+))?$/u);
-  return story
-    ? { type: "story", id: "", username: story[1], storyId: story[2] || "" }
-    : null;
+function formatSizeBytes(format, duration) {
+  const exact = positiveNumber(format?.filesize);
+  if (exact) return Math.ceil(exact);
+  const approximate = positiveNumber(format?.filesize_approx);
+  if (approximate) return Math.ceil(approximate);
+  const bitrate = positiveNumber(format?.tbr) || positiveNumber(format?.vbr);
+  if (!bitrate || !duration) return 0;
+  return Math.ceil(bitrate * 125 * duration * 1.05);
 }
 
 function estimatedStorySize(height, duration) {
@@ -888,6 +919,10 @@ function publicStoryError(error) {
   return STORY_PUBLIC_ERRORS.has(message) ? message : storyError(message).message;
 }
 
+function isStoryPublicError(error) {
+  return STORY_PUBLIC_ERRORS.has(String(error?.message || ""));
+}
+
 const STORY_PUBLIC_ERRORS = new Set([
   "Instagram temporarily rate-limited the server",
   "Instagram login session expired. Refresh the Instagram cookies",
@@ -942,7 +977,12 @@ function instagramAuth(env) {
     throw new Error("Instagram Story login is temporarily unavailable");
   }
 
+  const lines = ["# Netscape HTTP Cookie File"];
+  for (const [name, value] of cookies) {
+    lines.push([".instagram.com", "TRUE", "/", "TRUE", "0", name, value].join("\t"));
+  }
   return {
+    cookieFile: lines.join("\n") + "\n",
     cookieHeader: [...cookies].map(([name, value]) => name + "=" + value).join("; "),
     csrfToken: cookies.get("csrftoken") || "",
   };
@@ -953,86 +993,6 @@ function addInstagramCookie(cookies, rawName, rawValue, replace = true) {
   const value = String(rawValue || "").trim();
   if (!/^[A-Za-z0-9_]+$/u.test(name) || !value || /[\u0000-\u001F\u007F;\t]/u.test(value)) return;
   if (replace || !cookies.has(name)) cookies.set(name, value);
-}
-
-async function fetchInstagramStoryPage(url, auth) {
-  let response;
-  try {
-    response = await fetch(url, {
-      method: "GET",
-      headers: instagramStoryPageHeaders(auth),
-      redirect: "manual",
-      signal: AbortSignal.timeout(INSTAGRAM_API_TIMEOUT_MS),
-    });
-  } catch (error) {
-    throw new Error("Instagram authenticated request temporarily failed");
-  }
-  const location = String(response.headers.get("Location") || "");
-  if (response.status === 401 || response.status === 403 || /\/accounts\/login/u.test(location)) {
-    throw new Error("Instagram login session expired. Refresh the Instagram cookies");
-  }
-  if (response.status === 429) throw new Error("Instagram temporarily rate-limited the server");
-  const html = await response.text().catch(() => "");
-  if (!response.ok || !html) throw new Error("Instagram authenticated request temporarily failed");
-  return html;
-}
-
-function instagramStoryPageUser(source) {
-  const html = String(source || "");
-  let offset = 0;
-  while (offset < html.length) {
-    const marker = html.indexOf('"user":', offset);
-    if (marker < 0) return null;
-    let start = marker + 7;
-    while (/\s/u.test(html[start] || "")) start += 1;
-    if (html[start] !== "{") {
-      offset = start + 1;
-      continue;
-    }
-    const parsed = parseInstagramJsonObject(html, start);
-    if (parsed?.value && typeof parsed.value === "object") {
-      const id = String(parsed.value.pk || parsed.value.id || "").trim();
-      if (/^\d+$/u.test(id)) return parsed.value;
-    }
-    offset = parsed?.end || (start + 1);
-  }
-  return null;
-}
-
-function parseInstagramJsonObject(source, start) {
-  let depth = 0;
-  let quoted = false;
-  let escaped = false;
-  for (let index = start; index < source.length; index += 1) {
-    const char = source[index];
-    if (quoted) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        quoted = false;
-      }
-      continue;
-    }
-    if (char === '"') {
-      quoted = true;
-      continue;
-    }
-    if (char === "{") depth += 1;
-    if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        const end = index + 1;
-        try {
-          return { value: JSON.parse(source.slice(start, end)), end };
-        } catch (error) {
-          return { value: null, end };
-        }
-      }
-    }
-  }
-  return null;
 }
 
 async function fetchInstagramJson(url, auth) {
@@ -1060,15 +1020,6 @@ async function fetchInstagramJson(url, auth) {
     throw new Error("Instagram authenticated request temporarily failed");
   }
   return data;
-}
-
-function instagramStoryPageHeaders(auth) {
-  return {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Cookie": auth.cookieHeader,
-    "Referer": "https://www.instagram.com/",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-  };
 }
 
 function instagramRequestHeaders(auth) {
