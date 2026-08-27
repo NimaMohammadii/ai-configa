@@ -554,7 +554,7 @@ function subtitleCuesFromWords(value) {
     const wordEnd = Number(item?.end);
     const type = String(item?.type || "word");
     if (!text || !Number.isFinite(wordStart) || !Number.isFinite(wordEnd) || wordEnd < wordStart || type === "audio_event") continue;
-    if (current.length && wordStart - end > 1.1) flush();
+    if (current.length && wordStart - end > 0.65) flush();
     if (!current.length) start = Math.max(0, wordStart);
     current.push({ text, start: wordStart, end: wordEnd });
     end = Math.max(end, wordEnd);
@@ -563,8 +563,8 @@ function subtitleCuesFromWords(value) {
     const sentenceEnd = /[.!?…。！？؟]$/u.test(text);
     const span = end - start;
     const cjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(merged);
-    const charLimit = cjk ? 34 : 70;
-    if ((sentenceEnd && current.length >= 4 && span >= 1.1) || current.length >= 11 || span >= 4.8 || Array.from(merged).length >= charLimit) flush();
+    const charLimit = cjk ? 28 : 52;
+    if ((sentenceEnd && current.length >= 3 && span >= 0.8) || current.length >= 8 || span >= 3.6 || Array.from(merged).length >= charLimit) flush();
   }
   flush();
   return cues.filter((cue) => cue.text && cue.end > cue.start);
@@ -672,6 +672,7 @@ function parseJsonObject(value) {
 
 function buildAss(cues, language, width, height) {
   const style = downloadSubtitleStyle(width, height, language);
+  const renderCues = fitSubtitleCues(cues, style);
   const header = [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -683,27 +684,54 @@ function buildAss(cues, language, width, height) {
     "",
     "[V4+ Styles]",
     "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-    "Style: Default," + style.fontName + "," + style.fontSize + ",&H00FFFFFF,&H00FFFFFF,&H57000000,&H57000000,0,0,0,0,100,100,0,0,3," + style.padding + ",0,2," + style.marginX + "," + style.marginX + "," + style.marginV + ",1",
+    "Style: Text," + style.fontName + "," + style.fontSize + ",&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1",
+    "Style: Panel,Arial,1,&H50000000,&H50000000,&H50000000,&H50000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1",
     "",
     "[Events]",
     "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
   ];
-  const events = cues.map((cue) =>
-    "Dialogue: 0," + assTime(cue.start) + "," + assTime(cue.end) + ",Default,,0,0,0,," + assEscape(wrapSubtitleText(cue.text))
-  );
+  const events = [];
+  for (const cue of renderCues) {
+    const wrapped = wrapSubtitleText(cue.text, style);
+    const panel = subtitlePanelMetrics(wrapped, style);
+    const start = assTime(cue.start);
+    const end = assTime(cue.end);
+    events.push(
+      "Dialogue: 0," + start + "," + end + ",Panel,,0,0,0,," + subtitlePanelDrawing(panel)
+    );
+    events.push(
+      "Dialogue: 1," + start + "," + end + ",Text,,0,0,0,,{\\an5\\pos(" + panel.centerX + "," + panel.centerY + ")}" + assEscape(wrapped)
+    );
+  }
   return header.concat(events).join("\n") + "\n";
 }
 
 function downloadSubtitleStyle(width, height, language) {
   const videoWidth = Math.max(1, positiveInteger(width));
   const videoHeight = Math.max(1, positiveInteger(height));
+  const fontSize = clampInteger(Math.round(videoHeight * 0.06), 18, 58);
+  const panelWidth = clampInteger(Math.round(videoWidth * 0.86), Math.min(videoWidth - 4, 96), Math.max(96, videoWidth - 4));
+  const paddingX = clampInteger(Math.round(fontSize * 0.72), 10, 34);
+  const paddingY = clampInteger(Math.round(fontSize * 0.36), 5, 18);
+  const lineHeight = clampInteger(Math.round(fontSize * 1.3), fontSize + 2, Math.round(fontSize * 1.45));
+  const languageKey = normalizeDetectedLanguage(language) || String(language || "en").toLowerCase();
+  const glyphFactor = /^(?:zh|ja|ko)$/u.test(languageKey) ? 0.98 : /^(?:fa|ar|hi)$/u.test(languageKey) ? 0.7 : 0.61;
+  const usableWidth = Math.max(fontSize * 8, panelWidth - paddingX * 2);
+  const maxCharsPerLine = clampInteger(
+    Math.floor(usableWidth / Math.max(1, fontSize * glyphFactor)),
+    12,
+    /^(?:zh|ja|ko)$/u.test(languageKey) ? 30 : 48,
+  );
   return {
     width: videoWidth,
     height: videoHeight,
     fontName: subtitleFont(language).name,
-    fontSize: clampInteger(Math.round(videoHeight * 0.06), 18, 58),
-    padding: clampNumber(videoHeight * 0.016, 4, 10, 1),
-    marginX: clampInteger(Math.round(videoWidth * 0.07), 18, Math.max(18, Math.round(videoWidth * 0.12))),
+    fontSize,
+    panelWidth,
+    paddingX,
+    paddingY,
+    lineHeight,
+    maxCharsPerLine,
     marginV: clampInteger(Math.round(videoHeight * 0.055), 12, 60),
   };
 }
@@ -718,29 +746,134 @@ function subtitleFont(language) {
   return { name: "Quicksand" };
 }
 
-function wrapSubtitleText(value) {
+function fitSubtitleCues(cues, style) {
+  const source = Array.isArray(cues) ? cues : [];
+  const fitted = [];
+  for (const cue of source) {
+    const text = cleanSubtitleText(cue?.text);
+    const start = Math.max(0, Number(cue?.start || 0));
+    const end = Math.max(start, Number(cue?.end || 0));
+    if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    const chunks = splitSubtitleText(text, style.maxCharsPerLine);
+    if (chunks.length <= 1) {
+      fitted.push({ start, end, text });
+      continue;
+    }
+    const weights = chunks.map((chunk) => Math.max(1, Array.from(chunk).length));
+    const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+    const duration = end - start;
+    let usedWeight = 0;
+    for (let index = 0; index < chunks.length; index += 1) {
+      const pieceStart = start + duration * (usedWeight / totalWeight);
+      usedWeight += weights[index];
+      const pieceEnd = index === chunks.length - 1
+        ? end
+        : start + duration * (usedWeight / totalWeight);
+      if (pieceEnd > pieceStart) fitted.push({ start: pieceStart, end: pieceEnd, text: chunks[index] });
+    }
+  }
+  return fitted;
+}
+
+function splitSubtitleText(value, maxCharsPerLine) {
   const text = cleanSubtitleText(value);
-  const cjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(text);
-  const target = cjk ? 18 : 38;
+  if (!text) return [];
+  const target = Math.max(8, positiveInteger(maxCharsPerLine));
+  const capacity = target * 2;
+  if (Array.from(text).length <= capacity) return [text];
+
+  const words = text.split(/\s+/u).filter(Boolean);
+  if (words.length < 2) return splitSubtitleChars(text, capacity);
+
+  const chunks = [];
+  let current = "";
+  const pushCurrent = () => {
+    if (current) chunks.push(current);
+    current = "";
+  };
+
+  for (const word of words) {
+    const pieces = Array.from(word).length > capacity ? splitSubtitleChars(word, capacity) : [word];
+    for (const piece of pieces) {
+      const candidate = current ? current + " " + piece : piece;
+      if (current && Array.from(candidate).length > capacity) {
+        pushCurrent();
+        current = piece;
+      } else {
+        current = candidate;
+      }
+    }
+  }
+  pushCurrent();
+  return chunks.filter(Boolean);
+}
+
+function splitSubtitleChars(value, capacity) {
+  const chars = Array.from(String(value || ""));
+  const size = Math.max(1, positiveInteger(capacity));
+  const chunks = [];
+  for (let offset = 0; offset < chars.length; offset += size) {
+    chunks.push(chars.slice(offset, offset + size).join(""));
+  }
+  return chunks;
+}
+
+function wrapSubtitleText(value, style) {
+  const text = cleanSubtitleText(value);
+  const target = Math.max(8, positiveInteger(style?.maxCharsPerLine));
   if (Array.from(text).length <= target) return text;
+
   const words = text.split(/\s+/u).filter(Boolean);
   if (words.length < 2) {
     const chars = Array.from(text);
-    const middle = Math.ceil(chars.length / 2);
-    return chars.slice(0, middle).join("") + "\n" + chars.slice(middle).join("");
+    return chars.slice(0, target).join("") + "\n" + chars.slice(target, target * 2).join("");
   }
-  let bestIndex = 1;
+
+  let bestIndex = 0;
   let bestScore = Number.POSITIVE_INFINITY;
   for (let index = 1; index < words.length; index += 1) {
     const left = words.slice(0, index).join(" ");
     const right = words.slice(index).join(" ");
     const leftLength = Array.from(left).length;
     const rightLength = Array.from(right).length;
-    const overflow = Math.max(0, leftLength - target) + Math.max(0, rightLength - target);
-    const score = Math.abs(leftLength - rightLength) + overflow * 12;
-    if (score < bestScore) { bestScore = score; bestIndex = index; }
+    if (leftLength > target || rightLength > target) continue;
+    const score = Math.abs(leftLength - rightLength);
+    if (score < bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
   }
-  return words.slice(0, bestIndex).join(" ") + "\n" + words.slice(bestIndex).join(" ");
+
+  if (bestIndex > 0) {
+    return words.slice(0, bestIndex).join(" ") + "\n" + words.slice(bestIndex).join(" ");
+  }
+
+  const chars = Array.from(text);
+  return chars.slice(0, target).join("") + "\n" + chars.slice(target, target * 2).join("");
+}
+
+function subtitlePanelMetrics(wrapped, style) {
+  const lineCount = String(wrapped || "").includes("\n") ? 2 : 1;
+  const panelHeight = clampInteger(
+    lineCount * style.lineHeight + style.paddingY * 2,
+    style.lineHeight + style.paddingY * 2,
+    Math.max(style.lineHeight + style.paddingY * 2, style.height - 4),
+  );
+  const x = Math.max(2, Math.round((style.width - style.panelWidth) / 2));
+  const y = Math.max(2, Math.round(style.height - style.marginV - panelHeight));
+  return {
+    x,
+    y,
+    width: Math.min(style.panelWidth, style.width - x - 2),
+    height: Math.min(panelHeight, style.height - y - 2),
+    centerX: Math.round(style.width / 2),
+    centerY: Math.round(y + panelHeight / 2),
+  };
+}
+
+function subtitlePanelDrawing(panel) {
+  return "{\\an7\\pos(" + panel.x + "," + panel.y + ")\\p1}" +
+    "m 0 0 l " + panel.width + " 0 l " + panel.width + " " + panel.height + " l 0 " + panel.height;
 }
 
 function assEscape(value) {
