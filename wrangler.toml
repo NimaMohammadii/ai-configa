@@ -53,10 +53,12 @@ image = "docker.io/friedrichrehren/yt-dlp:2026.08.19"
 max_instances = 3
 instance_type = "basic"
 
-# Dedicated FFmpeg worker for short near-live subtitle audio windows.
+# Dedicated FFmpeg subtitle worker. The local image pins the media runtime and
+# preinstalls Noto fonts so realtime and burned-in subtitles work without
+# installing packages during a user request.
 [[containers]]
 class_name = "VexaSubtitleContainer"
-image = "docker.io/friedrichrehren/yt-dlp:2026.07.04"
+image = "./Dockerfile.vexa-subtitles"
 max_instances = 3
 instance_type = "basic"
 
