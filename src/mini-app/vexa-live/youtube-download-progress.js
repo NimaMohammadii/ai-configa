@@ -113,7 +113,7 @@ export async function appendDownloadProgressRuntime(request, response) {
   if (!contentType.includes("text/html")) return response;
 
   const source = await response.text();
-  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260827-progress-stall-fix-1"></script>';
+  const tag = '<script src="' + DOWNLOAD_PROGRESS_RUNTIME_PATH + '?v=20260827-progress-stall-fix-2"></script>';
   const html = source.includes(DOWNLOAD_PROGRESS_RUNTIME_PATH)
     ? source
     : source.includes("</body>")
@@ -708,7 +708,7 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
   function initData(){return String(telegram()?.initData||'');}
   function haptic(style){try{telegram()?.HapticFeedback?.impactOccurred?.(style||'light');}catch(error){}}
   function mb(bytes){return(Math.max(0,Number(bytes||0))/1048576).toFixed(1);}
-  function formatPercent(value){const number=Math.max(0,Math.min(100,Number(value||0)));if(number>=100)return'100%';const rounded=Math.round(number*10)/10;return(String(rounded).includes('.')?rounded.toFixed(1):String(rounded))+"%";}
+  function formatPercent(value){const number=Math.max(0,Math.min(100,Number(value||0)));if(number>=100)return'100%';const rounded=Math.round(number*10)/10;return(String(rounded).includes('.')?rounded.toFixed(1):String(rounded))+'%';}
   function launchContext(){
     const host=hostWindow();
     try{
@@ -824,7 +824,8 @@ export const DOWNLOAD_PROGRESS_RUNTIME_JS = String.raw`
     socket.addEventListener('open',function(){if(progressSocket!==socket)return;reconnectAttempt=0;});
     socket.addEventListener('message',function(event){if(progressSocket!==socket)return;let data;try{data=JSON.parse(String(event.data||'{}'));}catch(error){return;}handleProgress(data);});
     socket.addEventListener('close',function(){
-      if(progressSocket===socket)progressSocket=null;
+      if(progressSocket!==socket)return;
+      progressSocket=null;
       if(!busy||!prepared?.progressUrl)return;
       const delay=Math.min(10000,500*Math.pow(2,Math.min(reconnectAttempt,5)));reconnectAttempt=Math.min(reconnectAttempt+1,6);
       reconnectTimer=setTimeout(function(){if(busy&&prepared?.progressUrl)connectProgress(prepared.progressUrl,true);},delay);
