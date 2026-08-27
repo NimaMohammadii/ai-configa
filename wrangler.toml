@@ -46,6 +46,13 @@ image = "docker.io/friedrichrehren/yt-dlp:2026.08.19"
 max_instances = 3
 instance_type = "basic"
 
+# Isolated Story/Highlight runtime inherits the Instagram downloader implementation.
+[[containers]]
+class_name = "VexaInstagramStoryContainer"
+image = "docker.io/friedrichrehren/yt-dlp:2026.08.19"
+max_instances = 3
+instance_type = "basic"
+
 # Dedicated FFmpeg worker for short near-live subtitle audio windows.
 [[containers]]
 class_name = "VexaSubtitleContainer"
@@ -64,6 +71,14 @@ class_name = "VexaInstagramContainer"
 [[durable_objects.bindings]]
 name = "VEXA_INSTAGRAM_PROGRESS"
 class_name = "VexaInstagramProgressHub"
+
+[[durable_objects.bindings]]
+name = "VEXA_INSTAGRAM_STORY"
+class_name = "VexaInstagramStoryContainer"
+
+[[durable_objects.bindings]]
+name = "VEXA_INSTAGRAM_STORY_PROGRESS"
+class_name = "VexaInstagramStoryProgressHub"
 
 [[durable_objects.bindings]]
 name = "VEXA_SUBTITLES"
@@ -113,6 +128,14 @@ new_sqlite_classes = ["VexaInstagramContainer"]
 [[migrations]]
 tag = "vexa-instagram-progress-hub-v1"
 new_sqlite_classes = ["VexaInstagramProgressHub"]
+
+[[migrations]]
+tag = "vexa-instagram-story-container-v1"
+new_sqlite_classes = ["VexaInstagramStoryContainer"]
+
+[[migrations]]
+tag = "vexa-instagram-story-progress-hub-v1"
+new_sqlite_classes = ["VexaInstagramStoryProgressHub"]
 
 [triggers]
 crons = ["* * * * *"]

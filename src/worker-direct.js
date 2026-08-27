@@ -1,5 +1,6 @@
 import { getAdminAction, isAdmin } from "./admin.js";
 import { handleCallback, handleMessage } from "./mini-app/vexa-live/bot-bridge.js";
+import { handleInstagramLinkMessage } from "./mini-app/vexa-live/instagram-bot-bridge.js";
 import {
   handleMiniAppWithSpeechToText,
   handleSpeechToTextRequest,
@@ -133,6 +134,7 @@ async function handleMessageWithSupport(message, env) {
   }
 
   if (await handleVoiceTransformMessage(message, env)) return;
+  if (await handleInstagramLinkMessage(message, env)) return;
 
   await handleMessageAndPin(message, env);
 }
