@@ -56,6 +56,12 @@ import {
 } from "./mini-app/vexa-live/youtube-live-persistence.js";
 import { appendVexaLiveLandingRuntime } from "./mini-app/vexa-live/vexa-live-landing.js";
 
+const RETIRED_DOWNLOAD_RUNTIME_PATHS = new Set([
+  "/mini-app/vexa-live/download-progress.js",
+  "/mini-app/vexa-live/instagram-download.js",
+  "/mini-app/vexa-live/instagram-story-download.js",
+]);
+
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export {
   VexaMediaContainerV3,
@@ -75,6 +81,10 @@ export default {
       const voiceTransformResponse = await handleMiniAppVoiceTransformRequest(request, env);
       if (voiceTransformResponse) return voiceTransformResponse;
 
+      const path = new URL(request.url).pathname;
+      if (request.method === "GET" && RETIRED_DOWNLOAD_RUNTIME_PATHS.has(path)) {
+        return new Response("Not Found", { status: 404 });
+      }
       if (isVexaLivePersistenceRequest(request)) {
         return handleVexaLivePersistenceRequest(request);
       }
