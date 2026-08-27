@@ -1,3 +1,4 @@
+import { getRandom } from "@cloudflare/containers";
 import worker from "./worker-live-events.js";
 import {
   appendMiniAppVoiceTransformRuntime,
@@ -40,7 +41,7 @@ import {
   isVexaLiveSubtitlesRequest,
 } from "./mini-app/vexa-live/youtube-live-subtitles.js";
 import {
-  VexaSubtitleContainer,
+  VexaSubtitleContainer as VexaSubtitleContainerBase,
   handleDownloadSubtitlesRequest,
 } from "./mini-app/vexa-live/download-subtitles.js";
 import {
@@ -56,11 +57,47 @@ import {
 import { appendVexaLiveLandingRuntime } from "./mini-app/vexa-live/vexa-live-landing.js";
 
 const SUBTITLE_SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
+const DOWNLOAD_SUBTITLE_RENDERER_INSTANCES = 3;
+
+class VexaSubtitleContainer extends VexaSubtitleContainerBase {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.vexaEnv = env;
+  }
+
+  async renderSubtitledVideo(...args) {
+    if (!this.vexaEnv?.VEXA_DOWNLOAD_SUBTITLES) {
+      throw new Error("Subtitle renderer pool is unavailable");
+    }
+    const renderer = await getRandom(
+      this.vexaEnv.VEXA_DOWNLOAD_SUBTITLES,
+      DOWNLOAD_SUBTITLE_RENDERER_INSTANCES,
+    );
+    return renderer.renderSubtitledVideo(...args);
+  }
+}
+
+class VexaDownloadSubtitleContainer extends VexaSubtitleContainerBase {
+  renderQueue = Promise.resolve();
+
+  async renderSubtitledVideo(...args) {
+    const previous = this.renderQueue.catch(() => null);
+    let release;
+    this.renderQueue = new Promise(resolve => { release = resolve; });
+    await previous;
+    try {
+      return await super.renderSubtitledVideo(...args);
+    } finally {
+      release?.();
+    }
+  }
+}
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export {
   VexaMediaContainerV3,
   VexaSubtitleContainer,
+  VexaDownloadSubtitleContainer,
   VexaSubtitleWorkflow,
   VexaDownloadProgressHub,
   VexaInstagramContainer,
