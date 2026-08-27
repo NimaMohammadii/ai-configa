@@ -56,11 +56,6 @@ import {
 import { appendVexaLiveLandingRuntime } from "./mini-app/vexa-live/vexa-live-landing.js";
 
 const SUBTITLE_SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
-const RETIRED_DOWNLOAD_RUNTIME_PATHS = new Set([
-  "/mini-app/vexa-live/download-progress.js",
-  "/mini-app/vexa-live/instagram-download.js",
-  "/mini-app/vexa-live/instagram-story-download.js",
-]);
 
 export { AiCodingWorkflow } from "./worker-live-events.js";
 export {
@@ -82,9 +77,6 @@ export default {
       if (voiceTransformResponse) return voiceTransformResponse;
 
       const path = new URL(request.url).pathname;
-      if (request.method === "GET" && RETIRED_DOWNLOAD_RUNTIME_PATHS.has(path)) {
-        return new Response("Not Found", { status: 404 });
-      }
       if (isVexaLivePersistenceRequest(request)) {
         return handleVexaLivePersistenceRequest(request);
       }
