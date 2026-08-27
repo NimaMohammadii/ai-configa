@@ -6,7 +6,7 @@ import { LIVE_SUBTITLES_RUNTIME_JS } from "./youtube-live-subtitles-runtime.js";
 
 const SOCKET_PATH = "/mini-app/live/api/youtube-subtitles/realtime";
 const RUNTIME_PATH = "/mini-app/vexa-live/live-subtitles.js";
-const RUNTIME_VERSION = "20260827-audio-cues-1";
+const RUNTIME_VERSION = "20260827-subtitle-frame-1";
 
 const TRANSLATION_MODEL = "gpt-5.6-terra";
 const TRANSLATE_TIMEOUT_MS = 12000;
