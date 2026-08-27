@@ -6,8 +6,10 @@ USER root
 # so rendering never installs packages or downloads font assets at request time.
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core fonts-noto-core fonts-noto-cjk; \
+    apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core fonts-noto-core fonts-noto-cjk fonts-quicksand fonts-vazirmatn; \
     fc-cache -f; \
+    fc-match 'Quicksand' >/dev/null; \
+    fc-match 'Vazirmatn' >/dev/null; \
     fc-match 'Noto Sans' >/dev/null; \
     fc-match 'Noto Sans Arabic' >/dev/null; \
     fc-match 'Noto Sans Devanagari' >/dev/null; \
