@@ -14,21 +14,18 @@ import {
 } from "./mini-app/vexa-live/youtube-range-playback.js";
 import {
   VexaDownloadProgressHub,
-  appendDownloadProgressRuntime,
   handleTrackedYouTubeDownloadRequest,
   isTrackedYouTubeDownloadRequest,
 } from "./mini-app/vexa-live/youtube-download-progress.js";
 import {
   VexaInstagramContainer,
   VexaInstagramProgressHub,
-  appendInstagramDownloadRuntime,
   handleInstagramDownloadRequest,
   isInstagramDownloadRequest,
 } from "./mini-app/vexa-live/instagram-download.js";
 import {
   VexaInstagramStoryContainer,
   VexaInstagramStoryProgressHub,
-  appendInstagramStoryRuntime,
   handleInstagramStoryDownloadRequest,
   isInstagramStoryDownloadRequest,
 } from "./mini-app/vexa-live/instagram-story-download.js";
@@ -46,8 +43,13 @@ import {
   VexaSubtitleContainer,
   handleDownloadSubtitlesRequest,
   isDownloadSubtitlesRequest,
-  rewriteDownloadSessionResponseWithSubtitles,
 } from "./mini-app/vexa-live/download-subtitles.js";
+import {
+  VexaSubtitleWorkflow,
+  appendVexaDownloadControllerRuntime,
+  handleVexaDownloadControllerRequest,
+  isVexaDownloadControllerRequest,
+} from "./mini-app/vexa-live/download-controller.js";
 import {
   handleVexaLivePersistenceRequest,
   isVexaLivePersistenceRequest,
@@ -58,6 +60,7 @@ export { AiCodingWorkflow } from "./worker-live-events.js";
 export {
   VexaMediaContainerV3,
   VexaSubtitleContainer,
+  VexaSubtitleWorkflow,
   VexaDownloadProgressHub,
   VexaInstagramContainer,
   VexaInstagramProgressHub,
@@ -75,6 +78,9 @@ export default {
       if (isVexaLivePersistenceRequest(request)) {
         return handleVexaLivePersistenceRequest(request);
       }
+      if (isVexaDownloadControllerRequest(request)) {
+        return handleVexaDownloadControllerRequest(request, env, ctx);
+      }
       if (isDownloadSubtitlesRequest(request)) {
         const response = await handleDownloadSubtitlesRequest(request, env, ctx, {
           youtube: handleTrackedYouTubeDownloadRequest,
@@ -90,16 +96,13 @@ export default {
         return handleVexaCustomPlayerRequest(request);
       }
       if (isInstagramStoryDownloadRequest(request)) {
-        const response = await handleInstagramStoryDownloadRequest(request, env, ctx);
-        return await rewriteDownloadSessionResponseWithSubtitles(request, response);
+        return handleInstagramStoryDownloadRequest(request, env, ctx);
       }
       if (isInstagramDownloadRequest(request)) {
-        const response = await handleInstagramDownloadRequest(request, env, ctx);
-        return await rewriteDownloadSessionResponseWithSubtitles(request, response);
+        return handleInstagramDownloadRequest(request, env, ctx);
       }
       if (isTrackedYouTubeDownloadRequest(request)) {
-        const response = await handleTrackedYouTubeDownloadRequest(request, env, ctx);
-        return await rewriteDownloadSessionResponseWithSubtitles(request, response);
+        return handleTrackedYouTubeDownloadRequest(request, env, ctx);
       }
       if (isYouTubePlaybackRequest(request)) {
         return await handleYouTubePlaybackRequest(request, env, ctx);
@@ -107,12 +110,11 @@ export default {
       if (isYouTubeDownloadRequest(request)) {
         return await handleYouTubeDownloadRequest(request, env, ctx);
       }
+
       let response = await worker.fetch(request, env, ctx);
       response = await appendMiniAppVoiceTransformRuntime(request, response);
       response = await appendVexaLiveLandingRuntime(request, response);
-      response = await appendInstagramStoryRuntime(request, response);
-      response = await appendInstagramDownloadRuntime(request, response);
-      response = await appendDownloadProgressRuntime(request, response);
+      response = await appendVexaDownloadControllerRuntime(request, response);
       response = await appendVexaCustomPlayerRuntime(request, response);
       response = await appendVexaLiveSubtitlesRuntime(request, response);
       return response;
