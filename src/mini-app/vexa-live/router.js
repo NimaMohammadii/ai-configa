@@ -1,12 +1,8 @@
 import { handleMiniAppRequest } from "../server.js";
-import {
-  VEXA_MESH_BASE_COLOR,
-  createVexaMeshRendererSource,
-} from "./mesh-background.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
 const LIVE_BACKGROUND = "#000000";
-const INTEGRATION_VERSION = "20260826-2";
+const INTEGRATION_VERSION = "20260827-1";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -28,17 +24,10 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   const SPEECH_BUTTON_ID = "speechToTextOpen";
   const WORKSPACE_ID = "vexaMediaWorkspace";
   const FRAME_ID = "vexaMediaInlineFrame";
-  const SHARED_MESH_CANVAS_ID = "vexaSharedMeshBackground";
-  const SHARED_MESH_CLASS = "vexa-mesh-surface";
-  const VEXA_BG = ${JSON.stringify(VEXA_MESH_BASE_COLOR)};
   const LIVE_BG = ${JSON.stringify(LIVE_BACKGROUND)};
-  const DEFAULT_BG = "#000000";
   let mediaOpen = false;
   let mediaFrame = null;
   let speechButtonBound = false;
-  let meshSurfaceActive = false;
-  let meshSurfaceRenderer = null;
-  let meshSurfaceObserver = null;
 
   function telegram() { return window.Telegram && window.Telegram.WebApp; }
 
@@ -51,10 +40,9 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   function syncTelegramChrome() {
     const tg = telegram();
     if (!tg) return;
-    const color = mediaOpen ? LIVE_BG : meshSurfaceActive ? VEXA_BG : DEFAULT_BG;
-    try { if (tg.setHeaderColor) tg.setHeaderColor(color); } catch (error) {}
-    try { if (tg.setBackgroundColor) tg.setBackgroundColor(color); } catch (error) {}
-    try { if (tg.setBottomBarColor) tg.setBottomBarColor(color); } catch (error) {}
+    try { if (tg.setHeaderColor) tg.setHeaderColor(LIVE_BG); } catch (error) {}
+    try { if (tg.setBackgroundColor) tg.setBackgroundColor(LIVE_BG); } catch (error) {}
+    try { if (tg.setBottomBarColor) tg.setBottomBarColor(LIVE_BG); } catch (error) {}
   }
 
   function requestedSection() {
@@ -75,14 +63,8 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const style = document.createElement("style");
     style.id = "vexaMediaParentStyle";
     style.textContent =
-      "#" + SHARED_MESH_CANVAS_ID + "{position:fixed!important;inset:0!important;z-index:0!important;display:block!important;width:100%!important;height:100%!important;pointer-events:none!important;opacity:0;background:" + VEXA_BG + ";transition:opacity .28s ease!important}" +
-      "body." + SHARED_MESH_CLASS + " #" + SHARED_MESH_CANVAS_ID + "{opacity:1!important}" +
-      "body.credits-page-open #" + SHARED_MESH_CANVAS_ID + "{z-index:104!important;opacity:1!important}" +
-      "html." + SHARED_MESH_CLASS + ",body." + SHARED_MESH_CLASS + "{background:" + VEXA_BG + "!important}" +
-      "body." + SHARED_MESH_CLASS + " .app{position:relative!important;z-index:1!important;background:transparent!important}" +
-      "body." + SHARED_MESH_CLASS + " .credits-page{background:transparent!important}" +
-      "body." + SHARED_MESH_CLASS + " .credits-page .credits-page-head,body." + SHARED_MESH_CLASS + " .credits-page.toman-payment-active .credits-page-head,body." + SHARED_MESH_CLASS + " .credits-page.tribute-payment-active .credits-page-head{background-color:transparent!important;background-image:none!important}" +
-      "body." + SHARED_MESH_CLASS + " .credits-page .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page .credits-page-head:after,body." + SHARED_MESH_CLASS + " .credits-page.toman-payment-active .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page.toman-payment-active .credits-page-head:after,body." + SHARED_MESH_CLASS + " .credits-page.tribute-payment-active .credits-page-head:before,body." + SHARED_MESH_CLASS + " .credits-page.tribute-payment-active .credits-page-head:after{background:transparent!important}" +
+      "html,body{background:" + LIVE_BG + "!important}" +
+      "body.credits-page-open .credits-page{background:" + LIVE_BG + "!important}" +
       "#" + BUTTON_ID + "{place-items:center!important}" +
       "#" + BUTTON_ID + " svg{display:block!important;position:static!important;inset:auto!important;width:19px!important;height:19px!important;transform:none!important;transition:none!important;overflow:visible!important}" +
       "body .tts-area{transition:opacity .28s ease,transform .48s cubic-bezier(.16,.86,.22,1)!important}" +
@@ -94,49 +76,6 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       "body.vexa-live-open .tts-area{opacity:0!important;transform:translateX(-30px) scale(.985)!important;pointer-events:none!important}" +
       "body.vexa-live-open .tts-bottom{opacity:0!important;transform:translateX(calc(-50% - 30px)) scale(.985)!important;pointer-events:none!important}";
     document.head.appendChild(style);
-  }
-
-  function installSharedMeshSurface() {
-    let canvas = document.getElementById(SHARED_MESH_CANVAS_ID);
-    if (!canvas) {
-      canvas = document.createElement("canvas");
-      canvas.id = SHARED_MESH_CANVAS_ID;
-      canvas.setAttribute("aria-hidden", "true");
-      canvas.dataset.vexaMeshActive = "false";
-      if (document.body.firstChild) document.body.insertBefore(canvas, document.body.firstChild);
-      else document.body.appendChild(canvas);
-    }
-    if (!meshSurfaceObserver) {
-      meshSurfaceObserver = new MutationObserver(syncSharedMeshSurface);
-      meshSurfaceObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
-    }
-    syncSharedMeshSurface();
-    return canvas;
-  }
-
-  function ensureSharedMeshRenderer() {
-    if (meshSurfaceRenderer) return meshSurfaceRenderer;
-    const canvas = document.getElementById(SHARED_MESH_CANVAS_ID) || installSharedMeshSurface();
-    meshSurfaceRenderer = ${createVexaMeshRendererSource("canvas", { autoStart: false })};
-    return meshSurfaceRenderer;
-  }
-
-  function syncSharedMeshSurface() {
-    const body = document.body;
-    if (!body) return;
-    const canvas = document.getElementById(SHARED_MESH_CANVAS_ID);
-    const next = !mediaOpen && body.classList.contains("credits-page-open");
-    if (canvas) canvas.dataset.vexaMeshActive = next ? "true" : "false";
-    document.documentElement.classList.toggle(SHARED_MESH_CLASS, next);
-    body.classList.toggle(SHARED_MESH_CLASS, next);
-    if (next === meshSurfaceActive) {
-      if (next && meshSurfaceRenderer) meshSurfaceRenderer.resize();
-      return;
-    }
-    meshSurfaceActive = next;
-    if (next) ensureSharedMeshRenderer().start();
-    else if (meshSurfaceRenderer) meshSurfaceRenderer.pause();
-    syncTelegramChrome();
   }
 
   function applyWorkspaceGeometry(workspace) {
@@ -227,7 +166,6 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
 
     mediaOpen = next;
     document.body.classList.toggle("vexa-live-open", next);
-    syncSharedMeshSurface();
     syncTelegramChrome();
     button.setAttribute("aria-pressed", next ? "true" : "false");
     button.setAttribute("aria-label", next ? "Return to voice creation" : "Open Vexa Live downloads");
@@ -276,7 +214,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
 
   function initialize() {
     installParentStyle();
-    installSharedMeshSurface();
+    syncTelegramChrome();
     const button = installButton();
     installWorkspace();
     bindSpeechButton();
