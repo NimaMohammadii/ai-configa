@@ -882,7 +882,7 @@ async function setSubtitleProgress(env, provider, session, totalBytes, downloade
   const table = provider === "story"
     ? "vexa_instagram_story_progress"
     : provider === "instagram"
-      ? "vexa_instagram_progress"
+      ? "vexa_instagram_download_progress"
       : "vexa_youtube_download_progress";
 
   let publishTotal = requestedTotal;
