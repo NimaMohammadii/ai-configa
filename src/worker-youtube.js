@@ -38,11 +38,16 @@ import {
   isVexaCustomPlayerRequest,
 } from "./mini-app/vexa-live/youtube-custom-player.js";
 import {
-  VexaSubtitleContainer,
   appendVexaLiveSubtitlesRuntime,
   handleVexaLiveSubtitlesRequest,
   isVexaLiveSubtitlesRequest,
 } from "./mini-app/vexa-live/youtube-live-subtitles.js";
+import {
+  VexaSubtitleContainer,
+  handleDownloadSubtitlesRequest,
+  isDownloadSubtitlesRequest,
+  rewriteDownloadSessionResponseWithSubtitles,
+} from "./mini-app/vexa-live/download-subtitles.js";
 import {
   handleVexaLivePersistenceRequest,
   isVexaLivePersistenceRequest,
@@ -70,6 +75,14 @@ export default {
       if (isVexaLivePersistenceRequest(request)) {
         return handleVexaLivePersistenceRequest(request);
       }
+      if (isDownloadSubtitlesRequest(request)) {
+        const response = await handleDownloadSubtitlesRequest(request, env, ctx, {
+          youtube: handleTrackedYouTubeDownloadRequest,
+          instagram: handleInstagramDownloadRequest,
+          story: handleInstagramStoryDownloadRequest,
+        });
+        if (response) return response;
+      }
       if (isVexaLiveSubtitlesRequest(request)) {
         return await handleVexaLiveSubtitlesRequest(request, env, ctx);
       }
@@ -77,13 +90,16 @@ export default {
         return handleVexaCustomPlayerRequest(request);
       }
       if (isInstagramStoryDownloadRequest(request)) {
-        return await handleInstagramStoryDownloadRequest(request, env, ctx);
+        const response = await handleInstagramStoryDownloadRequest(request, env, ctx);
+        return await rewriteDownloadSessionResponseWithSubtitles(request, response);
       }
       if (isInstagramDownloadRequest(request)) {
-        return await handleInstagramDownloadRequest(request, env, ctx);
+        const response = await handleInstagramDownloadRequest(request, env, ctx);
+        return await rewriteDownloadSessionResponseWithSubtitles(request, response);
       }
       if (isTrackedYouTubeDownloadRequest(request)) {
-        return await handleTrackedYouTubeDownloadRequest(request, env, ctx);
+        const response = await handleTrackedYouTubeDownloadRequest(request, env, ctx);
+        return await rewriteDownloadSessionResponseWithSubtitles(request, response);
       }
       if (isYouTubePlaybackRequest(request)) {
         return await handleYouTubePlaybackRequest(request, env, ctx);
