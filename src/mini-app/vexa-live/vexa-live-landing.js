@@ -49,8 +49,9 @@ button,select{font:inherit}
 .vexa-upload-action{position:relative;overflow:hidden;width:48px;min-width:48px;height:48px;padding:0;${liquidGlassMaterialCss()}outline:0!important;border-radius:999px;color:rgba(255,255,255,.92);display:grid;place-items:center;appearance:none;-webkit-appearance:none;cursor:pointer;transform-origin:center;will-change:transform,filter,opacity;transition:opacity .3s ease,transform .5s cubic-bezier(.16,1,.3,1),filter .3s ease,background .35s ease,border-color .35s ease,box-shadow .35s ease;animation:vexaActionEnter .58s .07s cubic-bezier(.16,1,.3,1)}
 .vexa-live-download-action::after,.vexa-upload-action::after{content:"";position:absolute;z-index:0;top:-45%;bottom:-45%;left:-42%;width:30%;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,.2),transparent);transform:skewX(-18deg) translateX(-260%);animation:vexaActionSheen 3.6s 1s cubic-bezier(.16,1,.3,1) infinite}
 .vexa-download-action-label,.vexa-upload-plus,.vexa-download-action-loader{position:relative;z-index:1}
-.vexa-download-action-label{display:inline-block;transition:transform .4s cubic-bezier(.16,1,.3,1),letter-spacing .35s ease,opacity .25s ease}
-.vexa-download-action-loader{width:15px;height:15px;flex:0 0 15px;border-radius:50%;border:1.5px solid rgba(255,255,255,.2);border-top-color:rgba(255,255,255,.92);border-right-color:rgba(255,255,255,.48);opacity:0;transform:scale(.7);margin-right:-15px;pointer-events:none;transition:opacity .2s ease,transform .32s cubic-bezier(.16,1,.3,1),margin-right .28s ease}
+.vexa-download-action-label{display:inline-block;transition:transform .4s cubic-bezier(.16,1,.3,1),letter-spacing .35s ease,opacity .25s ease,font-weight .25s ease}
+.vexa-download-action-loader{position:relative;width:18px;height:18px;flex:0 0 18px;border-radius:50%;opacity:0;transform:scale(.72);margin-right:-18px;pointer-events:none;transition:opacity .22s ease,transform .36s cubic-bezier(.16,1,.3,1),margin-right .3s ease}
+.vexa-download-action-loader::before{content:"";position:absolute;inset:0;border-radius:50%;border:2.25px solid rgba(255,255,255,.14);border-top-color:rgba(255,255,255,.98);border-right-color:rgba(255,255,255,.62);border-bottom-color:rgba(255,255,255,.06);box-shadow:0 0 10px rgba(255,255,255,.11),inset 0 0 0 .25px rgba(255,255,255,.1);transform-origin:50% 50%;will-change:transform;animation:vexaButtonSpin .72s linear infinite,vexaButtonGlow 1.35s ease-in-out infinite}
 .vexa-upload-plus{display:block;width:20px;height:20px;font-size:0;line-height:0;transform-origin:center;transition:transform .5s cubic-bezier(.16,1,.3,1)}
 .vexa-upload-plus::before,.vexa-upload-plus::after{content:"";position:absolute;left:50%;top:50%;display:block;background:currentColor;border-radius:999px;transform:translate(-50%,-50%);box-shadow:0 0 7px rgba(255,255,255,.12)}
 .vexa-upload-plus::before{width:20px;height:3px}
@@ -58,8 +59,9 @@ button,select{font:inherit}
 .vexa-upload-input{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;overflow:hidden!important;clip:rect(0 0 0 0)!important}
 @keyframes vexaActionEnter{from{opacity:0;transform:translateY(10px) scale(.92)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes vexaActionSheen{0%,58%{transform:skewX(-18deg) translateX(-260%);opacity:0}66%{opacity:1}86%,100%{transform:skewX(-18deg) translateX(620%);opacity:0}}
-@keyframes vexaButtonSpin{to{transform:rotate(360deg)}}
-@keyframes vexaButtonLabelWait{0%,100%{opacity:.56;transform:translateY(1px)}50%{opacity:1;transform:translateY(-1px)}}
+@keyframes vexaButtonSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes vexaButtonGlow{0%,100%{opacity:.72;filter:drop-shadow(0 0 0 rgba(255,255,255,0))}50%{opacity:1;filter:drop-shadow(0 0 3px rgba(255,255,255,.26))}}
+@keyframes vexaButtonLabelWait{0%,100%{opacity:.62;transform:translateY(.6px);letter-spacing:-.005em}50%{opacity:1;transform:translateY(-.6px);letter-spacing:.015em}}
 @media(hover:hover) and (pointer:fine){.vexa-live-download-action:hover,.vexa-upload-action:hover{transform:translateY(-1px) scale(1.045);${LIQUID_GLASS_HOVER_CSS}}.vexa-live-download-action:hover .vexa-download-action-label{transform:translateY(-1px);letter-spacing:.012em}.vexa-upload-action:hover .vexa-upload-plus{transform:rotate(90deg) scale(1.06)}}
 .vexa-live-download-action:active,.vexa-upload-action:active{transform:scale(.955);filter:brightness(.88);transition-duration:.14s}
 .vexa-live-download-action:active .vexa-download-action-label{transform:scale(.96)}
@@ -68,12 +70,12 @@ button,select{font:inherit}
 .vexa-live-download-action:disabled,.vexa-upload-action:disabled{opacity:.35;cursor:default}
 .vexa-live-download-action:disabled::after,.vexa-upload-action:disabled::after{display:none}
 .vexa-live-download[data-state="downloading"] .vexa-live-download-action,.vexa-live-download[data-state="downloading"] .vexa-upload-action{opacity:0;transform:translateY(8px) scale(.96);pointer-events:none}
-.vexa-live-download[data-button-loading="1"] .vexa-live-download-action{opacity:.82!important;transform:none!important;pointer-events:none!important;gap:8px}
-.vexa-live-download[data-button-loading="1"] .vexa-download-action-loader{opacity:1;transform:scale(1);margin-right:0;animation:vexaButtonSpin .74s linear infinite}
-.vexa-live-download[data-button-loading="1"] .vexa-download-action-label{animation:vexaButtonLabelWait 1.15s ease-in-out infinite}
+.vexa-live-download[data-button-loading="1"] .vexa-live-download-action{opacity:.9!important;transform:none!important;pointer-events:none!important;gap:9px}
+.vexa-live-download[data-button-loading="1"] .vexa-download-action-loader{opacity:1;transform:scale(1);margin-right:0}
+.vexa-live-download[data-button-loading="1"] .vexa-download-action-label{font-weight:720;animation:vexaButtonLabelWait 1.08s cubic-bezier(.4,0,.2,1) infinite}
 .vexa-live-download[data-button-loading="1"] .vexa-upload-action{opacity:.18;pointer-events:none}
 .vexa-live-download[data-state="completed"] .vexa-live-download-action,.vexa-live-download[data-state="completed"] .vexa-upload-action{opacity:.62}
-@media(prefers-reduced-motion:reduce){.vexa-download-percent,.vexa-download-fill,.vexa-live-download-action,.vexa-upload-action,.vexa-download-action-label,.vexa-download-action-loader,.vexa-upload-plus,.vexa-download-quality,.vexa-quality-option,.vexa-download-subtitles{transition:none!important;animation:none!important}.vexa-live-download-action::after,.vexa-upload-action::after{animation:none!important}}
+@media(prefers-reduced-motion:reduce){.vexa-download-percent,.vexa-download-fill,.vexa-live-download-action,.vexa-upload-action,.vexa-download-action-label,.vexa-download-action-loader,.vexa-upload-plus,.vexa-download-quality,.vexa-quality-option,.vexa-download-subtitles{transition:none!important;animation:none!important}.vexa-live-download-action::after,.vexa-upload-action::after{animation:none!important}.vexa-live-download[data-button-loading="1"] .vexa-download-action-loader::before{animation:vexaButtonSpin .9s linear infinite!important}}
 `;
 
 const SUBTITLE_PREFERENCE_SCRIPT = String.raw`(function(){
