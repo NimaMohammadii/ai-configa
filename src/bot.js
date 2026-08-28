@@ -1193,7 +1193,7 @@ export async function handleCallback(query, env) {
   if (data === "admin_broadcast_button") {
     if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
     const action = await getAdminAction(env, userId);
-    const current = decodeBroadcastConfig(action.target_user_id);
+    const current = decodeBroadcastConfig(action?.target_user_id);
     const config = { ...current, button: !current.button };
     await answerCallback(env, query.id, config.button ? "Button enabled" : "Button disabled");
     await setAdminAction(env, userId, "broadcast", { targetUserId: encodeBroadcastConfig(config), chatId, messageId });
