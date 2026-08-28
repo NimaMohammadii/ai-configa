@@ -176,9 +176,12 @@ export async function generateUsagePricedImage(env, options = {}) {
   const userId = String(options.userId || "").trim();
   const prompt = String(options.prompt || "").trim();
   const sources = Array.isArray(options.sources) ? options.sources.filter((source) => source?.buffer?.byteLength) : [];
+  const maxPromptChars = options.metadata?.exploreId
+    ? MAX_PROMPT_CHARS + Array.from(EXPLORE_EDIT_PROMPT).length + 256
+    : MAX_PROMPT_CHARS;
   if (!userId) throw publicError("Image user is missing.", 400);
   if (!prompt) throw publicError("Image prompt is empty.", 400);
-  if (Array.from(prompt).length > MAX_PROMPT_CHARS) throw publicError("Image prompt is too long. Please send a shorter prompt.", 400);
+  if (Array.from(prompt).length > maxPromptChars) throw publicError("Image prompt is too long. Please send a shorter prompt.", 400);
   if (sources.length > MAX_SOURCE_IMAGES + 1) throw publicError("Too many image inputs.", 400);
   if (sources.reduce((total, source) => total + Number(source.buffer.byteLength || 0), 0) > MAX_TOTAL_SOURCE_BYTES) {
     throw publicError("The selected images are too large together.", 413);
