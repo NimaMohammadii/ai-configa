@@ -1498,6 +1498,17 @@ export async function adminBuyersText(env, page = 0) {
   ].join("\n");
 }
 
+export async function adminBuyersKeyboard(env, page = 0) {
+  const data = await getAdminBuyersPage(env, page);
+  const rows = data.users.map((user) => [{ text: buyerLabel(user), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
+  const nav = [];
+  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_buyers:" + (data.page - 1) });
+  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_buyers:" + (data.page + 1) });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  return { inline_keyboard: rows };
+}
+
 export async function getAllUserIds(env) {
   return getUserIdsByLanguage(env, "all");
 }
@@ -2109,7 +2120,7 @@ export function normalizeImageExploreSize(size) {
 
 export function imageExploreSizeLabel(size) {
   const clean = normalizeImageExploreSize(size);
-  const option = IMAGE_EXPLORE_SIZE_OPTIONS.find((option) => option.size === clean);
+  const option = IMAGE_EXPLORE_SIZE_OPTIONS.find((item) => item.size === clean);
   return (option ? option.label : "Square") + " · " + clean.replace("x", "×");
 }
 
