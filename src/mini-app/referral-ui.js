@@ -265,6 +265,9 @@ export const REFERRAL_UI_PATCH = String.raw`
     return response;
   };
 
+  window.addEventListener('vexa:credits-balance',function(event){var detail=event&&event.detail||{};if(Number.isFinite(Number(detail.balance)))referralApplyBalance(detail.balance)});
+  window.addEventListener('vexa:insufficient-credits',function(event){var detail=event&&event.detail||{};if(Number.isFinite(Number(detail.balance)))referralApplyBalance(detail.balance);referralSetOpen(true,'tts')});
+
   document.body.addEventListener('click',function(event){
     var currentBalance=referralCurrentBalance();
     if(currentBalance===null)return;

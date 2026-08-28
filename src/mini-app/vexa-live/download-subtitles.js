@@ -77,6 +77,16 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
     return process;
   }
 
+  async probeVideoDuration(mediaUrl) {
+    await this.ensureAudioReady();
+    const source = String(mediaUrl || "").trim();
+    if (!/^https:\/\//i.test(source)) throw new Error("Subtitle video source is invalid");
+    const mediaInfo = await this.readMediaInfo(source);
+    const durationSeconds = positiveNumber(mediaInfo.duration);
+    if (!durationSeconds) throw new Error("Could not read video duration");
+    return durationSeconds;
+  }
+
   async renderSubtitledVideo(mediaUrl, cues, language, durationHint = 0, onProgress = null) {
     await this.ensureAudioReady();
     const source = String(mediaUrl || "").trim();
@@ -259,6 +269,12 @@ export class VexaSubtitleContainer extends BaseVexaSubtitleContainer {
       await process.output().catch(() => null);
     } catch {}
   }
+}
+
+export async function probeDownloadVideoDuration(env, mediaUrl, session) {
+  if (!env.VEXA_SUBTITLES) throw new Error("Subtitle rendering is unavailable");
+  const container = getContainer(env.VEXA_SUBTITLES, "subtitle-download-" + safeContainerKey(session));
+  return positiveNumber(await container.probeVideoDuration(String(mediaUrl || "")));
 }
 
 export async function handleDownloadSubtitlesRequest(request, env, ctx, delegates) {

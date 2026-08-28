@@ -1,8 +1,9 @@
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import { getMiniAppAccessSettings, isAdmin } from "../../admin.js";
 import { authenticateMiniAppPayload } from "../auth.js";
+import { creditsForUsdMicros, getBalance, refundCredits, spendCredits } from "../../credits.js";
 import { getVexaLiveAccessSettings } from "./access.js";
-import { handleDownloadSubtitlesRequest } from "./download-subtitles.js";
+import { handleDownloadSubtitlesRequest, probeDownloadVideoDuration } from "./download-subtitles.js";
 import {
   ensureVexaDownloadProgressTable,
   handleTrackedYouTubeDownloadRequest,
@@ -29,6 +30,7 @@ const RESULT_READ_STALL_MS = 90 * 1000;
 const RESULT_PART_STALL_MS = 2 * 60 * 1000;
 const LOCAL_UPLOAD_PART_STALL_MS = 2 * 60 * 1000;
 const WORKFLOW_TIMEOUT = "30 minutes";
+const SUBTITLE_USD_MICROS_PER_HOUR = 330_000;
 const SUBTITLE_LANGUAGES = new Set([
   "original", "en", "fa", "ru", "de", "tr", "es", "ar", "fr", "pt", "it", "hi", "zh", "ja", "ko",
 ]);
@@ -56,7 +58,8 @@ export class VexaSubtitleWorkflow extends WorkflowEntrypoint {
         "mark subtitle workflow failed",
         { retries: { limit: 0, delay: "1 second" }, timeout: "30 seconds" },
         async () => {
-          await forceSubtitleFailure(this.env, payload.provider, payload.session, message);
+          await forceSubtitleFailure(this.env, payload.provider, payload.session, message).catch(() => null);
+          await refundSubtitleCharge(this.env, payload, "workflow_failed");
           return { status: "failed", error: message };
         },
       ).catch(() => null);
@@ -69,7 +72,7 @@ export function isVexaDownloadControllerRequest(request) {
   const path = new URL(request.url).pathname;
   return path === RUNTIME_PATH || path === START_PATH || path === RESULT_PATH ||
     path === UPLOAD_CREATE_PATH || path === UPLOAD_PART_PATH ||
-    path === UPLOAD_COMPLETE_PATH || path === UPLOAD_ABORT_PATH;
+    path === UPLOAD_COMPLETE_PATH || path === UPLOAD_ABORT_PATH || path === DOWNLOAD_PATHS.youtube;
 }
 
 export async function handleVexaDownloadControllerRequest(request, env, ctx) {
@@ -101,6 +104,12 @@ export async function handleVexaDownloadControllerRequest(request, env, ctx) {
   if ((request.method === "GET" || request.method === "HEAD") && url.pathname === RESULT_PATH) {
     return serveSubtitleResult(request, env);
   }
+  if ((request.method === "GET" || request.method === "HEAD") && url.pathname === DOWNLOAD_PATHS.youtube) {
+    const session = cleanToken(url.searchParams.get("session"));
+    const row = session ? await readLocalUploadRow(env, session).catch(() => null) : null;
+    if (String(row?.provider || "") === "upload") return handleUploadedVideoDelegate(request, env);
+    return handleTrackedYouTubeDownloadRequest(request, env, ctx);
+  }
   return json({ error: "Method Not Allowed" }, 405);
 }
 
@@ -129,6 +138,8 @@ async function startSubtitleWorkflow(request, env, ctx) {
     return json({ error: "Background subtitle rendering is unavailable" }, 503);
   }
   const payload = await request.json().catch(() => ({}));
+  const user = await authenticateMiniAppPayload(payload, env);
+  await assertLiveAccess(env, user.id);
   const language = normalizeSubtitleLanguage(payload?.language);
   if (!language) return json({ error: "Subtitle language is invalid" }, 400);
 
@@ -138,7 +149,7 @@ async function startSubtitleWorkflow(request, env, ctx) {
   const token = cleanToken(parsed.url.searchParams.get("token"));
   if (!session || !token) return json({ error: "Download session is invalid" }, 400);
 
-  const eligible = await subtitleEligible(env, parsed.provider, session);
+  const eligible = await subtitleEligible(env, parsed.provider, session, user.id);
   if (!eligible.ok) return json({ error: eligible.error }, eligible.status);
 
   const delegate = delegateForProvider(parsed.provider);
@@ -155,16 +166,32 @@ async function startSubtitleWorkflow(request, env, ctx) {
   const claimed = await claimSubtitleSession(env, parsed.provider, session);
   if (!claimed) return json({ error: "This subtitle download is already running" }, 409);
 
+  const charged = await chargeSubtitleCredits(env, user.id, eligible.durationSeconds, parsed.provider, session, language);
+  if (!charged.ok) {
+    await releaseSubtitleClaim(env, parsed.provider, session).catch(() => null);
+    return json({ error: "Not enough USD balance", balance: charged.balance, needed: charged.needed }, 402);
+  }
+
   try {
     const queued = await enqueueSubtitleWorkflow(env, {
       provider: parsed.provider,
       session,
       language,
       downloadUrl: parsed.url.href,
+      userId: String(user.id),
+      chargedCredits: charged.spent,
+      durationSeconds: eligible.durationSeconds,
     });
     ctx?.waitUntil?.(cleanupExpiredResults(env));
-    return json({ ok: true, ...queued });
+    return json({ ok: true, ...queued, balance: charged.balance, chargedCredits: charged.spent });
   } catch (error) {
+    await refundSubtitleCharge(env, {
+      provider: parsed.provider,
+      session,
+      userId: String(user.id),
+      chargedCredits: charged.spent,
+      durationSeconds: eligible.durationSeconds,
+    }, "enqueue_failed").catch(() => null);
     await releaseSubtitleClaim(env, parsed.provider, session).catch(() => null);
     console.error("Vexa subtitle workflow enqueue failed", error?.stack || error);
     return json({ error: "Could not start subtitle rendering" }, 502);
@@ -186,6 +213,9 @@ async function enqueueSubtitleWorkflow(env, input) {
       downloadUrl: input.downloadUrl,
       resultKey,
       resultToken,
+      userId: input.userId,
+      chargedCredits: input.chargedCredits,
+      durationSeconds: input.durationSeconds,
     },
     retention: { successRetention: "1 day", errorRetention: "1 day" },
   });
@@ -200,6 +230,7 @@ async function createLocalSubtitleUpload(request, env, ctx) {
   const user = await authenticateMiniAppPayload(payload, env);
   await assertLiveAccess(env, user.id);
   const fileSize = positiveInteger(payload?.fileSize);
+  const durationSeconds = positiveNumber(payload?.durationSeconds);
   const fileName = sanitizeUploadFileName(payload?.fileName);
   const mimeType = normalizeUploadMime(payload?.mimeType, fileName);
   if (!fileSize || fileSize > LOCAL_UPLOAD_MAX_BYTES) {
@@ -207,6 +238,11 @@ async function createLocalSubtitleUpload(request, env, ctx) {
   }
   if (!isSupportedLocalVideo(fileName, mimeType)) {
     return json({ error: "Choose a supported video file" }, 415);
+  }
+  if (durationSeconds) {
+    const needed = subtitleCreditsForDuration(durationSeconds);
+    const balance = await getBalance(env, user.id);
+    if (balance < needed) return json({ error: "Not enough USD balance", balance, needed }, 402);
   }
 
   await ensureVexaDownloadProgressTable(env);
@@ -227,7 +263,7 @@ async function createLocalSubtitleUpload(request, env, ctx) {
       "INSERT INTO vexa_youtube_download_progress " +
       "(session, playback_token, user_id, total_bytes, downloaded_bytes, status, error, created_at, updated_at, expires_at, " +
       "source_url, strategy_id, format_id, transport, provider, duration_seconds, option_key) " +
-      "VALUES (?, ?, ?, ?, 0, 'uploading', NULL, ?, ?, ?, ?, ?, ?, ?, 'upload', 0, 'upload')"
+      "VALUES (?, ?, ?, ?, 0, 'uploading', NULL, ?, ?, ?, ?, ?, ?, ?, 'upload', ?, 'upload')"
     ).bind(
       session,
       accessToken,
@@ -240,6 +276,7 @@ async function createLocalSubtitleUpload(request, env, ctx) {
       String(upload.uploadId || ""),
       fileName,
       mimeType,
+      durationSeconds,
     ).run();
   } catch (error) {
     try { await upload.abort(); } catch {}
@@ -366,6 +403,21 @@ async function completeLocalSubtitleUpload(request, env, ctx) {
     return json({ error: "Uploaded video ended before the expected file size" }, 502);
   }
 
+  const downloadUrl = new URL(DOWNLOAD_PATHS.youtube, request.url);
+  downloadUrl.searchParams.set("token", String(row.playback_token));
+  downloadUrl.searchParams.set("session", session);
+  let durationSeconds;
+  try {
+    durationSeconds = await probeDownloadVideoDuration(env, downloadUrl.href, session);
+  } catch (error) {
+    await env.EXPLORE_MEDIA.delete(String(row.source_url)).catch(() => null);
+    await forceSubtitleFailure(env, "youtube", session, "Could not read video duration").catch(() => null);
+    return json({ error: "Could not read video duration" }, 422);
+  }
+  await env.DB.prepare(
+    "UPDATE vexa_youtube_download_progress SET duration_seconds = ?, updated_at = ? WHERE session = ? AND provider = 'upload' AND status = 'uploading'"
+  ).bind(durationSeconds, Math.floor(Date.now() / 1000), session).run();
+
   const now = Math.floor(Date.now() / 1000);
   const stagedProgressBytes = Math.round(total * (LOCAL_UPLOAD_PROGRESS_END / 100));
   const transition = await env.DB.prepare(
@@ -373,8 +425,13 @@ async function completeLocalSubtitleUpload(request, env, ctx) {
     "WHERE session = ? AND provider = 'upload' AND status = 'uploading'"
   ).bind(stagedProgressBytes, now, session).run();
   if (Number(transition?.meta?.changes || 0) <= 0) {
-    await env.EXPLORE_MEDIA.delete(String(row.source_url)).catch(() => null);
     return json({ error: "Video upload state changed. Try again." }, 409);
+  }
+  const charged = await chargeSubtitleCredits(env, user.id, durationSeconds, "youtube", session, language);
+  if (!charged.ok) {
+    await env.EXPLORE_MEDIA.delete(String(row.source_url)).catch(() => null);
+    await forceSubtitleFailure(env, "youtube", session, "Not enough USD balance").catch(() => null);
+    return json({ error: "Not enough USD balance", balance: charged.balance, needed: charged.needed }, 402);
   }
   await publishProgress(env, "youtube", session, {
     totalBytes: total,
@@ -385,15 +442,15 @@ async function completeLocalSubtitleUpload(request, env, ctx) {
     updatedAt: now,
   }).catch(() => null);
 
-  const downloadUrl = new URL(DOWNLOAD_PATHS.youtube, request.url);
-  downloadUrl.searchParams.set("token", String(row.playback_token));
-  downloadUrl.searchParams.set("session", session);
   try {
     const queued = await enqueueSubtitleWorkflow(env, {
       provider: "youtube",
       session,
       language,
       downloadUrl: downloadUrl.href,
+      userId: String(user.id),
+      chargedCredits: charged.spent,
+      durationSeconds,
     });
     ctx?.waitUntil?.(cleanupExpiredResults(env));
     return json({
@@ -401,9 +458,14 @@ async function completeLocalSubtitleUpload(request, env, ctx) {
       ...queued,
       progressUrl: "/mini-app/live/api/youtube-download/progress?session=" + encodeURIComponent(session),
       fileName: "Vexa-video.mp4",
+      balance: charged.balance,
+      chargedCredits: charged.spent,
     });
   } catch (error) {
     const message = "Could not start subtitle rendering";
+    await refundSubtitleCharge(env, {
+      provider: "youtube", session, userId: String(user.id), chargedCredits: charged.spent, durationSeconds,
+    }, "enqueue_failed").catch(() => null);
     await forceSubtitleFailure(env, "youtube", session, message).catch(() => null);
     await env.EXPLORE_MEDIA.delete(String(row.source_url)).catch(() => null);
     console.error("Vexa local subtitle workflow enqueue failed", error?.stack || error);
@@ -676,7 +738,7 @@ async function publishProgress(env, provider, session, payload) {
 async function readLocalUploadRow(env, session) {
   await ensureVexaDownloadProgressTable(env);
   return env.DB.prepare(
-    "SELECT playback_token, user_id, total_bytes, downloaded_bytes, status, error, expires_at, source_url, strategy_id, format_id, transport, provider, option_key " +
+    "SELECT playback_token, user_id, total_bytes, downloaded_bytes, status, error, expires_at, source_url, strategy_id, format_id, transport, provider, duration_seconds, option_key " +
     "FROM vexa_youtube_download_progress WHERE session = ?"
   ).bind(session).first();
 }
@@ -744,12 +806,26 @@ function normalizeUploadMime(value, fileName) {
   return "video/mp4";
 }
 
-async function subtitleEligible(env, provider, session) {
+async function subtitleEligible(env, provider, session, userId) {
   try {
     const table = progressTable(provider);
-    const select = provider === "story" ? "total_bytes, status" : "option_key, status";
-    const row = await env.DB.prepare("SELECT " + select + " FROM " + table + " WHERE session = ?").bind(session).first();
+    let row;
+    if (provider === "youtube") {
+      row = await env.DB.prepare(
+        "SELECT user_id, option_key, status, duration_seconds FROM " + table + " WHERE session = ?"
+      ).bind(session).first();
+    } else {
+      const tokenTable = provider === "story" ? "vexa_instagram_story_tokens" : "vexa_instagram_download_tokens";
+      const tokenColumn = "download_token";
+      row = await env.DB.prepare(
+        "SELECT p.user_id, p.option_key, p.total_bytes, p.status, t.catalog_json " +
+        "FROM " + table + " p LEFT JOIN " + tokenTable + " t ON t.token = p." + tokenColumn + " WHERE p.session = ?"
+      ).bind(session).first();
+    }
     if (!row) return { ok: false, status: 410, error: "Download session expired" };
+    if (String(row.user_id) !== String(userId)) {
+      return { ok: false, status: 403, error: "Download session does not belong to this user" };
+    }
     if (["staging", "transcribing", "translating", "rendering", "finalizing"].includes(String(row.status || ""))) {
       return { ok: false, status: 409, error: "This subtitle download is already running" };
     }
@@ -762,7 +838,11 @@ async function subtitleEligible(env, provider, session) {
     if (provider === "youtube" && String(row.option_key || "") === "a") {
       return { ok: false, status: 409, error: "Burned-in subtitles are unavailable for audio downloads" };
     }
-    return { ok: true };
+    const durationSeconds = provider === "youtube"
+      ? positiveNumber(row.duration_seconds)
+      : catalogOptionDuration(row.catalog_json, row.option_key);
+    if (!durationSeconds) return { ok: false, status: 422, error: "Video duration is unavailable" };
+    return { ok: true, durationSeconds };
   } catch (error) {
     console.error("Vexa subtitle eligibility check failed", error?.stack || error);
     return { ok: false, status: 502, error: "Could not validate subtitle download" };
@@ -832,16 +912,19 @@ function normalizeWorkflowPayload(value) {
   const language = normalizeSubtitleLanguage(value?.language);
   const resultToken = cleanResultToken(value?.resultToken);
   const resultKey = String(value?.resultKey || "");
+  const userId = cleanUserId(value?.userId);
+  const chargedCredits = positiveInteger(value?.chargedCredits);
+  const durationSeconds = positiveNumber(value?.durationSeconds);
   let url;
   try { url = new URL(String(value?.downloadUrl || "")); } catch { return null; }
   if (
     !["youtube", "instagram", "story"].includes(provider) ||
-    !session || !language || !resultToken ||
+    !session || !language || !resultToken || !userId || !chargedCredits || !durationSeconds ||
     resultKey !== RESULT_PREFIX + resultToken + ".mp4" ||
     url.protocol !== "https:" ||
     providerForDownloadPath(url.pathname) !== provider
   ) return null;
-  return { provider, session, language, resultToken, resultKey, downloadUrl: url.href };
+  return { provider, session, language, resultToken, resultKey, downloadUrl: url.href, userId, chargedCredits, durationSeconds };
 }
 
 function normalizeDownloadUrl(value, base) {
@@ -915,6 +998,59 @@ function randomToken() {
 function positiveInteger(value) {
   const number = Number.parseInt(String(value || "0"), 10);
   return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function positiveNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function cleanUserId(value) {
+  const userId = String(value || "").trim();
+  return /^\d{1,24}$/u.test(userId) ? userId : "";
+}
+
+function catalogOptionDuration(value, optionKey) {
+  try {
+    const options = JSON.parse(String(value || "[]"));
+    const option = Array.isArray(options)
+      ? options.find(item => String(item?.key || "") === String(optionKey || ""))
+      : null;
+    return positiveNumber(option?.duration);
+  } catch {
+    return 0;
+  }
+}
+
+function subtitleCreditsForDuration(value) {
+  const durationSeconds = positiveNumber(value);
+  if (!durationSeconds) return 0;
+  return creditsForUsdMicros(Math.ceil((durationSeconds * SUBTITLE_USD_MICROS_PER_HOUR) / 3600));
+}
+
+async function chargeSubtitleCredits(env, userId, durationSeconds, provider, session, language) {
+  const credits = subtitleCreditsForDuration(durationSeconds);
+  if (!credits) return { ok: false, balance: await getBalance(env, userId), needed: 0 };
+  return spendCredits(env, userId, credits, "vexa_download_subtitles", {
+    provider,
+    session,
+    language,
+    durationSeconds,
+    usdMicrosPerHour: SUBTITLE_USD_MICROS_PER_HOUR,
+  });
+}
+
+async function refundSubtitleCharge(env, payload, cause) {
+  const userId = cleanUserId(payload?.userId);
+  const credits = positiveInteger(payload?.chargedCredits);
+  const session = cleanToken(payload?.session);
+  if (!userId || !credits || !session) return null;
+  return refundCredits(env, userId, credits, "vexa_download_subtitles_refund", {
+    provider: String(payload?.provider || ""),
+    session,
+    durationSeconds: positiveNumber(payload?.durationSeconds),
+    cause: String(cause || "failed"),
+  }, "vexa-download-subtitles:" + session);
 }
 
 function parseRange(value, size) {
@@ -1028,6 +1164,8 @@ const VEXA_DOWNLOAD_CONTROLLER_JS = String.raw`
   function hostWindow(){try{if(window.parent&&window.parent!==window&&window.parent.location.origin===window.location.origin)return window.parent;}catch(error){}return window;}
   function telegram(){const host=hostWindow();return window.Telegram?.WebApp||host.Telegram?.WebApp||null;}
   function initData(){return String(telegram()?.initData||'');}
+  function syncCreditsBalance(value){const balance=Number(value);if(!Number.isFinite(balance))return;try{const host=hostWindow();host.dispatchEvent(new host.CustomEvent('vexa:credits-balance',{detail:{balance:Math.max(0,balance),source:'vexa_download_subtitles'}}));}catch(error){}}
+  function showInsufficientCredits(data){syncCreditsBalance(data?.balance);try{const host=hostWindow();host.dispatchEvent(new host.CustomEvent('vexa:insufficient-credits',{detail:{balance:Number(data?.balance),needed:Number(data?.needed),source:'vexa_download_subtitles'}}));}catch(error){}}
   function haptic(style){try{telegram()?.HapticFeedback?.impactOccurred?.(style||'light');}catch(error){}}
   function mb(bytes){return(Math.max(0,Number(bytes||0))/1048576).toFixed(1);}
   function formatPercent(value){const number=Math.max(0,Math.min(100,Number(value||0)));if(number>=100)return'100%';const rounded=Math.round(number*10)/10;return(String(rounded).includes('.')?rounded.toFixed(1):String(rounded))+'%';}
@@ -1056,12 +1194,13 @@ const VEXA_DOWNLOAD_CONTROLLER_JS = String.raw`
   function handleProgress(data){if(!data?.ok)return;const total=Number(data.totalBytes||prepared?.fileSize||0);const done=Math.max(0,Number(data.downloadedBytes||0));const pct=Math.max(0,Math.min(100,Number(data.percent||0)));const state=String(data.status||'ready');const live=selected()?.kind==='live'||prepared?.live;if(state==='file_ready'&&subtitleJob){setProgress(100,true);launchNative(subtitleResultUrl,prepared?.fileName||'Vexa-video.mp4',true);return;}if(state==='completed'){setProgress(100,true);if(subtitleJob){setState('downloading','Finishing video','100% · Preparing your file');checkResultReady();return;}busy=false;setUploadDisabled(false);setState('completed',live?'Live recording completed':'Downloaded',mb(done||total)+' MB');setButton('Download again',false);closeSocket();haptic('medium');return;}if(state==='failed'||state==='cancelled'){busy=false;setUploadDisabled(false);setState('error',String(data.error||'Download failed'),localFile?localDetail():(done?mb(done)+' MB processed':optionDetail(selected())));setButton('Try again',false);closeSocket();prepared=null;subtitleJob=false;subtitleResultUrl='';return;}if(state==='uploading'){setProgress(Math.max(displayedPercent,pct),true);setState('downloading','Uploading video',mb(done)+' MB / '+mb(total)+' MB');return;}if(!live&&(state==='staging'||state==='transcribing'||state==='translating'||state==='rendering'||state==='finalizing')){const label=state==='staging'?'Getting video':state==='transcribing'?'Creating subtitles':state==='translating'?'Translating subtitles':state==='rendering'?'Rendering subtitles':'Finishing video';setProgress(Math.max(displayedPercent,pct),true);setState('downloading',label,formatPercent(Math.max(displayedPercent,pct))+' · Keep the app open');return;}if(state==='preparing'){if(displayedPercent<=0)setProgress(0,false);setState('preparing',live?'Connecting to Instagram Live':'Preparing download','Keep the app open');return;}if(state==='downloading'){if(live){setState('downloading','Recording Instagram Live',mb(done)+' MB saved · Keep the app open');return;}setProgress(Math.max(displayedPercent,pct),true);setState('downloading','Downloading',mb(done)+' MB / '+mb(total)+' MB · Keep the app open');}}
   function bindTelegram(){if(telegramBound)return;const tg=telegram();if(!tg?.onEvent)return;try{tg.onEvent('fileDownloadRequested',function(event){const state=String(event?.status||event||'').toLowerCase();if(state==='cancelled'){if(nativeStarted&&subtitleJob){nativeStarted=false;busy=false;setUploadDisabled(false);setState('completed','Video is ready','Tap Download to try again');setButton(localFile?'Download':'Download',false);return;}busy=false;setUploadDisabled(false);closeSocket();setProgress(0,true);setState('waiting','Download cancelled',currentDetail());setButton(localFile?'Add subtitles':'Download',false);}});telegramBound=true;}catch(error){}}
   function launchNative(url,fileName,fromSubtitle){if(nativeStarted)return;nativeStarted=true;const target=new URL(String(url||''),window.location.origin).href;const tg=telegram();if(tg?.downloadFile){try{tg.downloadFile({url:target,file_name:String(fileName||'Vexa-video.mp4')},function(accepted){if(accepted===false){nativeStarted=false;busy=false;setUploadDisabled(false);setState('completed',fromSubtitle?'Video is ready':'Ready to download',currentDetail());setButton('Download',false);return;}if(fromSubtitle){busy=false;setUploadDisabled(false);setProgress(100,true);setState('completed','Video is ready','Download started');setButton('Download again',false);closeSocket();haptic('medium');}});return;}catch(error){console.warn('Telegram downloadFile failed',error?.message||error);}}try{const link=document.createElement('a');link.href=target;link.download=String(fileName||'Vexa-video.mp4');link.rel='noopener';document.body.appendChild(link);link.click();link.remove();if(fromSubtitle){busy=false;setUploadDisabled(false);setProgress(100,true);setState('completed','Video is ready','Download started');setButton('Download again',false);closeSocket();haptic('medium');}}catch(error){nativeStarted=false;busy=false;setUploadDisabled(false);setState('error','Could not start download','');setButton('Try again',false);}}
-  async function startSubtitle(){const language=subtitleLanguage();if(!language||selected()?.kind==='audio'||selected()?.kind==='live'||prepared?.live)return false;subtitleJob=true;nativeStarted=false;subtitleResultUrl='';setProgress(0,false);setState('downloading','Starting subtitles','0% · Keep the app open');connectSocket(prepared.progressUrl,false);try{const response=await fetch(SUBTITLE_START,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({downloadUrl:prepared.downloadUrl,language:language})});const data=await response.json().catch(function(){return{};});if(!response.ok||!data.resultUrl)throw new Error(String(data.error||'Could not start subtitle rendering'));subtitleResultUrl=new URL(String(data.resultUrl),window.location.origin).href;checkResultReady();return true;}catch(error){subtitleJob=false;subtitleResultUrl='';busy=false;setUploadDisabled(false);closeSocket();setState('error',String(error?.message||'Could not start subtitle rendering'),'');setButton('Try again',false);return true;}}
+  async function startSubtitle(){const language=subtitleLanguage();if(!language||selected()?.kind==='audio'||selected()?.kind==='live'||prepared?.live)return false;subtitleJob=true;nativeStarted=false;subtitleResultUrl='';setProgress(0,false);setState('downloading','Starting subtitles','0% · Keep the app open');connectSocket(prepared.progressUrl,false);try{const response=await fetch(SUBTITLE_START,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),downloadUrl:prepared.downloadUrl,language:language})});const data=await response.json().catch(function(){return{};});if(response.status===402)showInsufficientCredits(data);if(!response.ok||!data.resultUrl)throw new Error(String(data.error||'Could not start subtitle rendering'));syncCreditsBalance(data.balance);subtitleResultUrl=new URL(String(data.resultUrl),window.location.origin).href;checkResultReady();return true;}catch(error){subtitleJob=false;subtitleResultUrl='';busy=false;setUploadDisabled(false);closeSocket();setState('error',String(error?.message||'Could not start subtitle rendering'),'');setButton('Try again',false);return true;}}
   async function requestDownload(){if(!prepared||busy)return;busy=true;setUploadDisabled(true);bindTelegram();haptic('light');if(await startSubtitle())return;setProgress(0,false);setState('preparing','Waiting for Telegram','Keep the app open');connectSocket(prepared.progressUrl,false);launchNative(prepared.downloadUrl,prepared.fileName,false);}
   function localVideoSupported(file){if(!file||!Number(file.size))return false;const type=String(file.type||'').toLowerCase();const name=String(file.name||'').toLowerCase();return type.startsWith('video/')||/\.(?:mp4|mov|m4v|webm|mkv)$/.test(name);}
+  function localVideoDuration(file){return new Promise(function(resolve){const video=document.createElement('video');const objectUrl=URL.createObjectURL(file);let finished=false;const done=function(value){if(finished)return;finished=true;clearTimeout(timer);video.removeAttribute('src');try{video.load();}catch(loadError){}URL.revokeObjectURL(objectUrl);resolve(value);};const timer=setTimeout(function(){done(0);},10000);video.preload='metadata';video.muted=true;video.onloadedmetadata=function(){const duration=Number(video.duration);done(Number.isFinite(duration)&&duration>0?duration:0);};video.onerror=function(){done(0);};video.src=objectUrl;});}
   function uploadPart(session,partNumber,blob,uploadedBefore,totalBytes){return new Promise(function(resolve,reject){let attempt=0;const send=function(){attempt+=1;const xhr=new XMLHttpRequest();xhr.open('PUT',UPLOAD_PART+'?session='+encodeURIComponent(session)+'&part='+encodeURIComponent(String(partNumber)),true);xhr.setRequestHeader('X-Vexa-Init-Data',initData());xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.upload.onprogress=function(event){if(!event.lengthComputable)return;const bytes=Math.min(totalBytes,uploadedBefore+event.loaded);const percent=(bytes/Math.max(1,totalBytes))*20;setProgress(Math.max(displayedPercent,percent),true);setState('downloading','Uploading video',mb(bytes)+' MB / '+mb(totalBytes)+' MB');};xhr.onload=function(){let data={};try{data=JSON.parse(String(xhr.responseText||'{}'));}catch(error){}if(xhr.status>=200&&xhr.status<300&&data.etag){resolve({partNumber:Number(data.partNumber||partNumber),etag:String(data.etag)});return;}const message=String(data.error||'Video upload failed');if(attempt<2&&xhr.status>=500){send();return;}reject(new Error(message));};xhr.onerror=function(){if(attempt<2){send();return;}reject(new Error('Video upload connection failed'));};xhr.onabort=function(){reject(new Error('Video upload was cancelled'));};xhr.send(blob);};send();});}
   async function abortUpload(session){if(!session)return;try{await fetch(UPLOAD_ABORT,{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),session:session})});}catch(error){}}
-  async function requestLocalUpload(){if(!localFile||busy)return;const language=subtitleLanguage();if(!language){setState('error','Choose a subtitle language',localDetail());setButton('Add subtitles',false);return;}busy=true;setUploadDisabled(true);bindTelegram();haptic('light');setProgress(0,false);setState('downloading','Preparing upload',localDetail());setButton('Uploading…',true);let session='';try{const createResponse=await fetch(UPLOAD_CREATE,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),fileName:String(localFile.name||'video.mp4'),mimeType:String(localFile.type||''),fileSize:Number(localFile.size||0)})});const created=await createResponse.json().catch(function(){return{};});if(!createResponse.ok||!created.session||!created.progressUrl||!created.partSize)throw new Error(String(created.error||'Could not start video upload'));session=String(created.session);localUploadSession=session;prepared={downloadUrl:'',progressUrl:new URL(String(created.progressUrl),window.location.origin).href,fileName:String(created.fileName||'Vexa-video.mp4'),fileSize:Number(localFile.size||0),title:String(localFile.name||'Video'),optionKey:'upload',live:false,local:true};subtitleJob=true;subtitleResultUrl='';nativeStarted=false;connectSocket(prepared.progressUrl,false);const partSize=Number(created.partSize);const count=Math.ceil(localFile.size/partSize);const parts=[];for(let index=0;index<count;index+=1){const start=index*partSize;const end=Math.min(localFile.size,start+partSize);const blob=localFile.slice(start,end);parts.push(await uploadPart(session,index+1,blob,start,localFile.size));}setProgress(Math.max(displayedPercent,20),true);setState('downloading','Preparing subtitles','20% · Keep the app open');const completeResponse=await fetch(UPLOAD_COMPLETE,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),session:session,parts:parts,language:language})});const completed=await completeResponse.json().catch(function(){return{};});if(!completeResponse.ok||!completed.resultUrl)throw new Error(String(completed.error||'Could not start subtitle rendering'));subtitleResultUrl=new URL(String(completed.resultUrl),window.location.origin).href;if(completed.progressUrl)prepared.progressUrl=new URL(String(completed.progressUrl),window.location.origin).href;checkResultReady();}catch(error){if(session)await abortUpload(session);busy=false;setUploadDisabled(false);subtitleJob=false;subtitleResultUrl='';nativeStarted=false;closeSocket();prepared=null;setState('error',String(error?.message||'Could not upload video'),localDetail());setButton('Try again',false);}}
+  async function requestLocalUpload(){if(!localFile||busy)return;const language=subtitleLanguage();if(!language){setState('error','Choose a subtitle language',localDetail());setButton('Add subtitles',false);return;}busy=true;setUploadDisabled(true);bindTelegram();haptic('light');setProgress(0,false);setState('downloading','Preparing upload',localDetail());setButton('Uploading…',true);let session='';try{const durationSeconds=await localVideoDuration(localFile);const createResponse=await fetch(UPLOAD_CREATE,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),fileName:String(localFile.name||'video.mp4'),mimeType:String(localFile.type||''),fileSize:Number(localFile.size||0),durationSeconds:durationSeconds})});const created=await createResponse.json().catch(function(){return{};});if(createResponse.status===402)showInsufficientCredits(created);if(!createResponse.ok||!created.session||!created.progressUrl||!created.partSize)throw new Error(String(created.error||'Could not start video upload'));session=String(created.session);localUploadSession=session;prepared={downloadUrl:'',progressUrl:new URL(String(created.progressUrl),window.location.origin).href,fileName:String(created.fileName||'Vexa-video.mp4'),fileSize:Number(localFile.size||0),title:String(localFile.name||'Video'),optionKey:'upload',live:false,local:true};subtitleJob=true;subtitleResultUrl='';nativeStarted=false;connectSocket(prepared.progressUrl,false);const partSize=Number(created.partSize);const count=Math.ceil(localFile.size/partSize);const parts=[];for(let index=0;index<count;index+=1){const start=index*partSize;const end=Math.min(localFile.size,start+partSize);const blob=localFile.slice(start,end);parts.push(await uploadPart(session,index+1,blob,start,localFile.size));}setProgress(Math.max(displayedPercent,20),true);setState('downloading','Preparing subtitles','20% · Keep the app open');const completeResponse=await fetch(UPLOAD_COMPLETE,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),session:session,parts:parts,language:language})});const completed=await completeResponse.json().catch(function(){return{};});if(completeResponse.status===402)showInsufficientCredits(completed);if(!completeResponse.ok||!completed.resultUrl)throw new Error(String(completed.error||'Could not start subtitle rendering'));syncCreditsBalance(completed.balance);subtitleResultUrl=new URL(String(completed.resultUrl),window.location.origin).href;if(completed.progressUrl)prepared.progressUrl=new URL(String(completed.progressUrl),window.location.origin).href;checkResultReady();}catch(error){if(session)await abortUpload(session);busy=false;setUploadDisabled(false);subtitleJob=false;subtitleResultUrl='';nativeStarted=false;closeSocket();prepared=null;setState('error',String(error?.message||'Could not upload video'),localDetail());setButton('Try again',false);}}
   function chooseLocalFile(file){if(!file)return;if(!localVideoSupported(file)){setState('error','Choose a supported video file','MP4, MOV, M4V, WebM or MKV');setButton('Download',false);return;}if(Number(file.size||0)>LOCAL_MAX_BYTES){setState('error','Video must be 512 MB or smaller',mb(file.size)+' MB');setButton('Download',false);return;}provider='youtube';sourceUrl='';downloadToken='';prepared=null;subtitleJob=false;subtitleResultUrl='';nativeStarted=false;busy=false;closeSocket();clearOptions();localFile=file;localUploadSession='';root.dataset.localUpload='1';setProgress(0,false);setState('waiting','Ready for subtitles',localDetail());setButton('Add subtitles',false);setUploadDisabled(false);haptic('light');}
   async function prepareSource(value,preferred){if(preparing)return preparing;const classified=classify(value);if(!classified){setState('error','Unsupported video link','');setButton('Try again',false);return false;}clearLocalFile();provider=classified.provider;sourceUrl=classified.url;downloadToken='';prepared=null;subtitleJob=false;subtitleResultUrl='';nativeStarted=false;busy=false;closeSocket();clearOptions();setProgress(0,false);setState('preparing',provider==='story'?'Loading Instagram Story':provider==='instagram'?'Loading Instagram qualities':'Loading qualities','');setButton('Preparing…',true);setUploadDisabled(true);haptic('light');const api=endpoints(provider);preparing=(async function(){try{if(provider==='youtube'){const response=await fetch(api.prepare,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:sourceUrl})});const direct=await response.json().catch(function(){return{};});if(!response.ok||!direct.downloadUrl)throw new Error(String(direct.error||'Could not prepare video'));const token=new URL(String(direct.downloadUrl),window.location.origin).searchParams.get('token')||'';if(!/^[A-Za-z0-9_-]{40,160}$/.test(token))throw new Error('Download session is invalid');downloadToken=token;const qualityResponse=await fetch(api.session,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),downloadToken:downloadToken})});const qualityData=await qualityResponse.json().catch(function(){return{};});if(!qualityResponse.ok||!Array.isArray(qualityData.options)||!qualityData.options.length)throw new Error(String(qualityData.error||'Could not load video qualities'));if(!renderOptions(qualityData.options,preferred))throw new Error('Download option is unavailable');}else{const response=await fetch(api.prepare,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),url:sourceUrl})});const data=await response.json().catch(function(){return{};});if(!response.ok||!data.downloadToken||!Array.isArray(data.options)||!data.options.length)throw new Error(String(data.error||'Could not prepare media'));downloadToken=String(data.downloadToken);if(!renderOptions(data.options,preferred))throw new Error('Download option is unavailable');}setProgress(0,false);setState('waiting','Choose format',optionDetail(selected()));setButton(selected()?.kind==='live'?'Start recording':'Download',false);return true;}catch(error){downloadToken='';prepared=null;clearOptions();setState('error',String(error?.message||'Could not prepare download'),'');setButton('Try again',false);return false;}finally{preparing=null;setUploadDisabled(false);}})();return preparing;}
   async function prepareSelected(){if(!downloadToken||!selectedKey||preparing)return false;const option=selected();const api=endpoints(provider);setState('preparing','Preparing '+String(option?.label||'format'),optionDetail(option));setButton('Preparing…',true);setUploadDisabled(true);preparing=(async function(){try{const response=await fetch(api.session,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({initData:initData(),downloadToken:downloadToken,optionKey:selectedKey})});const data=await response.json().catch(function(){return{};});if(!response.ok||!data.downloadUrl||!data.progressUrl||(!data.live&&!data.fileSize))throw new Error(String(data.error||'Could not prepare selected format'));prepared={downloadUrl:new URL(String(data.downloadUrl),window.location.origin).href,progressUrl:new URL(String(data.progressUrl),window.location.origin).href,fileName:String(data.fileName||'Vexa-video.mp4'),fileSize:Number(data.fileSize||0),title:String(data.title||'Video'),optionKey:String(data.optionKey||selectedKey),live:Boolean(data.live)};setProgress(0,false);setState('waiting',prepared.live?'Ready to record':'Ready to download',optionDetail(option));setButton(prepared.live?'Start recording':'Download',false);return true;}catch(error){prepared=null;setState('error',String(error?.message||'Could not prepare selected format'),optionDetail(option));setButton('Try again',false);return false;}finally{preparing=null;setUploadDisabled(false);}})();return preparing;}
