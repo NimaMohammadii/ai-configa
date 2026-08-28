@@ -1,5 +1,6 @@
 import { getAdminAction, isAdmin } from "./admin.js";
 import { handleCallback, handleMessage } from "./mini-app/vexa-live/bot-bridge.js";
+import { extractYouTubeUrl } from "./mini-app/vexa-live/youtube-download-exec.js";
 import {
   handleInstagramCallback,
   handleInstagramLinkMessage,
@@ -27,6 +28,8 @@ import { handlePreCheckout, handleStarsCallback, handleStarsPayment, handleStars
 import { handleSupportMessage } from "./support-flow-strict.js";
 import { handleVoiceTransformMessage } from "./voice-transform.js";
 import { handleExploreMediaRequest, isExploreMediaRequest } from "./explore-media.js";
+
+const MEDIA_INSPECT_WORKFLOW_KIND = "media_inspect";
 
 export default {
   async scheduled(event, env, ctx) {
@@ -138,8 +141,43 @@ async function handleMessageWithSupport(message, env) {
 
   if (await handleVoiceTransformMessage(message, env)) return;
   if (await handleInstagramLinkMessage(message, env)) return;
+  if (await enqueueMediaLinkInspection(message, env)) return;
 
   await handleMessageAndPin(message, env);
+}
+
+async function enqueueMediaLinkInspection(message, env) {
+  const userId = message?.from?.id;
+  const chatId = message?.chat?.id;
+  const messageId = Number(message?.message_id || 0);
+  const sourceUrl = extractYouTubeUrl(message?.text || "");
+  if (
+    !env.AI_CODING_WORKFLOW ||
+    !userId ||
+    !chatId ||
+    message?.chat?.type !== "private" ||
+    !Number.isSafeInteger(messageId) ||
+    messageId <= 0 ||
+    !sourceUrl
+  ) {
+    return false;
+  }
+
+  const workflowId = "media-inspect-" + String(chatId).replace(/[^0-9-]/g, "") + "-" + messageId;
+  try {
+    await env.AI_CODING_WORKFLOW.create({
+      id: workflowId,
+      params: {
+        kind: MEDIA_INSPECT_WORKFLOW_KIND,
+        message,
+      },
+      retention: { successRetention: "1 day", errorRetention: "1 day" },
+    });
+    return true;
+  } catch (error) {
+    console.error("bot media inspect workflow enqueue failed", error?.stack || error);
+    return false;
+  }
 }
 
 async function isAdminPendingPhoto(message, env) {
