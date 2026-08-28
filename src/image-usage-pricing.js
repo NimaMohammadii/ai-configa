@@ -8,6 +8,7 @@ import { tgForm, tgJson } from "./telegram-api.js";
 
 const GPT_IMAGE_MODEL = "gpt-image-2";
 const GPT_IMAGE_QUALITY = "low";
+const GPT_IMAGE_QUALITIES = new Set(["low", "medium", "high"]);
 const GPT_IMAGE_TIMEOUT_MS = 180000;
 const GPT_IMAGE_TEXT_INPUT_USD_PER_MILLION = 5;
 const GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION = 8;
@@ -24,7 +25,11 @@ const MAX_PROMPT_CHARS = 2000;
 // comes from OpenAI's completed-event usage and the unused reserve is refunded.
 const RESERVE_TEXT_TOKENS_PER_CHARACTER = 4;
 const RESERVE_IMAGE_INPUT_TOKENS_PER_SOURCE = 9000;
-const RESERVE_OUTPUT_TOKENS_LOW = 500;
+const RESERVE_OUTPUT_TOKENS_BY_QUALITY = Object.freeze({
+  low: 700,
+  medium: 6000,
+  high: 20000,
+});
 const RESERVE_SAFETY_MULTIPLIER = 1.25;
 const STALE_RESERVATION_MINUTES = 10;
 
@@ -118,6 +123,7 @@ export async function handleUsagePricedImageRequest(request, env) {
       prompt: effectivePrompt,
       sources,
       size: body.size,
+      quality: body.quality,
       metadata: {
         surface: "mini_app",
         sourceCount: userSourceCount,
@@ -153,6 +159,7 @@ export async function handleUsagePricedImageRequest(request, env) {
       kind: generated.kind,
       sourceCount: userSourceCount,
       size: generated.size,
+      quality: generated.quality,
       cost: generated.billing.credits,
       pricing: dynamicPricingPayload(generated.billing.credits),
       billing: generated.billing,
@@ -188,9 +195,10 @@ export async function generateUsagePricedImage(env, options = {}) {
   }
 
   const size = normalizeImageSize(options.size);
+  const quality = normalizeImageQuality(options.quality);
   const kind = sources.length ? "edit" : "generate";
   const metadata = options.metadata && typeof options.metadata === "object" ? options.metadata : {};
-  const reserveCredits = estimateImageReservationCredits(prompt, sources.length);
+  const reserveCredits = estimateImageReservationCredits(prompt, sources.length, quality);
   let reservation = null;
   let settled = false;
 
@@ -199,6 +207,7 @@ export async function generateUsagePricedImage(env, options = {}) {
       model: GPT_IMAGE_MODEL,
       kind,
       size,
+      quality,
       sourceCount: sources.length,
       ...metadata,
     });
@@ -213,12 +222,13 @@ export async function generateUsagePricedImage(env, options = {}) {
       throw error;
     }
 
-    const upstream = await requestOpenAiImage(env, prompt, sources, size);
+    const upstream = await requestOpenAiImage(env, prompt, sources, size, quality);
     const billing = calculateImageBilling(upstream.usage);
     const usageMetadata = {
       model: GPT_IMAGE_MODEL,
       kind,
       size,
+      quality,
       ...metadata,
       markupRate: billing.markupRate,
       baseUsd: billing.baseUsd,
@@ -255,6 +265,7 @@ export async function generateUsagePricedImage(env, options = {}) {
       balance: settlement.balance,
       kind,
       size,
+      quality,
       sourceCount: sources.length,
     };
   } catch (error) {
@@ -320,20 +331,21 @@ export function calculateImageBilling(usage = {}) {
   };
 }
 
-export function estimateImageReservationCredits(prompt, sourceCount = 0) {
+export function estimateImageReservationCredits(prompt, sourceCount = 0, quality = GPT_IMAGE_QUALITY) {
   const characters = Math.max(1, Array.from(String(prompt || "")).length);
   const estimatedTextTokens = Math.max(32, characters * RESERVE_TEXT_TOKENS_PER_CHARACTER);
   const estimatedImageTokens = Math.max(0, Math.floor(Number(sourceCount || 0))) * RESERVE_IMAGE_INPUT_TOKENS_PER_SOURCE;
+  const outputTokens = RESERVE_OUTPUT_TOKENS_BY_QUALITY[normalizeImageQuality(quality)] || RESERVE_OUTPUT_TOKENS_BY_QUALITY[GPT_IMAGE_QUALITY];
   const baseUsd = (
     estimatedTextTokens * GPT_IMAGE_TEXT_INPUT_USD_PER_MILLION
     + estimatedImageTokens * GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION
-    + RESERVE_OUTPUT_TOKENS_LOW * GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION
+    + outputTokens * GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION
   ) / 1_000_000;
   const reservedUsd = baseUsd * RESERVE_SAFETY_MULTIPLIER * (1 + IMAGE_MARKUP_RATE);
   return usdToCredits(reservedUsd);
 }
 
-async function requestOpenAiImage(env, prompt, sources, size) {
+async function requestOpenAiImage(env, prompt, sources, size, quality) {
   if (!env.GPT_API) throw publicError("GPT image service is not configured.", 503);
 
   const controller = new AbortController();
@@ -345,7 +357,7 @@ async function requestOpenAiImage(env, prompt, sources, size) {
       ? await fetch("https://api.openai.com/v1/images/edits", {
           method: "POST",
           headers: { Authorization: "Bearer " + env.GPT_API },
-          body: imageEditForm(prompt, sources, size, true),
+          body: imageEditForm(prompt, sources, size, quality, true),
           signal: controller.signal,
         })
       : await fetch("https://api.openai.com/v1/images/generations", {
@@ -358,7 +370,7 @@ async function requestOpenAiImage(env, prompt, sources, size) {
             model: GPT_IMAGE_MODEL,
             prompt,
             size,
-            quality: GPT_IMAGE_QUALITY,
+            quality,
             moderation: "low",
             output_format: "jpeg",
             output_compression: 90,
@@ -461,7 +473,7 @@ async function readCompletedImageResponse(response, completedType) {
   return { buffer: base64ToArrayBuffer(base64), usage: completed.usage };
 }
 
-function imageEditForm(prompt, sources, size, streaming = false) {
+function imageEditForm(prompt, sources, size, quality, streaming = false) {
   const form = new FormData();
   form.append("model", GPT_IMAGE_MODEL);
   form.append("prompt", prompt);
@@ -469,7 +481,7 @@ function imageEditForm(prompt, sources, size, streaming = false) {
     form.append("image[]", new Blob([source.buffer], { type: normalizeMime(source.mimeType, source.filename) }), safeFilename(source.filename));
   }
   form.append("size", size);
-  form.append("quality", GPT_IMAGE_QUALITY);
+  form.append("quality", quality);
   form.append("moderation", "low");
   form.append("output_format", "jpeg");
   form.append("output_compression", "90");
@@ -661,6 +673,11 @@ function decodeImageSource(data, name) {
 function normalizeImageSize(value) {
   const size = String(value || "").trim().toLowerCase();
   return IMAGE_SIZES.has(size) ? size : "1024x1024";
+}
+
+function normalizeImageQuality(value) {
+  const quality = String(value || "").trim().toLowerCase();
+  return GPT_IMAGE_QUALITIES.has(quality) ? quality : GPT_IMAGE_QUALITY;
 }
 
 function normalizeMime(value, filename) {
