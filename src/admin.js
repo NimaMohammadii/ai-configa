@@ -1498,17 +1498,6 @@ export async function adminBuyersText(env, page = 0) {
   ].join("\n");
 }
 
-export async function adminBuyersKeyboard(env, page = 0) {
-  const data = await getAdminBuyersPage(env, page);
-  const rows = data.users.map((user) => [{ text: buyerLabel(user), callback_data: "admin_user:" + user.user_id + ":" + data.page }]);
-  const nav = [];
-  if (data.page > 0) nav.push({ text: "← Prev", callback_data: "admin_buyers:" + (data.page - 1) });
-  if ((data.page + 1) * data.limit < data.total) nav.push({ text: "Next →", callback_data: "admin_buyers:" + (data.page + 1) });
-  if (nav.length) rows.push(nav);
-  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
-  return { inline_keyboard: rows };
-}
-
 export async function getAllUserIds(env) {
   return getUserIdsByLanguage(env, "all");
 }
@@ -1870,11 +1859,37 @@ export function adminMessagePromptText() {
   ].join("\n");
 }
 
-export async function adminWelcomeAudioText(env) {
-  const audios = await getWelcomeAudios(env);
+function normalizeWelcomeAudioSection(section = "tts") {
+  const clean = String(section || "tts").trim().toLowerCase().replaceAll("-", "_");
+  return MINI_APP_ENTRY_SECTIONS[clean] ? clean : "tts";
+}
+
+function welcomeAudioSettingKeys(section = "tts", language = null) {
+  const target = normalizeWelcomeAudioSection(section);
+  const lang = language ? normalizeLang(language) : null;
+  const suffix = target === "tts"
+    ? (lang ? "_" + lang : "")
+    : "_" + target + (lang ? "_" + lang : "");
+  return ["welcome_audio_file_id" + suffix, "welcome_audio_file_type" + suffix];
+}
+
+export async function adminWelcomeAudioText(env, section = null) {
+  if (!section) {
+    return [
+      "🎧 <b>First Start Audio</b>",
+      "",
+      "Choose the user's initial section, then set a separate first-start audio for each language.",
+      "",
+      "The audios that were already configured belong to <b>Text to Speech</b> and remain unchanged."
+    ].join("\n");
+  }
+
+  const target = normalizeWelcomeAudioSection(section);
+  const audios = await getWelcomeAudios(env, target);
   const lines = [
     "🎧 <b>First Start Audio</b>",
     "",
+    "Section: <b>" + escapeHtml(MINI_APP_ENTRY_SECTIONS[target]) + "</b>",
     "Choose a language, upload/replace its audio, or delete it from first-start sending.",
     "",
     "Configured languages:"
@@ -1885,65 +1900,83 @@ export async function adminWelcomeAudioText(env) {
   return lines.join("\n");
 }
 
-export function adminWelcomeAudioKeyboard() {
+export function adminWelcomeAudioKeyboard(section = null) {
+  if (!section) {
+    const buttons = Object.entries(MINI_APP_ENTRY_SECTIONS).map(([key, label]) => ({
+      text: label,
+      callback_data: "admin_welcome_audio_section:" + key,
+    }));
+    const rows = [];
+    for (let index = 0; index < buttons.length; index += 2) rows.push(buttons.slice(index, index + 2));
+    rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+    return { inline_keyboard: rows };
+  }
+
+  const target = normalizeWelcomeAudioSection(section);
   const rows = [];
   for (const [code, label] of Object.entries(LANGUAGES)) {
-    rows.push([{ text: "Upload " + label, callback_data: "admin_welcome_audio_upload:" + code }, { text: "Delete", callback_data: "admin_welcome_audio_delete:" + code }]);
+    rows.push([
+      { text: "Upload " + label, callback_data: "admin_welcome_audio_upload:" + target + ":" + code },
+      { text: "Delete", callback_data: "admin_welcome_audio_delete:" + target + ":" + code },
+    ]);
   }
-  rows.push([{ text: "← Back", callback_data: "admin_main" }]);
+  rows.push([{ text: "← Sections", callback_data: "admin_welcome_audio" }]);
   return { inline_keyboard: rows };
 }
 
-export function adminWelcomeAudioPromptText(language = "en") {
+export function adminWelcomeAudioPromptText(section = "tts", language = "en") {
+  const target = normalizeWelcomeAudioSection(section);
   return [
     "🎧 <b>Upload First Start Audio</b>",
     "",
+    "Section: <b>" + escapeHtml(MINI_APP_ENTRY_SECTIONS[target]) + "</b>",
     "Target language: <b>" + escapeHtml(formatLanguage(language)) + "</b>",
     "Send one audio file now.",
-    "The new file will replace the old one for this language only."
+    "The new file will replace the old one for this section and language only."
   ].join("\n");
 }
 
-export async function setWelcomeAudio(env, language, fileId, fileType = "audio") {
+export async function setWelcomeAudio(env, language, fileId, fileType = "audio", section = "tts") {
   requireDb(env);
   await ensureAppSettingsTable(env);
-  const lang = normalizeLang(language);
+  const keys = welcomeAudioSettingKeys(section, language);
 
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("welcome_audio_file_id_" + lang, String(fileId)),
-    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind("welcome_audio_file_type_" + lang, String(fileType)),
+    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(keys[0], String(fileId)),
+    env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(keys[1], String(fileType)),
   ]);
 }
 
-export async function deleteWelcomeAudio(env, language) {
+export async function deleteWelcomeAudio(env, language, section = "tts") {
   requireDb(env);
   await ensureAppSettingsTable(env);
-  const lang = normalizeLang(language);
-  await env.DB.prepare("DELETE FROM app_settings WHERE key IN (?, ?)").bind("welcome_audio_file_id_" + lang, "welcome_audio_file_type_" + lang).run();
+  const keys = welcomeAudioSettingKeys(section, language);
+  await env.DB.prepare("DELETE FROM app_settings WHERE key IN (?, ?)").bind(keys[0], keys[1]).run();
 }
 
-export async function getWelcomeAudio(env, language = null) {
+export async function getWelcomeAudio(env, language = null, section = "tts") {
   requireDb(env);
   await ensureAppSettingsTable(env);
+  const target = normalizeWelcomeAudioSection(section);
   const lang = language ? normalizeLang(language) : null;
-  const keys = lang
-    ? ["welcome_audio_file_id_" + lang, "welcome_audio_file_type_" + lang]
-    : ["welcome_audio_file_id", "welcome_audio_file_type"];
+  const keys = welcomeAudioSettingKeys(target, lang);
   const rows = await env.DB.prepare("SELECT key, value FROM app_settings WHERE key IN (?, ?)").bind(keys[0], keys[1]).all();
   const values = Object.fromEntries((rows.results || []).map((row) => [row.key, row.value]));
   if (!values[keys[0]]) return null;
-  return { fileId: values[keys[0]], fileType: values[keys[1]] || "audio", language: lang };
+  return { fileId: values[keys[0]], fileType: values[keys[1]] || "audio", language: lang, section: target };
 }
 
-export async function getWelcomeAudios(env) {
+export async function getWelcomeAudios(env, section = "tts") {
   requireDb(env);
   await ensureAppSettingsTable(env);
-  const rows = await env.DB.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'welcome_audio_file_%'").all();
+  const target = normalizeWelcomeAudioSection(section);
+  const rows = await env.DB.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'welcome_audio_file_id%' OR key LIKE 'welcome_audio_file_type%'").all();
   const values = Object.fromEntries((rows.results || []).map((row) => [row.key, row.value]));
   const result = {};
   for (const code of Object.keys(LANGUAGES)) {
-    const fileId = values["welcome_audio_file_id_" + code];
-    if (fileId) result[code] = { fileId, fileType: values["welcome_audio_file_type_" + code] || "audio", language: code };
+    const keys = welcomeAudioSettingKeys(target, code);
+    const fileId = values[keys[0]];
+    if (fileId) result[code] = { fileId, fileType: values[keys[1]] || "audio", language: code, section: target };
   }
   return result;
 }
@@ -2076,7 +2109,7 @@ export function normalizeImageExploreSize(size) {
 
 export function imageExploreSizeLabel(size) {
   const clean = normalizeImageExploreSize(size);
-  const option = IMAGE_EXPLORE_SIZE_OPTIONS.find((item) => item.size === clean);
+  const option = IMAGE_EXPLORE_SIZE_OPTIONS.find((option) => option.size === clean);
   return (option ? option.label : "Square") + " · " + clean.replace("x", "×");
 }
 
