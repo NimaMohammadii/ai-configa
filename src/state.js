@@ -58,6 +58,17 @@ async function ensureUserStateColumns(env) {
   await userStateColumnsPromise;
 }
 
+async function getInitialAppMode(env) {
+  try {
+    const row = await env.DB.prepare(
+      "SELECT value FROM app_settings WHERE key = 'mini_app_default_section'"
+    ).first();
+    return normalizeAppMode(row?.value);
+  } catch {
+    return DEFAULT_STATE.appMode;
+  }
+}
+
 export function normalizeAppMode(value) {
   const clean = String(value || "").trim().toLowerCase().replaceAll("-", "_");
   if (clean === "voice") return "tts";
@@ -74,7 +85,7 @@ export async function getState(env, userId) {
     "SELECT voice, output, page, menu_message_id, language, demo_language, app_mode FROM user_state WHERE user_id = ?"
   ).bind(String(userId)).first();
 
-  if (!row) return { ...DEFAULT_STATE };
+  if (!row) return { ...DEFAULT_STATE, appMode: await getInitialAppMode(env) };
 
   return {
     voice: row.voice || DEFAULT_STATE.voice,
