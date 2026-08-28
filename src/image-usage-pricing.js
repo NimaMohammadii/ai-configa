@@ -48,7 +48,7 @@ const IMAGE_SIZES = new Set([
   "2592x864",
 ]);
 
-const EXPLORE_EDIT_PROMPT = "Use the first uploaded image or images as the user's source subject, face, person, product, object, or scene. Use the final uploaded image only as the visual reference. Recreate the user's source in the reference image's composition, pose, framing, lighting, styling, colors, materials, background, camera perspective, and overall art direction. Replace the reference image's main subject or product with the user's source while preserving the user's identity and defining details. Do not retain the reference subject's identity. Produce one polished coherent image without text unless text is essential to the user's source.";
+const EXPLORE_EDIT_PROMPT = "Treat the final uploaded image as the destination canvas and the earlier uploaded image or images only as identity or subject references. First determine what corresponding primary subject should be transferred. For portraits or people, replace only the destination subject's facial identity with the user's facial identity and defining facial features. Preserve the destination image's expression, gaze, head angle, pose, hairstyle, body, skin outside the facial transfer area, clothing, accessories, objects, text, background, composition, crop, perspective, lighting, color grade, materials, texture, sharpness, resolution, and overall quality. Preserve the user's recognizable facial structure and natural skin tone inside the transferred face while adapting illumination only as needed for a seamless realistic result. Do not copy the source image's clothing, body, background, lighting, colors, objects, composition, or style, and never blend the two scenes into a hybrid. When the reference is not face-based, intelligently identify the exact person, product, object, or subject that corresponds to the user's source and replace only that subject, preserving every unrelated destination detail. Make the smallest necessary edit and leave everything unspecified unchanged. Produce one polished coherent image without adding text.";
 
 export function isUsagePricedImageRequest(request) {
   if (!request || request.method !== "POST") return false;
@@ -106,7 +106,9 @@ export async function handleUsagePricedImageRequest(request, env) {
         filename: "explore-reference" + referenceExtension,
         mimeType: referenceMime,
       });
-      effectivePrompt = EXPLORE_EDIT_PROMPT;
+      effectivePrompt = prompt
+        ? EXPLORE_EDIT_PROMPT + "\n\nOptional user instructions: " + prompt + "\nApply these requested adjustments, but change only what the user explicitly asks for and leave every other destination detail unchanged."
+        : EXPLORE_EDIT_PROMPT;
     }
 
     if (request.signal?.aborted) return errorResponse("Image request cancelled.", 499);
