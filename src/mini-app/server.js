@@ -1,6 +1,6 @@
 import { handleMiniAppRequest as baseHandleMiniAppRequest, isMiniAppRequest } from "./server-original.js";
 import { authenticateMiniAppPayload } from "./auth.js";
-import { getAppModeLocks, getMiniAppAccessSettings, hasTrackedUser, isAdmin } from "../admin.js";
+import { getAppModeLocks, getMiniAppAccessSettings, getMiniAppDefaultSection, hasTrackedUser, isAdmin } from "../admin.js";
 import { getBalance } from "../credits.js";
 import { regenerateSmartTtsSelection } from "../tts-smart-editing.js";
 import { buildPreparedReferralShare, getReferralLanguage, getReferralStatus, parseReferralStartParam, registerReferralFromStartParam } from "../referrals.js";
@@ -59,10 +59,18 @@ export async function handleMiniAppRequest(request, env) {
 
   if (request.method === "POST" && url.pathname === "/mini-app/api/session") {
     const sessionRequest = request.clone();
+    let isFirstSession = false;
+    try {
+      const body = await request.clone().json().catch(() => ({}));
+      const user = await authenticateMiniAppPayload(body, env);
+      isFirstSession = !(await hasTrackedUser(env, user.id));
+    } catch (error) {
+      console.error("mini app first session lookup failed", error?.message || error);
+    }
     await registerReferralBeforeFirstSession(request, env).catch((error) => {
       console.error("mini app referral registration failed", error?.message || error);
     });
-    return enhanceSession(await baseHandleMiniAppRequest(request, env), sessionRequest, env);
+    return enhanceSession(await baseHandleMiniAppRequest(request, env), sessionRequest, env, isFirstSession);
   }
 
   if (request.method === "POST" && url.pathname === "/mini-app/api/app-mode") {
@@ -285,7 +293,7 @@ function base64ToArrayBuffer(value) {
   return bytes.buffer;
 }
 
-async function enhanceSession(response, request, env) {
+async function enhanceSession(response, request, env, isFirstSession = false) {
   if (!response?.ok) return response;
   const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
   if (!contentType.includes("application/json")) return response;
@@ -302,7 +310,10 @@ async function enhanceSession(response, request, env) {
     const launchModes = { voice: "tts", tts: "tts", image: "image", explore: "explore", ai_chat: "ai_chat", stt: "stt", speech_to_text: "stt", live: "live", vexa_live: "live" };
     const requestedMode = launchModes[rawLaunch] || "";
     const currentMode = normalizeAppMode(state.appMode);
-    appMode = requestedMode || currentMode;
+    const entryMode = isFirstSession
+      ? normalizeAppMode(await getMiniAppDefaultSection(env))
+      : currentMode;
+    appMode = requestedMode || entryMode;
     if (appMode !== currentMode) appMode = normalizeAppMode(await setAppMode(env, user.id, appMode));
     appModeLocks = await getAppModeLocks(env);
   } catch (error) {
