@@ -5,12 +5,17 @@ import { runWithCreditIdempotency } from "./credit-idempotency.js";
 import { getAiCodingTaskState } from "./ai-coding-task.js";
 import { summarizeCodingPlan } from "./ai-coding-plan.js";
 import { handleMiniAppRequest } from "./mini-app/server.js";
-import { runYouTubeDownloadWorkflowJob } from "./mini-app/vexa-live/bot-bridge.js";
+import {
+  handleMessage as handleVexaBotMessage,
+  runYouTubeDownloadWorkflowJob,
+} from "./mini-app/vexa-live/bot-bridge.js";
 
 const MAX_BACKGROUND_PHASES = 12;
 const MAX_TASK_ERROR_CHARS = 1000;
 const MAX_TASK_RESULT_CHARS = 500000;
 const PHASE_TIMEOUT = "10 minutes";
+const MEDIA_INSPECT_WORKFLOW_KIND = "media_inspect";
+const MEDIA_INSPECT_TIMEOUT = "4 minutes";
 const YOUTUBE_WORKFLOW_KIND = "youtube_download";
 const YOUTUBE_DOWNLOAD_TIMEOUT = "10 minutes";
 const YOUTUBE_MAX_PARTS = 512;
@@ -18,6 +23,9 @@ const YOUTUBE_MAX_PARTS = 512;
 export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
   async run(event, step) {
     const payload = event?.payload || {};
+    if (payload.kind === MEDIA_INSPECT_WORKFLOW_KIND) {
+      return this.runMediaInspect(payload, step);
+    }
     if (payload.kind === YOUTUBE_WORKFLOW_KIND) {
       return this.runYouTubeDownload(payload, step);
     }
@@ -140,6 +148,39 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
         return { taskId, status: "failed" };
       }).catch(() => null);
       throw new NonRetryableError(message);
+    }
+  }
+
+  async runMediaInspect(payload, step) {
+    const message = payload?.message;
+    const userId = String(message?.from?.id || "").trim();
+    const chatId = String(message?.chat?.id || "").trim();
+    const messageId = Number(message?.message_id || 0);
+    const text = String(message?.text || "").trim();
+    if (
+      !userId ||
+      !chatId ||
+      message?.chat?.type !== "private" ||
+      !Number.isSafeInteger(messageId) ||
+      messageId <= 0 ||
+      !text
+    ) {
+      throw new NonRetryableError("Bot media inspect workflow payload is invalid.");
+    }
+
+    try {
+      return await step.do(
+        "inspect bot media link",
+        { retries: { limit: 0, delay: "1 second" }, timeout: MEDIA_INSPECT_TIMEOUT },
+        async () => {
+          await handleVexaBotMessage(message, this.env);
+          return { ok: true, userId, chatId, messageId };
+        },
+      );
+    } catch (error) {
+      throw new NonRetryableError(
+        String(error?.message || "Bot media inspect workflow failed.").slice(0, MAX_TASK_ERROR_CHARS)
+      );
     }
   }
 
