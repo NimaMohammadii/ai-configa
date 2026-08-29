@@ -4,7 +4,7 @@ import { tgJson } from "../../telegram-api.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
 const LIVE_BACKGROUND = "#000000";
-const INTEGRATION_VERSION = "20260827-1";
+const INTEGRATION_VERSION = "20260829-save-share-1";
 const SHARE_PATH = LIVE_ROOT + "/share";
 const SHARE_THUMB_PATH = LIVE_ROOT + "/share-thumbnail.jpg";
 const SUBTITLE_RESULT_PATH = "/mini-app/live/api/download-subtitles/result";
@@ -33,10 +33,17 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   const SPEECH_BUTTON_ID = "speechToTextOpen";
   const WORKSPACE_ID = "vexaMediaWorkspace";
   const FRAME_ID = "vexaMediaInlineFrame";
+  const SHARE_API = "/mini-app/vexa-live/share";
   const LIVE_BG = ${JSON.stringify(LIVE_BACKGROUND)};
   let mediaOpen = false;
   let mediaFrame = null;
   let speechButtonBound = false;
+  let nativeDownload = null;
+  let lastDownload = null;
+  let saveBusy = false;
+  let shareBusy = false;
+  let frameActionsCleanup = null;
+  let frameActionsSync = null;
 
   function telegram() { return window.Telegram && window.Telegram.WebApp; }
 
@@ -44,6 +51,170 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const tg = telegram();
     if (!tg || !tg.HapticFeedback || !tg.HapticFeedback.impactOccurred) return;
     try { tg.HapticFeedback.impactOccurred(style || "light"); } catch (error) {}
+  }
+
+  function initData() {
+    try { return String(telegram()?.initData || ""); } catch (error) { return ""; }
+  }
+
+  function installDownloadCapture() {
+    const tg = telegram();
+    if (!tg || typeof tg.downloadFile !== "function" || nativeDownload) return;
+    const original = tg.downloadFile;
+    nativeDownload = original.bind(tg);
+    const wrapped = function (params, callback) {
+      const url = String(params && params.url || "").trim();
+      const fileName = String(params && params.file_name || "").trim();
+      if (url && fileName) {
+        lastDownload = { url: url, fileName: fileName };
+        if (frameActionsSync) frameActionsSync();
+      }
+      return nativeDownload(params, callback);
+    };
+    try {
+      tg.downloadFile = wrapped;
+    } catch (error) {
+      nativeDownload = null;
+    }
+  }
+
+  function shareSupported() {
+    const tg = telegram();
+    return Boolean(tg && typeof tg.shareMessage === "function");
+  }
+
+  function shareableVideo() {
+    return Boolean(lastDownload && /\.mp4$/i.test(String(lastDownload.fileName || "")));
+  }
+
+  function setActionLabel(button, text) {
+    if (!button) return;
+    const value = String(text || "");
+    const label = button.querySelector(".vexa-download-action-label");
+    if (label) {
+      if (label.textContent !== value) label.textContent = value;
+      return;
+    }
+    if (String(button.textContent || "").trim() !== value) button.textContent = value;
+  }
+
+  function cleanupFrameActions() {
+    if (typeof frameActionsCleanup === "function") {
+      try { frameActionsCleanup(); } catch (error) {}
+    }
+    frameActionsCleanup = null;
+    frameActionsSync = null;
+  }
+
+  function installFrameActions(frame) {
+    cleanupFrameActions();
+    let doc;
+    try { doc = frame && frame.contentDocument; } catch (error) { return; }
+    if (!doc) return;
+    const root = doc.getElementById("vexaLiveDownloadRoot");
+    const saveButton = doc.getElementById("vexaLiveDownload");
+    const uploadButton = doc.getElementById("vexaLiveUpload");
+    const actions = saveButton && saveButton.parentElement;
+    if (!root || !saveButton || !actions) return;
+
+    let style = doc.getElementById("vexaSaveShareStyle");
+    if (!style) {
+      style = doc.createElement("style");
+      style.id = "vexaSaveShareStyle";
+      style.textContent = ".vexa-share-action{min-width:92px!important;padding:0 18px!important}.vexa-share-action[hidden]{display:none!important}";
+      doc.head.appendChild(style);
+    }
+
+    let shareButton = doc.getElementById("vexaLiveShare");
+    if (!shareButton) {
+      shareButton = doc.createElement("button");
+      shareButton.id = "vexaLiveShare";
+      shareButton.type = "button";
+      shareButton.className = "vexa-live-download-action vexa-share-action";
+      shareButton.hidden = true;
+      shareButton.disabled = true;
+      const label = doc.createElement("span");
+      label.className = "vexa-download-action-label";
+      label.textContent = "Share";
+      shareButton.appendChild(label);
+      actions.insertBefore(shareButton, uploadButton || null);
+    }
+
+    const sync = function () {
+      if (!frame.isConnected) return;
+      const completed = String(root.dataset.state || "") === "completed";
+      const canSave = completed && Boolean(lastDownload && nativeDownload);
+      if (canSave) {
+        saveButton.disabled = Boolean(saveBusy);
+        setActionLabel(saveButton, saveBusy ? "Saving…" : "Save");
+      }
+      const canShare = canSave && shareableVideo() && shareSupported();
+      shareButton.hidden = !canShare;
+      shareButton.disabled = !canShare || Boolean(shareBusy);
+      if (canShare) setActionLabel(shareButton, shareBusy ? "Preparing…" : "Share");
+    };
+
+    const onSave = function (event) {
+      if (String(root.dataset.state || "") !== "completed" || !lastDownload || !nativeDownload) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (saveBusy) return;
+      saveBusy = true;
+      sync();
+      haptic("light");
+      try {
+        nativeDownload({ url: lastDownload.url, file_name: lastDownload.fileName }, function () {});
+      } catch (error) {
+        console.warn("Vexa Save failed", error && error.message || error);
+      } finally {
+        saveBusy = false;
+        queueMicrotask(sync);
+      }
+    };
+
+    const onShare = async function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (shareBusy || String(root.dataset.state || "") !== "completed" || !shareableVideo() || !shareSupported()) return;
+      shareBusy = true;
+      sync();
+      haptic("light");
+      try {
+        const response = await fetch(SHARE_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            initData: initData(),
+            downloadUrl: lastDownload.url,
+            fileName: lastDownload.fileName,
+          }),
+        });
+        const data = await response.json().catch(function () { return {}; });
+        if (!response.ok || !data.messageId) throw new Error(String(data.error || "Could not prepare sharing"));
+        const tg = telegram();
+        if (!tg || typeof tg.shareMessage !== "function") throw new Error("Telegram sharing is unavailable");
+        tg.shareMessage(String(data.messageId), function () {});
+      } catch (error) {
+        console.warn("Vexa Share failed", error && error.message || error);
+      } finally {
+        shareBusy = false;
+        sync();
+      }
+    };
+
+    saveButton.addEventListener("click", onSave, true);
+    shareButton.addEventListener("click", onShare);
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-state"] });
+    observer.observe(saveButton, { childList: true });
+    frameActionsSync = sync;
+    frameActionsCleanup = function () {
+      observer.disconnect();
+      saveButton.removeEventListener("click", onSave, true);
+      shareButton.removeEventListener("click", onShare);
+    };
+    sync();
   }
 
   function syncTelegramChrome() {
@@ -131,6 +302,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   }
 
   function destroyFrame() {
+    cleanupFrameActions();
     const frame = mediaFrame || document.getElementById(FRAME_ID);
     if (!frame) { mediaFrame = null; return; }
     try { frame.remove(); } catch (error) {}
@@ -147,6 +319,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     frame.setAttribute("aria-label", "Vexa Live download workspace");
     frame.style.cssText = "position:absolute;inset:0;display:block;width:100%;height:100%;min-width:100%;min-height:100%;border:0;background:" + LIVE_BG + ";opacity:0;transform:scale(1.018);transform-origin:center;pointer-events:none;transition:opacity .32s ease,transform .48s cubic-bezier(.16,.86,.22,1);will-change:opacity,transform;";
     frame.addEventListener("load", function () {
+      installFrameActions(frame);
       window.requestAnimationFrame(function () {
         if (!frame.isConnected) return;
         frame.style.opacity = "1";
@@ -222,6 +395,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   }
 
   function initialize() {
+    installDownloadCapture();
     installParentStyle();
     syncTelegramChrome();
     const button = installButton();
