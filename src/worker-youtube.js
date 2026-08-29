@@ -62,6 +62,7 @@ import {
 
 const SUBTITLE_SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
 const INSTAGRAM_LOGIN_CALLBACK_PATH = "/api/instagram/login/callback";
+const VEXA_LEGAL_PATHS = new Set(["/privacy", "/data-deletion", "/terms"]);
 const DOWNLOAD_SUBTITLE_RENDERER_INSTANCES = 3;
 
 class VexaSubtitleContainer extends VexaSubtitleContainerBase {
@@ -116,6 +117,9 @@ export default {
   async fetch(request, env, ctx) {
     try {
       const path = new URL(request.url).pathname;
+      if (request.method === "GET" && VEXA_LEGAL_PATHS.has(path)) {
+        return vexaLegalPage(path);
+      }
       if (request.method === "GET" && path === INSTAGRAM_LOGIN_CALLBACK_PATH) {
         return instagramBusinessLoginCallback(request);
       }
@@ -171,6 +175,62 @@ export default {
     }
   },
 };
+
+function vexaLegalPage(path) {
+  const pages = {
+    "/privacy": {
+      title: "Vexa Privacy Policy",
+      updated: "29 August 2026",
+      content: `
+        <p>Vexa provides AI tools, media utilities, and related digital services.</p>
+        <h2>Information we handle</h2>
+        <p>We process only information needed to provide the service, such as account identifiers, requests you submit, service preferences, payment or balance records, and technical information required for security and reliability.</p>
+        <h2>How we use information</h2>
+        <p>We use information to deliver requested features, protect the service from abuse, provide support, maintain account balances, and comply with applicable legal obligations.</p>
+        <h2>Sharing and retention</h2>
+        <p>We do not sell personal information. We may use trusted service providers only where needed to operate Vexa. Information is retained only for as long as necessary for the service, security, accounting, or legal requirements.</p>
+        <h2>Your choices</h2>
+        <p>You may request access to or deletion of your personal data as described on our <a href="/data-deletion">Data Deletion</a> page.</p>
+        <h2>Contact</h2>
+        <p>For privacy questions, email <a href="mailto:100xpump@gmail.com">100xpump@gmail.com</a>.</p>`,
+    },
+    "/data-deletion": {
+      title: "Vexa Data Deletion",
+      updated: "29 August 2026",
+      content: `
+        <p>You may request deletion of personal data associated with your use of Vexa.</p>
+        <h2>How to request deletion</h2>
+        <p>Email <a href="mailto:100xpump@gmail.com?subject=Vexa%20Data%20Deletion%20Request">100xpump@gmail.com</a> with the subject <strong>Vexa Data Deletion Request</strong>. Include the account identifier or username used with Vexa so we can locate the correct record.</p>
+        <h2>What happens next</h2>
+        <p>We will verify the request, delete data that is no longer required, and confirm completion. We may retain limited records where required for security, fraud prevention, accounting, or legal obligations.</p>`,
+    },
+    "/terms": {
+      title: "Vexa Terms of Service",
+      updated: "29 August 2026",
+      content: `
+        <p>By using Vexa, you agree to use the service lawfully and responsibly.</p>
+        <h2>Acceptable use</h2>
+        <p>Do not use Vexa to violate rights, bypass access controls, distribute unlawful content, or infringe copyright. You are responsible for the content and links you submit.</p>
+        <h2>Service availability</h2>
+        <p>Features may change, be limited, or become unavailable. Vexa is provided on an as-available basis.</p>
+        <h2>Accounts and payments</h2>
+        <p>You are responsible for activity associated with your account. Paid balances and purchases are handled according to the service terms presented at the time of purchase.</p>
+        <h2>Contact</h2>
+        <p>For questions about these terms, email <a href="mailto:100xpump@gmail.com">100xpump@gmail.com</a>.</p>`,
+    },
+  };
+  const page = pages[path] || pages["/privacy"];
+  const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${escapeHtml(page.title)}</title><style>body{margin:0;background:#fff;color:#141414;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{width:min(88vw,760px);margin:0 auto;padding:56px 0 72px}.brand{font-weight:800;letter-spacing:-.04em;font-size:18px}.title{margin:30px 0 8px;font-size:34px;letter-spacing:-.045em;line-height:1.1}.updated{margin:0 0 34px;color:#777;font-size:14px}p{font-size:16px;line-height:1.7;margin:0 0 20px}h2{font-size:18px;letter-spacing:-.02em;margin:32px 0 8px}a{color:#111;text-underline-offset:3px}@media(max-width:560px){.wrap{padding-top:36px}.title{font-size:28px}}</style></head><body><main class="wrap"><div class="brand">Vexa</div><h1 class="title">${escapeHtml(page.title)}</h1><p class="updated">Last updated: ${page.updated}</p>${page.content}</main></body></html>`;
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, max-age=3600",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+    },
+  });
+}
 
 function instagramBusinessLoginCallback(request) {
   const url = new URL(request.url);
