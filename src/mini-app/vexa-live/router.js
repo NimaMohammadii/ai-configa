@@ -4,7 +4,7 @@ import { tgJson } from "../../telegram-api.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
 const LIVE_BACKGROUND = "#000000";
-const INTEGRATION_VERSION = "20260829-save-share-1";
+const INTEGRATION_VERSION = "20260829-save-share-2";
 const SHARE_PATH = LIVE_ROOT + "/share";
 const SHARE_THUMB_PATH = LIVE_ROOT + "/share-thumbnail.jpg";
 const SUBTITLE_RESULT_PATH = "/mini-app/live/api/download-subtitles/result";
@@ -34,6 +34,12 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   const WORKSPACE_ID = "vexaMediaWorkspace";
   const FRAME_ID = "vexaMediaInlineFrame";
   const SHARE_API = "/mini-app/vexa-live/share";
+  const VEXA_DOWNLOAD_PATHS = new Set([
+    "/mini-app/live/api/youtube-download",
+    "/mini-app/live/api/instagram/download",
+    "/mini-app/live/api/instagram-story/download",
+    "/mini-app/live/api/download-subtitles/result",
+  ]);
   const LIVE_BG = ${JSON.stringify(LIVE_BACKGROUND)};
   let mediaOpen = false;
   let mediaFrame = null;
@@ -57,6 +63,15 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     try { return String(telegram()?.initData || ""); } catch (error) { return ""; }
   }
 
+  function isVexaDownloadUrl(value) {
+    try {
+      const url = new URL(String(value || ""), window.location.origin);
+      return url.origin === window.location.origin && VEXA_DOWNLOAD_PATHS.has(url.pathname);
+    } catch (error) {
+      return false;
+    }
+  }
+
   function installDownloadCapture() {
     const tg = telegram();
     if (!tg || typeof tg.downloadFile !== "function" || nativeDownload) return;
@@ -65,7 +80,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const wrapped = function (params, callback) {
       const url = String(params && params.url || "").trim();
       const fileName = String(params && params.file_name || "").trim();
-      if (url && fileName) {
+      if (url && fileName && isVexaDownloadUrl(url)) {
         lastDownload = { url: url, fileName: fileName };
         if (frameActionsSync) frameActionsSync();
       }
