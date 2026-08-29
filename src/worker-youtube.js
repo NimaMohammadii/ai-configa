@@ -61,6 +61,7 @@ import {
 } from "./instagram-messaging.js";
 
 const SUBTITLE_SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
+const INSTAGRAM_LOGIN_CALLBACK_PATH = "/api/instagram/login/callback";
 const DOWNLOAD_SUBTITLE_RENDERER_INSTANCES = 3;
 
 class VexaSubtitleContainer extends VexaSubtitleContainerBase {
@@ -114,6 +115,11 @@ export default {
   ...worker,
   async fetch(request, env, ctx) {
     try {
+      const path = new URL(request.url).pathname;
+      if (request.method === "GET" && path === INSTAGRAM_LOGIN_CALLBACK_PATH) {
+        return instagramBusinessLoginCallback(request);
+      }
+
       if (isInstagramMessagingRequest(request)) {
         return handleInstagramMessagingRequest(request, env, ctx);
       }
@@ -121,7 +127,6 @@ export default {
       const voiceTransformResponse = await handleMiniAppVoiceTransformRequest(request, env);
       if (voiceTransformResponse) return voiceTransformResponse;
 
-      const path = new URL(request.url).pathname;
       if (isVexaLivePersistenceRequest(request)) {
         return handleVexaLivePersistenceRequest(request);
       }
@@ -166,6 +171,59 @@ export default {
     }
   },
 };
+
+function instagramBusinessLoginCallback(request) {
+  const url = new URL(request.url);
+  const error = String(url.searchParams.get("error") || "").trim();
+  const errorDescription = String(url.searchParams.get("error_description") || "").trim();
+  const code = String(url.searchParams.get("code") || "").trim();
+
+  if (error) {
+    return htmlPage(
+      "Instagram connection cancelled",
+      errorDescription || "Instagram did not complete authorization.",
+      400,
+    );
+  }
+
+  if (code) {
+    return htmlPage(
+      "Instagram authorization received",
+      "You can close this page and return to Vexa.",
+      200,
+    );
+  }
+
+  return htmlPage(
+    "Vexa Instagram callback",
+    "This callback URL is ready for Instagram Business Login.",
+    200,
+  );
+}
+
+function htmlPage(title, message, status) {
+  const safeTitle = escapeHtml(title);
+  const safeMessage = escapeHtml(message);
+  const body = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.card{width:min(88vw,420px);padding:28px;text-align:center}.title{font-size:22px;font-weight:700;letter-spacing:-.02em}.message{margin-top:10px;font-size:15px;line-height:1.55;color:#555}</style></head><body><main class="card"><div class="title">${safeTitle}</div><div class="message">${safeMessage}</div></main></body></html>`;
+  return new Response(body, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store, max-age=0",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+    },
+  });
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 function publicError(error) {
   const message = String(error?.message || "Request failed");
