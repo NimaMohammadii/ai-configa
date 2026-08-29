@@ -64,6 +64,7 @@ const SUBTITLE_SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
 const INSTAGRAM_LOGIN_CALLBACK_PATH = "/api/instagram/login/callback";
 const VEXA_LEGAL_PATHS = new Set(["/privacy", "/data-deletion", "/terms"]);
 const DOWNLOAD_SUBTITLE_RENDERER_INSTANCES = 3;
+const VEXA_MEDIA_POOL_INSTANCES = 3;
 
 class VexaSubtitleContainer extends VexaSubtitleContainerBase {
   constructor(ctx, env) {
@@ -115,6 +116,7 @@ export {
 export default {
   ...worker,
   async fetch(request, env, ctx) {
+    const runtimeEnv = withVexaMediaPool(env);
     try {
       const path = new URL(request.url).pathname;
       if (request.method === "GET" && VEXA_LEGAL_PATHS.has(path)) {
@@ -125,44 +127,44 @@ export default {
       }
 
       if (isInstagramMessagingRequest(request)) {
-        return handleInstagramMessagingRequest(request, env, ctx);
+        return handleInstagramMessagingRequest(request, runtimeEnv, ctx);
       }
 
-      const voiceTransformResponse = await handleMiniAppVoiceTransformRequest(request, env);
+      const voiceTransformResponse = await handleMiniAppVoiceTransformRequest(request, runtimeEnv);
       if (voiceTransformResponse) return voiceTransformResponse;
 
       if (isVexaLivePersistenceRequest(request)) {
         return handleVexaLivePersistenceRequest(request);
       }
       if (isVexaDownloadControllerRequest(request)) {
-        return handleVexaDownloadControllerRequest(request, env, ctx);
+        return handleVexaDownloadControllerRequest(request, runtimeEnv, ctx);
       }
       if (path === SUBTITLE_SOURCE_PATH && (request.method === "GET" || request.method === "HEAD")) {
-        return handleDownloadSubtitlesRequest(request, env, ctx, {});
+        return handleDownloadSubtitlesRequest(request, runtimeEnv, ctx, {});
       }
       if (isVexaLiveSubtitlesRequest(request)) {
-        return await handleVexaLiveSubtitlesRequest(request, env, ctx);
+        return await handleVexaLiveSubtitlesRequest(request, runtimeEnv, ctx);
       }
       if (isVexaCustomPlayerRequest(request)) {
         return handleVexaCustomPlayerRequest(request);
       }
       if (isInstagramStoryDownloadRequest(request)) {
-        return handleInstagramStoryDownloadRequest(request, env, ctx);
+        return handleInstagramStoryDownloadRequest(request, runtimeEnv, ctx);
       }
       if (isInstagramDownloadRequest(request)) {
-        return handleInstagramDownloadRequest(request, env, ctx);
+        return handleInstagramDownloadRequest(request, runtimeEnv, ctx);
       }
       if (isTrackedYouTubeDownloadRequest(request)) {
-        return handleTrackedYouTubeDownloadRequest(request, env, ctx);
+        return handleTrackedYouTubeDownloadRequest(request, runtimeEnv, ctx);
       }
       if (isYouTubePlaybackRequest(request)) {
-        return await handleYouTubePlaybackRequest(request, env, ctx);
+        return await handleYouTubePlaybackRequest(request, runtimeEnv, ctx);
       }
       if (isYouTubeDownloadRequest(request)) {
-        return await handleYouTubeDownloadRequest(request, env, ctx);
+        return await handleYouTubeDownloadRequest(request, runtimeEnv, ctx);
       }
 
-      let response = await worker.fetch(request, env, ctx);
+      let response = await worker.fetch(request, runtimeEnv, ctx);
       response = await appendMiniAppVoiceTransformRuntime(request, response);
       response = await appendVexaLiveLandingRuntime(request, response);
       response = await appendVexaDownloadControllerRuntime(request, response);
@@ -175,6 +177,31 @@ export default {
     }
   },
 };
+
+function withVexaMediaPool(env) {
+  const binding = env?.VEXA_MEDIA;
+  if (!binding) return env;
+
+  const pooledBinding = new Proxy(binding, {
+    get(target, property) {
+      if (property === "idFromName") {
+        return () => {
+          const slot = Math.floor(Math.random() * VEXA_MEDIA_POOL_INSTANCES);
+          return target.idFromName("instance-" + slot);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+
+  return new Proxy(env, {
+    get(target, property) {
+      if (property === "VEXA_MEDIA") return pooledBinding;
+      return Reflect.get(target, property, target);
+    },
+  });
+}
 
 function vexaLegalPage(path) {
   const pages = {
