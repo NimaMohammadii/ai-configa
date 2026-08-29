@@ -1216,6 +1216,6 @@ const VEXA_DOWNLOAD_CONTROLLER_JS = String.raw`
   bindTelegram();
   root.dataset.localUpload='0';
   const preset=launchPreset();
-  if(preset.source){setTimeout(function(){prepareSource(preset.source,preset.optionKey);},0);}else{setProgress(0,false);setState('idle','Ready when you are','');setButton('Download',false);setUploadDisabled(false);}
+  if(preset.source){setTimeout(async function(){const sourceReady=await prepareSource(preset.source,preset.optionKey);if(!sourceReady||!preset.optionKey||selectedKey!==preset.optionKey)return;const selectedReady=await prepareSelected();if(selectedReady)requestDownload();},0);}else{setProgress(0,false);setState('idle','Ready when you are','');setButton('Download',false);setUploadDisabled(false);}
 })();
 `;
