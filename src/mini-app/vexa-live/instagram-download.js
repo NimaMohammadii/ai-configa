@@ -47,7 +47,8 @@ export class VexaInstagramContainer extends Container {
 
   async getInstagramCatalog(url) {
     const process = await this.execYtDlp([
-      ...YTDLP_ARGS,
+      ...YTDLP_ARGS.filter((arg) => arg !== "--no-playlist"),
+      "--ignore-no-formats-error",
       "--dump-single-json",
       "--skip-download",
       "--no-warnings",
@@ -64,8 +65,8 @@ export class VexaInstagramContainer extends Container {
       if (output.exitCode !== 0) throw instagramError(detail || "metadata failed");
       const data = JSON.parse(decoder.decode(output.stdout));
       const catalog = await buildInstagramCatalog(data);
-      if (!catalog.options.length) {
-        throw new Error("Instagram did not expose a downloadable MP4 video");
+      if (!catalog.options.length && !catalog.media.length) {
+        throw new Error("Instagram did not expose downloadable media");
       }
       return catalog;
     } catch (error) {
@@ -699,15 +700,16 @@ async function assertLiveAccess(env, userId) {
 }
 
 async function buildInstagramCatalog(data) {
-  const media = firstInstagramVideo(data);
-  const formats = Array.isArray(media?.formats) ? media.formats : [];
-  const duration = positiveNumber(media?.duration || data?.duration);
+  const entries = instagramMediaEntries(data);
+  const firstVideo = entries.find((entry) => Array.isArray(entry?.formats) && entry.formats.some(isInstagramMp4Format)) || data;
+  const formats = Array.isArray(firstVideo?.formats) ? firstVideo.formats : [];
+  const duration = positiveNumber(firstVideo?.duration || data?.duration);
   const byHeight = new Map();
 
   for (const format of formats) {
     if (!isInstagramMp4Format(format)) continue;
-    const height = positiveInteger(format?.height || media?.height);
-    const width = positiveInteger(format?.width || media?.width);
+    const height = positiveInteger(format?.height || firstVideo?.height);
+    const width = positiveInteger(format?.width || firstVideo?.width);
     const formatId = String(format?.format_id || "").trim();
     if (!height || !formatId) continue;
     let sizeBytes = formatSizeBytes(format, duration);
@@ -735,8 +737,78 @@ async function buildInstagramCatalog(data) {
     .sort((a, b) => b.height - a.height)
     .slice(0, 7)
     .map(({ score, ...option }) => option);
-  const title = String(media?.title || data?.title || "Instagram video").trim() || "Instagram video";
-  return { title, options };
+  const media = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const item = await bestInstagramPostMedia(entries[index], index + 1);
+    if (item) media.push(item);
+  }
+  const title = String(data?.title || firstVideo?.title || "Instagram post").trim() || "Instagram post";
+  return { title, options, media };
+}
+
+function instagramMediaEntries(data) {
+  const entries = Array.isArray(data?.entries) ? data.entries.filter(Boolean) : [];
+  return entries.length ? entries : data ? [data] : [];
+}
+
+async function bestInstagramPostMedia(entry, position) {
+  const formats = (Array.isArray(entry?.formats) ? entry.formats : [])
+    .filter(isInstagramMp4Format)
+    .sort((a, b) => {
+      const heightDiff = positiveInteger(b?.height || entry?.height) - positiveInteger(a?.height || entry?.height);
+      if (heightDiff) return heightDiff;
+      const widthDiff = positiveInteger(b?.width || entry?.width) - positiveInteger(a?.width || entry?.width);
+      if (widthDiff) return widthDiff;
+      return instagramFormatScore(b) - instagramFormatScore(a);
+    });
+  if (formats.length) {
+    const format = formats[0];
+    const width = positiveInteger(format?.width || entry?.width);
+    const height = positiveInteger(format?.height || entry?.height);
+    const duration = positiveNumber(entry?.duration);
+    let sizeBytes = formatSizeBytes(format, duration);
+    if (!sizeBytes) sizeBytes = await remoteFormatSize(format?.url).catch(() => 0);
+    if (!sizeBytes) sizeBytes = estimatedInstagramSize(height, duration);
+    return {
+      kind: "video",
+      url: String(format?.url || ""),
+      width,
+      height,
+      duration,
+      sizeBytes,
+      filename: INSTAGRAM_FILE_PREFIX + String(position).padStart(2, "0") + "-" + (height ? height + "p" : "video") + ".mp4",
+    };
+  }
+
+  const candidates = [];
+  for (const thumbnail of Array.isArray(entry?.thumbnails) ? entry.thumbnails : []) {
+    const url = String(thumbnail?.url || "").trim();
+    if (!/^https?:\/\//i.test(url)) continue;
+    candidates.push({
+      url,
+      width: positiveInteger(thumbnail?.width),
+      height: positiveInteger(thumbnail?.height),
+    });
+  }
+  const fallbackUrl = String(entry?.thumbnail || "").trim();
+  if (/^https?:\/\//i.test(fallbackUrl)) {
+    candidates.push({
+      url: fallbackUrl,
+      width: positiveInteger(entry?.width),
+      height: positiveInteger(entry?.height),
+    });
+  }
+  candidates.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+  const image = candidates[0];
+  if (!image) return null;
+  return {
+    kind: "photo",
+    url: image.url,
+    width: image.width,
+    height: image.height,
+    sizeBytes: 0,
+    filename: INSTAGRAM_FILE_PREFIX + String(position).padStart(2, "0") + ".jpg",
+  };
 }
 
 function firstInstagramVideo(data) {
@@ -876,6 +948,7 @@ function instagramError(detail) {
   }
   if (/stream did not start/i.test(raw)) return new Error("Instagram stream did not start in time");
   if (/invalid mp4/i.test(raw)) return new Error("Instagram returned an invalid MP4 stream");
+  if (/did not expose downloadable media/i.test(raw)) return new Error("Instagram did not expose downloadable media");
   console.error("Unclassified Instagram yt-dlp error", raw.slice(-4000));
   return new Error("Instagram download is temporarily unavailable");
 }
@@ -896,6 +969,7 @@ const INSTAGRAM_PUBLIC_ERRORS = new Set([
   "This Instagram video requires additional access",
   "This Instagram video is unavailable",
   "Instagram did not expose a downloadable MP4 video",
+  "Instagram did not expose downloadable media",
   "Instagram blocked the Cloudflare download request",
   "Instagram stream did not start in time",
   "Instagram returned an invalid MP4 stream",
