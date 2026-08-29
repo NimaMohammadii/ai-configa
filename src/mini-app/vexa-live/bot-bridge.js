@@ -237,7 +237,61 @@ async function handleYouTubeDownloadCallback(query, env) {
 
   const state = await getState(env, context.userId).catch(() => null);
   const language = normalizeLang(state?.language || "en");
-  const copy = youtubeDownloadCopy(language);
+  const copy = youtubeDownloadCopy(language, optionKey);
+
+  if (optionKey === "a") {
+    await answerCallback(env, query.id, copy.preparing, false).catch(() => null);
+    await editMessage(
+      env,
+      context.chatId,
+      context.messageId,
+      downloadProgressText(copy, { phase: "preparing", partNumber: 1, percent: 0 }),
+      { inline_keyboard: [] },
+    ).catch(() => null);
+    await updateVexaDownloadAttempt(env, attemptId, {
+      status: "downloading",
+      stage: "preparing",
+      optionKey,
+    }).catch(() => null);
+
+    try {
+      if (!env.AI_CODING_WORKFLOW) {
+        throw new Error("Audio download is temporarily unavailable");
+      }
+      await env.AI_CODING_WORKFLOW.create({
+        id: "yt-audio-" + crypto.randomUUID(),
+        params: {
+          kind: YOUTUBE_WORKFLOW_KIND,
+          userId: String(context.userId),
+          chatId: Number(context.chatId),
+          messageId: Number(context.messageId),
+          sourceUrl,
+          optionKey,
+          language,
+          attemptId,
+        },
+        retention: { successRetention: "1 day", errorRetention: "1 day" },
+      });
+    } catch (error) {
+      console.error("bot audio workflow enqueue failed", error?.stack || error);
+      const publicError = publicYouTubeMessage(error, copy.failed);
+      await updateVexaDownloadAttempt(env, attemptId, {
+        status: "failed",
+        stage: "preparing",
+        optionKey,
+        errorMessage: publicError,
+      }).catch(() => null);
+      await editMessage(
+        env,
+        context.chatId,
+        context.messageId,
+        "⚠️ " + escapeHtml(publicError),
+        { inline_keyboard: [] },
+      ).catch(() => null);
+    }
+    return;
+  }
+
   await answerCallback(env, query.id, copy.openInApp, false).catch(() => null);
   await updateVexaDownloadAttempt(env, attemptId, {
     status: "handed_off",
@@ -382,7 +436,7 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
   const attemptId = Number(payload?.attemptId || 0);
   const startSeconds = Math.max(0, Number(payload?.startSeconds || 0));
   const partNumber = Math.max(1, Math.floor(Number(payload?.partNumber || 1)));
-  const copy = youtubeDownloadCopy(language);
+  const copy = youtubeDownloadCopy(language, optionKey);
 
   if (
     !userId ||
@@ -764,15 +818,16 @@ async function sendMultipartDownloadLink(env, chatId, sourceUrl, optionKey, copy
   );
 }
 
-function youtubeDownloadCopy(language) {
+function youtubeDownloadCopy(language, optionKey = "") {
+  const audio = String(optionKey || "") === "a";
   if (normalizeLang(language || "en") === "fa") {
     return {
       title: "دانلود از یوتیوب",
       choose: "کیفیت ویدیو را انتخاب کن، یا فقط صدا را دانلود کن:",
       audioOnly: "فقط صدا",
-      preparing: "در حال آماده‌سازی ویدیو",
-      uploading: "در حال ارسال ویدیو",
-      sent: "ویدیو آماده شد",
+      preparing: audio ? "در حال آماده‌سازی صدا" : "در حال آماده‌سازی ویدیو",
+      uploading: audio ? "در حال ارسال صدا" : "در حال ارسال ویدیو",
+      sent: audio ? "صدا آماده شد" : "ویدیو آماده شد",
       failed: "دانلود یوتیوب فعلاً انجام نشد",
       received: "لینک دریافت شد",
       inspecting: "در حال بررسی ویدیو",
@@ -792,9 +847,9 @@ function youtubeDownloadCopy(language) {
     title: "YouTube download",
     choose: "Choose a video quality, or download audio only:",
     audioOnly: "Audio only",
-    preparing: "Preparing video",
-    uploading: "Sending video",
-    sent: "Video ready",
+    preparing: audio ? "Preparing audio" : "Preparing video",
+    uploading: audio ? "Sending audio" : "Sending video",
+    sent: audio ? "Audio ready" : "Video ready",
     failed: "YouTube download is temporarily unavailable",
     received: "Link received",
     inspecting: "Checking video",
