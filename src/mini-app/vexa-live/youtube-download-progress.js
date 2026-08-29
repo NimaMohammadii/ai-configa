@@ -17,6 +17,7 @@ const SESSION_TTL_SECONDS = 60 * 60;
 const PROGRESS_REPORT_BYTES = 2 * 1024 * 1024;
 const PROGRESS_REPORT_MS = 750;
 let progressTableReady = null;
+let youtubeTokenAttemptColumnReady = null;
 
 export class VexaDownloadProgressHub extends DurableObject {
   async fetch(request) {
@@ -99,6 +100,7 @@ async function createDownloadSession(request, env, ctx) {
   const user = await authenticateMiniAppPayload(payload, env);
   const downloadToken = cleanToken(payload.downloadToken);
   if (!downloadToken) return json({ error: "Download session is invalid" }, 400);
+  await ensureYoutubeTokenAttemptColumn(env);
 
   const row = await env.DB.prepare(
     "SELECT user_id, source_url, attempt_id, expires_at FROM vexa_youtube_download_tokens WHERE token = ?"
@@ -625,6 +627,17 @@ function progressPercent(downloadedBytes, totalBytes, status) {
 
 export async function ensureVexaDownloadProgressTable(env) {
   await ensureProgressTable(env);
+}
+
+async function ensureYoutubeTokenAttemptColumn(env) {
+  if (!youtubeTokenAttemptColumnReady) {
+    youtubeTokenAttemptColumnReady = env.DB.prepare(
+      "ALTER TABLE vexa_youtube_download_tokens ADD COLUMN attempt_id INTEGER"
+    ).run().catch((error) => {
+      if (!/duplicate column name/i.test(String(error?.message || error))) throw error;
+    });
+  }
+  await youtubeTokenAttemptColumnReady;
 }
 
 async function ensureProgressTable(env) {
