@@ -1,8 +1,17 @@
 import { handleMiniAppRequest } from "../server.js";
+import { authenticateMiniAppPayload } from "../auth.js";
+import { tgJson } from "../../telegram-api.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
 const LIVE_BACKGROUND = "#000000";
 const INTEGRATION_VERSION = "20260827-1";
+const SHARE_PATH = LIVE_ROOT + "/share";
+const SHARE_THUMB_PATH = LIVE_ROOT + "/share-thumbnail.jpg";
+const SUBTITLE_RESULT_PATH = "/mini-app/live/api/download-subtitles/result";
+const YOUTUBE_DOWNLOAD_PATH = "/mini-app/live/api/youtube-download";
+const INSTAGRAM_DOWNLOAD_PATH = "/mini-app/live/api/instagram/download";
+const STORY_DOWNLOAD_PATH = "/mini-app/live/api/instagram-story/download";
+const SHARE_THUMBNAIL_BASE64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAC0AUADASIAAhEBAxEB/8QAFwABAQEBAAAAAAAAAAAAAAAAAAYHCP/EACgQAQABBAECBAcBAAAAAAAAAAACAQMEBRIGERMiMWEHFCEjQkNygf/EABQBAQAAAAAAAAAAAAAAAAAAAAD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwDl8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAU/Qti5tcjY6CzTld2mNWFiNa/ut1pch2968JQp/a82F/N2PSMpaDL6ghh4+zzMW1TVY0rsLlm1jYlu34tYzjxpWMO/pL1l/oY4NWnrrm102v19JxhtrnysN7OlPPDF7/ZlX2jHh4nvS1381Kp/wCJOVi7uWBv9fO9OzkeLi3K3rNLUoztSpWMeNJSpxpauWY0+v4AiQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf/9k=";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -238,7 +247,7 @@ export function isVexaLiveRequest(request) {
   return path === LIVE_ROOT || path === LIVE_ROOT + "/" || path.startsWith(LIVE_ROOT + "/");
 }
 
-export async function handleVexaLiveRequest(request) {
+export async function handleVexaLiveRequest(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
   if (request.method === "GET" && (path === LIVE_ROOT || path === LIVE_ROOT + "/")) {
@@ -247,7 +256,141 @@ export async function handleVexaLiveRequest(request) {
   if (request.method === "GET" && path === LIVE_ROOT + "/integration.js") {
     return textResponse(VEXA_LIVE_INTEGRATION_JS, "application/javascript;charset=utf-8");
   }
+  if (request.method === "GET" && path === SHARE_THUMB_PATH) {
+    return shareThumbnailResponse();
+  }
+  if (request.method === "POST" && path === SHARE_PATH) {
+    return prepareTelegramShare(request, env);
+  }
   return jsonResponse({ error: "Not Found" }, 404);
+}
+
+async function prepareTelegramShare(request, env) {
+  const payload = await request.json().catch(() => ({}));
+  let user;
+  try {
+    user = await authenticateMiniAppPayload(payload, env);
+  } catch (error) {
+    return jsonResponse({ error: "Telegram authorization is invalid" }, 401);
+  }
+
+  const target = await validateShareTarget(env, user.id, payload?.downloadUrl, request.url).catch((error) => {
+    console.error("Vexa share target validation failed", error?.stack || error);
+    return null;
+  });
+  if (!target) return jsonResponse({ error: "This video is no longer available to share" }, 410);
+  if (target.kind !== "video") return jsonResponse({ error: "Only video sharing is available here" }, 415);
+
+  const title = cleanShareTitle(payload?.fileName || "Vexa-video.mp4");
+  const result = {
+    type: "video",
+    id: crypto.randomUUID().replace(/-/g, "").slice(0, 32),
+    video_url: target.url,
+    mime_type: "video/mp4",
+    thumbnail_url: new URL(SHARE_THUMB_PATH, request.url).href,
+    title,
+  };
+
+  try {
+    const prepared = await tgJson(env, "savePreparedInlineMessage", {
+      user_id: Number(user.id),
+      result,
+      allow_user_chats: true,
+      allow_group_chats: true,
+      allow_channel_chats: true,
+    });
+    const id = String(prepared?.id || "").trim();
+    if (!id) throw new Error("Prepared share id is missing");
+    return jsonResponse({ ok: true, messageId: id, expiresAt: Number(prepared?.expiration_date || 0) });
+  } catch (error) {
+    console.error("Vexa Telegram share preparation failed", error?.stack || error);
+    return jsonResponse({ error: "Could not open Telegram sharing" }, 502);
+  }
+}
+
+async function validateShareTarget(env, userId, value, base) {
+  let url;
+  try { url = new URL(String(value || ""), base); } catch { return null; }
+  const origin = new URL(base).origin;
+  if (url.protocol !== "https:" || url.origin !== origin) return null;
+  const now = Math.floor(Date.now() / 1000);
+
+  if (url.pathname === SUBTITLE_RESULT_PATH) {
+    if (!env.EXPLORE_MEDIA) return null;
+    const token = cleanResultToken(url.searchParams.get("token"));
+    if (!token) return null;
+    const object = await env.EXPLORE_MEDIA.head("vexa-subtitle-result/" + token + ".mp4").catch(() => null);
+    if (!object || String(object.customMetadata?.vexaSubtitleResult || "") !== "1") return null;
+    const expiresAt = Number(object.customMetadata?.expiresAt || resultTokenExpiry(token));
+    if (!Number.isFinite(expiresAt) || expiresAt <= now || Number(object.size || 0) <= 0) return null;
+    return { url: url.href, kind: "video" };
+  }
+
+  const session = cleanSessionToken(url.searchParams.get("session"));
+  const token = cleanSessionToken(url.searchParams.get("token"));
+  if (!session || !token) return null;
+
+  let row = null;
+  let expectedToken = "";
+  let kind = "video";
+  if (url.pathname === YOUTUBE_DOWNLOAD_PATH) {
+    row = await env.DB.prepare(
+      "SELECT user_id, playback_token, option_key, expires_at FROM vexa_youtube_download_progress WHERE session = ?"
+    ).bind(session).first();
+    expectedToken = String(row?.playback_token || "");
+    kind = String(row?.option_key || "") === "a" ? "audio" : "video";
+  } else if (url.pathname === INSTAGRAM_DOWNLOAD_PATH) {
+    row = await env.DB.prepare(
+      "SELECT user_id, download_token, option_key, expires_at FROM vexa_instagram_download_progress WHERE session = ?"
+    ).bind(session).first();
+    expectedToken = String(row?.download_token || "");
+  } else if (url.pathname === STORY_DOWNLOAD_PATH) {
+    row = await env.DB.prepare(
+      "SELECT user_id, download_token, option_key, expires_at FROM vexa_instagram_story_progress WHERE session = ?"
+    ).bind(session).first();
+    expectedToken = String(row?.download_token || "");
+  } else {
+    return null;
+  }
+
+  if (!row || String(row.user_id) !== String(userId)) return null;
+  if (expectedToken !== token || Number(row.expires_at || 0) <= now) return null;
+  return { url: url.href, kind };
+}
+
+function cleanSessionToken(value) {
+  const token = String(value || "").trim();
+  return /^[A-Za-z0-9_-]{40,160}$/u.test(token) ? token : "";
+}
+
+function cleanResultToken(value) {
+  const token = String(value || "").trim();
+  return /^\d{10}-[A-Za-z0-9_-]{40,60}$/u.test(token) ? token : "";
+}
+
+function resultTokenExpiry(token) {
+  const match = String(token || "").match(/^(\d{10})-/u);
+  const value = match ? Number.parseInt(match[1], 10) : 0;
+  return Number.isFinite(value) ? value : 0;
+}
+
+function cleanShareTitle(value) {
+  const title = String(value || "Vexa-video.mp4").replace(/[\r\n\t]+/g, " ").trim().slice(0, 128);
+  return title || "Vexa-video.mp4";
+}
+
+function shareThumbnailResponse() {
+  const binary = atob(SHARE_THUMBNAIL_BASE64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": "image/jpeg",
+      "Content-Length": String(bytes.byteLength),
+      "Cache-Control": "public, max-age=86400, immutable",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
 
 export async function appendVexaLiveToMiniApp(response) {
