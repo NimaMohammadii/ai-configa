@@ -237,58 +237,24 @@ async function handleYouTubeDownloadCallback(query, env) {
   const state = await getState(env, context.userId).catch(() => null);
   const language = normalizeLang(state?.language || "en");
   const copy = youtubeDownloadCopy(language);
-  await answerCallback(env, query.id, copy.preparing, false).catch(() => null);
-  await editMessage(
+  await answerCallback(env, query.id, copy.openInApp, false).catch(() => null);
+  await updateVexaDownloadAttempt(env, attemptId, {
+    status: "handed_off",
+    stage: "handed_off",
+    optionKey,
+  }).catch(() => null);
+
+  const text = "<b>🫧 " + escapeHtml(copy.continueInApp) + "</b>";
+  const keyboard = multipartDownloadKeyboard(sourceUrl, optionKey, copy);
+  const edited = await editMessage(
     env,
     context.chatId,
     context.messageId,
-    downloadProgressText(copy, {
-      phase: "preparing",
-      partNumber: 1,
-      percent: 0,
-      overallPercent: 0,
-    }),
-    { inline_keyboard: [] },
-  ).catch(() => null);
-
-  try {
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "downloading",
-      stage: "preparing",
-      optionKey,
-    }).catch(() => null);
-    if (!env.AI_CODING_WORKFLOW) {
-      throw new Error("YouTube download is temporarily unavailable");
-    }
-    const workflowId = "yt-" + crypto.randomUUID();
-    await env.AI_CODING_WORKFLOW.create({
-      id: workflowId,
-      params: {
-        kind: YOUTUBE_WORKFLOW_KIND,
-        userId: String(context.userId),
-        chatId: Number(context.chatId),
-        messageId: Number(context.messageId),
-        sourceUrl,
-        optionKey,
-        language,
-        attemptId,
-      },
-      retention: { successRetention: "1 day", errorRetention: "1 day" },
-    });
-  } catch (error) {
-    console.error("bot YouTube workflow enqueue failed", error?.stack || error);
-    const publicError = publicYouTubeMessage(error, copy.failed);
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "failed",
-      stage: "preparing",
-      errorMessage: publicError,
-    }).catch(() => null);
-    await editMessage(
-      env,
-      context.chatId,
-      context.messageId,
-      "⚠️ " + escapeHtml(publicError),
-    ).catch(() => null);
+    text,
+    keyboard,
+  ).then(() => true).catch(() => false);
+  if (!edited) {
+    await sendMessage(env, context.chatId, text, keyboard).catch(() => null);
   }
 }
 
@@ -653,7 +619,7 @@ function buildFullVideoDownloadUrl(sourceUrl, optionKey) {
   url.searchParams.set("section", "live");
   url.searchParams.set("vexaDownload", "1");
   url.searchParams.set("vexaSource", sourceUrl);
-  if (/^v\d{2,4}$/u.test(String(optionKey || ""))) {
+  if (/^(?:a|v\d{2,4})$/u.test(String(optionKey || ""))) {
     url.searchParams.set("vexaOption", String(optionKey));
   }
   return url.toString();
@@ -695,8 +661,10 @@ function youtubeDownloadCopy(language) {
       partSent: "پارت ارسال شد",
       overall: "کل ویدیو",
       remaining: "باقی‌مانده",
-      fullDownload: "برای دانلود یک‌جای ویدیو می‌تونی اینجا کلیک کنی.",
-      fullDownloadButton: "🫧 دانلود یک‌جا",
+      openInApp: "ادامه در Vexa",
+      continueInApp: "کیفیت انتخاب شد. برای دریافت فایل وارد Vexa شو.",
+      fullDownload: "برای دریافت فایل وارد Vexa شو.",
+      fullDownloadButton: "🫧 باز کردن Vexa",
     };
   }
   return {
@@ -715,8 +683,10 @@ function youtubeDownloadCopy(language) {
     partSent: "Part sent",
     overall: "Whole video",
     remaining: "Remaining",
-    fullDownload: "To download the full video in one file, tap below.",
-    fullDownloadButton: "🫧 Download full video",
+    openInApp: "Continue in Vexa",
+    continueInApp: "Quality selected. Open Vexa to get your file.",
+    fullDownload: "Open Vexa to get your file.",
+    fullDownloadButton: "🫧 Open Vexa",
   };
 }
 
