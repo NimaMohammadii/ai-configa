@@ -608,7 +608,7 @@ function youtubeDownloadKeyboard(options, copy, attemptId = 0) {
   if (audio) {
     rows.push([{
       text: "🎵 " + copy.audioOnly + " · " + formatMegabytes(audio.sizeBytes),
-      callback_data: YOUTUBE_CALLBACK_PREFIX + audio.key,
+      callback_data: YOUTUBE_CALLBACK_PREFIX + (attemptId ? String(attemptId) + ":" : "") + audio.key,
     }]);
   }
   return { inline_keyboard: rows };
