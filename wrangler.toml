@@ -5,6 +5,10 @@ compatibility_flags = ["enable_request_signal", "request_signal_passthrough", "n
 workers_dev = true
 preview_urls = true
 
+[vars]
+# Meta webhook verification value. This is intentionally a plain Worker variable, not a secret.
+INSTAGRAM_WEBHOOK_VERIFY_TOKEN = "vexa_ig_webhook_3rDsP4q2v4t0mE8Dt1OAb2mFsd1QY8wF"
+
 [[rules]]
 type = "Data"
 globs = ["**/*.png"]
