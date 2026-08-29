@@ -2,7 +2,7 @@ import { handleMiniAppRequest } from "../server.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
 const LIVE_BACKGROUND = "#000000";
-const INTEGRATION_VERSION = "20260829-separate-save-1";
+const INTEGRATION_VERSION = "20260829-save-circle-1";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -97,18 +97,25 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const actions = downloadButton && downloadButton.parentElement;
     if (!root || !downloadButton || !actions) return;
 
+    let style = doc.getElementById("vexaSaveCircleStyle");
+    if (!style) {
+      style = doc.createElement("style");
+      style.id = "vexaSaveCircleStyle";
+      style.textContent = ".vexa-save-circle{flex:0 0 44px!important;width:44px!important;min-width:44px!important;max-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;border-radius:999px!important;display:grid!important;place-items:center!important}.vexa-save-circle[hidden]{display:none!important}.vexa-save-circle svg{display:block;width:18px;height:18px;pointer-events:none}";
+      doc.head.appendChild(style);
+    }
+
     let saveButton = doc.getElementById("vexaLiveSave");
     if (!saveButton) {
       saveButton = doc.createElement("button");
       saveButton.id = "vexaLiveSave";
       saveButton.type = "button";
-      saveButton.className = "vexa-live-download-action";
+      saveButton.className = "vexa-live-download-action vexa-save-circle";
       saveButton.hidden = true;
       saveButton.disabled = true;
-      const label = doc.createElement("span");
-      label.className = "vexa-download-action-label";
-      label.textContent = "Save";
-      saveButton.appendChild(label);
+      saveButton.setAttribute("aria-label", "Save file");
+      saveButton.title = "Save";
+      saveButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v10m0 0 3.5-3.5M12 14l-3.5-3.5M5 16.5v1.75A1.75 1.75 0 0 0 6.75 20h10.5A1.75 1.75 0 0 0 19 18.25V16.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       actions.insertBefore(saveButton, uploadButton || null);
     }
 
@@ -118,8 +125,6 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       const canSave = completed && Boolean(lastDownload && nativeDownload);
       saveButton.hidden = !canSave;
       saveButton.disabled = !canSave || Boolean(saveBusy);
-      const label = saveButton.querySelector(".vexa-download-action-label");
-      if (label) label.textContent = saveBusy ? "Saving…" : "Save";
     };
 
     const onSave = function (event) {
@@ -127,7 +132,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       event.stopPropagation();
       if (saveBusy || String(root.dataset.state || "") !== "completed" || !lastDownload || !nativeDownload) return;
       saveBusy = true;
-      sync();
+      saveButton.disabled = true;
       haptic("light");
       try {
         nativeDownload({ url: lastDownload.url, file_name: lastDownload.fileName }, function () {});
