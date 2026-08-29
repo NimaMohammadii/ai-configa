@@ -25,6 +25,7 @@ import { normalizeInstagramStoryUrl } from "./instagram-story-download.js";
 
 const INSTAGRAM_CALLBACK_PREFIX = "igdl:";
 const INSTAGRAM_STORY_CALLBACK_PREFIX = "igstory:";
+const INSTAGRAM_AUDIO_CALLBACK_PREFIX = "igaudio:";
 const TELEGRAM_SAFE_FILE_BYTES = 45_000_000;
 const TELEGRAM_HARD_FILE_BYTES = 49_000_000;
 const TELEGRAM_UPLOAD_TIMEOUT_MS = 120_000;
@@ -99,6 +100,8 @@ export async function handleInstagramLinkMessage(message, env) {
         chatId,
         media,
         String(prepared?.title || "Instagram post"),
+        attemptId,
+        copy,
       );
       await updateVexaDownloadAttempt(env, attemptId, {
         status: "delivered",
@@ -166,6 +169,10 @@ export async function handleInstagramLinkMessage(message, env) {
 
 export async function handleInstagramCallback(query, env) {
   const data = String(query?.data || "");
+  if (data.startsWith(INSTAGRAM_AUDIO_CALLBACK_PREFIX)) {
+    return handleInstagramAudioCallback(query, env);
+  }
+
   const isStory = data.startsWith(INSTAGRAM_STORY_CALLBACK_PREFIX);
   const isMedia = data.startsWith(INSTAGRAM_CALLBACK_PREFIX);
   if (!isStory && !isMedia) return false;
@@ -308,6 +315,103 @@ export async function handleInstagramCallback(query, env) {
   return true;
 }
 
+async function handleInstagramAudioCallback(query, env) {
+  const data = String(query?.data || "");
+  const originalAttemptId = Number.parseInt(data.slice(INSTAGRAM_AUDIO_CALLBACK_PREFIX.length), 10);
+  const userId = query?.from?.id;
+  const chatId = query?.message?.chat?.id;
+  if (
+    !Number.isSafeInteger(originalAttemptId) ||
+    originalAttemptId <= 0 ||
+    !userId ||
+    !chatId ||
+    query?.message?.chat?.type !== "private"
+  ) {
+    await answerCallback(env, query?.id, "Audio download expired", true).catch(() => null);
+    return true;
+  }
+
+  const row = await env.DB.prepare(
+    "SELECT user_id, source_url, provider FROM vexa_download_attempts WHERE id = ?"
+  ).bind(originalAttemptId).first().catch(() => null);
+  const sourceUrl = normalizeInstagramUrl(row?.source_url);
+  if (
+    !row ||
+    String(row.user_id) !== String(userId) ||
+    String(row.provider || "") !== "instagram" ||
+    !sourceUrl
+  ) {
+    await answerCallback(env, query?.id, "Audio download expired", true).catch(() => null);
+    return true;
+  }
+
+  const context = await instagramUserContext(env, userId);
+  if (!context || !env.VEXA_INSTAGRAM) {
+    await answerCallback(env, query?.id, "Audio download is unavailable", true).catch(() => null);
+    return true;
+  }
+
+  const copy = instagramCopy(context.language);
+  await answerCallback(env, query.id, copy.preparingAudio, false).catch(() => null);
+  const attemptId = await createVexaDownloadAttempt(env, {
+    userId,
+    sourceUrl,
+    provider: "instagram",
+    channel: "bot",
+    kind: "audio",
+    status: "pending",
+    stage: "preparing",
+  }).catch(() => 0);
+  let lastStage = "preparing";
+  let statusMessageId = 0;
+  try {
+    const status = await sendMessage(env, chatId, "<b>🪼 " + escapeHtml(copy.preparingAudio) + "</b>");
+    statusMessageId = Number(status?.message_id || 0);
+  } catch (error) {}
+
+  try {
+    await updateVexaDownloadAttempt(env, attemptId, {
+      status: "downloading",
+      stage: lastStage,
+    }).catch(() => null);
+    const container = getContainer(env.VEXA_INSTAGRAM, "instagram-" + String(userId));
+    const stream = await container.streamInstagramAudio(sourceUrl);
+
+    lastStage = "telegram_upload";
+    await updateVexaDownloadAttempt(env, attemptId, {
+      status: "downloading",
+      stage: lastStage,
+    }).catch(() => null);
+    await editInstagramStatus(
+      env,
+      chatId,
+      statusMessageId,
+      "<b>🫧 " + escapeHtml(copy.uploadingAudio) + "</b>\n\n" + escapeHtml(copy.keepOpen),
+    );
+    const telegramMessage = await sendInstagramAudio(env, chatId, {
+      stream,
+      title: "Instagram Reel audio",
+      filename: "Vexa-Instagram-audio.m4a",
+    });
+    await updateVexaDownloadAttempt(env, attemptId, {
+      status: "delivered",
+      stage: "delivered",
+      deliveryMessageId: Number(telegramMessage?.message_id || 0),
+    }).catch(() => null);
+    await editInstagramStatus(env, chatId, statusMessageId, "✅ <b>" + escapeHtml(copy.audioComplete) + "</b>");
+  } catch (error) {
+    console.error("Instagram audio download failed", error?.stack || error);
+    const publicError = publicInstagramBotError(error);
+    await updateVexaDownloadAttempt(env, attemptId, {
+      status: "failed",
+      stage: lastStage,
+      errorMessage: publicError,
+    }).catch(() => null);
+    await editInstagramStatus(env, chatId, statusMessageId, "⚠️ " + escapeHtml(publicError));
+  }
+  return true;
+}
+
 export function extractInstagramUrl(value) {
   const matches = String(value || "").match(/https:\/\/[^\s<>"']+/gi) || [];
   for (const match of matches) {
@@ -410,6 +514,17 @@ function instagramDownloadKeyboard(options, sourceUrl, isStory, copy, attemptId 
   return { inline_keyboard: rows };
 }
 
+function instagramAudioKeyboard(attemptId, copy) {
+  const id = Math.max(0, Math.floor(Number(attemptId || 0)));
+  if (!id) return null;
+  return {
+    inline_keyboard: [[{
+      text: copy.audioButton,
+      callback_data: INSTAGRAM_AUDIO_CALLBACK_PREFIX + String(id),
+    }]],
+  };
+}
+
 function mediaButtonText(option, tooLarge) {
   const label = String(option?.label || option?.key || "Video");
   const size = formatMegabytes(option?.sizeBytes);
@@ -427,7 +542,7 @@ function storyButtonText(option, tooLarge) {
   return (tooLarge ? "⚠️ " : "🎞️ ") + parts.join(" · ");
 }
 
-async function sendInstagramPostMedia(env, chatId, media, title) {
+async function sendInstagramPostMedia(env, chatId, media, title, attemptId = 0, copy = instagramCopy("en")) {
   const items = instagramPostMedia(media);
   if (!items.length) throw new Error("Instagram did not expose downloadable media");
   for (const item of items) {
@@ -436,6 +551,9 @@ async function sendInstagramPostMedia(env, chatId, media, title) {
     }
   }
 
+  const audioKeyboard = items.length === 1 && items[0].kind === "video"
+    ? instagramAudioKeyboard(attemptId, copy)
+    : null;
   const batches = instagramMediaBatches(items);
   let messageId = 0;
   let transferredBytes = 0;
@@ -443,7 +561,7 @@ async function sendInstagramPostMedia(env, chatId, media, title) {
     const batch = batches[index];
     const caption = index === 0 ? String(title || "Instagram post").slice(0, 1024) : "";
     const delivery = batch.length === 1
-      ? await sendInstagramRemoteSingle(env, chatId, batch[0], caption)
+      ? await sendInstagramRemoteSingle(env, chatId, batch[0], caption, index === 0 ? audioKeyboard : null)
       : await sendInstagramRemoteGroup(env, chatId, batch, caption);
     if (!messageId) messageId = Number(delivery.messageId || 0);
     transferredBytes += Number(delivery.transferredBytes || 0);
@@ -465,11 +583,14 @@ function instagramMediaBatches(items) {
   return batches;
 }
 
-async function sendInstagramRemoteSingle(env, chatId, item, caption) {
+async function sendInstagramRemoteSingle(env, chatId, item, caption, replyMarkup = null) {
   const isPhoto = item.kind === "photo";
   const fieldName = isPhoto ? "photo" : "video";
   const fields = [["chat_id", String(chatId)]];
   if (caption) fields.push(["caption", caption]);
+  if (replyMarkup?.inline_keyboard?.length) {
+    fields.push(["reply_markup", JSON.stringify(replyMarkup)]);
+  }
   if (!isPhoto) {
     fields.push(["supports_streaming", "true"]);
     if (item.width > 0) fields.push(["width", String(item.width)]);
@@ -708,7 +829,53 @@ async function sendInstagramVideo(env, chatId, media) {
   }
 }
 
-async function readInstagramStream(stream, maxBytes) {
+async function sendInstagramAudio(env, chatId, media) {
+  const blob = await readInstagramStream(
+    media.stream,
+    TELEGRAM_HARD_FILE_BYTES,
+    "audio/mp4",
+    "Instagram returned an empty audio stream",
+    "This Instagram audio is too large for Telegram",
+  );
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("title", String(media.title || "Instagram audio").slice(0, 128));
+  form.append("audio", blob, sanitizeFilename(media.filename || "Vexa-Instagram-audio.m4a"));
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("instagram_audio_telegram_timeout"), TELEGRAM_UPLOAD_TIMEOUT_MS);
+  try {
+    const response = await fetch(botMethodUrl(env, "sendAudio"), {
+      method: "POST",
+      body: form,
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch (error) {}
+    if (!response.ok || !data?.ok) {
+      const description = String(data?.description || text || "").trim().slice(0, 500);
+      if (response.status === 413 || /file is too big|request entity too large|payload too large/i.test(description)) {
+        throw new Error("This Instagram audio is too large for Telegram");
+      }
+      throw new Error(description ? "Telegram media upload failed: " + description : "Telegram media upload failed");
+    }
+    return data.result;
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("Telegram media upload timed out");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readInstagramStream(
+  stream,
+  maxBytes,
+  mimeType = "video/mp4",
+  emptyMessage = "Instagram returned an empty video",
+  tooLargeMessage = "This Instagram video is too large for Telegram",
+) {
   if (!stream?.getReader) throw new Error("Could not start the Instagram download");
   const reader = stream.getReader();
   const chunks = [];
@@ -721,7 +888,7 @@ async function readInstagramStream(stream, maxBytes) {
       total += next.value.byteLength;
       if (total > maxBytes) {
         try { await reader.cancel("telegram_file_limit"); } catch (error) {}
-        throw new Error("This Instagram video is too large for Telegram");
+        throw new Error(tooLargeMessage);
       }
       chunks.push(next.value);
     }
@@ -729,8 +896,8 @@ async function readInstagramStream(stream, maxBytes) {
     try { await reader.cancel("instagram_bot_read_failed"); } catch (cancelError) {}
     throw error;
   }
-  if (!total) throw new Error("Instagram returned an empty video");
-  return new Blob(chunks, { type: "video/mp4" });
+  if (!total) throw new Error(emptyMessage);
+  return new Blob(chunks, { type: mimeType });
 }
 
 function sanitizeFilename(value) {
@@ -770,6 +937,10 @@ function instagramCopy(language) {
       uploading: "در حال ارسال ویدیو به تلگرام…",
       preparingPost: "در حال آماده‌سازی پست اینستاگرام…",
       uploadingPost: "در حال ارسال پست به تلگرام…",
+      preparingAudio: "در حال آماده‌سازی صدا…",
+      uploadingAudio: "در حال ارسال صدا به تلگرام…",
+      audioButton: "🎵 دانلود صدا",
+      audioComplete: "صدا ارسال شد",
       keepOpen: "تا پایان ارسال صبر کن.",
       complete: "ویدیو ارسال شد",
       postComplete: "پست ارسال شد",
@@ -791,6 +962,10 @@ function instagramCopy(language) {
     uploading: "Sending video to Telegram…",
     preparingPost: "Preparing Instagram post…",
     uploadingPost: "Sending post to Telegram…",
+    preparingAudio: "Preparing audio…",
+    uploadingAudio: "Sending audio to Telegram…",
+    audioButton: "🎵 Download audio",
+    audioComplete: "Audio sent",
     keepOpen: "Keep the chat open until it finishes.",
     complete: "Video sent",
     postComplete: "Post sent",
