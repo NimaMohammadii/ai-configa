@@ -2,7 +2,7 @@ import { handleMiniAppRequest } from "../server.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
 const LIVE_BACKGROUND = "#000000";
-const INTEGRATION_VERSION = "20260829-save-circle-1";
+const INTEGRATION_VERSION = "20260829-save-match-1";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -36,6 +36,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   let speechButtonBound = false;
   let nativeDownload = null;
   let lastDownload = null;
+  let savedDownloadKey = "";
   let saveBusy = false;
   let frameActionsCleanup = null;
   let frameActionsSync = null;
@@ -57,6 +58,11 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     }
   }
 
+  function downloadKey(download) {
+    if (!download) return "";
+    return String(download.url || "") + "\n" + String(download.fileName || "");
+  }
+
   function installDownloadCapture() {
     const tg = telegram();
     if (!tg || typeof tg.downloadFile !== "function" || nativeDownload) return;
@@ -66,7 +72,9 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       const url = String(params && params.url || "").trim();
       const fileName = String(params && params.file_name || "").trim();
       if (url && fileName && isVexaDownloadUrl(url)) {
-        lastDownload = { url: url, fileName: fileName };
+        const next = { url: url, fileName: fileName };
+        if (downloadKey(lastDownload) !== downloadKey(next)) savedDownloadKey = "";
+        lastDownload = next;
         if (frameActionsSync) frameActionsSync();
       }
       return nativeDownload(params, callback);
@@ -101,7 +109,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     if (!style) {
       style = doc.createElement("style");
       style.id = "vexaSaveCircleStyle";
-      style.textContent = ".vexa-save-circle{flex:0 0 44px!important;width:44px!important;min-width:44px!important;max-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;border-radius:999px!important;display:grid!important;place-items:center!important}.vexa-save-circle[hidden]{display:none!important}.vexa-save-circle svg{display:block;width:18px;height:18px;pointer-events:none}";
+      style.textContent = "#vexaLiveDownload:not(:disabled),#vexaLiveUpload:not(:disabled),#vexaLiveSave:not(:disabled){opacity:1!important;filter:none!important}.vexa-save-action[hidden]{display:none!important}.vexa-save-action svg{display:block;width:18px;height:18px;pointer-events:none}";
       doc.head.appendChild(style);
     }
 
@@ -110,7 +118,6 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       saveButton = doc.createElement("button");
       saveButton.id = "vexaLiveSave";
       saveButton.type = "button";
-      saveButton.className = "vexa-live-download-action vexa-save-circle";
       saveButton.hidden = true;
       saveButton.disabled = true;
       saveButton.setAttribute("aria-label", "Save file");
@@ -119,28 +126,54 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       actions.insertBefore(saveButton, uploadButton || null);
     }
 
+    const referenceButton = uploadButton || downloadButton;
+    saveButton.className = referenceButton.className;
+    saveButton.classList.add("vexa-save-action");
+
+    const matchReferenceSize = function () {
+      if (!referenceButton || !frame.contentWindow) return;
+      const referenceStyle = frame.contentWindow.getComputedStyle(referenceButton);
+      saveButton.style.width = referenceStyle.width;
+      saveButton.style.height = referenceStyle.height;
+      saveButton.style.minWidth = referenceStyle.minWidth;
+      saveButton.style.minHeight = referenceStyle.minHeight;
+      saveButton.style.maxWidth = referenceStyle.maxWidth;
+      saveButton.style.maxHeight = referenceStyle.maxHeight;
+      saveButton.style.padding = referenceStyle.padding;
+      saveButton.style.borderRadius = referenceStyle.borderRadius;
+      saveButton.style.flexGrow = referenceStyle.flexGrow;
+      saveButton.style.flexShrink = referenceStyle.flexShrink;
+      saveButton.style.flexBasis = referenceStyle.flexBasis;
+    };
+
     const sync = function () {
       if (!frame.isConnected) return;
       const completed = String(root.dataset.state || "") === "completed";
       const canSave = completed && Boolean(lastDownload && nativeDownload);
       saveButton.hidden = !canSave;
       saveButton.disabled = !canSave || Boolean(saveBusy);
+      if (canSave) matchReferenceSize();
     };
 
     const onSave = function (event) {
       event.preventDefault();
       event.stopPropagation();
       if (saveBusy || String(root.dataset.state || "") !== "completed" || !lastDownload || !nativeDownload) return;
-      saveBusy = true;
-      saveButton.disabled = true;
+      const key = downloadKey(lastDownload);
       haptic("light");
+      if (key && savedDownloadKey === key) return;
+      saveBusy = true;
+      sync();
       try {
-        nativeDownload({ url: lastDownload.url, file_name: lastDownload.fileName }, function () {});
+        nativeDownload({ url: lastDownload.url, file_name: lastDownload.fileName }, function (accepted) {
+          if (accepted !== false) savedDownloadKey = key;
+          saveBusy = false;
+          sync();
+        });
       } catch (error) {
-        console.warn("Vexa Save failed", error && error.message || error);
-      } finally {
         saveBusy = false;
-        queueMicrotask(sync);
+        sync();
+        console.warn("Vexa Save failed", error && error.message || error);
       }
     };
 
