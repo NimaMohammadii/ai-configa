@@ -1,8 +1,11 @@
 import { handleMiniAppRequest } from "../server.js";
+import { authenticateMiniAppPayload } from "../auth.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
 const LIVE_BACKGROUND = "#000000";
-const INTEGRATION_VERSION = "20260829-save-match-1";
+const HANDOFF_OPEN_PATH = LIVE_ROOT + "/handoff-open";
+const HANDOFF_OPEN_EVENT = "vexa_handoff_opened";
+const INTEGRATION_VERSION = "20260829-handoff-reminder-1";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -47,6 +50,29 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     const tg = telegram();
     if (!tg || !tg.HapticFeedback || !tg.HapticFeedback.impactOccurred) return;
     try { tg.HapticFeedback.impactOccurred(style || "light"); } catch (error) {}
+  }
+
+  function handoffWorkflowId() {
+    try {
+      const value = String(new URLSearchParams(window.location.search).get("vexaHandoff") || "").trim();
+      return /^vexa-handoff-\d{1,20}-\d{1,20}-[a-f0-9]{12}$/i.test(value) ? value : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function notifyHandoffOpened() {
+    const workflowId = handoffWorkflowId();
+    const tg = telegram();
+    const initData = String(tg && tg.initData || "");
+    if (!workflowId || !initData) return;
+    fetch("/mini-app/vexa-live/handoff-open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      cache: "no-store",
+      keepalive: true,
+      body: JSON.stringify({ initData: initData, workflowId: workflowId }),
+    }).catch(function () {});
   }
 
   function isVexaDownloadUrl(value) {
@@ -366,6 +392,7 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
   }
 
   function initialize() {
+    notifyHandoffOpened();
     installDownloadCapture();
     installParentStyle();
     syncTelegramChrome();
@@ -392,9 +419,12 @@ export function isVexaLiveRequest(request) {
   return path === LIVE_ROOT || path === LIVE_ROOT + "/" || path.startsWith(LIVE_ROOT + "/");
 }
 
-export async function handleVexaLiveRequest(request) {
+export async function handleVexaLiveRequest(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
+  if (request.method === "POST" && path === HANDOFF_OPEN_PATH) {
+    return handleHandoffOpened(request, env);
+  }
   if (request.method === "GET" && (path === LIVE_ROOT || path === LIVE_ROOT + "/")) {
     return textResponse(VEXA_LIVE_SHELL_HTML, "text/html;charset=utf-8");
   }
@@ -402,6 +432,32 @@ export async function handleVexaLiveRequest(request) {
     return textResponse(VEXA_LIVE_INTEGRATION_JS, "application/javascript;charset=utf-8");
   }
   return jsonResponse({ error: "Not Found" }, 404);
+}
+
+async function handleHandoffOpened(request, env) {
+  if (!env?.AI_CODING_WORKFLOW) return jsonResponse({ ok: true }, 200);
+  try {
+    const payload = await request.json().catch(() => ({}));
+    const user = await authenticateMiniAppPayload(payload, env);
+    const workflowId = String(payload.workflowId || "").trim();
+    const prefix = "vexa-handoff-" + String(user.id) + "-";
+    if (!workflowId.startsWith(prefix)) return jsonResponse({ error: "Invalid handoff" }, 400);
+    const suffix = workflowId.slice(prefix.length);
+    if (!/^\d{1,20}-[a-f0-9]{12}$/iu.test(suffix)) return jsonResponse({ error: "Invalid handoff" }, 400);
+    const instance = await env.AI_CODING_WORKFLOW.get(workflowId);
+    await instance.sendEvent({
+      type: HANDOFF_OPEN_EVENT,
+      payload: { userId: String(user.id) },
+    });
+    return jsonResponse({ ok: true }, 200);
+  } catch (error) {
+    const message = String(error?.message || error || "").toLowerCase();
+    if (message.includes("not found") || message.includes("completed") || message.includes("terminated")) {
+      return jsonResponse({ ok: true }, 200);
+    }
+    console.warn("Vexa handoff open event failed", error?.message || error);
+    return jsonResponse({ ok: true }, 200);
+  }
 }
 
 export async function appendVexaLiveToMiniApp(response) {
