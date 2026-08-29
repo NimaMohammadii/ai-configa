@@ -319,7 +319,7 @@ function blockedPlanMessage(plan) {
     ? plan.steps.filter((step) => step.status === "blocked").map((step) => step.title).slice(0, 4)
     : [];
   const detail = blocked.length ? `: ${blocked.join("; ")}` : "";
-  return `Background task stopped at a real blocker${detail}. The task branch and plan were preserved so it can be resumed.`.slice(0, MAX_TASK_ERROR_CHARS);
+  return `Coding task stopped at a real blocker${detail}. The task branch and plan were preserved so it can be resumed.`.slice(0, MAX_TASK_ERROR_CHARS);
 }
 
 function addBackgroundExecutionInstruction(messages) {
