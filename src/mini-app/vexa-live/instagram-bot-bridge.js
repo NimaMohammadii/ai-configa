@@ -56,6 +56,7 @@ export async function handleInstagramLinkMessage(message, env) {
     stage: "inspecting",
   }).catch(() => 0);
   let statusMessageId = 0;
+  let lastStage = "inspecting";
 
   try {
     const status = await sendMessage(env, chatId, "<b>" + escapeHtml(copy.inspecting) + "</b>");
@@ -77,16 +78,18 @@ export async function handleInstagramLinkMessage(message, env) {
       if (!media.length) throw new Error("Instagram did not expose downloadable media");
       const totalBytes = media.reduce((sum, item) => sum + Math.max(0, Number(item.sizeBytes || 0)), 0);
 
+      lastStage = "preparing";
       await updateVexaDownloadAttempt(env, attemptId, {
         status: "downloading",
-        stage: "preparing",
+        stage: lastStage,
         totalBytes,
       }).catch(() => null);
       await editInstagramStatus(env, chatId, statusMessageId, "<b>🪼 " + escapeHtml(copy.preparingPost) + "</b>");
 
+      lastStage = "telegram_upload";
       await updateVexaDownloadAttempt(env, attemptId, {
         status: "downloading",
-        stage: "telegram_upload",
+        stage: lastStage,
         totalBytes,
       }).catch(() => null);
       await editInstagramStatus(env, chatId, statusMessageId, "<b>🫧 " + escapeHtml(copy.uploadingPost) + "</b>\n\n" + escapeHtml(copy.keepOpen));
@@ -110,9 +113,10 @@ export async function handleInstagramLinkMessage(message, env) {
       const options = Array.isArray(prepared?.options) ? prepared.options : [];
       if (!options.length) throw new Error("Instagram did not expose a downloadable Story video");
 
+      lastStage = "quality_selection";
       await updateVexaDownloadAttempt(env, attemptId, {
         status: "ready",
-        stage: "quality_selection",
+        stage: lastStage,
       }).catch(() => null);
       const keyboard = instagramDownloadKeyboard(options, sourceUrl, true, copy, attemptId);
       const title = prepared.type === "live"
@@ -142,7 +146,7 @@ export async function handleInstagramLinkMessage(message, env) {
     const publicError = publicInstagramBotError(error);
     await updateVexaDownloadAttempt(env, attemptId, {
       status: "failed",
-      stage: "telegram_upload",
+      stage: lastStage,
       errorMessage: publicError,
     }).catch(() => null);
     const errorText = "⚠️ " + escapeHtml(publicError);
@@ -206,10 +210,11 @@ export async function handleInstagramCallback(query, env) {
     { inline_keyboard: [] },
   ).catch(() => null);
 
+  let lastStage = "preparing";
   try {
     await updateVexaDownloadAttempt(env, attemptId, {
       status: "downloading",
-      stage: "preparing",
+      stage: lastStage,
       optionKey,
     }).catch(() => null);
     const prepared = await inspectInstagram(env, userId, sourceUrl, isStory);
@@ -219,7 +224,7 @@ export async function handleInstagramCallback(query, env) {
     if (selected?.kind === "live" || Number(selected.sizeBytes || 0) > TELEGRAM_SAFE_FILE_BYTES) {
       await updateVexaDownloadAttempt(env, attemptId, {
         status: "failed",
-        stage: "preparing",
+        stage: lastStage,
         optionKey,
         totalBytes: Number(selected.sizeBytes || 0),
         errorMessage: copy.tooLarge,
@@ -250,9 +255,10 @@ export async function handleInstagramCallback(query, env) {
       { inline_keyboard: [] },
     ).catch(() => null);
 
+    lastStage = "telegram_upload";
     await updateVexaDownloadAttempt(env, attemptId, {
       status: "downloading",
-      stage: "telegram_upload",
+      stage: lastStage,
       optionKey,
       totalBytes: Number(selected.sizeBytes || 0),
     }).catch(() => null);
@@ -287,7 +293,7 @@ export async function handleInstagramCallback(query, env) {
     const publicError = publicInstagramBotError(error);
     await updateVexaDownloadAttempt(env, attemptId, {
       status: "failed",
-      stage: "telegram_upload",
+      stage: lastStage,
       errorMessage: publicError,
     }).catch(() => null);
     await editMessage(
