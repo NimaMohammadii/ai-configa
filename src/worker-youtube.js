@@ -55,6 +55,10 @@ import {
   isVexaLivePersistenceRequest,
 } from "./mini-app/vexa-live/youtube-live-persistence.js";
 import { appendVexaLiveLandingRuntime } from "./mini-app/vexa-live/vexa-live-landing.js";
+import {
+  handleInstagramMessagingRequest,
+  isInstagramMessagingRequest,
+} from "./instagram-messaging.js";
 
 const SUBTITLE_SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
 const DOWNLOAD_SUBTITLE_RENDERER_INSTANCES = 3;
@@ -110,6 +114,10 @@ export default {
   ...worker,
   async fetch(request, env, ctx) {
     try {
+      if (isInstagramMessagingRequest(request)) {
+        return handleInstagramMessagingRequest(request, env, ctx);
+      }
+
       const voiceTransformResponse = await handleMiniAppVoiceTransformRequest(request, env);
       if (voiceTransformResponse) return voiceTransformResponse;
 
