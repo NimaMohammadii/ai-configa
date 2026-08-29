@@ -1,7 +1,11 @@
+import { getContainer } from "@cloudflare/containers";
+import { normalizeInstagramUrl } from "./mini-app/vexa-live/instagram-download.js";
+
 const INSTAGRAM_WEBHOOK_PATH = "/api/instagram/webhook";
 const INSTAGRAM_MEDIA_PATH = "/api/instagram/media";
 const DEFAULT_GRAPH_VERSION = "v26.0";
 const MEDIA_TOKEN_TTL_SECONDS = 6 * 60 * 60;
+const INSTAGRAM_DM_CONTAINER_PREFIX = "instagram-dm-";
 const SHARE_ATTACHMENT_TYPES = new Set(["ig_reel", "reel", "ig_post", "post", "share"]);
 const SHARE_ATTACHMENT_PRIORITY = new Map([
   ["ig_reel", 5],
@@ -115,7 +119,7 @@ function extractSharedMediaEvents(payload, origin) {
 
       const attachment = preferredShareAttachment(message?.attachments);
       if (!attachment) continue;
-      const sourceUrl = cleanMetaMediaUrl(attachment?.payload?.url);
+      const sourceUrl = normalizeInstagramUrl(attachment?.payload?.url);
       if (!sourceUrl) continue;
 
       const attachmentType = String(attachment.type || "").toLowerCase();
@@ -138,7 +142,7 @@ function preferredShareAttachment(attachments) {
   for (const attachment of Array.isArray(attachments) ? attachments : []) {
     const type = String(attachment?.type || "").toLowerCase();
     if (!SHARE_ATTACHMENT_TYPES.has(type)) continue;
-    if (!cleanMetaMediaUrl(attachment?.payload?.url)) continue;
+    if (!normalizeInstagramUrl(attachment?.payload?.url)) continue;
     const priority = SHARE_ATTACHMENT_PRIORITY.get(type) || 0;
     if (priority > selectedPriority) {
       selected = attachment;
@@ -150,6 +154,7 @@ function preferredShareAttachment(attachments) {
 
 async function processSharedMediaEvent(env, event) {
   if (!env.DB) throw new Error("Instagram messaging requires D1");
+  if (!env.VEXA_INSTAGRAM) throw new Error("Instagram downloader is unavailable");
   const accessToken = String(env.INSTAGRAM_ACCESS_TOKEN || "").trim();
   if (!accessToken) throw new Error("Instagram access token is not configured");
 
@@ -157,43 +162,54 @@ async function processSharedMediaEvent(env, event) {
   if (!(await claimInstagramMessage(env, event.mid))) return { ok: true, duplicate: true };
 
   try {
-    const mediaType = await detectMediaType(event.sourceUrl, event.attachmentType);
+    const sourceUrl = normalizeInstagramUrl(event.sourceUrl);
+    if (!sourceUrl) throw new Error("Instagram shared post URL is invalid");
+
+    const container = getContainer(
+      env.VEXA_INSTAGRAM,
+      INSTAGRAM_DM_CONTAINER_PREFIX + safeContainerKey(event.igAccountId),
+    );
+    const catalog = await container.getInstagramCatalog(sourceUrl);
+    const selected = preferredVideoOption(catalog?.options);
+    if (!selected) throw new Error("Instagram did not expose a downloadable MP4 video");
+
     const token = randomToken(32);
     const now = Math.floor(Date.now() / 1000);
     const expiresAt = now + MEDIA_TOKEN_TTL_SECONDS;
-    const filename = mediaType === "video" ? "Vexa-Instagram.mp4" : "Vexa-Instagram.jpg";
+    const fileName = safeFilename(selected.filename || "Vexa-Instagram.mp4");
 
     await env.DB.prepare(
       "INSERT INTO instagram_dm_media_tokens " +
-      "(token, source_url, media_type, file_name, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)"
-    ).bind(token, event.sourceUrl, mediaType, filename, now, expiresAt).run();
+      "(token, source_url, ig_account_id, format_id, media_type, file_name, created_at, expires_at) " +
+      "VALUES (?, ?, ?, ?, 'video', ?, ?, ?)"
+    ).bind(
+      token,
+      sourceUrl,
+      event.igAccountId,
+      String(selected.formatId),
+      fileName,
+      now,
+      expiresAt,
+    ).run();
 
     const mediaUrl = new URL(INSTAGRAM_MEDIA_PATH, event.origin);
     mediaUrl.searchParams.set("token", token);
 
-    let delivered = false;
-    if (mediaType === "video" || mediaType === "image") {
-      try {
-        await sendInstagramMedia(env, event.igAccountId, event.senderId, mediaType, mediaUrl.toString());
-        delivered = true;
-      } catch (error) {
-        console.warn("Instagram media reply failed; falling back to a download link", publicLog(error));
-      }
-    }
-
-    if (!delivered) {
+    try {
+      await sendInstagramMedia(env, event.igAccountId, event.senderId, "video", mediaUrl.toString());
+    } catch (error) {
+      console.warn("Instagram video reply failed; falling back to a download link", publicLog(error));
       mediaUrl.searchParams.set("download", "1");
-      const label = mediaType === "image" ? "Image ready" : "Video ready";
       await sendInstagramText(
         env,
         event.igAccountId,
         event.senderId,
-        label + " ↓\n" + mediaUrl.toString(),
+        "Video ready ↓\n" + mediaUrl.toString(),
       );
     }
 
     await markInstagramMessage(env, event.mid, "completed");
-    return { ok: true, deliveredAs: delivered ? mediaType : "link" };
+    return { ok: true, deliveredAs: "video" };
   } catch (error) {
     await markInstagramMessage(env, event.mid, "failed").catch(() => null);
     console.error("Instagram shared media processing failed", publicLog(error));
@@ -201,10 +217,22 @@ async function processSharedMediaEvent(env, event) {
       env,
       event.igAccountId,
       event.senderId,
-      "Couldn’t prepare this media. Please try again.",
+      "Couldn’t prepare this video. Please try again.",
     ).catch(() => null);
     throw error;
   }
+}
+
+function preferredVideoOption(options) {
+  const candidates = Array.isArray(options) ? options : [];
+  for (const option of candidates) {
+    if (
+      String(option?.kind || "video") === "video" &&
+      String(option?.formatId || "").trim() &&
+      String(option?.filename || "").trim()
+    ) return option;
+  }
+  return null;
 }
 
 async function sendInstagramMedia(env, igAccountId, recipientId, mediaType, mediaUrl) {
@@ -250,95 +278,68 @@ async function instagramSend(env, igAccountId, body) {
 }
 
 async function relayInstagramMedia(request, env) {
-  if (!env.DB) return new Response("Unavailable", { status: 503 });
+  if (!env.DB || !env.VEXA_INSTAGRAM) return new Response("Unavailable", { status: 503 });
   const url = new URL(request.url);
   const token = cleanRelayToken(url.searchParams.get("token"));
   if (!token) return new Response("Not Found", { status: 404 });
 
   await ensureInstagramMessagingTables(env);
   const row = await env.DB.prepare(
-    "SELECT source_url, media_type, file_name, expires_at FROM instagram_dm_media_tokens WHERE token = ?"
+    "SELECT source_url, ig_account_id, format_id, media_type, file_name, expires_at " +
+    "FROM instagram_dm_media_tokens WHERE token = ?"
   ).bind(token).first();
   const now = Math.floor(Date.now() / 1000);
   if (!row || Number(row.expires_at || 0) <= now) {
     return new Response("Download link expired", { status: 410 });
   }
 
-  const sourceUrl = cleanMetaMediaUrl(row.source_url);
-  if (!sourceUrl) return new Response("Unavailable", { status: 410 });
-
-  const upstreamHeaders = new Headers();
-  const range = String(request.headers.get("Range") || "").trim();
-  if (range) upstreamHeaders.set("Range", range);
-
-  const upstream = await fetch(sourceUrl, {
-    method: request.method,
-    headers: upstreamHeaders,
-    redirect: "follow",
-  });
-  if (!upstream.ok && upstream.status !== 206) {
-    return new Response("Media is no longer available", { status: upstream.status === 404 ? 404 : 502 });
+  const sourceUrl = normalizeInstagramUrl(row.source_url);
+  const formatId = String(row.format_id || "").trim();
+  if (!sourceUrl || !formatId || String(row.media_type || "") !== "video") {
+    return new Response("Unavailable", { status: 410 });
   }
 
-  const headers = new Headers();
-  copyHeader(upstream.headers, headers, "Content-Type");
-  copyHeader(upstream.headers, headers, "Content-Length");
-  copyHeader(upstream.headers, headers, "Content-Range");
-  copyHeader(upstream.headers, headers, "Accept-Ranges");
-  headers.set("Cache-Control", "private, no-store, max-age=0");
-  headers.set("X-Content-Type-Options", "nosniff");
-
+  const headers = new Headers({
+    "Content-Type": "video/mp4",
+    "Cache-Control": "private, no-store, max-age=0",
+    "X-Content-Type-Options": "nosniff",
+  });
   if (url.searchParams.get("download") === "1") {
     headers.set("Content-Disposition", `attachment; filename="${safeFilename(row.file_name)}"`);
   }
+  if (request.method === "HEAD") return new Response(null, { status: 200, headers });
 
-  return new Response(request.method === "HEAD" ? null : upstream.body, {
-    status: upstream.status,
-    headers,
-  });
-}
-
-async function detectMediaType(sourceUrl, attachmentType) {
-  if (attachmentType === "ig_reel" || attachmentType === "reel") return "video";
-
-  const fromHead = await probeContentType(sourceUrl, "HEAD");
-  if (fromHead) return fromHead;
-  return await probeContentType(sourceUrl, "GET") || "image";
-}
-
-async function probeContentType(sourceUrl, method) {
-  let response;
   try {
-    const headers = new Headers();
-    if (method === "GET") headers.set("Range", "bytes=0-0");
-    response = await fetch(sourceUrl, { method, headers, redirect: "follow" });
-    if (!response.ok && response.status !== 206) return "";
-    const contentType = String(response.headers.get("Content-Type") || "").toLowerCase();
-    if (contentType.startsWith("video/")) return "video";
-    if (contentType.startsWith("image/")) return "image";
-    return "";
-  } catch {
-    return "";
-  } finally {
-    if (method === "GET") {
-      try { await response?.body?.cancel(); } catch {}
-    }
+    const container = getContainer(
+      env.VEXA_INSTAGRAM,
+      INSTAGRAM_DM_CONTAINER_PREFIX + safeContainerKey(row.ig_account_id),
+    );
+    const stream = await container.streamInstagramVideo(sourceUrl, formatId);
+    return new Response(stream, { status: 200, headers });
+  } catch (error) {
+    console.error("Instagram DM delivery stream failed", publicLog(error));
+    return new Response("Media is no longer available", { status: 502 });
   }
 }
 
 async function ensureInstagramMessagingTables(env) {
   if (!instagramMessagingTablesReady) {
-    instagramMessagingTablesReady = Promise.all([
-      env.DB.prepare(
-        "CREATE TABLE IF NOT EXISTS processed_instagram_dm_messages (" +
-        "mid TEXT PRIMARY KEY, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)"
-      ).run(),
-      env.DB.prepare(
-        "CREATE TABLE IF NOT EXISTS instagram_dm_media_tokens (" +
-        "token TEXT PRIMARY KEY, source_url TEXT NOT NULL, media_type TEXT NOT NULL, " +
-        "file_name TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)"
-      ).run(),
-    ]).catch((error) => {
+    instagramMessagingTablesReady = (async () => {
+      await Promise.all([
+        env.DB.prepare(
+          "CREATE TABLE IF NOT EXISTS processed_instagram_dm_messages (" +
+          "mid TEXT PRIMARY KEY, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)"
+        ).run(),
+        env.DB.prepare(
+          "CREATE TABLE IF NOT EXISTS instagram_dm_media_tokens (" +
+          "token TEXT PRIMARY KEY, source_url TEXT NOT NULL, ig_account_id TEXT NOT NULL DEFAULT '', " +
+          "format_id TEXT NOT NULL DEFAULT '', media_type TEXT NOT NULL, file_name TEXT NOT NULL, " +
+          "created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)"
+        ).run(),
+      ]);
+      await addInstagramDmColumn(env, "ig_account_id", "TEXT NOT NULL DEFAULT ''");
+      await addInstagramDmColumn(env, "format_id", "TEXT NOT NULL DEFAULT ''");
+    })().catch((error) => {
       instagramMessagingTablesReady = null;
       throw error;
     });
@@ -353,6 +354,14 @@ async function ensureInstagramMessagingTables(env) {
         "DELETE FROM processed_instagram_dm_messages WHERE updated_at < ?"
       ).bind(now - 7 * 24 * 60 * 60).run(),
     ]).catch(() => null);
+  }
+}
+
+async function addInstagramDmColumn(env, name, definition) {
+  try {
+    await env.DB.prepare(`ALTER TABLE instagram_dm_media_tokens ADD COLUMN ${name} ${definition}`).run();
+  } catch (error) {
+    if (!/duplicate column name/i.test(String(error?.message || ""))) throw error;
   }
 }
 
@@ -407,19 +416,9 @@ function constantTimeStringEqual(a, b) {
   return diff === 0;
 }
 
-function cleanMetaMediaUrl(value) {
-  try {
-    const url = new URL(String(value || ""));
-    if (url.protocol !== "https:") return "";
-    const host = url.hostname.toLowerCase();
-    const allowed = host === "lookaside.fbsbx.com"
-      || host === "scontent.cdninstagram.com"
-      || host.endsWith(".fbcdn.net")
-      || host.endsWith(".cdninstagram.com");
-    return allowed ? url.toString() : "";
-  } catch {
-    return "";
-  }
+function safeContainerKey(value) {
+  const key = String(value || "default").replace(/[^A-Za-z0-9_-]/g, "");
+  return (key || "default").slice(0, 80);
 }
 
 function cleanNumericId(value) {
@@ -455,10 +454,6 @@ function safeFilename(value) {
   return cleaned || "Vexa-Instagram";
 }
 
-function copyHeader(source, target, name) {
-  const value = source.get(name);
-  if (value) target.set(name, value);
-}
 
 function publicLog(error) {
   return String(error?.message || error || "Unknown error").replace(/\s+/g, " ").slice(0, 700);
