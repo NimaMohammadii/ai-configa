@@ -336,8 +336,8 @@ export function vexaDownloadHandoffKeyboard(miniAppUrl, language, optionKey = ""
   return {
     inline_keyboard: [[{
       text: fa
-        ? (audio ? "▶️ دریافت صدا" : "▶️ دریافت ویدیو")
-        : (audio ? "▶️ Get audio" : "▶️ Get video"),
+        ? (audio ? "▶️ دریافت صدا" : "🪼 دریافت ویدیو")
+        : (audio ? "▶️ Get audio" : "🪼 Get video"),
       web_app: { url: String(miniAppUrl || VEXA_PUBLIC_MINI_APP_URL) },
     }]],
   };
@@ -785,7 +785,7 @@ function youtubeDownloadCopy(language) {
       openInApp: "ادامه در Vexa",
       continueInApp: "کیفیت انتخاب شد. برای دریافت ویدیو، Vexa را باز کن.",
       fullDownload: "برای دریافت ویدیو، دکمه زیر را بزن.",
-      fullDownloadButton: "▶️ دریافت ویدیو",
+      fullDownloadButton: "🪼 دریافت ویدیو",
     };
   }
   return {
@@ -807,7 +807,7 @@ function youtubeDownloadCopy(language) {
     openInApp: "Continue in Vexa",
     continueInApp: "Quality selected. Open Vexa to receive your video.",
     fullDownload: "Tap the button below to receive your video.",
-    fullDownloadButton: "▶️ Get video",
+    fullDownloadButton: "🪼 Get video",
   };
 }
 
