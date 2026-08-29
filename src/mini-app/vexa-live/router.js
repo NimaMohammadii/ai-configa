@@ -2,7 +2,7 @@ import { handleMiniAppRequest } from "../server.js";
 
 const LIVE_ROOT = "/mini-app/vexa-live";
 const LIVE_BACKGROUND = "#000000";
-const INTEGRATION_VERSION = "20260829-save-only-1";
+const INTEGRATION_VERSION = "20260829-separate-save-1";
 
 const VEXA_LIVE_SHELL_HTML = `<!doctype html>
 <html lang="en">
@@ -78,17 +78,6 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     }
   }
 
-  function setActionLabel(button, text) {
-    if (!button) return;
-    const value = String(text || "");
-    const label = button.querySelector(".vexa-download-action-label");
-    if (label) {
-      if (label.textContent !== value) label.textContent = value;
-      return;
-    }
-    if (String(button.textContent || "").trim() !== value) button.textContent = value;
-  }
-
   function cleanupFrameActions() {
     if (typeof frameActionsCleanup === "function") {
       try { frameActionsCleanup(); } catch (error) {}
@@ -103,24 +92,40 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
     try { doc = frame && frame.contentDocument; } catch (error) { return; }
     if (!doc) return;
     const root = doc.getElementById("vexaLiveDownloadRoot");
-    const saveButton = doc.getElementById("vexaLiveDownload");
-    if (!root || !saveButton) return;
+    const downloadButton = doc.getElementById("vexaLiveDownload");
+    const uploadButton = doc.getElementById("vexaLiveUpload");
+    const actions = downloadButton && downloadButton.parentElement;
+    if (!root || !downloadButton || !actions) return;
+
+    let saveButton = doc.getElementById("vexaLiveSave");
+    if (!saveButton) {
+      saveButton = doc.createElement("button");
+      saveButton.id = "vexaLiveSave";
+      saveButton.type = "button";
+      saveButton.className = "vexa-live-download-action";
+      saveButton.hidden = true;
+      saveButton.disabled = true;
+      const label = doc.createElement("span");
+      label.className = "vexa-download-action-label";
+      label.textContent = "Save";
+      saveButton.appendChild(label);
+      actions.insertBefore(saveButton, uploadButton || null);
+    }
 
     const sync = function () {
       if (!frame.isConnected) return;
       const completed = String(root.dataset.state || "") === "completed";
       const canSave = completed && Boolean(lastDownload && nativeDownload);
-      if (canSave) {
-        saveButton.disabled = Boolean(saveBusy);
-        setActionLabel(saveButton, saveBusy ? "Saving…" : "Save");
-      }
+      saveButton.hidden = !canSave;
+      saveButton.disabled = !canSave || Boolean(saveBusy);
+      const label = saveButton.querySelector(".vexa-download-action-label");
+      if (label) label.textContent = saveBusy ? "Saving…" : "Save";
     };
 
     const onSave = function (event) {
-      if (String(root.dataset.state || "") !== "completed" || !lastDownload || !nativeDownload) return;
       event.preventDefault();
-      event.stopImmediatePropagation();
-      if (saveBusy) return;
+      event.stopPropagation();
+      if (saveBusy || String(root.dataset.state || "") !== "completed" || !lastDownload || !nativeDownload) return;
       saveBusy = true;
       sync();
       haptic("light");
@@ -134,14 +139,13 @@ const VEXA_LIVE_INTEGRATION_JS = String.raw`
       }
     };
 
-    saveButton.addEventListener("click", onSave, true);
+    saveButton.addEventListener("click", onSave);
     const observer = new MutationObserver(sync);
     observer.observe(root, { attributes: true, attributeFilter: ["data-state"] });
-    observer.observe(saveButton, { childList: true });
     frameActionsSync = sync;
     frameActionsCleanup = function () {
       observer.disconnect();
-      saveButton.removeEventListener("click", onSave, true);
+      saveButton.removeEventListener("click", onSave);
     };
     sync();
   }
