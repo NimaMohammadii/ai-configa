@@ -20,6 +20,11 @@ import {
   sendMessage,
 } from "../../telegram-actions.js";
 import { botMethodUrl } from "../../telegram-api.js";
+import {
+  createVexaDownloadHandoff,
+  vexaDownloadHandoffKeyboard,
+  vexaDownloadHandoffText,
+} from "./bot-bridge.js";
 import { normalizeInstagramUrl } from "./instagram-download.js";
 import { normalizeInstagramStoryUrl } from "./instagram-story-download.js";
 
@@ -170,8 +175,16 @@ export async function handleInstagramCallback(query, env) {
     optionKey,
   }).catch(() => null);
 
-  const text = "<b>🫧 " + escapeHtml(copy.continueInApp) + "</b>";
-  const keyboard = instagramOpenKeyboard(sourceUrl, optionKey, copy);
+  const handoff = await createVexaDownloadHandoff(env, {
+    attemptId,
+    userId,
+    chatId,
+    sourceUrl,
+    optionKey,
+    language: context.language,
+  });
+  const text = vexaDownloadHandoffText(context.language, optionKey);
+  const keyboard = vexaDownloadHandoffKeyboard(handoff.miniAppUrl, context.language, optionKey);
   const edited = await editMessage(
     env,
     chatId,
@@ -409,9 +422,9 @@ function instagramCopy(language) {
       keepOpen: "تا پایان ارسال صبر کن.",
       complete: "دانلود ارسال شد",
       selectionExpired: "انتخاب دانلود منقضی شده است",
-      tooLargeTitle: "فایل برای ارسال مستقیم بزرگ است",
-      tooLarge: "این فایل از سقف امن ارسال مستقیم ربات بزرگ‌تر است. از دانلودر اینستاگرام بازش کن.",
-      continueInApp: "انتخاب انجام شد. برای دریافت فایل وارد Vexa شو.",
+      tooLargeTitle: "ویدیو برای ارسال مستقیم بزرگ است",
+      tooLarge: "این ویدیو از سقف امن ارسال مستقیم ربات بزرگ‌تر است. برای دریافت ویدیو، دانلودر اینستاگرام را باز کن.",
+      continueInApp: "انتخاب انجام شد. برای دریافت ویدیو، Vexa را باز کن.",
       openDownloader: "🫧 باز کردن Vexa",
     };
   }
@@ -429,9 +442,9 @@ function instagramCopy(language) {
     keepOpen: "Keep the chat open until it finishes.",
     complete: "Download sent",
     selectionExpired: "Download selection expired",
-    tooLargeTitle: "File is too large for direct bot upload",
-    tooLarge: "Open the Instagram downloader to download this file.",
-    continueInApp: "Selection saved. Open Vexa to get your file.",
+    tooLargeTitle: "Video is too large for direct bot upload",
+    tooLarge: "Open the Instagram downloader to receive this video.",
+    continueInApp: "Selection saved. Open Vexa to receive your video.",
     openDownloader: "🫧 Open Vexa",
   };
 }
