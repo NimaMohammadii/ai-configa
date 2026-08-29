@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { getContainer } from "@cloudflare/containers";
 import { authenticateMiniAppPayload } from "../auth.js";
+import { createVexaDownloadAttempt, updateVexaDownloadAttempt } from "../../admin.js";
 import {
   getTelegramYouTubeOptions,
   normalizeBotMediaUrl,
@@ -16,6 +17,7 @@ const SESSION_TTL_SECONDS = 60 * 60;
 const PROGRESS_REPORT_BYTES = 2 * 1024 * 1024;
 const PROGRESS_REPORT_MS = 750;
 let progressTableReady = null;
+let youtubeTokenAttemptColumnReady = null;
 
 export class VexaDownloadProgressHub extends DurableObject {
   async fetch(request) {
@@ -98,9 +100,10 @@ async function createDownloadSession(request, env, ctx) {
   const user = await authenticateMiniAppPayload(payload, env);
   const downloadToken = cleanToken(payload.downloadToken);
   if (!downloadToken) return json({ error: "Download session is invalid" }, 400);
+  await ensureYoutubeTokenAttemptColumn(env);
 
   const row = await env.DB.prepare(
-    "SELECT user_id, source_url, expires_at FROM vexa_youtube_download_tokens WHERE token = ?"
+    "SELECT user_id, source_url, attempt_id, expires_at FROM vexa_youtube_download_tokens WHERE token = ?"
   ).bind(downloadToken).first();
 
   const now = Math.floor(Date.now() / 1000);
@@ -121,7 +124,13 @@ async function createDownloadSession(request, env, ctx) {
     prepared = await getTelegramYouTubeOptions(env, user.id, normalized.url);
   } catch (error) {
     console.error("Vexa download quality metadata failed", error?.stack || error);
-    return json({ error: String(error?.message || "Could not inspect video qualities") }, 502);
+    const message = String(error?.message || "Could not inspect video qualities");
+    await updateVexaDownloadAttempt(env, row?.attempt_id, {
+      status: "failed",
+      stage: "inspecting",
+      errorMessage: message,
+    }).catch(() => null);
+    return json({ error: message }, 502);
   }
 
   const downloadOptions = Array.isArray(prepared?.options)
@@ -133,7 +142,11 @@ async function createDownloadSession(request, env, ctx) {
       })
     : [];
   const videos = downloadOptions.filter((option) => option.kind === "video");
-  if (!videos.length) return json({ error: "Video quality is unavailable" }, 500);
+  if (!videos.length) {
+    const message = "Video quality is unavailable";
+    await updateVexaDownloadAttempt(env, row.attempt_id, { status: "failed", stage: "inspecting", errorMessage: message }).catch(() => null);
+    return json({ error: message }, 500);
+  }
 
   const requestedOptionKey = cleanOptionKey(payload.optionKey);
   if (!requestedOptionKey) {
@@ -156,7 +169,11 @@ async function createDownloadSession(request, env, ctx) {
   }
 
   const selected = downloadOptions.find((option) => String(option.key || "") === requestedOptionKey) || null;
-  if (!selected) return json({ error: "Selected download option is unavailable" }, 409);
+  if (!selected) {
+    const message = "Selected download option is unavailable";
+    await updateVexaDownloadAttempt(env, row.attempt_id, { status: "failed", stage: "quality_selection", errorMessage: message }).catch(() => null);
+    return json({ error: message }, 409);
+  }
 
   const mediaInfo = {
     totalBytes: positiveInteger(selected.sizeBytes),
@@ -171,15 +188,19 @@ async function createDownloadSession(request, env, ctx) {
     fileName: String(selected.filename || (selected.kind === "audio" ? AUDIO_FILE_NAME : VIDEO_FILE_NAME)),
   };
   const totalBytes = positiveInteger(mediaInfo.totalBytes);
-  if (!totalBytes) return json({ error: "Media size is unavailable" }, 500);
+  if (!totalBytes) {
+    const message = "Media size is unavailable";
+    await updateVexaDownloadAttempt(env, row.attempt_id, { status: "failed", stage: "quality_selection", errorMessage: message }).catch(() => null);
+    return json({ error: message }, 500);
+  }
 
   await ensureProgressTable(env);
   const session = randomToken();
   await env.DB.prepare(
     "INSERT INTO vexa_youtube_download_progress " +
     "(session, playback_token, user_id, total_bytes, downloaded_bytes, status, error, created_at, updated_at, expires_at, " +
-    "source_url, strategy_id, format_id, transport, provider, duration_seconds, option_key) " +
-    "VALUES (?, ?, ?, ?, 0, 'ready', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "source_url, strategy_id, format_id, transport, provider, duration_seconds, option_key, attempt_id) " +
+    "VALUES (?, ?, ?, ?, 0, 'ready', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).bind(
     session,
     downloadToken,
@@ -195,7 +216,14 @@ async function createDownloadSession(request, env, ctx) {
     mediaInfo.provider,
     mediaInfo.duration,
     mediaInfo.optionKey,
+    Number(row.attempt_id || 0) || null,
   ).run();
+  await updateVexaDownloadAttempt(env, row.attempt_id, {
+    status: "ready",
+    stage: "quality_selection",
+    optionKey: mediaInfo.optionKey,
+    totalBytes,
+  }).catch(() => null);
 
   ctx?.waitUntil?.(
     env.DB.prepare("DELETE FROM vexa_youtube_download_progress WHERE expires_at < ?")
@@ -327,15 +355,32 @@ async function trackedDownload(request, env, ctx) {
     console.error("Vexa tracked media start failed", error?.stack || error);
     const message = publicDownloadError(error);
     await writeProgress(env, session, 0, "failed", message, totalBytes).catch(() => null);
+    await updateVexaDownloadAttempt(env, checked.row.attempt_id, {
+      status: "failed",
+      stage: "preparing",
+      errorMessage: message,
+      totalBytes,
+    }).catch(() => null);
     return json({ error: message }, 502);
   }
 
   if (!sourceStream) {
     const message = "Could not start the media download";
     await writeProgress(env, session, 0, "failed", message, totalBytes);
+    await updateVexaDownloadAttempt(env, checked.row.attempt_id, {
+      status: "failed",
+      stage: "preparing",
+      errorMessage: message,
+      totalBytes,
+    }).catch(() => null);
     return json({ error: message }, 502);
   }
 
+  await updateVexaDownloadAttempt(env, checked.row.attempt_id, {
+    status: "downloading",
+    stage: "streaming",
+    totalBytes,
+  }).catch(() => null);
   const reader = sourceStream.getReader();
   let downloaded = 0;
   let lastReportedBytes = 0;
@@ -384,10 +429,23 @@ async function trackedDownload(request, env, ctx) {
           if (responseSize && downloaded !== responseSize) {
             const message = "Media download ended before the expected file size";
             await writeProgress(env, session, downloaded, "failed", message, totalBytes).catch(() => null);
+            await updateVexaDownloadAttempt(env, checked.row.attempt_id, {
+              status: "failed",
+              stage: "streaming",
+              errorMessage: message,
+              totalBytes,
+              transferredBytes: downloaded,
+            }).catch(() => null);
             controller.error(new Error(message));
             return;
           }
           await completeProgress(env, session, downloaded).catch(() => null);
+          await updateVexaDownloadAttempt(env, checked.row.attempt_id, {
+            status: "delivered",
+            stage: "delivered",
+            totalBytes: responseSize || totalBytes,
+            transferredBytes: downloaded,
+          }).catch(() => null);
           controller.close();
           return;
         }
@@ -405,7 +463,15 @@ async function trackedDownload(request, env, ctx) {
         if (!finished) {
           finished = true;
           await settleProgress();
-          await writeProgress(env, session, downloaded, "failed", publicDownloadError(error), totalBytes).catch(() => null);
+          const message = publicDownloadError(error);
+          await writeProgress(env, session, downloaded, "failed", message, totalBytes).catch(() => null);
+          await updateVexaDownloadAttempt(env, checked.row.attempt_id, {
+            status: "failed",
+            stage: "streaming",
+            errorMessage: message,
+            totalBytes,
+            transferredBytes: downloaded,
+          }).catch(() => null);
         }
         controller.error(error);
       }
@@ -416,6 +482,13 @@ async function trackedDownload(request, env, ctx) {
         finished = true;
         await settleProgress();
         await writeProgress(env, session, downloaded, "cancelled", "Download was cancelled", totalBytes).catch(() => null);
+        await updateVexaDownloadAttempt(env, checked.row.attempt_id, {
+          status: "cancelled",
+          stage: "cancelled",
+          errorMessage: "Download was cancelled",
+          totalBytes,
+          transferredBytes: downloaded,
+        }).catch(() => null);
       }
     },
   });
@@ -440,7 +513,7 @@ async function validateTrackedSession(env, session, downloadToken) {
   if (!session || !downloadToken) return { response: json({ error: "Download link is invalid" }, 400) };
   await ensureProgressTable(env);
   const row = await env.DB.prepare(
-    "SELECT playback_token, user_id, total_bytes, status, expires_at, source_url, strategy_id, format_id, transport, provider, duration_seconds, option_key " +
+    "SELECT playback_token, user_id, total_bytes, status, expires_at, source_url, strategy_id, format_id, transport, provider, duration_seconds, option_key, attempt_id " +
     "FROM vexa_youtube_download_progress WHERE session = ?"
   ).bind(session).first();
   const now = Math.floor(Date.now() / 1000);
@@ -556,6 +629,17 @@ export async function ensureVexaDownloadProgressTable(env) {
   await ensureProgressTable(env);
 }
 
+async function ensureYoutubeTokenAttemptColumn(env) {
+  if (!youtubeTokenAttemptColumnReady) {
+    youtubeTokenAttemptColumnReady = env.DB.prepare(
+      "ALTER TABLE vexa_youtube_download_tokens ADD COLUMN attempt_id INTEGER"
+    ).run().catch((error) => {
+      if (!/duplicate column name/i.test(String(error?.message || error))) throw error;
+    });
+  }
+  await youtubeTokenAttemptColumnReady;
+}
+
 async function ensureProgressTable(env) {
   if (!progressTableReady) {
     progressTableReady = (async () => {
@@ -582,6 +666,7 @@ async function ensureProgressTable(env) {
         ["provider", "TEXT"],
         ["duration_seconds", "REAL"],
         ["option_key", "TEXT"],
+        ["attempt_id", "INTEGER"],
       ];
       for (const [name, type] of columns) {
         try {
