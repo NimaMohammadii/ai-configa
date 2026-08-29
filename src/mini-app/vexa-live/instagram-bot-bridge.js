@@ -2,6 +2,8 @@ import { getContainer } from "@cloudflare/containers";
 import {
   getAdminAction,
   isAdmin,
+  createVexaDownloadAttempt,
+  updateVexaDownloadAttempt,
   markLatestVexaLinkSuccessful,
   recordVexaLinkEvent,
   trackUser,
@@ -40,6 +42,15 @@ export async function handleInstagramLinkMessage(message, env) {
 
   const copy = instagramCopy(context.language);
   const isStory = Boolean(normalizeInstagramStoryUrl(sourceUrl));
+  const attemptId = await createVexaDownloadAttempt(env, {
+    userId,
+    sourceUrl,
+    provider: isStory ? "instagram_story" : "instagram",
+    channel: "bot",
+    kind: isStory ? "story" : "video",
+    status: "pending",
+    stage: "inspecting",
+  }).catch(() => 0);
   let statusMessageId = 0;
 
   try {
@@ -61,7 +72,11 @@ export async function handleInstagramLinkMessage(message, env) {
       ? "Instagram did not expose a downloadable Story video"
       : "Instagram did not expose a downloadable MP4 video");
 
-    const keyboard = instagramDownloadKeyboard(options, sourceUrl, isStory, copy);
+    await updateVexaDownloadAttempt(env, attemptId, {
+      status: "ready",
+      stage: "quality_selection",
+    }).catch(() => null);
+    const keyboard = instagramDownloadKeyboard(options, sourceUrl, isStory, copy, attemptId);
     const title = isStory
       ? (prepared.type === "live"
           ? copy.liveTitle
@@ -89,7 +104,13 @@ export async function handleInstagramLinkMessage(message, env) {
     }
   } catch (error) {
     console.error("Instagram bot inspect failed", error?.stack || error);
-    const errorText = "⚠️ " + escapeHtml(publicInstagramBotError(error));
+    const publicError = publicInstagramBotError(error);
+    await updateVexaDownloadAttempt(env, attemptId, {
+      status: "failed",
+      stage: "inspecting",
+      errorMessage: publicError,
+    }).catch(() => null);
+    const errorText = "⚠️ " + escapeHtml(publicError);
     const fallback = instagramOpenKeyboard(sourceUrl, "", copy);
     if (statusMessageId) {
       const edited = await editMessage(env, chatId, statusMessageId, errorText, fallback)
@@ -112,7 +133,10 @@ export async function handleInstagramCallback(query, env) {
   if (!isStory && !isMedia) return false;
 
   const prefix = isStory ? INSTAGRAM_STORY_CALLBACK_PREFIX : INSTAGRAM_CALLBACK_PREFIX;
-  const optionKey = data.slice(prefix.length);
+  const callbackValue = data.slice(prefix.length);
+  const callbackParts = callbackValue.split(":");
+  const attemptId = /^\d+$/u.test(callbackParts[0] || "") ? Number(callbackParts[0]) : 0;
+  const optionKey = attemptId ? String(callbackParts[1] || "") : callbackValue;
   const userId = query?.from?.id;
   const chatId = query?.message?.chat?.id;
   const messageId = query?.message?.message_id;
@@ -149,6 +173,11 @@ export async function handleInstagramCallback(query, env) {
   ).catch(() => null);
 
   try {
+    await updateVexaDownloadAttempt(env, attemptId, {
+      status: "downloading",
+      stage: "preparing",
+      optionKey,
+    }).catch(() => null);
     const prepared = await inspectInstagram(env, userId, sourceUrl, isStory);
     const selected = (prepared.options || []).find((option) => option.key === optionKey) || null;
     if (!selected) throw new Error(copy.selectionExpired);
@@ -161,6 +190,12 @@ export async function handleInstagramCallback(query, env) {
         "<b>" + escapeHtml(copy.tooLargeTitle) + "</b>\n\n" + escapeHtml(copy.tooLarge),
         instagramOpenKeyboard(sourceUrl, optionKey, copy),
       );
+      await updateVexaDownloadAttempt(env, attemptId, {
+        status: "handed_off",
+        stage: "handed_off",
+        optionKey,
+        totalBytes: Number(selected.sizeBytes || 0),
+      }).catch(() => null);
       return true;
     }
 
@@ -180,7 +215,13 @@ export async function handleInstagramCallback(query, env) {
       { inline_keyboard: [] },
     ).catch(() => null);
 
-    await sendInstagramVideo(env, chatId, {
+    await updateVexaDownloadAttempt(env, attemptId, {
+      status: "downloading",
+      stage: "telegram_upload",
+      optionKey,
+      totalBytes: Number(selected.sizeBytes || 0),
+    }).catch(() => null);
+    const telegramMessage = await sendInstagramVideo(env, chatId, {
       stream,
       sizeBytes: Number(selected.sizeBytes || 0),
       filename: String(selected.filename || "Vexa-Instagram.mp4"),
@@ -190,6 +231,14 @@ export async function handleInstagramCallback(query, env) {
       title: String(prepared.title || (isStory ? "Instagram Story" : "Instagram video")),
     });
 
+    await updateVexaDownloadAttempt(env, attemptId, {
+      status: "delivered",
+      stage: "delivered",
+      optionKey,
+      totalBytes: Number(selected.sizeBytes || 0),
+      transferredBytes: Number(selected.sizeBytes || 0),
+      deliveryMessageId: Number(telegramMessage?.message_id || 0),
+    }).catch(() => null);
     await markLatestVexaLinkSuccessful(env, userId, sourceUrl).catch(() => null);
     await editMessage(
       env,
@@ -200,11 +249,17 @@ export async function handleInstagramCallback(query, env) {
     ).catch(() => null);
   } catch (error) {
     console.error("Instagram bot download failed", error?.stack || error);
+    const publicError = publicInstagramBotError(error);
+    await updateVexaDownloadAttempt(env, attemptId, {
+      status: "failed",
+      stage: "telegram_upload",
+      errorMessage: publicError,
+    }).catch(() => null);
     await editMessage(
       env,
       chatId,
       messageId,
-      "⚠️ " + escapeHtml(publicInstagramBotError(error)),
+      "⚠️ " + escapeHtml(publicError),
       instagramOpenKeyboard(sourceUrl, optionKey, copy),
     ).catch(() => null);
   }
@@ -267,7 +322,7 @@ async function inspectInstagram(env, userId, sourceUrl, isStory) {
   return { ...catalog, container, options: Array.isArray(catalog?.options) ? catalog.options : [] };
 }
 
-function instagramDownloadKeyboard(options, sourceUrl, isStory, copy) {
+function instagramDownloadKeyboard(options, sourceUrl, isStory, copy, attemptId = 0) {
   const buttons = [];
   for (const option of options) {
     const key = String(option?.key || "");
@@ -284,7 +339,7 @@ function instagramDownloadKeyboard(options, sourceUrl, isStory, copy) {
     } else {
       buttons.push({
         text,
-        callback_data: (isStory ? INSTAGRAM_STORY_CALLBACK_PREFIX : INSTAGRAM_CALLBACK_PREFIX) + key,
+        callback_data: (isStory ? INSTAGRAM_STORY_CALLBACK_PREFIX : INSTAGRAM_CALLBACK_PREFIX) + (attemptId ? String(attemptId) + ":" : "") + key,
       });
     }
   }
