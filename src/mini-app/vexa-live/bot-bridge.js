@@ -8,8 +8,6 @@ import {
   getAdminAction,
   hasTrackedUser,
   isAdmin,
-  createVexaDownloadAttempt,
-  updateVexaDownloadAttempt,
   markLatestVexaLinkSuccessful,
   recordVexaLinkEvent,
   setAdminAction,
@@ -148,14 +146,6 @@ async function handleYouTubeLinkMessage(message, env) {
   }
 
   const copy = youtubeDownloadCopy(state.language);
-  const attemptId = await createVexaDownloadAttempt(env, {
-    userId,
-    sourceUrl,
-    provider: /pornhub\./i.test(sourceUrl) ? "pornhub" : "youtube",
-    channel: "bot",
-    status: "pending",
-    stage: "inspecting",
-  }).catch(() => 0);
   let statusMessageId = 0;
   try {
     const status = await sendMessage(env, chatId, linkInspectStatusText(copy));
@@ -172,11 +162,7 @@ async function handleYouTubeLinkMessage(message, env) {
 
   try {
     const prepared = await getTelegramYouTubeOptions(env, userId, sourceUrl);
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "ready",
-      stage: "quality_selection",
-    }).catch(() => null);
-    const keyboard = youtubeDownloadKeyboard(prepared.options, copy, attemptId);
+    const keyboard = youtubeDownloadKeyboard(prepared.options, copy);
     const details = prepared.options.length
       ? prepared.options.map((option) => option.label + " " + formatMegabytes(option.sizeBytes)).join(" · ")
       : "";
@@ -201,13 +187,7 @@ async function handleYouTubeLinkMessage(message, env) {
     }
   } catch (error) {
     console.error("bot YouTube inspect failed", error?.stack || error);
-    const publicError = publicYouTubeMessage(error, copy.failed);
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "failed",
-      stage: "inspecting",
-      errorMessage: publicError,
-    }).catch(() => null);
-    const errorText = "⚠️ " + escapeHtml(publicError);
+    const errorText = "⚠️ " + escapeHtml(publicYouTubeMessage(error, copy.failed));
     if (statusMessageId) {
       const edited = await editMessage(env, chatId, statusMessageId, errorText)
         .then(() => true)
@@ -224,10 +204,7 @@ async function handleYouTubeLinkMessage(message, env) {
 async function handleYouTubeDownloadCallback(query, env) {
   const context = callbackContext(query);
   const data = String(query?.data || "");
-  const callbackValue = data.slice(YOUTUBE_CALLBACK_PREFIX.length);
-  const callbackParts = callbackValue.split(":");
-  const attemptId = /^\d+$/u.test(callbackParts[0] || "") ? Number(callbackParts[0]) : 0;
-  const optionKey = attemptId ? String(callbackParts[1] || "") : callbackValue;
+  const optionKey = data.slice(YOUTUBE_CALLBACK_PREFIX.length);
   const sourceUrl = extractYouTubeUrl(query?.message?.text || "");
   if (!context || !sourceUrl || !/^(?:a|v\d{2,4})$/u.test(optionKey)) {
     await answerCallback(env, query?.id, "Download selection expired", true).catch(() => null);
@@ -252,11 +229,6 @@ async function handleYouTubeDownloadCallback(query, env) {
   ).catch(() => null);
 
   try {
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "downloading",
-      stage: "preparing",
-      optionKey,
-    }).catch(() => null);
     if (!env.AI_CODING_WORKFLOW) {
       throw new Error("YouTube download is temporarily unavailable");
     }
@@ -271,23 +243,16 @@ async function handleYouTubeDownloadCallback(query, env) {
         sourceUrl,
         optionKey,
         language,
-        attemptId,
       },
       retention: { successRetention: "1 day", errorRetention: "1 day" },
     });
   } catch (error) {
     console.error("bot YouTube workflow enqueue failed", error?.stack || error);
-    const publicError = publicYouTubeMessage(error, copy.failed);
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "failed",
-      stage: "preparing",
-      errorMessage: publicError,
-    }).catch(() => null);
     await editMessage(
       env,
       context.chatId,
       context.messageId,
-      "⚠️ " + escapeHtml(publicError),
+      "⚠️ " + escapeHtml(publicYouTubeMessage(error, copy.failed)),
     ).catch(() => null);
   }
 }
@@ -299,7 +264,6 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
   const sourceUrl = extractYouTubeUrl(payload?.sourceUrl || "");
   const optionKey = String(payload?.optionKey || "").trim();
   const language = normalizeLang(payload?.language || "en");
-  const attemptId = Number(payload?.attemptId || 0);
   const startSeconds = Math.max(0, Number(payload?.startSeconds || 0));
   const partNumber = Math.max(1, Math.floor(Number(payload?.partNumber || 1)));
   const copy = youtubeDownloadCopy(language);
@@ -322,11 +286,6 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
 
   try {
     await progressEditor.update({ phase: "preparing", partNumber, percent: 0 }, copy, true);
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "downloading",
-      stage: "preparing",
-      optionKey,
-    }).catch(() => null);
 
     let prepared = null;
     let media = null;
@@ -397,12 +356,7 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
       showPart,
       percent: 0,
     }, copy, true);
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "downloading",
-      stage: "telegram_upload",
-      totalBytes: Number(prepared.selected?.sizeBytes || media.sizeBytes || 0),
-    }).catch(() => null);
-    const telegramMessage = await sendTelegramMediaStream(env, chatId, media, (upload) => {
+    await sendTelegramMediaStream(env, chatId, media, (upload) => {
       return progressEditor.update({
         phase: "uploading",
         partNumber: media.partNumber,
@@ -418,12 +372,6 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
     }, copy, true);
 
     if (!media.done) {
-      await updateVexaDownloadAttempt(env, attemptId, {
-        status: "downloading",
-        stage: "preparing",
-        totalBytes: Number(prepared.selected?.sizeBytes || media.sizeBytes || 0),
-        deliveryMessageId: Number(telegramMessage?.message_id || 0),
-      }).catch(() => null);
       const nextStart = Number(media.nextStart || 0);
       if (!Number.isFinite(nextStart) || nextStart <= startSeconds) {
         throw new Error("Could not continue the Telegram video download");
@@ -446,7 +394,6 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
           sourceUrl,
           optionKey,
           language,
-          attemptId,
           startSeconds: nextStart,
           partNumber: media.partNumber + 1,
           prepared: workflowPrepared,
@@ -455,13 +402,6 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
     }
 
     await progressEditor.update({ phase: "complete", partNumber: media.partNumber, percent: 100 }, copy, true);
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "delivered",
-      stage: "delivered",
-      totalBytes: Number(prepared.selected?.sizeBytes || media.sizeBytes || 0),
-      transferredBytes: Number(prepared.selected?.sizeBytes || media.sizeBytes || 0),
-      deliveryMessageId: Number(telegramMessage?.message_id || 0),
-    }).catch(() => null);
     await markLatestVexaLinkSuccessful(env, userId, sourceUrl).catch(() => null);
     if (Number(media.partNumber || 1) > 1) {
       await sendMultipartDownloadLink(env, chatId, sourceUrl, optionKey, copy).catch((error) => {
@@ -471,14 +411,8 @@ export async function runYouTubeDownloadWorkflowJob(env, payload) {
     return { ok: true, label: media.label, parts: media.partNumber || 1 };
   } catch (error) {
     console.error("bot YouTube workflow download failed", error?.stack || error);
-    const publicError = publicYouTubeMessage(error, copy.failed);
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "failed",
-      stage: "telegram_upload",
-      errorMessage: publicError,
-    }).catch(() => null);
     await progressEditor.editRaw(
-      "⚠️ " + escapeHtml(publicError),
+      "⚠️ " + escapeHtml(publicYouTubeMessage(error, copy.failed)),
       true,
     ).catch(() => null);
     throw error;
@@ -627,12 +561,12 @@ async function sendTelegramMediaStream(env, chatId, media, onProgress = null) {
   }
 }
 
-function youtubeDownloadKeyboard(options, copy, attemptId = 0) {
+function youtubeDownloadKeyboard(options, copy) {
   const videoButtons = options
     .filter((option) => option.kind === "video")
     .map((option) => ({
       text: "🎬 " + option.label + " · " + formatMegabytes(option.sizeBytes),
-      callback_data: YOUTUBE_CALLBACK_PREFIX + (attemptId ? String(attemptId) + ":" : "") + option.key,
+      callback_data: YOUTUBE_CALLBACK_PREFIX + option.key,
     }));
   const rows = [];
   for (let index = 0; index < videoButtons.length; index += 2) {

@@ -3,8 +3,6 @@ import { Container, getContainer } from "@cloudflare/containers";
 import {
   getMiniAppAccessSettings,
   isAdmin,
-  createVexaDownloadAttempt,
-  updateVexaDownloadAttempt,
 } from "../../admin.js";
 import { authenticateMiniAppPayload } from "../auth.js";
 import { getVexaLiveAccessSettings } from "./access.js";
@@ -249,14 +247,6 @@ async function prepareInstagram(request, env, ctx) {
   const sourceUrl = normalizeInstagramUrl(payload.url);
   if (!sourceUrl) return json({ error: "Enter a valid Instagram Reel or video post link" }, 400);
   if (!env.VEXA_INSTAGRAM) return json({ error: "Instagram download is temporarily unavailable" }, 503);
-  const attemptId = await createVexaDownloadAttempt(env, {
-    userId: user.id,
-    sourceUrl,
-    provider: "instagram",
-    channel: "mini_app",
-    status: "pending",
-    stage: "inspecting",
-  }).catch(() => 0);
 
   let catalog;
   try {
@@ -264,17 +254,11 @@ async function prepareInstagram(request, env, ctx) {
     catalog = await container.getInstagramCatalog(sourceUrl);
   } catch (error) {
     console.error("Vexa Instagram metadata failed", error?.stack || error);
-    const message = publicInstagramError(error);
-    await updateVexaDownloadAttempt(env, attemptId, { status: "failed", stage: "inspecting", errorMessage: message }).catch(() => null);
-    return json({ error: message }, 502);
+    return json({ error: publicInstagramError(error) }, 502);
   }
 
   const options = sanitizeCatalogOptions(catalog?.options);
-  if (!options.length) {
-    const message = "Instagram did not expose a downloadable MP4 video";
-    await updateVexaDownloadAttempt(env, attemptId, { status: "failed", stage: "inspecting", errorMessage: message }).catch(() => null);
-    return json({ error: message }, 422);
-  }
+  if (!options.length) return json({ error: "Instagram did not expose a downloadable MP4 video" }, 422);
 
   await ensureInstagramTables(env);
   const now = Math.floor(Date.now() / 1000);
@@ -282,19 +266,17 @@ async function prepareInstagram(request, env, ctx) {
   const title = String(catalog?.title || "Instagram video").slice(0, 500);
   await env.DB.prepare(
     "INSERT INTO vexa_instagram_download_tokens " +
-    "(token, user_id, source_url, title, catalog_json, attempt_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    "(token, user_id, source_url, title, catalog_json, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
   ).bind(
     token,
     String(user.id),
     sourceUrl,
     title,
     JSON.stringify(options),
-    attemptId || null,
     now,
     now + TOKEN_TTL_SECONDS,
   ).run();
 
-  await updateVexaDownloadAttempt(env, attemptId, { status: "ready", stage: "quality_selection" }).catch(() => null);
   ctx?.waitUntil?.(
     env.DB.prepare("DELETE FROM vexa_instagram_download_tokens WHERE expires_at < ?")
       .bind(now - 86400).run().catch(() => null)
@@ -320,7 +302,7 @@ async function createInstagramSession(request, env, ctx) {
   await ensureInstagramTables(env);
   const now = Math.floor(Date.now() / 1000);
   const row = await env.DB.prepare(
-    "SELECT user_id, source_url, title, catalog_json, attempt_id, expires_at FROM vexa_instagram_download_tokens WHERE token = ?"
+    "SELECT user_id, source_url, title, catalog_json, expires_at FROM vexa_instagram_download_tokens WHERE token = ?"
   ).bind(token).first();
   if (!row || Number(row.expires_at || 0) <= now) {
     return json({ error: "Instagram download session expired. Prepare the video again." }, 410);
@@ -331,19 +313,15 @@ async function createInstagramSession(request, env, ctx) {
 
   const options = parseCatalog(row.catalog_json);
   const selected = options.find((option) => option.key === optionKey) || null;
-  if (!selected) {
-    const message = "Selected Instagram quality is unavailable";
-    await updateVexaDownloadAttempt(env, row.attempt_id, { status: "failed", stage: "quality_selection", errorMessage: message }).catch(() => null);
-    return json({ error: message }, 409);
-  }
+  if (!selected) return json({ error: "Selected Instagram quality is unavailable" }, 409);
 
   const session = randomToken();
   const fileName = String(selected.filename || INSTAGRAM_FILE_PREFIX + selected.height + "p.mp4");
   const totalBytes = positiveInteger(selected.sizeBytes);
   await env.DB.prepare(
     "INSERT INTO vexa_instagram_download_progress " +
-    "(session, download_token, user_id, source_url, format_id, option_key, file_name, total_bytes, downloaded_bytes, status, error, created_at, updated_at, expires_at, attempt_id) " +
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'ready', NULL, ?, ?, ?, ?)"
+    "(session, download_token, user_id, source_url, format_id, option_key, file_name, total_bytes, downloaded_bytes, status, error, created_at, updated_at, expires_at) " +
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'ready', NULL, ?, ?, ?)"
   ).bind(
     session,
     token,
@@ -356,14 +334,7 @@ async function createInstagramSession(request, env, ctx) {
     now,
     now,
     now + SESSION_TTL_SECONDS,
-    Number(row.attempt_id || 0) || null,
   ).run();
-  await updateVexaDownloadAttempt(env, row.attempt_id, {
-    status: "ready",
-    stage: "quality_selection",
-    optionKey: selected.key,
-    totalBytes,
-  }).catch(() => null);
 
   ctx?.waitUntil?.(
     env.DB.prepare("DELETE FROM vexa_instagram_download_progress WHERE expires_at < ?")
@@ -395,12 +366,6 @@ async function trackedInstagramDownload(request, env, ctx) {
   const session = cleanToken(new URL(request.url).searchParams.get("session"));
   let totalBytes = positiveInteger(row.total_bytes);
   await writeInstagramProgress(env, session, 0, "preparing", "", totalBytes).catch(() => null);
-  await updateVexaDownloadAttempt(env, row.attempt_id, {
-    status: "downloading",
-    stage: "preparing",
-    optionKey: row.option_key,
-    totalBytes,
-  }).catch(() => null);
 
   let sourceStream;
   try {
@@ -409,17 +374,14 @@ async function trackedInstagramDownload(request, env, ctx) {
   } catch (error) {
     const message = publicInstagramError(error);
     await writeInstagramProgress(env, session, 0, "failed", message, totalBytes).catch(() => null);
-    await updateVexaDownloadAttempt(env, row.attempt_id, { status: "failed", stage: "preparing", errorMessage: message, totalBytes }).catch(() => null);
     return json({ error: message }, 502);
   }
   if (!sourceStream) {
     const message = "Could not start the Instagram download";
     await writeInstagramProgress(env, session, 0, "failed", message, totalBytes).catch(() => null);
-    await updateVexaDownloadAttempt(env, row.attempt_id, { status: "failed", stage: "preparing", errorMessage: message, totalBytes }).catch(() => null);
     return json({ error: message }, 502);
   }
 
-  await updateVexaDownloadAttempt(env, row.attempt_id, { status: "downloading", stage: "streaming", totalBytes }).catch(() => null);
   const reader = sourceStream.getReader();
   let downloaded = 0;
   let lastReportedBytes = 0;
@@ -461,7 +423,6 @@ async function trackedInstagramDownload(request, env, ctx) {
           finished = true;
           await settleProgress();
           await completeInstagramProgress(env, session, downloaded).catch(() => null);
-          await updateVexaDownloadAttempt(env, row.attempt_id, { status: "delivered", stage: "delivered", totalBytes, transferredBytes: downloaded }).catch(() => null);
           controller.close();
           return;
         }
@@ -479,9 +440,7 @@ async function trackedInstagramDownload(request, env, ctx) {
         if (!finished) {
           finished = true;
           await settleProgress();
-          const message = publicInstagramError(error);
-          await writeInstagramProgress(env, session, downloaded, "failed", message, totalBytes).catch(() => null);
-          await updateVexaDownloadAttempt(env, row.attempt_id, { status: "failed", stage: "streaming", errorMessage: message, totalBytes, transferredBytes: downloaded }).catch(() => null);
+          await writeInstagramProgress(env, session, downloaded, "failed", publicInstagramError(error), totalBytes).catch(() => null);
         }
         controller.error(error);
       }
@@ -509,7 +468,7 @@ async function validateInstagramSession(request, env) {
   if (!session || !token) return { response: json({ error: "Instagram download link is invalid" }, 400) };
   await ensureInstagramTables(env);
   const row = await env.DB.prepare(
-    "SELECT download_token, user_id, source_url, format_id, option_key, file_name, total_bytes, status, attempt_id, expires_at " +
+    "SELECT download_token, user_id, source_url, format_id, option_key, file_name, total_bytes, status, expires_at " +
     "FROM vexa_instagram_download_progress WHERE session = ?"
   ).bind(session).first();
   const now = Math.floor(Date.now() / 1000);
@@ -647,23 +606,16 @@ async function ensureInstagramTables(env) {
     tablesReady = (async () => {
       await env.DB.prepare(
         "CREATE TABLE IF NOT EXISTS vexa_instagram_download_tokens (" +
-          "token TEXT PRIMARY KEY, user_id TEXT NOT NULL, source_url TEXT NOT NULL, title TEXT, catalog_json TEXT NOT NULL, attempt_id INTEGER, " +
+          "token TEXT PRIMARY KEY, user_id TEXT NOT NULL, source_url TEXT NOT NULL, title TEXT, catalog_json TEXT NOT NULL, " +
           "created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)"
       ).run();
       await env.DB.prepare(
         "CREATE TABLE IF NOT EXISTS vexa_instagram_download_progress (" +
           "session TEXT PRIMARY KEY, download_token TEXT NOT NULL, user_id TEXT NOT NULL, source_url TEXT NOT NULL, " +
           "format_id TEXT NOT NULL, option_key TEXT NOT NULL, file_name TEXT NOT NULL, total_bytes INTEGER NOT NULL, " +
-          "downloaded_bytes INTEGER NOT NULL DEFAULT '0', status TEXT NOT NULL DEFAULT 'ready', error TEXT, " +
-          "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, attempt_id INTEGER)"
+          "downloaded_bytes INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'ready', error TEXT, " +
+          "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)"
       ).run();
-      for (const table of ["vexa_instagram_download_tokens", "vexa_instagram_download_progress"]) {
-        try {
-          await env.DB.prepare("ALTER TABLE " + table + " ADD COLUMN attempt_id INTEGER").run();
-        } catch (error) {
-          if (!/duplicate column name/i.test(String(error?.message || error))) throw error;
-        }
-      }
       await env.DB.prepare(
         "CREATE INDEX IF NOT EXISTS idx_vexa_instagram_progress_user_created ON vexa_instagram_download_progress (user_id, created_at DESC)"
       ).run();

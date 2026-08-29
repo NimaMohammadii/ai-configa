@@ -62,8 +62,6 @@ import {
   adminMiniAppUsersText,
   adminVexaLiveDownloadUserKeyboard,
   adminVexaLiveDownloadUserText,
-  adminVexaLiveDownloadAttemptKeyboard,
-  adminVexaLiveDownloadAttemptText,
   adminVexaLiveDownloadsKeyboard,
   adminVexaLiveDownloadsText,
   adminAiChatUsersKeyboard,
@@ -117,7 +115,6 @@ import {
   getImagePricingSettings,
   getImageExploreItems,
   getVexaLiveDownloadRows,
-  getVexaLiveDownloadAttempt,
   buildVexaLiveDownloadLinksFile,
   setImageCreditCost,
   setImageDiscountOffer,
@@ -583,32 +580,6 @@ export async function handleCallback(query, env) {
     const page = Number(parts[2] || 0);
     await answerCallback(env, query.id);
     await editCurrentMenu(env, chatId, userId, messageId, await adminVexaLiveDownloadUserText(env, targetUserId), await adminVexaLiveDownloadUserKeyboard(env, targetUserId, page));
-    return;
-  }
-
-  if (data.startsWith("admin_vexa_live_attempt:")) {
-    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    await clearAdminAction(env, userId);
-    const parts = data.split(":");
-    const attemptId = Number(parts[1] || 0);
-    const page = Number(parts[2] || 0);
-    await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, await adminVexaLiveDownloadAttemptText(env, attemptId), adminVexaLiveDownloadAttemptKeyboard(attemptId, page));
-    return;
-  }
-
-  if (data.startsWith("admin_vexa_live_attempt_user:")) {
-    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    await clearAdminAction(env, userId);
-    const parts = data.split(":");
-    const attempt = await getVexaLiveDownloadAttempt(env, Number(parts[1] || 0));
-    const page = Number(parts[2] || 0);
-    if (!attempt?.user_id) {
-      await answerCallback(env, query.id, "Attempt is no longer available", true);
-      return;
-    }
-    await answerCallback(env, query.id);
-    await editCurrentMenu(env, chatId, userId, messageId, await adminVexaLiveDownloadUserText(env, attempt.user_id), await adminVexaLiveDownloadUserKeyboard(env, attempt.user_id, page));
     return;
   }
 

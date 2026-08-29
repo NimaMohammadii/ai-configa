@@ -2,8 +2,6 @@ import { Container, getContainer } from "@cloudflare/containers";
 import {
   getMiniAppAccessSettings,
   isAdmin,
-  createVexaDownloadAttempt,
-  updateVexaDownloadAttempt,
 } from "../../admin.js";
 import { authenticateMiniAppPayload } from "../auth.js";
 import { getVexaLiveAccessSettings } from "./access.js";
@@ -939,32 +937,20 @@ async function prepareDownload(request, env, ctx) {
   const normalized = normalizeBotMediaUrl(payload.url);
   if (!normalized?.url) return json({ error: "لینک ویدیو رو وارد کن" }, 400);
   const sourceUrl = normalized.url;
-  const attemptId = await createVexaDownloadAttempt(env, {
-    userId: user.id,
-    sourceUrl,
-    provider: normalized.provider,
-    channel: "mini_app",
-    status: "pending",
-    stage: "link_received",
-  }).catch(() => 0);
 
   await ensureTokenTable(env);
   const now = Math.floor(Date.now() / 1000);
   const token = randomToken();
   await env.DB.prepare(
     "INSERT INTO vexa_youtube_download_tokens " +
-    "(token, user_id, source_url, attempt_id, created_at, expires_at, used_at) VALUES (?, ?, ?, ?, ?, ?, NULL)"
-  ).bind(token, String(user.id), sourceUrl, attemptId || null, now, now + TOKEN_TTL_SECONDS).run();
+    "(token, user_id, source_url, created_at, expires_at, used_at) VALUES (?, ?, ?, ?, ?, NULL)"
+  ).bind(token, String(user.id), sourceUrl, now, now + TOKEN_TTL_SECONDS).run();
 
   ctx?.waitUntil?.(
     env.DB.prepare(
       "DELETE FROM vexa_youtube_download_tokens WHERE expires_at < ?"
     ).bind(now - 86400).run().catch(() => null)
   );
-  await updateVexaDownloadAttempt(env, attemptId, {
-    status: "ready",
-    stage: "quality_selection",
-  }).catch(() => null);
 
   return json({
     ok: true,
@@ -1025,7 +1011,7 @@ async function readDownloadToken(request, env) {
   await ensureTokenTable(env);
   const now = Math.floor(Date.now() / 1000);
   const row = await env.DB.prepare(
-    "SELECT user_id, source_url, attempt_id, expires_at FROM vexa_youtube_download_tokens WHERE token = ?"
+    "SELECT user_id, source_url, expires_at FROM vexa_youtube_download_tokens WHERE token = ?"
   ).bind(token).first();
 
   if (!row || Number(row.expires_at || 0) <= now) {
@@ -1618,16 +1604,9 @@ async function ensureTokenTable(env) {
         "source_url TEXT NOT NULL, " +
         "created_at INTEGER NOT NULL, " +
         "expires_at INTEGER NOT NULL, " +
-        "used_at INTEGER, " +
-        "attempt_id INTEGER" +
+        "used_at INTEGER" +
       ")"
-    ).run().then(async () => {
-      try {
-        await env.DB.prepare("ALTER TABLE vexa_youtube_download_tokens ADD COLUMN attempt_id INTEGER").run();
-      } catch (error) {
-        if (!/duplicate column name/i.test(String(error?.message || error))) throw error;
-      }
-    }).catch((error) => {
+    ).run().catch((error) => {
       tokenTableReady = null;
       throw error;
     });
