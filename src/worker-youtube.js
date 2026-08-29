@@ -116,7 +116,7 @@ export {
 export default {
   ...worker,
   async fetch(request, env, ctx) {
-    const runtimeEnv = withVexaMediaPool(env);
+    const mediaEnv = withVexaMediaPool(env);
     try {
       const path = new URL(request.url).pathname;
       if (request.method === "GET" && VEXA_LEGAL_PATHS.has(path)) {
@@ -127,44 +127,44 @@ export default {
       }
 
       if (isInstagramMessagingRequest(request)) {
-        return handleInstagramMessagingRequest(request, runtimeEnv, ctx);
+        return handleInstagramMessagingRequest(request, env, ctx);
       }
 
-      const voiceTransformResponse = await handleMiniAppVoiceTransformRequest(request, runtimeEnv);
+      const voiceTransformResponse = await handleMiniAppVoiceTransformRequest(request, env);
       if (voiceTransformResponse) return voiceTransformResponse;
 
       if (isVexaLivePersistenceRequest(request)) {
         return handleVexaLivePersistenceRequest(request);
       }
       if (isVexaDownloadControllerRequest(request)) {
-        return handleVexaDownloadControllerRequest(request, runtimeEnv, ctx);
+        return handleVexaDownloadControllerRequest(request, env, ctx);
       }
       if (path === SUBTITLE_SOURCE_PATH && (request.method === "GET" || request.method === "HEAD")) {
-        return handleDownloadSubtitlesRequest(request, runtimeEnv, ctx, {});
+        return handleDownloadSubtitlesRequest(request, env, ctx, {});
       }
       if (isVexaLiveSubtitlesRequest(request)) {
-        return await handleVexaLiveSubtitlesRequest(request, runtimeEnv, ctx);
+        return await handleVexaLiveSubtitlesRequest(request, env, ctx);
       }
       if (isVexaCustomPlayerRequest(request)) {
         return handleVexaCustomPlayerRequest(request);
       }
       if (isInstagramStoryDownloadRequest(request)) {
-        return handleInstagramStoryDownloadRequest(request, runtimeEnv, ctx);
+        return handleInstagramStoryDownloadRequest(request, env, ctx);
       }
       if (isInstagramDownloadRequest(request)) {
-        return handleInstagramDownloadRequest(request, runtimeEnv, ctx);
+        return handleInstagramDownloadRequest(request, env, ctx);
       }
       if (isTrackedYouTubeDownloadRequest(request)) {
-        return handleTrackedYouTubeDownloadRequest(request, runtimeEnv, ctx);
+        return handleTrackedYouTubeDownloadRequest(request, mediaEnv, ctx);
       }
       if (isYouTubePlaybackRequest(request)) {
-        return await handleYouTubePlaybackRequest(request, runtimeEnv, ctx);
+        return await handleYouTubePlaybackRequest(request, mediaEnv, ctx);
       }
       if (isYouTubeDownloadRequest(request)) {
-        return await handleYouTubeDownloadRequest(request, runtimeEnv, ctx);
+        return await handleYouTubeDownloadRequest(request, mediaEnv, ctx);
       }
 
-      let response = await worker.fetch(request, runtimeEnv, ctx);
+      let response = await worker.fetch(request, mediaEnv, ctx);
       response = await appendMiniAppVoiceTransformRuntime(request, response);
       response = await appendVexaLiveLandingRuntime(request, response);
       response = await appendVexaDownloadControllerRuntime(request, response);
@@ -185,8 +185,8 @@ function withVexaMediaPool(env) {
   const pooledBinding = new Proxy(binding, {
     get(target, property) {
       if (property === "idFromName") {
-        return () => {
-          const slot = Math.floor(Math.random() * VEXA_MEDIA_POOL_INSTANCES);
+        return (name) => {
+          const slot = vexaMediaPoolSlot(name);
           return target.idFromName("instance-" + slot);
         };
       }
@@ -201,6 +201,16 @@ function withVexaMediaPool(env) {
       return Reflect.get(target, property, target);
     },
   });
+}
+
+function vexaMediaPoolSlot(name) {
+  const value = String(name || "cf-singleton-container");
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % VEXA_MEDIA_POOL_INSTANCES;
 }
 
 function vexaLegalPage(path) {
