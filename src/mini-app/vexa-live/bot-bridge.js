@@ -55,6 +55,7 @@ const SECTION_LABEL = "Vexa Live";
 const LOCK_ACTION = "vexa_live_lock_minutes";
 const YOUTUBE_CALLBACK_PREFIX = "ytdl:";
 const YOUTUBE_WORKFLOW_KIND = "youtube_download";
+const VEXA_HANDOFF_REMINDER_KIND = "vexa_download_handoff_reminder";
 const PROGRESS_EDIT_MIN_INTERVAL_MS = 1_100;
 const MEDIA_PART_PREPARE_MAX_ATTEMPTS = 3;
 const VEXA_PUBLIC_MINI_APP_URL = "https://vexaai.space/mini-app";
@@ -244,8 +245,16 @@ async function handleYouTubeDownloadCallback(query, env) {
     optionKey,
   }).catch(() => null);
 
-  const text = "<b>🫧 " + escapeHtml(copy.continueInApp) + "</b>";
-  const keyboard = multipartDownloadKeyboard(sourceUrl, optionKey, copy);
+  const handoff = await createVexaDownloadHandoff(env, {
+    attemptId,
+    userId: context.userId,
+    chatId: context.chatId,
+    sourceUrl,
+    optionKey,
+    language,
+  });
+  const text = vexaDownloadHandoffText(language, optionKey);
+  const keyboard = vexaDownloadHandoffKeyboard(handoff.miniAppUrl, language, optionKey);
   const edited = await editMessage(
     env,
     context.chatId,
@@ -256,6 +265,111 @@ async function handleYouTubeDownloadCallback(query, env) {
   if (!edited) {
     await sendMessage(env, context.chatId, text, keyboard).catch(() => null);
   }
+}
+
+export async function createVexaDownloadHandoff(env, input = {}) {
+  const userId = String(input.userId || "").trim();
+  const chatId = Number(input.chatId || 0);
+  const attemptId = Math.max(0, Math.floor(Number(input.attemptId || 0)));
+  const sourceUrl = String(input.sourceUrl || "").trim();
+  const optionKey = String(input.optionKey || "").trim();
+  const language = normalizeLang(input.language || "en");
+  const fallbackUrl = buildVexaDownloadUrl(sourceUrl, optionKey);
+  if (
+    !env?.AI_CODING_WORKFLOW ||
+    !userId ||
+    !Number.isSafeInteger(chatId) ||
+    !chatId ||
+    !attemptId ||
+    !sourceUrl ||
+    !/^(?:a|v\d{2,4}|s\d{1,3})$/u.test(optionKey)
+  ) {
+    return { miniAppUrl: fallbackUrl, workflowId: "" };
+  }
+
+  const workflowId = "vexa-handoff-" + userId + "-" + attemptId + "-" + crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  const miniAppUrl = buildVexaDownloadUrl(sourceUrl, optionKey, workflowId);
+  try {
+    await env.AI_CODING_WORKFLOW.create({
+      id: workflowId,
+      params: {
+        kind: VEXA_HANDOFF_REMINDER_KIND,
+        userId,
+        chatId,
+        attemptId,
+        sourceUrl,
+        optionKey,
+        language,
+        miniAppUrl,
+      },
+      retention: { successRetention: "1 day", errorRetention: "1 day" },
+    });
+    return { miniAppUrl, workflowId };
+  } catch (error) {
+    console.warn("Vexa handoff reminder workflow create failed", error?.message || error);
+    return { miniAppUrl: fallbackUrl, workflowId: "" };
+  }
+}
+
+export function vexaDownloadHandoffText(language, optionKey = "") {
+  const fa = normalizeLang(language || "en") === "fa";
+  const audio = String(optionKey || "") === "a";
+  if (fa) {
+    return [
+      "<b>" + (audio ? "🎵 صدا انتخاب شد" : "🎬 کیفیت ویدیو انتخاب شد") + "</b>",
+      "",
+      "📲 برای دریافت " + (audio ? "صدا" : "ویدیو") + "، دکمه زیر را بزن.",
+      "✨ ادامه دانلود داخل Vexa انجام می‌شود.",
+    ].join("\n");
+  }
+  return [
+    "<b>" + (audio ? "🎵 Audio selected" : "🎬 Video quality selected") + "</b>",
+    "",
+    "📲 Tap the button below to receive your " + (audio ? "audio" : "video") + ".",
+    "✨ The download continues inside Vexa.",
+  ].join("\n");
+}
+
+export function vexaDownloadHandoffKeyboard(miniAppUrl, language, optionKey = "") {
+  const fa = normalizeLang(language || "en") === "fa";
+  const audio = String(optionKey || "") === "a";
+  return {
+    inline_keyboard: [[{
+      text: fa
+        ? (audio ? "▶️ دریافت صدا" : "▶️ دریافت ویدیو")
+        : (audio ? "▶️ Get audio" : "▶️ Get video"),
+      web_app: { url: String(miniAppUrl || VEXA_PUBLIC_MINI_APP_URL) },
+    }]],
+  };
+}
+
+export async function runVexaDownloadHandoffReminder(env, payload = {}) {
+  const chatId = Number(payload.chatId || 0);
+  const userId = String(payload.userId || "").trim();
+  const optionKey = String(payload.optionKey || "").trim();
+  const language = normalizeLang(payload.language || "en");
+  const miniAppUrl = String(payload.miniAppUrl || "").trim();
+  if (!userId || !Number.isSafeInteger(chatId) || !chatId || !miniAppUrl) {
+    throw new Error("Vexa handoff reminder payload is invalid");
+  }
+
+  const fa = language === "fa";
+  const audio = optionKey === "a";
+  const text = fa
+    ? [
+        "<b>⏳ " + (audio ? "صدات هنوز منتظرته" : "ویدیوت هنوز منتظرته") + "</b>",
+        "",
+        (audio ? "🎵" : "🎬") + " برای دریافت " + (audio ? "صدا" : "ویدیو") + "، دکمه زیر را بزن.",
+        "📲 Vexa را باز کن تا دانلود ادامه پیدا کند.",
+      ].join("\n")
+    : [
+        "<b>⏳ Your " + (audio ? "audio" : "video") + " is still waiting</b>",
+        "",
+        (audio ? "🎵" : "🎬") + " Tap the button below to receive your " + (audio ? "audio" : "video") + ".",
+        "📲 Open Vexa to continue the download.",
+      ].join("\n");
+  await sendMessage(env, chatId, text, vexaDownloadHandoffKeyboard(miniAppUrl, language, optionKey));
+  return { ok: true, reminded: true, userId };
 }
 
 export async function runYouTubeDownloadWorkflowJob(env, payload) {
@@ -614,15 +728,22 @@ function youtubeDownloadKeyboard(options, copy, attemptId = 0) {
   return { inline_keyboard: rows };
 }
 
-function buildFullVideoDownloadUrl(sourceUrl, optionKey) {
+function buildVexaDownloadUrl(sourceUrl, optionKey, workflowId = "") {
   const url = new URL(VEXA_PUBLIC_MINI_APP_URL);
   url.searchParams.set("section", "live");
   url.searchParams.set("vexaDownload", "1");
   url.searchParams.set("vexaSource", sourceUrl);
-  if (/^(?:a|v\d{2,4})$/u.test(String(optionKey || ""))) {
+  if (/^(?:a|v\d{2,4}|s\d{1,3})$/u.test(String(optionKey || ""))) {
     url.searchParams.set("vexaOption", String(optionKey));
   }
+  if (/^vexa-handoff-\d{1,20}-\d{1,20}-[a-f0-9]{12}$/iu.test(String(workflowId || ""))) {
+    url.searchParams.set("vexaHandoff", String(workflowId));
+  }
   return url.toString();
+}
+
+function buildFullVideoDownloadUrl(sourceUrl, optionKey) {
+  return buildVexaDownloadUrl(sourceUrl, optionKey);
 }
 
 function multipartDownloadKeyboard(sourceUrl, optionKey, copy) {
@@ -662,9 +783,9 @@ function youtubeDownloadCopy(language) {
       overall: "کل ویدیو",
       remaining: "باقی‌مانده",
       openInApp: "ادامه در Vexa",
-      continueInApp: "کیفیت انتخاب شد. برای دریافت فایل وارد Vexa شو.",
-      fullDownload: "برای دریافت فایل وارد Vexa شو.",
-      fullDownloadButton: "🫧 باز کردن Vexa",
+      continueInApp: "کیفیت انتخاب شد. برای دریافت ویدیو، Vexa را باز کن.",
+      fullDownload: "برای دریافت ویدیو، دکمه زیر را بزن.",
+      fullDownloadButton: "▶️ دریافت ویدیو",
     };
   }
   return {
@@ -684,9 +805,9 @@ function youtubeDownloadCopy(language) {
     overall: "Whole video",
     remaining: "Remaining",
     openInApp: "Continue in Vexa",
-    continueInApp: "Quality selected. Open Vexa to get your file.",
-    fullDownload: "Open Vexa to get your file.",
-    fullDownloadButton: "🫧 Open Vexa",
+    continueInApp: "Quality selected. Open Vexa to receive your video.",
+    fullDownload: "Tap the button below to receive your video.",
+    fullDownloadButton: "▶️ Get video",
   };
 }
 
