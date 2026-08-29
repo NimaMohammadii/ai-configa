@@ -18,6 +18,7 @@ const TOKEN_TTL_SECONDS = 10 * 60;
 const SESSION_TTL_SECONDS = 60 * 60;
 const METADATA_TIMEOUT_MS = 90_000;
 const STREAM_START_TIMEOUT_MS = 90_000;
+const AUDIO_EXTRACT_TIMEOUT_MS = 120_000;
 const PROCESS_SETTLE_TIMEOUT_MS = 2_000;
 const PROGRESS_REPORT_BYTES = 2 * 1024 * 1024;
 const PROGRESS_REPORT_MS = 750;
@@ -91,6 +92,65 @@ export class VexaInstagramContainer extends Container {
       url,
     ]);
     return this.streamProcess(process);
+  }
+
+  async streamInstagramAudio(url) {
+    const sourceUrl = normalizeInstagramUrl(url);
+    if (!sourceUrl) throw new Error("Instagram audio source is unavailable");
+    const basePath = "/tmp/vexa-instagram-audio-" + crypto.randomUUID();
+    const outputPath = basePath + ".m4a";
+    const outputTemplate = basePath + ".%(ext)s";
+    const process = await this.execYtDlp([
+      ...YTDLP_ARGS,
+      "--quiet",
+      "--no-warnings",
+      "-f",
+      "bestaudio/best",
+      "--extract-audio",
+      "--audio-format",
+      "m4a",
+      "--audio-quality",
+      "0",
+      "-o",
+      outputTemplate,
+      sourceUrl,
+    ]);
+    let timer = 0;
+    try {
+      const output = await Promise.race([
+        process.output(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            try { process.kill(); } catch (error) {}
+            reject(new Error("Instagram audio preparation timed out"));
+          }, AUDIO_EXTRACT_TIMEOUT_MS);
+        }),
+      ]);
+      const decoder = new TextDecoder();
+      const detail = decoder.decode(output.stderr).trim();
+      if (output.exitCode !== 0) throw instagramError(detail || "audio extraction failed");
+      const streamProcess = await this.ctx.container.exec([
+        "sh",
+        "-c",
+        'exec 3<"$1" || exit 1; rm -f "$1" "$1.part"; cat <&3',
+        "vexa-instagram-audio",
+        outputPath,
+      ]);
+      if (!streamProcess?.stdout) throw new Error("Could not start the Instagram audio download");
+      return streamProcess.stdout;
+    } catch (error) {
+      try {
+        const cleanup = await this.ctx.container.exec(["sh", "-c", 'rm -f "$1".*', "vexa-instagram-audio-cleanup", basePath]);
+        await cleanup.output().catch(() => null);
+      } catch (cleanupError) {}
+      if (isInstagramPublicError(error)) throw error;
+      if (/audio preparation timed out/i.test(String(error?.message || error))) {
+        throw new Error("Instagram audio preparation timed out");
+      }
+      throw instagramError(error?.message || error);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async streamProcess(process) {
