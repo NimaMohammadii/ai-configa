@@ -192,7 +192,7 @@ function vexaLegalPage(path) {
         <h2>Your choices</h2>
         <p>You may request access to or deletion of your personal data as described on our <a href="/data-deletion">Data Deletion</a> page.</p>
         <h2>Contact</h2>
-        <p>For privacy questions, email <a href="mailto:100xpump@gmail.com">100xpump@gmail.com</a>.</p>`,
+        <p>For privacy questions, contact Vexa through the service.</p>`,
     },
     "/data-deletion": {
       title: "Vexa Data Deletion",
@@ -200,7 +200,7 @@ function vexaLegalPage(path) {
       content: `
         <p>You may request deletion of personal data associated with your use of Vexa.</p>
         <h2>How to request deletion</h2>
-        <p>Email <a href="mailto:100xpump@gmail.com?subject=Vexa%20Data%20Deletion%20Request">100xpump@gmail.com</a> with the subject <strong>Vexa Data Deletion Request</strong>. Include the account identifier or username used with Vexa so we can locate the correct record.</p>
+        <p>Submit a data deletion request through Vexa and include the account identifier or username used with the service so we can locate the correct record.</p>
         <h2>What happens next</h2>
         <p>We will verify the request, delete data that is no longer required, and confirm completion. We may retain limited records where required for security, fraud prevention, accounting, or legal obligations.</p>`,
     },
@@ -216,7 +216,7 @@ function vexaLegalPage(path) {
         <h2>Accounts and payments</h2>
         <p>You are responsible for activity associated with your account. Paid balances and purchases are handled according to the service terms presented at the time of purchase.</p>
         <h2>Contact</h2>
-        <p>For questions about these terms, email <a href="mailto:100xpump@gmail.com">100xpump@gmail.com</a>.</p>`,
+        <p>For questions about these terms, contact Vexa through the service.</p>`,
     },
   };
   const page = pages[path] || pages["/privacy"];
