@@ -7,6 +7,7 @@ import { summarizeCodingPlan } from "./ai-coding-plan.js";
 import { handleMiniAppRequest } from "./mini-app/server.js";
 import {
   handleMessage as handleVexaBotMessage,
+  runVexaDownloadHandoffReminder,
   runYouTubeDownloadWorkflowJob,
 } from "./mini-app/vexa-live/bot-bridge.js";
 
@@ -19,6 +20,8 @@ const MEDIA_INSPECT_TIMEOUT = "4 minutes";
 const YOUTUBE_WORKFLOW_KIND = "youtube_download";
 const YOUTUBE_DOWNLOAD_TIMEOUT = "10 minutes";
 const YOUTUBE_MAX_PARTS = 512;
+const VEXA_HANDOFF_REMINDER_KIND = "vexa_download_handoff_reminder";
+const VEXA_HANDOFF_OPEN_EVENT = "vexa_handoff_opened";
 
 export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
   async run(event, step) {
@@ -28,6 +31,9 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
     }
     if (payload.kind === YOUTUBE_WORKFLOW_KIND) {
       return this.runYouTubeDownload(payload, step);
+    }
+    if (payload.kind === VEXA_HANDOFF_REMINDER_KIND) {
+      return this.runVexaHandoffReminder(payload, step);
     }
 
     const taskId = cleanWorkflowTaskId(payload.taskId || event?.instanceId);
@@ -226,6 +232,32 @@ export class AiCodingWorkflowV2 extends WorkflowEntrypoint {
       );
     }
   }
+
+  async runVexaHandoffReminder(payload, step) {
+    const userId = String(payload?.userId || "").trim();
+    const chatId = Number(payload?.chatId || 0);
+    const miniAppUrl = String(payload?.miniAppUrl || "").trim();
+    if (!userId || !Number.isSafeInteger(chatId) || !chatId || !miniAppUrl) {
+      throw new NonRetryableError("Vexa handoff reminder payload is invalid.");
+    }
+
+    try {
+      const opened = await step.waitForEvent("wait for Vexa video handoff", {
+        type: VEXA_HANDOFF_OPEN_EVENT,
+        timeout: "5 minutes",
+      });
+      if (String(opened?.payload?.userId || "") === userId) {
+        return { ok: true, opened: true, reminded: false };
+      }
+      return { ok: true, opened: true, reminded: false };
+    } catch (error) {
+      return step.do(
+        "send Vexa video handoff reminder",
+        { retries: { limit: 1, delay: "2 seconds" }, timeout: "30 seconds" },
+        async () => runVexaDownloadHandoffReminder(this.env, payload),
+      );
+    }
+  }
 }
 
 async function runOneAiPhase(env, user, messages, workflowTaskId, phase, codingTaskId = "", preferences = {}) {
@@ -287,7 +319,7 @@ function blockedPlanMessage(plan) {
     ? plan.steps.filter((step) => step.status === "blocked").map((step) => step.title).slice(0, 4)
     : [];
   const detail = blocked.length ? `: ${blocked.join("; ")}` : "";
-  return `Coding task stopped at a real blocker${detail}. The task branch and plan were preserved so it can be resumed.`.slice(0, MAX_TASK_ERROR_CHARS);
+  return `Background task stopped at a real blocker${detail}. The task branch and plan were preserved so it can be resumed.`.slice(0, MAX_TASK_ERROR_CHARS);
 }
 
 function addBackgroundExecutionInstruction(messages) {
