@@ -306,15 +306,13 @@ async function enhanceSession(response, request, env, isFirstSession = false) {
     const body = await request.json().catch(() => ({}));
     const user = await authenticateMiniAppPayload(body, env);
     const state = await getState(env, user.id);
-    const rawLaunch = String(body.launchSection || signedStartParam(body.initData) || "").trim().toLowerCase().replaceAll("-", "_");
-    const launchModes = { voice: "tts", tts: "tts", image: "image", explore: "explore", ai_chat: "ai_chat", stt: "stt", speech_to_text: "stt", live: "live", vexa_live: "live" };
-    const requestedMode = launchModes[rawLaunch] || "";
     const currentMode = normalizeAppMode(state.appMode);
     const entryMode = isFirstSession
       ? normalizeAppMode(await getMiniAppDefaultSection(env))
       : currentMode;
-    appMode = requestedMode || entryMode;
-    if (appMode !== currentMode) appMode = normalizeAppMode(await setAppMode(env, user.id, appMode));
+    appMode = entryMode;
+    // A section in a channel/referral link is only a one-time destination.
+    // The user's saved primary section may change only via the settings endpoint.
     appModeLocks = await getAppModeLocks(env);
   } catch (error) {
     console.error("mini app mode session lookup failed", error?.message || error);
