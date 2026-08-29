@@ -8,9 +8,9 @@ const MEDIA_TOKEN_TTL_SECONDS = 6 * 60 * 60;
 const INSTAGRAM_DM_CONTAINER_PREFIX = "instagram-dm-";
 const SHARE_ATTACHMENT_TYPES = new Set(["ig_reel", "reel", "ig_post", "post", "share"]);
 const SHARE_ATTACHMENT_PRIORITY = new Map([
-  ["ig_reel", 5],
-  ["reel", 4],
-  ["ig_post", 3],
+  ["ig_post", 5],
+  ["ig_reel", 4],
+  ["reel", 3],
   ["post", 2],
   ["share", 1],
 ]);
