@@ -1087,6 +1087,81 @@ export async function ensureVexaLiveDownloadTokenTable(env) {
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_vexa_youtube_playback_tokens_user_created ON vexa_youtube_playback_tokens (user_id, created_at DESC)").run();
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS vexa_link_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, source_url TEXT NOT NULL, source TEXT NOT NULL, successful INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, completed_at INTEGER)").run();
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_vexa_link_events_user_created ON vexa_link_events (user_id, created_at DESC)").run();
+  await ensureVexaDownloadAttemptTable(env);
+}
+
+async function ensureVexaDownloadAttemptTable(env) {
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS vexa_download_attempts (" +
+      "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+      "user_id TEXT NOT NULL, source_url TEXT NOT NULL, provider TEXT NOT NULL, channel TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'video', " +
+      "status TEXT NOT NULL DEFAULT 'pending', stage TEXT NOT NULL DEFAULT 'link_received', error_code TEXT, error_message TEXT, " +
+      "option_key TEXT, total_bytes INTEGER NOT NULL DEFAULT 0, transferred_bytes INTEGER NOT NULL DEFAULT 0, delivery_message_id INTEGER, " +
+      "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, finished_at INTEGER" +
+    ")"
+  ).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_vexa_download_attempts_user_created ON vexa_download_attempts (user_id, created_at DESC)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_vexa_download_attempts_status_created ON vexa_download_attempts (status, created_at DESC)").run();
+}
+
+export async function createVexaDownloadAttempt(env, input = {}) {
+  await ensureVexaLiveDownloadTokenTable(env);
+  const userId = String(input.userId || "").trim();
+  const sourceUrl = String(input.sourceUrl || "").trim().slice(0, 2000);
+  if (!userId || !sourceUrl) return 0;
+  const now = Math.floor(Date.now() / 1000);
+  const result = await env.DB.prepare(
+    "INSERT INTO vexa_download_attempts (user_id, source_url, provider, channel, kind, status, stage, option_key, total_bytes, created_at, updated_at) " +
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(
+    userId,
+    sourceUrl,
+    normalizeVexaDownloadProvider(input.provider, sourceUrl),
+    normalizeVexaDownloadChannel(input.channel),
+    normalizeVexaDownloadKind(input.kind),
+    normalizeVexaDownloadStatus(input.status || "pending"),
+    normalizeVexaDownloadStage(input.stage || "link_received"),
+    cleanVexaDownloadText(input.optionKey, 80) || null,
+    positiveVexaDownloadInteger(input.totalBytes),
+    now,
+    now,
+  ).run();
+  return Number(result?.meta?.last_row_id || 0);
+}
+
+export async function updateVexaDownloadAttempt(env, attemptId, input = {}) {
+  const id = positiveVexaDownloadInteger(attemptId);
+  if (!id) return;
+  await ensureVexaLiveDownloadTokenTable(env);
+  const status = normalizeVexaDownloadStatus(input.status || "pending");
+  const stage = normalizeVexaDownloadStage(input.stage || "link_received");
+  const message = cleanVexaDownloadText(input.errorMessage, 700);
+  const clearError = status === "delivered";
+  const terminal = status === "delivered" || status === "failed" || status === "cancelled" || status === "handed_off";
+  const now = Math.floor(Date.now() / 1000);
+  const errorCode = message ? vexaDownloadErrorCode(message) : "";
+  const totalBytes = positiveVexaDownloadInteger(input.totalBytes);
+  const transferredBytes = positiveVexaDownloadInteger(input.transferredBytes);
+  const deliveryMessageId = positiveVexaDownloadInteger(input.deliveryMessageId);
+  await env.DB.prepare(
+    "UPDATE vexa_download_attempts SET status = ?, stage = ?, " +
+    "error_code = CASE WHEN ? = 1 THEN NULL WHEN ? <> '' THEN ? ELSE error_code END, " +
+    "error_message = CASE WHEN ? = 1 THEN NULL WHEN ? <> '' THEN ? ELSE error_message END, " +
+    "option_key = CASE WHEN ? <> '' THEN ? ELSE option_key END, " +
+    "total_bytes = CASE WHEN ? > 0 THEN ? ELSE total_bytes END, " +
+    "transferred_bytes = CASE WHEN ? > 0 THEN ? ELSE transferred_bytes END, " +
+    "delivery_message_id = CASE WHEN ? > 0 THEN ? ELSE delivery_message_id END, " +
+    "updated_at = ?, finished_at = CASE WHEN ? = 1 THEN ? ELSE finished_at END WHERE id = ?"
+  ).bind(
+    status, stage,
+    clearError ? 1 : 0, message, errorCode,
+    clearError ? 1 : 0, message, message,
+    cleanVexaDownloadText(input.optionKey, 80), cleanVexaDownloadText(input.optionKey, 80),
+    totalBytes, totalBytes,
+    transferredBytes, transferredBytes,
+    deliveryMessageId, deliveryMessageId,
+    now, terminal ? 1 : 0, now, id,
+  ).run();
 }
 
 export async function recordVexaLinkEvent(env, userId, sourceUrl, source = "bot") {
@@ -1113,52 +1188,45 @@ export async function getAdminVexaLiveDownloadUsersPage(env, page = 0, limit = 8
   const safeLimit = Math.max(1, Number(limit) || 8);
   const offset = safePage * safeLimit;
   const countRow = await env.DB.prepare(
-    "SELECT COUNT(*) AS total FROM (" +
-    "SELECT user_id FROM vexa_youtube_playback_tokens GROUP BY user_id " +
-    "UNION SELECT user_id FROM vexa_youtube_download_tokens WHERE used_at IS NOT NULL GROUP BY user_id " +
-    "UNION SELECT user_id FROM vexa_link_events GROUP BY user_id)"
+    "SELECT COUNT(*) AS total FROM (SELECT user_id FROM vexa_download_attempts GROUP BY user_id UNION SELECT user_id FROM vexa_link_events GROUP BY user_id)"
   ).first();
   const rows = await env.DB.prepare(
-    "WITH playback AS (" +
-      "SELECT user_id, COUNT(token) AS preview_count, COUNT(DISTINCT source_url) AS unique_preview_count, MAX(created_at) AS last_preview_at " +
-      "FROM vexa_youtube_playback_tokens GROUP BY user_id" +
-    "), downloads AS (" +
-      "SELECT user_id, COUNT(token) AS download_count, COUNT(DISTINCT source_url) AS unique_download_count, MAX(COALESCE(used_at, created_at)) AS last_download_at " +
-      "FROM vexa_youtube_download_tokens WHERE used_at IS NOT NULL GROUP BY user_id" +
-    "), events AS (SELECT user_id, COUNT(*) AS event_count, SUM(successful) AS event_success_count, MAX(created_at) AS last_event_at FROM vexa_link_events GROUP BY user_id), users AS (" +
-      "SELECT user_id FROM playback UNION SELECT user_id FROM downloads UNION SELECT user_id FROM events" +
-    ") " +
-    "SELECT users.user_id, b.username, b.first_name, b.last_name, " +
-    "COALESCE(playback.preview_count, 0) AS preview_count, COALESCE(playback.unique_preview_count, 0) AS unique_preview_count, " +
-    "COALESCE(downloads.download_count, 0) + COALESCE(events.event_success_count, 0) AS download_count, COALESCE(downloads.unique_download_count, 0) AS unique_download_count, " +
-    "COALESCE(playback.preview_count, 0) + COALESCE(events.event_count, 0) AS total_link_count, MAX(COALESCE(playback.last_preview_at, 0), COALESCE(downloads.last_download_at, 0), COALESCE(events.last_event_at, 0)) AS last_activity_at " +
-    "FROM users LEFT JOIN playback ON playback.user_id = users.user_id LEFT JOIN downloads ON downloads.user_id = users.user_id LEFT JOIN events ON events.user_id = users.user_id " +
-    "LEFT JOIN bot_users b ON b.user_id = users.user_id " +
-    "ORDER BY last_activity_at DESC LIMIT ? OFFSET ?"
+    "WITH attempts AS (" +
+      "SELECT user_id, COUNT(*) AS attempt_count, SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS delivered_count, " +
+      "SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count, MAX(updated_at) AS last_attempt_at FROM vexa_download_attempts GROUP BY user_id" +
+    "), legacy AS (SELECT user_id, COUNT(*) AS legacy_count, MAX(COALESCE(completed_at, created_at)) AS last_legacy_at FROM vexa_link_events GROUP BY user_id), users AS (" +
+      "SELECT user_id FROM attempts UNION SELECT user_id FROM legacy" +
+    ") SELECT users.user_id, b.username, b.first_name, b.last_name, COALESCE(attempts.attempt_count, 0) AS attempt_count, " +
+    "COALESCE(attempts.delivered_count, 0) AS delivered_count, COALESCE(attempts.failed_count, 0) AS failed_count, COALESCE(legacy.legacy_count, 0) AS legacy_count, " +
+    "MAX(COALESCE(attempts.last_attempt_at, 0), COALESCE(legacy.last_legacy_at, 0)) AS last_activity_at " +
+    "FROM users LEFT JOIN attempts ON attempts.user_id = users.user_id LEFT JOIN legacy ON legacy.user_id = users.user_id " +
+    "LEFT JOIN bot_users b ON b.user_id = users.user_id ORDER BY last_activity_at DESC LIMIT ? OFFSET ?"
   ).bind(safeLimit, offset).all();
   return { total: Number(countRow?.total || 0), page: safePage, limit: safeLimit, users: rows.results || [] };
 }
 
 export async function adminVexaLiveDownloadsText(env, page = 0) {
   const data = await getAdminVexaLiveDownloadUsersPage(env, page);
-  const pagePreviews = data.users.reduce((sum, user) => sum + Number(user.preview_count || 0), 0);
-  const pageDownloads = data.users.reduce((sum, user) => sum + Number(user.download_count || 0), 0);
+  const attempts = data.users.reduce((sum, user) => sum + Number(user.attempt_count || 0), 0);
+  const delivered = data.users.reduce((sum, user) => sum + Number(user.delivered_count || 0), 0);
+  const failed = data.users.reduce((sum, user) => sum + Number(user.failed_count || 0), 0);
   return [
-    "🎪 <b>Vexa Live Activity</b>",
+    "🎪 <b>Vexa Live Downloads</b>",
     "",
-    "Users with link entries or downloads: <b>" + formatNumber(data.total) + "</b>",
-    "This page link entries: <b>" + formatNumber(pagePreviews) + "</b>",
-    "This page downloads: <b>" + formatNumber(pageDownloads) + "</b>",
+    "Users with activity: <b>" + formatNumber(data.total) + "</b>",
+    "This page attempts: <b>" + formatNumber(attempts) + "</b>",
+    "Delivered to Telegram / completed stream: <b>" + formatNumber(delivered) + "</b>",
+    "Failed: <b>" + formatNumber(failed) + "</b>",
     "Page: <b>" + (data.page + 1) + "</b>",
     "",
-    data.users.length ? "Select a user to see link entries and completed downloads separately:" : "No Vexa Live activity has been recorded yet."
+    data.users.length ? "Select a user to inspect every download attempt and its exact outcome." : "No Vexa Live download activity has been recorded yet."
   ].join("\n");
 }
 
 export async function adminVexaLiveDownloadsKeyboard(env, page = 0) {
   const data = await getAdminVexaLiveDownloadUsersPage(env, page);
   const rows = data.users.map((user) => [{
-    text: userLabel(user) + " • 🔗 " + formatNumber(user.total_link_count || user.preview_count || 0),
+    text: userLabel(user) + " • ✅ " + formatNumber(user.delivered_count || 0) + " • ❌ " + formatNumber(user.failed_count || 0),
     callback_data: "admin_vexa_live_download_user:" + user.user_id + ":" + data.page,
   }]);
   const nav = [];
@@ -1171,61 +1239,186 @@ export async function adminVexaLiveDownloadsKeyboard(env, page = 0) {
 
 export async function adminVexaLiveDownloadUserText(env, userId) {
   const rows = await getVexaLiveDownloadRows(env, userId, 100);
-  const linkEntries = rows.filter((row) => row.activity_type === "link_entry");
-  const downloads = rows.filter((row) => row.successful);
-  const lines = [
-    "🎪 <b>Vexa Live Activity Links</b>",
+  const attempts = rows.filter((row) => row.activity_type === "attempt");
+  const delivered = attempts.filter((row) => row.status === "delivered");
+  const failed = attempts.filter((row) => row.status === "failed");
+  const cancelled = attempts.filter((row) => row.status === "cancelled");
+  return [
+    "🎪 <b>Vexa Live Download Diagnostics</b>",
     "",
     "User ID: <code>" + escapeHtml(userId) + "</code>",
-    "Link entries / video shown: <b>" + formatNumber(linkEntries.length) + "</b>",
-    "Completed downloads: <b>" + formatNumber(downloads.length) + "</b>",
+    "Attempts: <b>" + formatNumber(attempts.length) + "</b>",
+    "Delivered: <b>" + formatNumber(delivered.length) + "</b>",
+    "Failed: <b>" + formatNumber(failed.length) + "</b>",
+    "Cancelled: <b>" + formatNumber(cancelled.length) + "</b>",
     "",
-    rows.length ? "Use the buttons below to review link results." : "No Vexa Live activity links for this user."
-  ];
-  return lines.join("\n");
+    rows.length ? "Select an attempt to see provider, stage, error, transferred bytes, and delivery proof." : "No Vexa Live download activity links for this user."
+  ].join("\n");
 }
 
 export async function adminVexaLiveDownloadUserKeyboard(env, userId, page = 0) {
   const activity = await getVexaLiveDownloadRows(env, userId, 30);
-  const rows = activity.map((row, index) => [{ text: (row.successful ? "✅ " : "❌ ") + "Link " + (index + 1), url: row.source_url }]);
+  const rows = activity.map((row, index) => {
+    if (row.activity_type !== "attempt") {
+      return [{ text: "↗ Legacy link " + (index + 1), url: row.source_url }];
+    }
+    return [{
+      text: vexaAttemptStatusIcon(row.status) + " " + vexaDownloadProviderLabel(row.provider) + " · " + vexaDownloadStageLabel(row.stage),
+      callback_data: "admin_vexa_live_attempt:" + row.id + ":" + page,
+    }];
+  });
   rows.push(
-    [{ text: "⬇️ Download Links TXT", callback_data: "admin_vexa_live_download_links:" + userId }],
+    [{ text: "⬇️ Download Diagnostics TXT", callback_data: "admin_vexa_live_download_links:" + userId }],
     [{ text: "← Download Users", callback_data: "admin_vexa_live_downloads:" + page }, { text: "← Back", callback_data: "admin_main" }]);
   return { inline_keyboard: rows };
+}
+
+export async function getVexaLiveDownloadAttempt(env, attemptId) {
+  await ensureVexaLiveDownloadTokenTable(env);
+  return env.DB.prepare(
+    "SELECT id, user_id, source_url, provider, channel, kind, status, stage, error_code, error_message, option_key, total_bytes, transferred_bytes, delivery_message_id, created_at, updated_at, finished_at " +
+    "FROM vexa_download_attempts WHERE id = ?"
+  ).bind(positiveVexaDownloadInteger(attemptId)).first();
+}
+
+export async function adminVexaLiveDownloadAttemptText(env, attemptId) {
+  const row = await getVexaLiveDownloadAttempt(env, attemptId);
+  if (!row) return "⚠️ This Vexa Live download attempt is no longer available.";
+  const delivery = row.status === "delivered"
+    ? (row.channel === "bot" ? "Telegram accepted media message #" + (row.delivery_message_id || "?") : "Download stream completed")
+    : "Not delivered";
+  return [
+    vexaAttemptStatusIcon(row.status) + " <b>Vexa Live Download Attempt #" + row.id + "</b>",
+    "",
+    "Provider: <b>" + escapeHtml(vexaDownloadProviderLabel(row.provider)) + "</b>",
+    "Route: <b>" + escapeHtml(row.channel === "bot" ? "Telegram bot" : "Mini app") + "</b>",
+    "Type: <b>" + escapeHtml(row.kind || "video") + "</b>",
+    "Status: <b>" + escapeHtml(row.status) + "</b>",
+    "Last stage: <b>" + escapeHtml(vexaDownloadStageLabel(row.stage)) + "</b>",
+    "Started: <b>" + escapeHtml(formatUnixTehranTime(row.created_at)) + "</b>",
+    "Updated: <b>" + escapeHtml(formatUnixTehranTime(row.updated_at)) + "</b>",
+    row.finished_at ? "Finished: <b>" + escapeHtml(formatUnixTehranTime(row.finished_at)) + "</b>" : "",
+    row.option_key ? "Selected quality: <b>" + escapeHtml(row.option_key) + "</b>" : "",
+    row.total_bytes ? "Bytes: <b>" + formatNumber(row.transferred_bytes || 0) + " / " + formatNumber(row.total_bytes) + "</b>" : "",
+    "Delivery proof: <b>" + escapeHtml(delivery) + "</b>",
+    row.error_code ? "Error code: <code>" + escapeHtml(row.error_code) + "</code>" : "",
+    row.error_message ? "User saw: <b>" + escapeHtml(row.error_message) + "</b>" : "",
+    "",
+    "<code>" + escapeHtml(String(row.source_url || "").slice(0, 1800)) + "</code>",
+  ].filter(Boolean).join("\n");
+}
+
+export function adminVexaLiveDownloadAttemptKeyboard(attemptId, page = 0) {
+  return {
+    inline_keyboard: [
+      [{ text: "← User attempts", callback_data: "admin_vexa_live_attempt_user:" + positiveVexaDownloadInteger(attemptId) + ":" + Math.max(0, Number(page) || 0) }],
+      [{ text: "← Download Users", callback_data: "admin_vexa_live_downloads:" + Math.max(0, Number(page) || 0) }],
+    ],
+  };
 }
 
 export async function getVexaLiveDownloadRows(env, userId, limit = 500) {
   requireDb(env);
   await ensureVexaLiveDownloadTokenTable(env);
   const rows = await env.DB.prepare(
-    "SELECT source_url, created_at AS activity_at, NULL AS used_at, 'link_entry' AS activity_type " +
-    "FROM vexa_youtube_playback_tokens WHERE user_id = ? " +
-    "UNION ALL " +
-    "SELECT source_url, COALESCE(used_at, created_at) AS activity_at, used_at, 'download' AS activity_type " +
-    "FROM vexa_youtube_download_tokens WHERE user_id = ? AND used_at IS NOT NULL " +
-    "UNION ALL SELECT source_url, created_at AS activity_at, completed_at AS used_at, 'link_entry' AS activity_type FROM vexa_link_events WHERE user_id = ? " +
+    "SELECT id, source_url, provider, channel, kind, status, stage, error_code, error_message, option_key, total_bytes, transferred_bytes, delivery_message_id, created_at AS activity_at, updated_at, finished_at, 'attempt' AS activity_type " +
+    "FROM vexa_download_attempts WHERE user_id = ? " +
+    "UNION ALL SELECT NULL AS id, source_url, '' AS provider, 'legacy' AS channel, 'video' AS kind, CASE WHEN successful = 1 THEN 'delivered' ELSE 'pending' END AS status, 'legacy_link' AS stage, NULL AS error_code, NULL AS error_message, NULL AS option_key, 0 AS total_bytes, 0 AS transferred_bytes, NULL AS delivery_message_id, created_at AS activity_at, completed_at AS updated_at, completed_at AS finished_at, 'legacy' AS activity_type FROM vexa_link_events WHERE user_id = ? " +
     "ORDER BY activity_at DESC LIMIT ?"
-  ).bind(String(userId), String(userId), String(userId), Math.max(1, Number(limit) || 500)).all();
-  return (rows.results || []).map((row) => ({ ...row, successful: Boolean(row.used_at) }));
+  ).bind(String(userId), String(userId), Math.max(1, Number(limit) || 500)).all();
+  return rows.results || [];
 }
 
 export function buildVexaLiveDownloadLinksFile(userId, rows = []) {
-  const linkEntries = rows.filter((row) => row.activity_type === "link_entry");
-  const downloads = rows.filter((row) => row.activity_type === "download");
-  const lines = ["Vexa Live activity links", "User ID: " + userId, "Link entries / video shown: " + linkEntries.length, "Completed downloads: " + downloads.length, ""];
-  [["Link entries / video shown", linkEntries], ["Completed downloads", downloads]].forEach(([title, items]) => {
-    lines.push(title);
-    lines.push("-".repeat(title.length));
-    items.forEach((row, index) => {
-      lines.push(String(index + 1) + ". " + formatUnixTehranTime(row.activity_at));
-      lines.push(String(row.source_url || ""));
-      lines.push("");
-    });
-    if (!items.length) lines.push("None", "");
+  const lines = ["Vexa Live download diagnostics", "User ID: " + userId, "Attempts: " + rows.filter((row) => row.activity_type === "attempt").length, ""];
+  rows.forEach((row, index) => {
+    lines.push(String(index + 1) + ". " + formatUnixTehranTime(row.activity_at));
+    lines.push("Provider: " + vexaDownloadProviderLabel(row.provider) + " | Route: " + (row.channel || "") + " | Status: " + (row.status || ""));
+    lines.push("Stage: " + vexaDownloadStageLabel(row.stage) + (row.option_key ? " | Quality: " + row.option_key : ""));
+    if (row.total_bytes) lines.push("Bytes: " + Number(row.transferred_bytes || 0) + " / " + Number(row.total_bytes || 0));
+    if (row.error_code) lines.push("Error code: " + row.error_code);
+    if (row.error_message) lines.push("User saw: " + row.error_message);
+    if (row.delivery_message_id) lines.push("Telegram message ID: " + row.delivery_message_id);
+    lines.push(String(row.source_url || ""), "");
   });
+  if (rows.length === 0) lines.push("None");
   return lines.join("\n");
 }
 
+function normalizeVexaDownloadProvider(provider, sourceUrl = "") {
+  const value = String(provider || "").toLowerCase();
+  if (value === "pornhub" || /pornhub\./i.test(String(sourceUrl))) return "pornhub";
+  if (value === "instagram_story" || value === "instagram" || /instagram\.com/i.test(String(sourceUrl))) return value === "instagram_story" ? "instagram_story" : "instagram";
+  return "youtube";
+}
+
+function normalizeVexaDownloadChannel(value) {
+  return String(value || "") === "bot" ? "bot" : "mini_app";
+}
+
+function normalizeVexaDownloadKind(value) {
+  const clean = String(value || "").toLowerCase();
+  return ["video", "audio", "story", "highlight", "live"].includes(clean) ? clean : "video";
+}
+
+function normalizeVexaDownloadStatus(value) {
+  const clean = String(value || "").toLowerCase();
+  return ["pending", "ready", "downloading", "delivered", "failed", "cancelled", "handed_off"].includes(clean) ? clean : "pending";
+}
+
+function normalizeVexaDownloadStage(value) {
+  const clean = String(value || "").toLowerCase().replace(/[^a-z0-9_:-]/g, "_").slice(0, 80);
+  return clean || "link_received";
+}
+
+function cleanVexaDownloadText(value, max = 700) {
+  return String(value || "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function positiveVexaDownloadInteger(value) {
+  const number = Number.parseInt(String(value || "0"), 10);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function vexaDownloadErrorCode(message) {
+  const value = String(message || "").toLowerCase();
+  if (/rate.?limit|too many requests|\b429\b/.test(value)) return "rate_limited";
+  if (/po token|proof.of.origin|missing_pot/.test(value)) return "po_token_required";
+  if (/\b403\b|blocked|forbidden/.test(value)) return "source_blocked";
+  if (/login|sign in|private|premium|locked|additional access/.test(value)) return "access_required";
+  if (/too large|file is too big|payload too large/.test(value)) return "file_too_large";
+  if (/format|mp4 video|no video/.test(value)) return "format_unavailable";
+  if (/unavailable|removed|deleted|not live/.test(value)) return "source_unavailable";
+  if (/invalid.*(?:mp4|media)|media file/.test(value)) return "invalid_media";
+  if (/stream.*start|timed out|timeout/.test(value)) return "stream_timeout";
+  if (/cancel/.test(value)) return "cancelled";
+  if (/telegram.*upload|telegram rejected/.test(value)) return "telegram_upload_failed";
+  return "download_failed";
+}
+
+function vexaDownloadProviderLabel(provider) {
+  return ({ youtube: "YouTube", pornhub: "PornHub", instagram: "Instagram", instagram_story: "Instagram Story" })[String(provider || "")] || "Legacy";
+}
+
+function vexaDownloadStageLabel(stage) {
+  return ({
+    link_received: "Link received",
+    inspecting: "Inspecting source",
+    quality_selection: "Quality selected",
+    preparing: "Preparing media",
+    streaming: "Streaming file",
+    telegram_upload: "Uploading to Telegram",
+    delivered: "Delivered",
+    failed: "Failed",
+    cancelled: "Cancelled",
+    handed_off: "Opened in mini app",
+    legacy_link: "Legacy link",
+  })[String(stage || "")] || String(stage || "Unknown");
+}
+
+function vexaAttemptStatusIcon(status) {
+  return ({ delivered: "✅", failed: "❌", cancelled: "⚪", handed_off: "↗", downloading: "⏳", ready: "🟡", pending: "🟡" })[String(status || "")] || "🟡";
+}
 
 export async function getAdminAiChatUsersPage(env, page = 0, limit = 8) {
   requireDb(env);
