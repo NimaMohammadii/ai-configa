@@ -163,105 +163,24 @@ export async function handleInstagramCallback(query, env) {
   }
 
   const copy = instagramCopy(context.language);
-  await answerCallback(env, query.id, copy.preparing, false).catch(() => null);
-  await editMessage(
+  await answerCallback(env, query.id, copy.openDownloader, false).catch(() => null);
+  await updateVexaDownloadAttempt(env, attemptId, {
+    status: "handed_off",
+    stage: "handed_off",
+    optionKey,
+  }).catch(() => null);
+
+  const text = "<b>🫧 " + escapeHtml(copy.continueInApp) + "</b>";
+  const keyboard = instagramOpenKeyboard(sourceUrl, optionKey, copy);
+  const edited = await editMessage(
     env,
     chatId,
     messageId,
-    "<b>" + escapeHtml(copy.preparing) + "</b>\n\n" + escapeHtml(copy.keepOpen),
-    { inline_keyboard: [] },
-  ).catch(() => null);
-
-  try {
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "downloading",
-      stage: "preparing",
-      optionKey,
-    }).catch(() => null);
-    const prepared = await inspectInstagram(env, userId, sourceUrl, isStory);
-    const selected = (prepared.options || []).find((option) => option.key === optionKey) || null;
-    if (!selected) throw new Error(copy.selectionExpired);
-
-    if (Number(selected.sizeBytes || 0) > TELEGRAM_SAFE_FILE_BYTES) {
-      await editMessage(
-        env,
-        chatId,
-        messageId,
-        "<b>" + escapeHtml(copy.tooLargeTitle) + "</b>\n\n" + escapeHtml(copy.tooLarge),
-        instagramOpenKeyboard(sourceUrl, optionKey, copy),
-      );
-      await updateVexaDownloadAttempt(env, attemptId, {
-        status: "handed_off",
-        stage: "handed_off",
-        optionKey,
-        totalBytes: Number(selected.sizeBytes || 0),
-      }).catch(() => null);
-      return true;
-    }
-
-    const stream = isStory
-      ? await prepared.container.streamInstagramStory(
-          sourceUrl,
-          String(selected.formatId),
-          Number(selected.playlistIndex || 1),
-        )
-      : await prepared.container.streamInstagramVideo(sourceUrl, String(selected.formatId));
-
-    await editMessage(
-      env,
-      chatId,
-      messageId,
-      "<b>" + escapeHtml(copy.uploading) + "</b>\n\n" + escapeHtml(formatMegabytes(selected.sizeBytes) + " · " + copy.keepOpen),
-      { inline_keyboard: [] },
-    ).catch(() => null);
-
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "downloading",
-      stage: "telegram_upload",
-      optionKey,
-      totalBytes: Number(selected.sizeBytes || 0),
-    }).catch(() => null);
-    const telegramMessage = await sendInstagramVideo(env, chatId, {
-      stream,
-      sizeBytes: Number(selected.sizeBytes || 0),
-      filename: String(selected.filename || "Vexa-Instagram.mp4"),
-      width: Number(selected.width || 0),
-      height: Number(selected.height || 0),
-      duration: Number(selected.duration || 0),
-      title: String(prepared.title || (isStory ? "Instagram Story" : "Instagram video")),
-    });
-
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "delivered",
-      stage: "delivered",
-      optionKey,
-      totalBytes: Number(selected.sizeBytes || 0),
-      transferredBytes: Number(selected.sizeBytes || 0),
-      deliveryMessageId: Number(telegramMessage?.message_id || 0),
-    }).catch(() => null);
-    await markLatestVexaLinkSuccessful(env, userId, sourceUrl).catch(() => null);
-    await editMessage(
-      env,
-      chatId,
-      messageId,
-      "✅ <b>" + escapeHtml(copy.complete) + "</b>",
-      instagramOpenKeyboard(sourceUrl, optionKey, copy),
-    ).catch(() => null);
-  } catch (error) {
-    console.error("Instagram bot download failed", error?.stack || error);
-    const publicError = publicInstagramBotError(error);
-    await updateVexaDownloadAttempt(env, attemptId, {
-      status: "failed",
-      stage: "telegram_upload",
-      errorMessage: publicError,
-    }).catch(() => null);
-    await editMessage(
-      env,
-      chatId,
-      messageId,
-      "⚠️ " + escapeHtml(publicError),
-      instagramOpenKeyboard(sourceUrl, optionKey, copy),
-    ).catch(() => null);
+    text,
+    keyboard,
+  ).then(() => true).catch(() => false);
+  if (!edited) {
+    await sendMessage(env, chatId, text, keyboard).catch(() => null);
   }
 
   return true;
@@ -331,17 +250,10 @@ function instagramDownloadKeyboard(options, sourceUrl, isStory, copy, attemptId 
     const text = isStory
       ? storyButtonText(option, tooLarge)
       : mediaButtonText(option, tooLarge);
-    if (tooLarge) {
-      buttons.push({
-        text,
-        web_app: { url: buildInstagramMiniAppUrl(sourceUrl, key) },
-      });
-    } else {
-      buttons.push({
-        text,
-        callback_data: (isStory ? INSTAGRAM_STORY_CALLBACK_PREFIX : INSTAGRAM_CALLBACK_PREFIX) + (attemptId ? String(attemptId) + ":" : "") + key,
-      });
-    }
+    buttons.push({
+      text,
+      callback_data: (isStory ? INSTAGRAM_STORY_CALLBACK_PREFIX : INSTAGRAM_CALLBACK_PREFIX) + (attemptId ? String(attemptId) + ":" : "") + key,
+    });
   }
 
   const rows = [];
@@ -499,7 +411,8 @@ function instagramCopy(language) {
       selectionExpired: "انتخاب دانلود منقضی شده است",
       tooLargeTitle: "فایل برای ارسال مستقیم بزرگ است",
       tooLarge: "این فایل از سقف امن ارسال مستقیم ربات بزرگ‌تر است. از دانلودر اینستاگرام بازش کن.",
-      openDownloader: "🫧 باز کردن دانلودر اینستاگرام",
+      continueInApp: "انتخاب انجام شد. برای دریافت فایل وارد Vexa شو.",
+      openDownloader: "🫧 باز کردن Vexa",
     };
   }
   return {
@@ -518,7 +431,8 @@ function instagramCopy(language) {
     selectionExpired: "Download selection expired",
     tooLargeTitle: "File is too large for direct bot upload",
     tooLarge: "Open the Instagram downloader to download this file.",
-    openDownloader: "🫧 Open Instagram downloader",
+    continueInApp: "Selection saved. Open Vexa to get your file.",
+    openDownloader: "🫧 Open Vexa",
   };
 }
 
