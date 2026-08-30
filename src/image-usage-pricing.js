@@ -308,6 +308,14 @@ export function dynamicPricingPayload(lastCost = 0, billing = null) {
   };
 }
 
+export async function getCurrentImagePricingPayload(env, lastCost = 0) {
+  const settings = await getImagePricingSettings(env);
+  return dynamicPricingPayload(lastCost, {
+    discountPercent: settings.discountEnabled ? settings.discountPercent : 0,
+    discountUntil: settings.discountUntil || 0,
+  });
+}
+
 export function calculateImageBilling(usage = {}) {
   const inputTokens = wholeTokens(usage?.input_tokens);
   const textInputTokens = wholeTokens(usage?.input_tokens_details?.text_tokens);
@@ -358,15 +366,16 @@ function applyImageDiscountToBilling(billing, discountPercent = 0, discountUntil
       discountUntil: 0,
     };
   }
+  const credits = applyImageDiscountToCredits(undiscountedCredits, percent);
   const billedUsd = undiscountedBilledUsd * imageDiscountFactor(percent);
   return {
     ...billing,
-    credits: usdToCredits(billedUsd),
+    credits,
     billedUsd,
     undiscountedBilledUsd,
     undiscountedCredits,
     discountPercent: percent,
-    discountUsd: Math.max(0, undiscountedBilledUsd - billedUsd),
+    discountUsd: Math.max(0, (undiscountedCredits - credits) * AI_CHAT_USD_PER_CREDIT),
     discountUntil: Math.max(0, Number(discountUntil || 0)),
   };
 }
@@ -381,8 +390,8 @@ export function estimateImageReservationCredits(prompt, sourceCount = 0, quality
     + estimatedImageTokens * GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION
     + outputTokens * GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION
   ) / 1_000_000;
-  const reservedUsd = baseUsd * RESERVE_SAFETY_MULTIPLIER * (1 + IMAGE_MARKUP_RATE) * imageDiscountFactor(discountPercent);
-  return usdToCredits(reservedUsd);
+  const undiscountedReserveCredits = usdToCredits(baseUsd * RESERVE_SAFETY_MULTIPLIER * (1 + IMAGE_MARKUP_RATE));
+  return applyImageDiscountToCredits(undiscountedReserveCredits, discountPercent);
 }
 
 function normalizeImageDiscountPercent(value) {
@@ -393,6 +402,13 @@ function normalizeImageDiscountPercent(value) {
 
 function imageDiscountFactor(percent) {
   return (100 - normalizeImageDiscountPercent(percent)) / 100;
+}
+
+function applyImageDiscountToCredits(credits, discountPercent = 0) {
+  const amount = Math.max(1, Math.ceil(Number(credits || 0)));
+  const percent = normalizeImageDiscountPercent(discountPercent);
+  if (percent <= 0) return amount;
+  return Math.max(1, Math.floor((amount * (100 - percent)) / 100));
 }
 
 async function requestOpenAiImage(env, prompt, sources, size, quality) {
