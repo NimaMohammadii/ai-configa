@@ -10,7 +10,7 @@ import { APP_MODES, getState, normalizeAppMode, setAppMode } from "../state.js";
 import { editMessage } from "../telegram-actions.js";
 import { tgForm, tgJson } from "../telegram-api.js";
 import { startText, userMainKeyboard } from "../ui.js";
-import { dynamicPricingPayload, getCurrentImagePricingPayload, handleUsagePricedImageRequest, isUsagePricedImageRequest } from "../image-usage-pricing.js";
+import { dynamicPricingPayload, handleUsagePricedImageRequest, isUsagePricedImageRequest } from "../image-usage-pricing.js";
 import { PURCHASE_UI_CSS } from "./purchase-ui-styles.js";
 import { REFERRAL_UI_PATCH } from "./referral-ui.js";
 import { VOICE_INTRO_REFERRAL_UI_PATCH } from "./voice-intro-referral-ui.js";
@@ -300,12 +300,11 @@ async function enhanceSession(response, request, env, isFirstSession = false) {
   const data = await response.json().catch(() => null);
   if (!data || typeof data !== "object" || data.locked) return json(data || {}, response.status);
 
-  let imagePricing = dynamicPricingPayload(0);
-  try {
-    imagePricing = await getCurrentImagePricingPayload(env, 0);
-  } catch (error) {
-    console.error("mini app image pricing lookup failed", error?.message || error);
-  }
+  const currentImagePricing = data.imagePricing && typeof data.imagePricing === "object" ? data.imagePricing : {};
+  const imagePricing = dynamicPricingPayload(0, {
+    discountPercent: currentImagePricing.discountEnabled ? currentImagePricing.discountPercent : 0,
+    discountUntil: currentImagePricing.discountUntil || 0,
+  });
 
   let appMode = "tts";
   let appModeLocks = {};
