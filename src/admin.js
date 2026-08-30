@@ -2367,7 +2367,7 @@ export async function moveImageExploreItemToPosition(env, itemId, position) {
 
 export async function getImageExploreItems(env) {
   const items = await readImageExploreItems(env);
-  return items.filter((item) => item.prompt || item.fileId || item.storageKey).sort((a, b) => a.order - b.order).slice(0, 50);
+  return items.filter((item) => item.prompt || item.fileId || item.storageKey).sort((a, b) => a.order - b.order).slice(0, 1000);
 }
 
 async function readImageExploreItems(env) {
