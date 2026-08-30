@@ -5,7 +5,7 @@ import { getUserVoices } from "./user-voices.js";
 import { VOICE_NAMES } from "./voices.js";
 
 export const TOMAN_PRICE_PER_1000 = 41000;
-export const TOMAN_MIN_PURCHASE_AMOUNT = 290000;
+export const TOMAN_MIN_PURCHASE_AMOUNT = 320000;
 export const TOMAN_MIN_PURCHASE_CREDITS = Math.ceil((TOMAN_MIN_PURCHASE_AMOUNT / TOMAN_PRICE_PER_1000) * 1000);
 export const MINI_APP_BANK_CARD_URL = "https://ai-configa.vexaagent.workers.dev/mini-app?section=bank_card";
 export const MINIMAL_MIC_ICON = "🪼";
