@@ -62,13 +62,6 @@ image = "docker.io/friedrichrehren/yt-dlp:2026.08.19"
 max_instances = 800
 instance_type = "basic"
 
-# Aparat is intentionally isolated from YouTube/PornHub and Instagram code/state.
-[[containers]]
-class_name = "VexaAparatContainer"
-image = "docker.io/friedrichrehren/yt-dlp:2026.08.19"
-max_instances = 200
-instance_type = "basic"
-
 # Realtime subtitle audio containers. Download burn-in rendering is isolated below
 # so a retry or a busy live subtitle session cannot consume the other workload's slots.
 [[containers]]
@@ -104,14 +97,6 @@ class_name = "VexaInstagramStoryContainer"
 [[durable_objects.bindings]]
 name = "VEXA_INSTAGRAM_STORY_PROGRESS"
 class_name = "VexaInstagramStoryProgressHub"
-
-[[durable_objects.bindings]]
-name = "VEXA_APARAT"
-class_name = "VexaAparatContainer"
-
-[[durable_objects.bindings]]
-name = "VEXA_APARAT_PROGRESS"
-class_name = "VexaAparatProgressHub"
 
 [[durable_objects.bindings]]
 name = "VEXA_SUBTITLES"
@@ -177,14 +162,6 @@ new_sqlite_classes = ["VexaInstagramStoryProgressHub"]
 [[migrations]]
 tag = "vexa-download-subtitle-container-v1"
 new_sqlite_classes = ["VexaDownloadSubtitleContainer"]
-
-[[migrations]]
-tag = "vexa-aparat-container-v1"
-new_sqlite_classes = ["VexaAparatContainer"]
-
-[[migrations]]
-tag = "vexa-aparat-progress-hub-v1"
-new_sqlite_classes = ["VexaAparatProgressHub"]
 
 [triggers]
 crons = ["* * * * *"]
