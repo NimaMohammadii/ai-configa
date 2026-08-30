@@ -14,19 +14,19 @@ import {
   isYouTubePlaybackRequest,
 } from "./mini-app/vexa-live/youtube-range-playback.js";
 import {
-  VexaDownloadProgressHub,
+  VexaDownloadProgressHub as VexaDownloadProgressHubBase,
   handleTrackedYouTubeDownloadRequest,
   isTrackedYouTubeDownloadRequest,
 } from "./mini-app/vexa-live/youtube-download-progress.js";
 import {
   VexaInstagramContainer,
-  VexaInstagramProgressHub,
+  VexaInstagramProgressHub as VexaInstagramProgressHubBase,
   handleInstagramDownloadRequest,
   isInstagramDownloadRequest,
 } from "./mini-app/vexa-live/instagram-download.js";
 import {
   VexaInstagramStoryContainer,
-  VexaInstagramStoryProgressHub,
+  VexaInstagramStoryProgressHub as VexaInstagramStoryProgressHubBase,
   handleInstagramStoryDownloadRequest,
   isInstagramStoryDownloadRequest,
 } from "./mini-app/vexa-live/instagram-story-download.js";
@@ -64,6 +64,57 @@ const SUBTITLE_SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
 const INSTAGRAM_LOGIN_CALLBACK_PATH = "/api/instagram/login/callback";
 const VEXA_LEGAL_PATHS = new Set(["/privacy", "/data-deletion", "/terms"]);
 const DOWNLOAD_SUBTITLE_RENDERER_INSTANCES = 400;
+const DOWNLOAD_CANCELABLE_PATHS = new Set([
+  "/mini-app/live/api/youtube-download",
+  "/mini-app/live/api/instagram/download",
+  "/mini-app/live/api/instagram-story/download",
+]);
+const DOWNLOAD_CANCELABLE_PARAM = "vexaCancelable";
+const DOWNLOAD_CANCEL_REQUEST_PARAM = "vexaCancel";
+const DOWNLOAD_CANCEL_SIGNAL_PATH = "/download-cancel";
+const DOWNLOAD_CANCEL_WAIT_PATH = "/download-cancel-wait";
+const DOWNLOAD_CANCEL_FINISH_PATH = "/download-cancel-finish";
+const DOWNLOAD_CANCEL_STORAGE_KEY = "vexa_download_cancelled";
+
+function withDownloadCancelHub(Base) {
+  return class extends Base {
+    cancelWaiters = new Set();
+
+    async fetch(request) {
+      const url = new URL(request.url);
+      if (request.method === "POST" && url.pathname === DOWNLOAD_CANCEL_SIGNAL_PATH) {
+        await this.ctx.storage.put(DOWNLOAD_CANCEL_STORAGE_KEY, true);
+        this.resolveCancelWaiters(true);
+        return new Response(null, { status: 204 });
+      }
+      if (request.method === "GET" && url.pathname === DOWNLOAD_CANCEL_WAIT_PATH) {
+        const cancelled = await this.ctx.storage.get(DOWNLOAD_CANCEL_STORAGE_KEY);
+        if (cancelled) return new Response(null, { status: 200 });
+        return new Promise((resolve) => {
+          this.cancelWaiters.add(resolve);
+        });
+      }
+      if (request.method === "POST" && url.pathname === DOWNLOAD_CANCEL_FINISH_PATH) {
+        await this.ctx.storage.delete(DOWNLOAD_CANCEL_STORAGE_KEY).catch(() => null);
+        this.resolveCancelWaiters(false);
+        return new Response(null, { status: 204 });
+      }
+      return super.fetch(request);
+    }
+
+    resolveCancelWaiters(cancelled) {
+      const status = cancelled ? 200 : 204;
+      for (const resolve of this.cancelWaiters) {
+        try { resolve(new Response(null, { status })); } catch (error) {}
+      }
+      this.cancelWaiters.clear();
+    }
+  };
+}
+
+class VexaDownloadProgressHub extends withDownloadCancelHub(VexaDownloadProgressHubBase) {}
+class VexaInstagramProgressHub extends withDownloadCancelHub(VexaInstagramProgressHubBase) {}
+class VexaInstagramStoryProgressHub extends withDownloadCancelHub(VexaInstagramStoryProgressHubBase) {}
 
 class VexaSubtitleContainer extends VexaSubtitleContainerBase {
   constructor(ctx, env) {
@@ -117,6 +168,9 @@ export default {
   async fetch(request, env, ctx) {
     try {
       const path = new URL(request.url).pathname;
+      if (isDownloadCancelControlRequest(request)) {
+        return handleDownloadCancelControl(request, env, ctx);
+      }
       if (request.method === "GET" && VEXA_LEGAL_PATHS.has(path)) {
         return vexaLegalPage(path);
       }
@@ -135,7 +189,8 @@ export default {
         return handleVexaLivePersistenceRequest(request);
       }
       if (isVexaDownloadControllerRequest(request)) {
-        return handleVexaDownloadControllerRequest(request, env, ctx);
+        const response = await handleVexaDownloadControllerRequest(request, env, ctx);
+        return wrapCancelableDownloadResponse(request, response, env);
       }
       if (path === SUBTITLE_SOURCE_PATH && (request.method === "GET" || request.method === "HEAD")) {
         return handleDownloadSubtitlesRequest(request, env, ctx, {});
@@ -147,13 +202,16 @@ export default {
         return handleVexaCustomPlayerRequest(request);
       }
       if (isInstagramStoryDownloadRequest(request)) {
-        return handleInstagramStoryDownloadRequest(request, env, ctx);
+        const response = await handleInstagramStoryDownloadRequest(request, env, ctx);
+        return wrapCancelableDownloadResponse(request, response, env);
       }
       if (isInstagramDownloadRequest(request)) {
-        return handleInstagramDownloadRequest(request, env, ctx);
+        const response = await handleInstagramDownloadRequest(request, env, ctx);
+        return wrapCancelableDownloadResponse(request, response, env);
       }
       if (isTrackedYouTubeDownloadRequest(request)) {
-        return handleTrackedYouTubeDownloadRequest(request, env, ctx);
+        const response = await handleTrackedYouTubeDownloadRequest(request, env, ctx);
+        return wrapCancelableDownloadResponse(request, response, env);
       }
       if (isYouTubePlaybackRequest(request)) {
         return await handleYouTubePlaybackRequest(request, env, ctx);
@@ -175,6 +233,135 @@ export default {
     }
   },
 };
+
+function isDownloadCancelControlRequest(request) {
+  const url = new URL(request.url);
+  return request.method === "POST" &&
+    DOWNLOAD_CANCELABLE_PATHS.has(url.pathname) &&
+    url.searchParams.get(DOWNLOAD_CANCELABLE_PARAM) === "1" &&
+    url.searchParams.get(DOWNLOAD_CANCEL_REQUEST_PARAM) === "1";
+}
+
+async function handleDownloadCancelControl(request, env, ctx) {
+  const url = new URL(request.url);
+  const session = cleanDownloadSession(url.searchParams.get("session"));
+  const context = downloadCancelContext(url.pathname, env);
+  if (!session || !context?.binding) return json({ error: "Download session is invalid" }, 400);
+
+  const validationUrl = new URL(url.href);
+  validationUrl.searchParams.delete(DOWNLOAD_CANCELABLE_PARAM);
+  validationUrl.searchParams.delete(DOWNLOAD_CANCEL_REQUEST_PARAM);
+  const validationRequest = new Request(validationUrl.href, { method: "HEAD", headers: request.headers });
+  let validationResponse;
+  if (url.pathname === "/mini-app/live/api/instagram-story/download") {
+    validationResponse = await handleInstagramStoryDownloadRequest(validationRequest, env, ctx);
+  } else if (url.pathname === "/mini-app/live/api/instagram/download") {
+    validationResponse = await handleInstagramDownloadRequest(validationRequest, env, ctx);
+  } else {
+    validationResponse = await handleVexaDownloadControllerRequest(validationRequest, env, ctx);
+  }
+  if (!validationResponse?.ok) {
+    const detail = await validationResponse?.text?.().catch(() => "");
+    return json({ error: detail || "Download session is unavailable" }, validationResponse?.status || 410);
+  }
+
+  const id = context.binding.idFromName(session);
+  const stub = context.binding.get(id);
+  const response = await stub.fetch(new Request("https://" + context.host + DOWNLOAD_CANCEL_SIGNAL_PATH, {
+    method: "POST",
+  }));
+  if (!response.ok) return json({ error: "Could not cancel download" }, 502);
+  return json({ ok: true });
+}
+
+async function wrapCancelableDownloadResponse(request, response, env) {
+  if (!response?.ok || !response.body || request.method !== "GET") return response;
+  const url = new URL(request.url);
+  if (
+    !DOWNLOAD_CANCELABLE_PATHS.has(url.pathname) ||
+    url.searchParams.get(DOWNLOAD_CANCELABLE_PARAM) !== "1"
+  ) return response;
+  const session = cleanDownloadSession(url.searchParams.get("session"));
+  const context = downloadCancelContext(url.pathname, env);
+  if (!session || !context?.binding) return response;
+
+  const id = context.binding.idFromName(session);
+  const stub = context.binding.get(id);
+  const reader = response.body.getReader();
+  let finished = false;
+  const cancelSignal = stub.fetch(new Request("https://" + context.host + DOWNLOAD_CANCEL_WAIT_PATH))
+    .then((result) => result.status === 200 ? true : new Promise(() => {}))
+    .catch(() => new Promise(() => {}));
+
+  const finishCancelWatch = async () => {
+    await stub.fetch(new Request("https://" + context.host + DOWNLOAD_CANCEL_FINISH_PATH, {
+      method: "POST",
+    })).catch(() => null);
+  };
+
+  const body = new ReadableStream({
+    async pull(controller) {
+      if (finished) return;
+      try {
+        const outcome = await Promise.race([
+          reader.read().then((value) => ({ type: "read", value })),
+          cancelSignal.then(() => ({ type: "cancel" })),
+        ]);
+        if (outcome.type === "cancel") {
+          finished = true;
+          try { await reader.cancel("user_cancelled"); } catch (error) {}
+          await finishCancelWatch();
+          controller.error(new Error("Download cancelled"));
+          return;
+        }
+        const next = outcome.value;
+        if (next.done) {
+          finished = true;
+          await finishCancelWatch();
+          controller.close();
+          return;
+        }
+        if (next.value?.byteLength) controller.enqueue(next.value);
+      } catch (error) {
+        if (!finished) {
+          finished = true;
+          await finishCancelWatch();
+        }
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      if (finished) return;
+      finished = true;
+      try { await reader.cancel(reason); } catch (error) {}
+      await finishCancelWatch();
+    },
+  });
+
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: new Headers(response.headers),
+  });
+}
+
+function downloadCancelContext(path, env) {
+  if (path === "/mini-app/live/api/instagram-story/download") {
+    return { binding: env.VEXA_INSTAGRAM_STORY_PROGRESS, host: "vexa-instagram-story-progress" };
+  }
+  if (path === "/mini-app/live/api/instagram/download") {
+    return { binding: env.VEXA_INSTAGRAM_PROGRESS, host: "vexa-instagram-progress" };
+  }
+  if (path === "/mini-app/live/api/youtube-download") {
+    return { binding: env.VEXA_DOWNLOAD_PROGRESS, host: "vexa-download-progress" };
+  }
+  return null;
+}
+
+function cleanDownloadSession(value) {
+  const session = String(value || "").trim();
+  return /^[A-Za-z0-9_-]{40,160}$/u.test(session) ? session : "";
+}
 
 function vexaLegalPage(path) {
   const pages = {
