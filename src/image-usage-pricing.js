@@ -308,14 +308,6 @@ export function dynamicPricingPayload(lastCost = 0, billing = null) {
   };
 }
 
-export async function getCurrentImagePricingPayload(env, lastCost = 0) {
-  const settings = await getImagePricingSettings(env);
-  return dynamicPricingPayload(lastCost, {
-    discountPercent: settings.discountEnabled ? settings.discountPercent : 0,
-    discountUntil: settings.discountUntil || 0,
-  });
-}
-
 export function calculateImageBilling(usage = {}) {
   const inputTokens = wholeTokens(usage?.input_tokens);
   const textInputTokens = wholeTokens(usage?.input_tokens_details?.text_tokens);
@@ -354,11 +346,12 @@ export function calculateImageBilling(usage = {}) {
 
 function applyImageDiscountToBilling(billing, discountPercent = 0, discountUntil = 0) {
   const percent = normalizeImageDiscountPercent(discountPercent);
-  const undiscountedBilledUsd = Math.max(0, Number(billing?.billedUsd || 0));
   const undiscountedCredits = Math.max(1, Math.ceil(Number(billing?.credits || 0)));
+  const undiscountedBilledUsd = undiscountedCredits * AI_CHAT_USD_PER_CREDIT;
   if (percent <= 0) {
     return {
       ...billing,
+      billedUsd: undiscountedBilledUsd,
       undiscountedBilledUsd,
       undiscountedCredits,
       discountPercent: 0,
@@ -367,7 +360,7 @@ function applyImageDiscountToBilling(billing, discountPercent = 0, discountUntil
     };
   }
   const credits = applyImageDiscountToCredits(undiscountedCredits, percent);
-  const billedUsd = undiscountedBilledUsd * imageDiscountFactor(percent);
+  const billedUsd = credits * AI_CHAT_USD_PER_CREDIT;
   return {
     ...billing,
     credits,
@@ -375,7 +368,7 @@ function applyImageDiscountToBilling(billing, discountPercent = 0, discountUntil
     undiscountedBilledUsd,
     undiscountedCredits,
     discountPercent: percent,
-    discountUsd: Math.max(0, (undiscountedCredits - credits) * AI_CHAT_USD_PER_CREDIT),
+    discountUsd: Math.max(0, undiscountedBilledUsd - billedUsd),
     discountUntil: Math.max(0, Number(discountUntil || 0)),
   };
 }
@@ -398,10 +391,6 @@ function normalizeImageDiscountPercent(value) {
   const percent = Number.parseInt(String(value || "0"), 10);
   if (!Number.isFinite(percent) || percent <= 0) return 0;
   return Math.min(MAX_IMAGE_DISCOUNT_PERCENT, percent);
-}
-
-function imageDiscountFactor(percent) {
-  return (100 - normalizeImageDiscountPercent(percent)) / 100;
 }
 
 function applyImageDiscountToCredits(credits, discountPercent = 0) {
