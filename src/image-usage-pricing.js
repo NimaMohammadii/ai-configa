@@ -1,6 +1,6 @@
-import { getImageExploreItems, getMiniAppAccessSettings, isAdmin } from "./admin.js";
+import { getImageExploreItems, getImagePricingSettings, getMiniAppAccessSettings, isAdmin } from "./admin.js";
 import { AI_CHAT_USD_PER_CREDIT } from "./ai-chat-model.js";
-import { ensureBalanceRow, ensureCreditUsageLogTable, getBalance } from "./credits.js";
+import { ensureBalanceRow, ensureCreditUsageLogTable, formatUsdChargeFromCredits, getBalance } from "./credits.js";
 import { handleExploreMediaRequest } from "./explore-media.js";
 import { saveImageHistory } from "./image-history.js";
 import { authenticateMiniAppPayload } from "./mini-app/auth.js";
@@ -14,6 +14,7 @@ const GPT_IMAGE_TEXT_INPUT_USD_PER_MILLION = 5;
 const GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION = 8;
 const GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION = 30;
 const IMAGE_MARKUP_RATE = 0.15;
+const MAX_IMAGE_DISCOUNT_PERCENT = 99;
 const MAX_SOURCE_IMAGES = 4;
 const MAX_SOURCE_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_SOURCE_BYTES = 24 * 1024 * 1024;
@@ -161,7 +162,7 @@ export async function handleUsagePricedImageRequest(request, env) {
       size: generated.size,
       quality: generated.quality,
       cost: generated.billing.credits,
-      pricing: dynamicPricingPayload(generated.billing.credits),
+      pricing: dynamicPricingPayload(generated.billing.credits, generated.billing),
       billing: generated.billing,
       balance: generated.balance,
       historyId: history?.id || null,
@@ -198,7 +199,9 @@ export async function generateUsagePricedImage(env, options = {}) {
   const quality = normalizeImageQuality(options.quality);
   const kind = sources.length ? "edit" : "generate";
   const metadata = options.metadata && typeof options.metadata === "object" ? options.metadata : {};
-  const reserveCredits = estimateImageReservationCredits(prompt, sources.length, quality);
+  const pricing = await getImagePricingSettings(env);
+  const discountPercent = pricing.discountEnabled ? normalizeImageDiscountPercent(pricing.discountPercent) : 0;
+  const reserveCredits = estimateImageReservationCredits(prompt, sources.length, quality, discountPercent);
   let reservation = null;
   let settled = false;
 
@@ -209,11 +212,13 @@ export async function generateUsagePricedImage(env, options = {}) {
       size,
       quality,
       sourceCount: sources.length,
+      discountPercent,
+      discountUntil: pricing.discountUntil || 0,
       ...metadata,
     });
     if (!reservation.ok) {
       const error = publicError(
-        "Not enough credits · Keep at least " + reserveCredits + " credits available for this image · final charge is based on actual API usage",
+        "Not enough USD balance · Keep at least " + formatUsdChargeFromCredits(reserveCredits) + " available for this image · final charge is based on actual API usage",
         402,
       );
       error.balance = reservation.balance;
@@ -223,7 +228,11 @@ export async function generateUsagePricedImage(env, options = {}) {
     }
 
     const upstream = await requestOpenAiImage(env, prompt, sources, size, quality);
-    const billing = calculateImageBilling(upstream.usage);
+    const billing = applyImageDiscountToBilling(
+      calculateImageBilling(upstream.usage),
+      discountPercent,
+      pricing.discountUntil,
+    );
     const usageMetadata = {
       model: GPT_IMAGE_MODEL,
       kind,
@@ -232,7 +241,10 @@ export async function generateUsagePricedImage(env, options = {}) {
       ...metadata,
       markupRate: billing.markupRate,
       baseUsd: billing.baseUsd,
+      undiscountedBilledUsd: billing.undiscountedBilledUsd,
       billedUsd: billing.billedUsd,
+      discountPercent: billing.discountPercent,
+      discountUsd: billing.discountUsd,
       inputTokens: billing.inputTokens,
       textInputTokens: billing.textInputTokens,
       imageInputTokens: billing.imageInputTokens,
@@ -250,7 +262,7 @@ export async function generateUsagePricedImage(env, options = {}) {
       });
       reservation = null;
       const error = publicError(
-        "Not enough credits · This image needs " + billing.credits + " credits · Your temporary credit hold was released",
+        "Not enough USD balance · This image needs " + formatUsdChargeFromCredits(billing.credits) + " · Your temporary balance hold was released",
         402,
       );
       error.balance = settlement.balance;
@@ -278,7 +290,8 @@ export async function generateUsagePricedImage(env, options = {}) {
   }
 }
 
-export function dynamicPricingPayload(lastCost = 0) {
+export function dynamicPricingPayload(lastCost = 0, billing = null) {
+  const discountPercent = normalizeImageDiscountPercent(billing?.discountPercent);
   return {
     mode: "api_usage",
     model: GPT_IMAGE_MODEL,
@@ -287,10 +300,10 @@ export function dynamicPricingPayload(lastCost = 0) {
     lastCost: Math.max(0, Math.floor(Number(lastCost || 0))),
     baseCost: 1,
     activeCost: 1,
-    discountEnabled: false,
+    discountEnabled: discountPercent > 0,
     discountCost: 0,
-    discountUntil: 0,
-    discountPercent: 0,
+    discountUntil: Math.max(0, Number(billing?.discountUntil || 0)),
+    discountPercent,
     serverNow: Math.floor(Date.now() / 1000),
   };
 }
@@ -331,7 +344,34 @@ export function calculateImageBilling(usage = {}) {
   };
 }
 
-export function estimateImageReservationCredits(prompt, sourceCount = 0, quality = GPT_IMAGE_QUALITY) {
+function applyImageDiscountToBilling(billing, discountPercent = 0, discountUntil = 0) {
+  const percent = normalizeImageDiscountPercent(discountPercent);
+  const undiscountedBilledUsd = Math.max(0, Number(billing?.billedUsd || 0));
+  const undiscountedCredits = Math.max(1, Math.ceil(Number(billing?.credits || 0)));
+  if (percent <= 0) {
+    return {
+      ...billing,
+      undiscountedBilledUsd,
+      undiscountedCredits,
+      discountPercent: 0,
+      discountUsd: 0,
+      discountUntil: 0,
+    };
+  }
+  const billedUsd = undiscountedBilledUsd * imageDiscountFactor(percent);
+  return {
+    ...billing,
+    credits: usdToCredits(billedUsd),
+    billedUsd,
+    undiscountedBilledUsd,
+    undiscountedCredits,
+    discountPercent: percent,
+    discountUsd: Math.max(0, undiscountedBilledUsd - billedUsd),
+    discountUntil: Math.max(0, Number(discountUntil || 0)),
+  };
+}
+
+export function estimateImageReservationCredits(prompt, sourceCount = 0, quality = GPT_IMAGE_QUALITY, discountPercent = 0) {
   const characters = Math.max(1, Array.from(String(prompt || "")).length);
   const estimatedTextTokens = Math.max(32, characters * RESERVE_TEXT_TOKENS_PER_CHARACTER);
   const estimatedImageTokens = Math.max(0, Math.floor(Number(sourceCount || 0))) * RESERVE_IMAGE_INPUT_TOKENS_PER_SOURCE;
@@ -341,8 +381,18 @@ export function estimateImageReservationCredits(prompt, sourceCount = 0, quality
     + estimatedImageTokens * GPT_IMAGE_IMAGE_INPUT_USD_PER_MILLION
     + outputTokens * GPT_IMAGE_IMAGE_OUTPUT_USD_PER_MILLION
   ) / 1_000_000;
-  const reservedUsd = baseUsd * RESERVE_SAFETY_MULTIPLIER * (1 + IMAGE_MARKUP_RATE);
+  const reservedUsd = baseUsd * RESERVE_SAFETY_MULTIPLIER * (1 + IMAGE_MARKUP_RATE) * imageDiscountFactor(discountPercent);
   return usdToCredits(reservedUsd);
+}
+
+function normalizeImageDiscountPercent(value) {
+  const percent = Number.parseInt(String(value || "0"), 10);
+  if (!Number.isFinite(percent) || percent <= 0) return 0;
+  return Math.min(MAX_IMAGE_DISCOUNT_PERCENT, percent);
+}
+
+function imageDiscountFactor(percent) {
+  return (100 - normalizeImageDiscountPercent(percent)) / 100;
 }
 
 async function requestOpenAiImage(env, prompt, sources, size, quality) {
