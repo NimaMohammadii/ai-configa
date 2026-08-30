@@ -31,7 +31,6 @@ import {
   adminImageUsersText,
   adminImagePricingKeyboard,
   adminImagePricingText,
-  adminImagePricePromptText,
   adminImageDiscountPromptText,
   adminImageExploreKeyboard,
   adminImageExplorePromptText,
@@ -119,7 +118,6 @@ import {
   getVexaLiveDownloadRows,
   getVexaLiveDownloadAttempt,
   buildVexaLiveDownloadLinksFile,
-  setImageCreditCost,
   setImageDiscountOffer,
   setImageDiscountEnabled,
   addImageExplorePrompt,
@@ -705,14 +703,6 @@ export async function handleCallback(query, env) {
     await answerCallback(env, query.id);
     const settings = await getImagePricingSettings(env);
     await editCurrentMenu(env, chatId, userId, messageId, await adminImagePricingText(env), adminImagePricingKeyboard(settings));
-    return;
-  }
-
-  if (data === "admin_image_price_prompt") {
-    if (!(await isAdmin(env, userId))) return denyCallback(env, query.id, state);
-    await answerCallback(env, query.id);
-    await setAdminAction(env, userId, "image_base_price", { chatId, messageId });
-    await editCurrentMenu(env, chatId, userId, messageId, adminImagePricePromptText(), adminCancelKeyboard("admin_image_pricing"));
     return;
   }
 
@@ -1729,32 +1719,18 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     return true;
   }
 
-  if (action.action === "image_base_price") {
-    const credits = Number.parseInt(String(text).trim(), 10);
-    if (!Number.isFinite(credits) || credits <= 0) {
-      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImagePricePromptText() + "\n\nInvalid amount. Send a positive number like <code>188</code>.", adminCancelKeyboard("admin_image_pricing"));
-      return true;
-    }
-    await setImageCreditCost(env, credits);
-    await clearAdminAction(env, adminId);
-    const settings = await getImagePricingSettings(env);
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImagePricingText(env)) + "\n\n✅ Image base price updated.", adminImagePricingKeyboard(settings));
-    return true;
-  }
-
   if (action.action === "image_discount_offer") {
     const parts = String(text).trim().split(/\s+/);
-    const discountCost = Number.parseInt(parts[0], 10);
+    const discountPercent = Number.parseInt(parts[0], 10);
     const minutes = parts[1] == null ? 0 : Number.parseInt(parts[1], 10);
-    const current = await getImagePricingSettings(env);
-    if (!Number.isFinite(discountCost) || discountCost <= 0 || discountCost >= current.baseCost || !Number.isFinite(minutes) || minutes < 0) {
-      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageDiscountPromptText() + "\n\nInvalid offer. Send a lower price like <code>99</code>, or add positive minutes like <code>99 30</code>.", adminCancelKeyboard("admin_image_pricing"));
+    if (!Number.isFinite(discountPercent) || discountPercent < 1 || discountPercent > 99 || !Number.isFinite(minutes) || minutes < 0) {
+      await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), adminImageDiscountPromptText() + "\n\nInvalid discount. Send a percentage from <code>1</code> to <code>99</code>, like <code>20</code>, or add minutes like <code>20 30</code>.", adminCancelKeyboard("admin_image_pricing"));
       return true;
     }
-    await setImageDiscountOffer(env, discountCost, minutes);
+    await setImageDiscountOffer(env, discountPercent, minutes);
     await clearAdminAction(env, adminId);
     const settings = await getImagePricingSettings(env);
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImagePricingText(env)) + "\n\n✅ Discount started" + (minutes > 0 ? " for " + minutes + " minutes." : " without a timer."), adminImagePricingKeyboard(settings));
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminImagePricingText(env)) + "\n\n✅ " + discountPercent + "% image discount started" + (minutes > 0 ? " for " + minutes + " minutes." : " without a timer."), adminImagePricingKeyboard(settings));
     return true;
   }
 
@@ -1797,7 +1773,7 @@ async function handleAdminPendingInput(env, chatId, adminId, inputMessageId, tex
     const lockedUntil = lockedFrom + (minutes * 60);
     await setAiChatAccessSettings(env, true, lockedUntil, lockedFrom);
     await clearAdminAction(env, adminId);
-    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminMiniAppAccessText(env)) + "\n\n✅ AI Chat locked for " + minutes + " minutes.", await adminMiniAppAccessKeyboard(env));
+    await editCurrentMenu(env, action.chat_id || chatId, adminId, Number(action.message_id), (await adminAiChatAccessText(env)) + "\n\n✅ AI Chat locked for " + minutes + " minutes.", await adminMiniAppAccessKeyboard(env));
     return true;
   }
 
