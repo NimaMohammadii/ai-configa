@@ -64,7 +64,6 @@ const SUBTITLE_SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
 const INSTAGRAM_LOGIN_CALLBACK_PATH = "/api/instagram/login/callback";
 const VEXA_LEGAL_PATHS = new Set(["/privacy", "/data-deletion", "/terms"]);
 const DOWNLOAD_SUBTITLE_RENDERER_INSTANCES = 400;
-const VEXA_MEDIA_POOL_INSTANCES = 2000;
 
 class VexaSubtitleContainer extends VexaSubtitleContainerBase {
   constructor(ctx, env) {
@@ -116,7 +115,6 @@ export {
 export default {
   ...worker,
   async fetch(request, env, ctx) {
-    const mediaEnv = withVexaMediaPool(env);
     try {
       const path = new URL(request.url).pathname;
       if (request.method === "GET" && VEXA_LEGAL_PATHS.has(path)) {
@@ -155,16 +153,16 @@ export default {
         return handleInstagramDownloadRequest(request, env, ctx);
       }
       if (isTrackedYouTubeDownloadRequest(request)) {
-        return handleTrackedYouTubeDownloadRequest(request, mediaEnv, ctx);
+        return handleTrackedYouTubeDownloadRequest(request, env, ctx);
       }
       if (isYouTubePlaybackRequest(request)) {
-        return await handleYouTubePlaybackRequest(request, mediaEnv, ctx);
+        return await handleYouTubePlaybackRequest(request, env, ctx);
       }
       if (isYouTubeDownloadRequest(request)) {
-        return await handleYouTubeDownloadRequest(request, mediaEnv, ctx);
+        return await handleYouTubeDownloadRequest(request, env, ctx);
       }
 
-      let response = await worker.fetch(request, mediaEnv, ctx);
+      let response = await worker.fetch(request, env, ctx);
       response = await appendMiniAppVoiceTransformRuntime(request, response);
       response = await appendVexaLiveLandingRuntime(request, response);
       response = await appendVexaDownloadControllerRuntime(request, response);
@@ -177,41 +175,6 @@ export default {
     }
   },
 };
-
-function withVexaMediaPool(env) {
-  const binding = env?.VEXA_MEDIA;
-  if (!binding) return env;
-
-  const pooledBinding = new Proxy(binding, {
-    get(target, property) {
-      if (property === "idFromName") {
-        return (name) => {
-          const slot = vexaMediaPoolSlot(name);
-          return target.idFromName("instance-" + slot);
-        };
-      }
-      const value = Reflect.get(target, property, target);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
-
-  return new Proxy(env, {
-    get(target, property) {
-      if (property === "VEXA_MEDIA") return pooledBinding;
-      return Reflect.get(target, property, target);
-    },
-  });
-}
-
-function vexaMediaPoolSlot(name) {
-  const value = String(name || "cf-singleton-container");
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0) % VEXA_MEDIA_POOL_INSTANCES;
-}
 
 function vexaLegalPage(path) {
   const pages = {
