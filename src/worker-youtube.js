@@ -63,8 +63,8 @@ import {
 const SUBTITLE_SOURCE_PATH = "/mini-app/live/api/download-subtitles/source";
 const INSTAGRAM_LOGIN_CALLBACK_PATH = "/api/instagram/login/callback";
 const VEXA_LEGAL_PATHS = new Set(["/privacy", "/data-deletion", "/terms"]);
-const DOWNLOAD_SUBTITLE_RENDERER_INSTANCES = 3;
-const VEXA_MEDIA_POOL_INSTANCES = 3;
+const DOWNLOAD_SUBTITLE_RENDERER_INSTANCES = 5000;
+const VEXA_MEDIA_POOL_INSTANCES = 5000;
 
 class VexaSubtitleContainer extends VexaSubtitleContainerBase {
   constructor(ctx, env) {
