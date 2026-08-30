@@ -10,7 +10,7 @@ import { APP_MODES, getState, normalizeAppMode, setAppMode } from "../state.js";
 import { editMessage } from "../telegram-actions.js";
 import { tgForm, tgJson } from "../telegram-api.js";
 import { startText, userMainKeyboard } from "../ui.js";
-import { dynamicPricingPayload, handleUsagePricedImageRequest, isUsagePricedImageRequest } from "../image-usage-pricing.js";
+import { handleUsagePricedImageRequest, isUsagePricedImageRequest } from "../image-usage-pricing.js";
 import { PURCHASE_UI_CSS } from "./purchase-ui-styles.js";
 import { REFERRAL_UI_PATCH } from "./referral-ui.js";
 import { VOICE_INTRO_REFERRAL_UI_PATCH } from "./voice-intro-referral-ui.js";
@@ -300,12 +300,6 @@ async function enhanceSession(response, request, env, isFirstSession = false) {
   const data = await response.json().catch(() => null);
   if (!data || typeof data !== "object" || data.locked) return json(data || {}, response.status);
 
-  const currentImagePricing = data.imagePricing && typeof data.imagePricing === "object" ? data.imagePricing : {};
-  const imagePricing = dynamicPricingPayload(0, {
-    discountPercent: currentImagePricing.discountEnabled ? currentImagePricing.discountPercent : 0,
-    discountUntil: currentImagePricing.discountUntil || 0,
-  });
-
   let appMode = "tts";
   let appModeLocks = {};
   try {
@@ -324,7 +318,7 @@ async function enhanceSession(response, request, env, isFirstSession = false) {
     console.error("mini app mode session lookup failed", error?.message || error);
   }
 
-  return json({ ...data, appMode, appModeLocks, defaultSection: appMode, imagePricing }, response.status);
+  return json({ ...data, appMode, appModeLocks, defaultSection: appMode }, response.status);
 }
 
 async function registerReferralBeforeFirstSession(request, env) {
@@ -357,7 +351,6 @@ async function injectMiniAppUi(response, includeHistoryIdentity) {
   let source = await response.text();
   if (includeHistoryIdentity) {
     source = applyPrimaryAppStartup(source);
-    source = applyUsagePricedImageUi(source);
   } else {
     source = applyAiChatUsdBalanceUi(source);
     source = applyAiChatPrimaryNavigation(source);
@@ -414,37 +407,6 @@ function applyAiChatPrimaryNavigation(source) {
     return source;
   }
   return source.replace(before, () => after);
-}
-
-function applyUsagePricedImageUi(source) {
-  const replacements = [
-    [
-      "var imagePricing={baseCost:188,activeCost:188,discountEnabled:false,discountCost:0,discountUntil:0,serverNow:Math.floor(Date.now()/1000),discountPercent:0};",
-      "var imagePricing={mode:'api_usage',baseCost:1,activeCost:1,lastCost:0,markupRate:.15,discountEnabled:false,discountCost:0,discountUntil:0,serverNow:Math.floor(Date.now()/1000),discountPercent:0};",
-    ],
-    [
-      "function updateImagePricing(data){if(data){imagePricing={baseCost:Number(data.baseCost)||188,activeCost:Number(data.activeCost)||Number(data.baseCost)||188,discountEnabled:!!data.discountEnabled,discountCost:Number(data.discountCost)||0,discountUntil:Number(data.discountUntil)||0,serverNow:Number(data.serverNow)||Math.floor(Date.now()/1000),discountPercent:Number(data.discountPercent)||0};imageOfferClockOffset=imagePricing.serverNow-Date.now()/1000}updateImageCreditNote();syncImageOfferTimer()}",
-      "function updateImagePricing(data){if(data&&String(data.mode||'')==='api_usage'){imagePricing={mode:'api_usage',baseCost:1,activeCost:1,lastCost:Math.max(0,Number(data.lastCost||data.cost)||0),markupRate:Number(data.markupRate)||.15,discountEnabled:!!data.discountEnabled,discountCost:0,discountUntil:Math.max(0,Number(data.discountUntil)||0),serverNow:Number(data.serverNow)||Math.floor(Date.now()/1000),discountPercent:Math.max(0,Math.min(99,Number(data.discountPercent)||0))};imageOfferClockOffset=imagePricing.serverNow-Date.now()/1000}else if(!imagePricing||imagePricing.mode!=='api_usage'){imagePricing={mode:'api_usage',baseCost:1,activeCost:1,lastCost:0,markupRate:.15,discountEnabled:false,discountCost:0,discountUntil:0,serverNow:Math.floor(Date.now()/1000),discountPercent:0}}updateImageCreditNote();if(imagePricing.discountEnabled&&Number(imagePricing.discountUntil)>0)syncImageOfferTimer();else stopImageOfferTimer()}",
-    ],
-    [
-      "function updateImageCreditNote(){var node=q('imageCreditNote');if(!node)return;node.dir='ltr';var base=Number(imagePricing.baseCost)||188,active=Number(imagePricing.activeCost)||base,remaining=imageOfferRemaining();if(imagePricing.discountEnabled&&(Number(imagePricing.discountUntil)<=0||remaining>0)&&active<base){var percent=Number(imagePricing.discountPercent)||Math.round((base-active)/base*100),countdown=Number(imagePricing.discountUntil)>0?'<span class=\"discount-countdown\"><small>Ends in</small><strong>'+formatOfferTime(remaining)+'</strong></span>':'';node.classList.add('has-discount');node.innerHTML='<span class=\"discount-badge\">LIMITED RATE</span><span class=\"old-price\">'+base.toLocaleString('en-US')+'</span><strong>'+formatBalanceUsd(active)+'</strong><span class=\"discount-percent\">-'+percent+'%</span>'+countdown}else{if(imagePricing.discountEnabled&&Number(imagePricing.discountUntil)>0&&remaining<=0)endImageOffer();node.classList.remove('has-discount');node.textContent=formatBalanceUsd(base)+' per image'}}",
-      "function updateImageCreditNote(){var node=q('imageCreditNote');if(!node)return;node.dir='ltr';var percent=Math.max(0,Math.min(99,Math.floor(Number(imagePricing&&imagePricing.discountPercent)||0))),until=Math.max(0,Number(imagePricing&&imagePricing.discountUntil)||0),remaining=imageOfferRemaining();if(imagePricing&&imagePricing.discountEnabled&&percent>0&&(until<=0||remaining>0)){node.classList.add('has-discount');node.textContent=percent+'% OFF';return}if(imagePricing&&imagePricing.discountEnabled&&until>0&&remaining<=0){imagePricing.discountEnabled=false;imagePricing.discountPercent=0;stopImageOfferTimer()}node.classList.remove('has-discount');var last=Math.max(0,Number(imagePricing&&imagePricing.lastCost)||0);node.textContent=last?formatBalanceUsd(last)+' used':''}",
-    ],
-    [
-      "var imageCost=Number(imagePricing.activeCost)||188;if(availableCredits!==null&&availableCredits<imageCost)return toast('Not enough USD balance · Image creation costs '+formatBalanceUsd(imageCost));",
-      "if(availableCredits!==null&&availableCredits<1)return toast('Not enough USD balance');",
-    ],
-  ];
-
-  let patched = source;
-  for (const [before, after] of replacements) {
-    if (!patched.includes(before)) {
-      console.error("usage-priced image UI patch target missing");
-      continue;
-    }
-    patched = patched.replace(before, after);
-  }
-  return patched;
 }
 
 function stripLegacyTtsKeyboardGeometry(source) {
