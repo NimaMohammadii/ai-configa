@@ -31,6 +31,13 @@ import {
   isInstagramStoryDownloadRequest,
 } from "./mini-app/vexa-live/instagram-story-download.js";
 import {
+  VexaAparatContainer,
+  VexaAparatProgressHub,
+  appendAparatDownloadRuntime,
+  handleAparatDownloadRequest,
+  isAparatDownloadRequest,
+} from "./mini-app/vexa-live/aparat-download.js";
+import {
   appendVexaCustomPlayerRuntime,
   handleVexaCustomPlayerRequest,
   isVexaCustomPlayerRequest,
@@ -110,6 +117,8 @@ export {
   VexaInstagramProgressHub,
   VexaInstagramStoryContainer,
   VexaInstagramStoryProgressHub,
+  VexaAparatContainer,
+  VexaAparatProgressHub,
 };
 
 export default {
@@ -146,6 +155,9 @@ export default {
       if (isVexaCustomPlayerRequest(request)) {
         return handleVexaCustomPlayerRequest(request);
       }
+      if (isAparatDownloadRequest(request)) {
+        return handleAparatDownloadRequest(request, env, ctx);
+      }
       if (isInstagramStoryDownloadRequest(request)) {
         return handleInstagramStoryDownloadRequest(request, env, ctx);
       }
@@ -166,6 +178,7 @@ export default {
       response = await appendMiniAppVoiceTransformRuntime(request, response);
       response = await appendVexaLiveLandingRuntime(request, response);
       response = await appendVexaDownloadControllerRuntime(request, response);
+      response = await appendAparatDownloadRuntime(request, response);
       response = await appendVexaCustomPlayerRuntime(request, response);
       response = await appendVexaLiveSubtitlesRuntime(request, response);
       return response;
