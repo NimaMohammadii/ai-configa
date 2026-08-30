@@ -333,29 +333,31 @@ export async function adminAiChatModelKeyboard(env) {
 
 
 export const DEFAULT_IMAGE_CREDIT_COST = 188;
+const IMAGE_DISCOUNT_MAX_PERCENT = 99;
 
 export async function getImagePricingSettings(env) {
   requireDb(env);
   const rows = await env.DB.prepare(
-    "SELECT key, value FROM app_settings WHERE key IN ('image_credit_cost', 'image_discount_enabled', 'image_discount_cost', 'image_discount_until')"
+    "SELECT key, value FROM app_settings WHERE key IN ('image_discount_enabled', 'image_discount_percent', 'image_discount_until')"
   ).all().catch(() => ({ results: [] }));
   const values = Object.fromEntries((rows?.results || []).map((row) => [row.key, row.value]));
-  const baseCost = parsePositiveInt(values.image_credit_cost, DEFAULT_IMAGE_CREDIT_COST);
-  const discountCost = parsePositiveInt(values.image_discount_cost, 0);
+  const discountPercent = Math.min(IMAGE_DISCOUNT_MAX_PERCENT, parsePositiveInt(values.image_discount_percent, 0));
   const discountUntil = parsePositiveInt(values.image_discount_until, 0);
   const now = Math.floor(Date.now() / 1000);
-  const enabled = values.image_discount_enabled === "1" && discountCost > 0 && discountCost < baseCost && (discountUntil === 0 || discountUntil > now);
+  const enabled = values.image_discount_enabled === "1" && discountPercent > 0 && (discountUntil === 0 || discountUntil > now);
   if (values.image_discount_enabled === "1" && discountUntil > 0 && discountUntil <= now) {
     await setImageDiscountEnabled(env, false);
   }
   return {
-    baseCost,
-    activeCost: enabled ? discountCost : baseCost,
+    // Kept only for compatibility with the existing admin input handler.
+    // Image billing itself is dynamic and never uses these as a fixed price.
+    baseCost: 100,
+    activeCost: enabled ? Math.max(1, 100 - discountPercent) : 100,
     discountEnabled: enabled,
-    discountCost: enabled ? discountCost : 0,
+    discountCost: 0,
     discountUntil: enabled && discountUntil > now ? discountUntil : 0,
     serverNow: now,
-    discountPercent: enabled ? Math.max(1, Math.round((baseCost - discountCost) / baseCost * 100)) : 0,
+    discountPercent: enabled ? discountPercent : 0,
   };
 }
 
@@ -365,14 +367,14 @@ export async function setImageCreditCost(env, credits) {
   await setAppSetting(env, "image_credit_cost", String(value));
 }
 
-export async function setImageDiscountOffer(env, discountCost, minutes) {
-  const cost = Number.parseInt(discountCost, 10);
+export async function setImageDiscountOffer(env, discountPercent, minutes) {
+  const percent = Number.parseInt(discountPercent, 10);
   const duration = minutes == null || String(minutes).trim() === "" ? 0 : Number.parseInt(minutes, 10);
-  if (!Number.isFinite(cost) || cost <= 0) throw new Error("Discount cost must be a positive number");
+  if (!Number.isFinite(percent) || percent <= 0 || percent > IMAGE_DISCOUNT_MAX_PERCENT) throw new Error("Image discount must be between 1 and 99 percent");
   if (!Number.isFinite(duration) || duration < 0) throw new Error("Discount duration must be a positive number");
   const until = duration > 0 ? Math.floor(Date.now() / 1000) + duration * 60 : 0;
   await Promise.all([
-    setAppSetting(env, "image_discount_cost", String(cost)),
+    setAppSetting(env, "image_discount_percent", String(percent)),
     setAppSetting(env, "image_discount_until", String(until)),
     setAppSetting(env, "image_discount_enabled", "1"),
   ]);
@@ -385,10 +387,11 @@ export async function setImageDiscountEnabled(env, enabled) {
 export async function adminImagePricingText(env) {
   const settings = await getImagePricingSettings(env);
   const lines = [
-    "💸 <b>Image Credit Pricing</b>",
+    "💸 <b>Image Pricing</b>",
     "",
-    "Base price: <b>" + formatUsdChargeFromCredits(settings.baseCost) + "</b>",
-    "Active price: <b>" + formatUsdChargeFromCredits(settings.activeCost) + "</b>",
+    "Balance: <b>USD</b>",
+    "Pricing: <b>Actual API usage + 15% markup</b>",
+    "Base price: <b>Calculated automatically per image</b>",
   ];
   if (settings.discountEnabled) {
     lines.push("Discount: <b>ON</b> · <b>" + settings.discountPercent + "% OFF</b>");
@@ -397,14 +400,13 @@ export async function adminImagePricingText(env) {
   } else {
     lines.push("Discount: <b>OFF</b>");
   }
-  lines.push("", "Use Set Base Price for the normal image cost, or Start Discount with: <code>discount_price</code> or <code>discount_price minutes</code>.");
+  lines.push("", "The base price is not editable. Set a percentage discount and it will be applied automatically to each image's final USD charge.");
   return lines.join("\n");
 }
 
 export function adminImagePricingKeyboard(settings = null) {
   const rows = [
-    [{ text: "✏️ Set Base Price", callback_data: "admin_image_price_prompt" }],
-    [{ text: "🔥 Start Discount", callback_data: "admin_image_discount_prompt" }],
+    [{ text: "🔥 Set Discount %", callback_data: "admin_image_discount_prompt" }],
   ];
   if (settings?.discountEnabled) rows.push([{ text: "⛔ Cancel Discount", callback_data: "admin_image_discount_cancel" }]);
   rows.push([{ text: "← Back", callback_data: "admin_main" }]);
@@ -412,11 +414,11 @@ export function adminImagePricingKeyboard(settings = null) {
 }
 
 export function adminImagePricePromptText() {
-  return ["💸 <b>Set Image Base Price</b>", "", "Send the new positive credit cost per image.", "Example: <code>188</code>"].join("\n");
+  return ["💸 <b>Image Base Price</b>", "", "The base price is calculated automatically from actual API usage and cannot be changed."].join("\n");
 }
 
 export function adminImageDiscountPromptText() {
-  return ["🔥 <b>Start Image Discount</b>", "", "Send discount price, optionally followed by duration in minutes.", "Examples: <code>99</code> or <code>99 30</code>", "", "If you omit minutes, the discount stays active until you cancel it."].join("\n");
+  return ["🔥 <b>Set Image Discount</b>", "", "Send the discount percentage, optionally followed by duration in minutes.", "Examples: <code>20</code> or <code>20 30</code>", "Accepted range: <b>1–99%</b>.", "", "If you omit minutes, the discount stays active until you cancel it."].join("\n");
 }
 
 function parsePositiveInt(value, fallback) {
