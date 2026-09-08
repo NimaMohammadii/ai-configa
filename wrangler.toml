@@ -163,5 +163,21 @@ new_sqlite_classes = ["VexaInstagramStoryProgressHub"]
 tag = "vexa-download-subtitle-container-v1"
 new_sqlite_classes = ["VexaDownloadSubtitleContainer"]
 
+# These two migrations were already published before the Aparat runtime was reverted.
+# They must remain in history so Wrangler does not replay older Durable Object migrations.
+[[migrations]]
+tag = "vexa-aparat-container-v1"
+new_sqlite_classes = ["VexaAparatContainer"]
+
+[[migrations]]
+tag = "vexa-aparat-progress-hub-v1"
+new_sqlite_classes = ["VexaAparatProgressHub"]
+
+# The Aparat runtime is retired; delete its published Durable Object classes without
+# removing or rewriting the historical migration tags above.
+[[migrations]]
+tag = "vexa-aparat-disabled-v2"
+deleted_classes = ["VexaAparatContainer", "VexaAparatProgressHub"]
+
 [triggers]
 crons = ["* * * * *"]
