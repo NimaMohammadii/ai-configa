@@ -10,6 +10,14 @@ export const TOMAN_MIN_PURCHASE_CREDITS = Math.ceil((TOMAN_MIN_PURCHASE_AMOUNT /
 export const MINI_APP_BANK_CARD_URL = "https://ai-configa.vexaagent.workers.dev/mini-app?section=bank_card";
 export const MINIMAL_MIC_ICON = "🪼";
 
+const CUSTOM_EMOJI_IDS = Object.freeze({
+  diamond: "5361933723191231306",
+  lightning: "5382164415019768638",
+  card: "5472250091332993630",
+  star: "5463289097336405244",
+  headphones: "5224736245665511429",
+});
+
 const MINI_APP_ROOT = "https://ai-configa.vexaagent.workers.dev/mini-app";
 const PRIMARY_MODE_CONFIG = Object.freeze({
   image: { title: "🪄 <b>Vexa Image</b>", textKey: "vexaImageText", buttonKey: "vexaImageButton", section: "image" },
@@ -83,8 +91,8 @@ export function mainKeyboard(state) {
 
   rows.push([{ text: t(lang, "demo"), callback_data: "demo" }]);
   rows.push([
-    { text: t(lang, "balance"), callback_data: "balance" },
-    { text: t(lang, "buyCredits"), callback_data: "buy_credits" },
+    { text: menuLabel(t(lang, "balance")), icon_custom_emoji_id: CUSTOM_EMOJI_IDS.diamond, callback_data: "balance" },
+    { text: menuLabel(t(lang, "buyCredits")), icon_custom_emoji_id: CUSTOM_EMOJI_IDS.lightning, callback_data: "buy_credits" },
   ]);
   rows.push([{ text: "Open Mini App 🐙", web_app: { url: MINI_APP_ROOT } }]);
   return { inline_keyboard: rows };
@@ -107,11 +115,15 @@ function modeMainKeyboard(state, config) {
     inline_keyboard: [
       [{ text: config.buttonKey ? t(lang, config.buttonKey) : config.button, web_app: { url: `${MINI_APP_ROOT}?section=${encodeURIComponent(config.section)}` } }],
       [
-        { text: t(lang, "balance"), callback_data: "balance" },
-        { text: t(lang, "buyCredits"), callback_data: "buy_credits" },
+        { text: menuLabel(t(lang, "balance")), icon_custom_emoji_id: CUSTOM_EMOJI_IDS.diamond, callback_data: "balance" },
+        { text: menuLabel(t(lang, "buyCredits")), icon_custom_emoji_id: CUSTOM_EMOJI_IDS.lightning, callback_data: "buy_credits" },
       ],
     ],
   };
+}
+
+function menuLabel(text) {
+  return String(text).replace(/^(?:💎|⚡️?|💳|⭐️?|🎧)\s*/u, "");
 }
 
 function normalizeMenuVoices(savedVoices, selectedVoice) {
@@ -131,11 +143,11 @@ export function buyCreditsText(state = {}) {
 export function buyCreditsKeyboard(state = {}) {
   const lang = state.language || "en";
   const paymentRows = [
-    [{ text: "Bank card", web_app: { url: MINI_APP_BANK_CARD_URL } }],
+    [{ text: "Bank card", icon_custom_emoji_id: CUSTOM_EMOJI_IDS.card, web_app: { url: MINI_APP_BANK_CARD_URL } }],
   ];
   if (lang === "fa") paymentRows.push([{ text: t(lang, "buyToman"), callback_data: "buy_toman" }]);
   paymentRows.push(
-    [{ text: t(lang, "telegramStars"), callback_data: "buy_stars" }],
+    [{ text: menuLabel(t(lang, "telegramStars")), icon_custom_emoji_id: CUSTOM_EMOJI_IDS.star, callback_data: "buy_stars" }],
     [{ text: t(lang, "back"), callback_data: "back_main" }],
   );
   return {
